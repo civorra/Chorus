@@ -54,14 +54,14 @@ Chorus::Expert does 3 simple things :
 
 use Chorus::Frame;
 
-my @agents = ();
-my $board  = Chorus::Frame->new(); # shared with $self->BOARS between agents
-
 use constant DEFAULT_MAX_ITER => 10_000;
 
 sub new {
   my $class = shift;
-  return bless {}, $class;
+  return bless {
+    _agents => [],
+    _board  => Chorus::Frame->new(),
+  }, $class;
 }
 
 =head1 SUBROUTINES/METHODS
@@ -76,26 +76,21 @@ sub new {
    my $e1 = Chorus::Engine->new();    # inference engine 1
    my $e2 = Chorus::Engine->new();    # inference engine 2
 
-   $xprt->register($e1,$e2);          # $e1 and $2 added to the list of agents
+   $xprt->register($e1,$e2);          # $e1 and $e2 added to the list of agents
                                       # providing to all of them a shared attribute named BOARD
 
 =cut
 
-# _reset() - for testing only: clear the singleton state (agents list + board)
-sub _reset {
-  @agents = ();
-  $board  = Chorus::Frame->new();
-}
-
 sub register {
-  my $this = shift;                 # -> @_ ~equiv. @agents
-  $_->set('BOARD', $board) for @_;  # BOARD shared between agents
-  $_->set('EXPERT', $this) for @_;  # each agent can talk to me
-  push @agents, @_;
+  my $this  = shift;
+  my $board = $this->{_board};
+  $_->set('BOARD',  $board) for @_;   # BOARD shared between agents of this instance
+  $_->set('EXPERT', $this)  for @_;   # each agent can talk back to me
+  push @{ $this->{_agents} }, @_;
   return $this;
 }
 
-# --
+# --
 
 =head2 process
 
@@ -109,6 +104,7 @@ sub register {
    $xprt->process($something);  # this argument will become $SELF->BOARD->INPUT for all agents
 
 =cut
+
 sub debug {
   my ($this, $level) = @_;
   $this->{_DEBUG} = $level;
@@ -116,7 +112,9 @@ sub debug {
 
 sub process {
   my ($this, $input) = @_;
-  $board->set('INPUT', $input);  # $self->BOARD->INPUT is the default INPUT shared between agents
+  my $board   = $this->{_board};
+  my $agents  = $this->{_agents};
+  $board->set('INPUT', $input);
   my $max_iter = $this->{_MAX_ITER} // DEFAULT_MAX_ITER;
   my $iter = 0;
   do {
@@ -125,7 +123,7 @@ sub process {
            return;
        }
        my @processed = ();
-       for my $agent (@agents) {
+       for my $agent (@$agents) {
 
           if ($agent->_LOCK_UNTIL_STABLE ) {
              print STDERR "Chorus::Expert - Agent $agent->{_IDENT} is tagged with LOCK_UNTIL_STABLE\n" if $this->{_DEBUG};
@@ -137,7 +135,7 @@ sub process {
 
             if ($agent->_REPLAY) {
               print STDERR "Chorus::Expert - REPLAYING AGENT $agent->{_IDENT} NOW.\n" if $this->{_DEBUG};
-             $agent->delete('_REPLAY');
+              $agent->delete('_REPLAY');
             }
 
             print STDERR "Chorus::Expert - LOOPING ON AGENT $agent->{_IDENT} NOW.\n" if $this->{_DEBUG};
@@ -155,9 +153,8 @@ sub process {
        }
   } until ($board->{SOLVED} or $board->{FAILED});
 
-  ($board->delete('SOLVED'), return 1)     if $board->{SOLVED};
-  ($board->delete('FAILED'), return ) if $board->{FAILED};
-
+  ($board->delete('SOLVED'), return 1) if $board->{SOLVED};
+  ($board->delete('FAILED'), return  ) if $board->{FAILED};
 }
 
 =head1 AUTHOR
@@ -167,7 +164,7 @@ Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
 =head1 BUGS
 
 Please report any bugs or feature requests to C<bug-chorus-expert at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Expert>.  I will be notified, and then you'll
+the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
 
 =head1 SUPPORT
@@ -175,7 +172,6 @@ automatically be notified of progress on your bug as I make changes.
 You can find documentation for this module with the perldoc command.
 
     perldoc Chorus::Expert
-
 
 You can also look for information at:
 
@@ -199,10 +195,6 @@ L<http://search.cpan.org/dist/Chorus-Expert/>
 
 =back
 
-
-=head1 ACKNOWLEDGEMENTS
-
-
 =head1 LICENSE AND COPYRIGHT
 
 Copyright 2013 Christophe Ivorra.
@@ -212,7 +204,6 @@ under the terms of either: the GNU General Public License as published
 by the Free Software Foundation; or the Artistic License.
 
 See http://dev.perl.org/licenses/ for more information.
-
 
 =cut
 
