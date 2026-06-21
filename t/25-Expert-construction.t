@@ -20,30 +20,25 @@
 # rôle de l'agent de contrôle : déclarer le problème résolu quand tous les
 # éléments ont un statut.
 #
+# Règles YAML : t/rules/Expert-construction/
+#   materiaux/    R01-affecter-fm_d.yml
+#   charges/      R01-calculer-sigma_m.yml
+#   verification/ R01-verifier-EC5-6.1.6.yml
+#
 # Unités utilisées : q en N/mm, L en mm, W en mm³, sigma_m et fm_d en MPa
 # ============================================================================
 
 use strict;
 use Test::More tests => 11;
+use FindBin qw($RealBin);
 
 use Chorus::Frame;
 use Chorus::Engine;
 use Chorus::Expert;
-use File::Temp qw(tempdir);
-use YAML       qw(DumpFile);
 
 diag("Testing Expert 3-agents construction pipeline, Perl $], $^X");
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-sub make_rule_dir {
-    my %rules = @_;
-    my $dir = tempdir(CLEANUP => 1);
-    DumpFile("$dir/$_.yml", $rules{$_}) for keys %rules;
-    return $dir;
-}
+my $RULES = "$RealBin/rules/Expert-construction";
 
 # ---------------------------------------------------------------------------
 # Données de test — 2 poutres rectangulaires en bois
@@ -83,25 +78,8 @@ my $P2 = Chorus::Frame->new(
 # Valeurs issues de EN 338 / EC5 Table 1 (valeurs caractéristiques, MPa)
 # ---------------------------------------------------------------------------
 
-my $dir_mat = make_rule_dir(
-
-    'R01-materiaux' => {
-        REGLE    => 'affecter-fm_d',
-        CHERCHER => { p => { attribut => 'classe_bois' } },
-        EXCEPTION => q{defined $p->{fm_d}},
-        EFFET    => q{
-            my %fmd = (C16 => 10.0, C24 => 16.0, C30 => 21.0, C40 => 26.0);
-            my $v = $fmd{ $p->{classe_bois} };
-            return unless defined $v;
-            $p->set('fm_d', $v);
-            1
-        },
-    },
-
-);
-
 my $agent_mat = Chorus::Engine->new();
-$agent_mat->loadRules($dir_mat);
+$agent_mat->loadRules("$RULES/materiaux");
 
 # ---------------------------------------------------------------------------
 # Agent 2 — Charges
@@ -109,56 +87,16 @@ $agent_mat->loadRules($dir_mat);
 # Pré-requis implicite : fm_d doit exister (l'agent 1 tourne en premier)
 # ---------------------------------------------------------------------------
 
-my $dir_chg = make_rule_dir(
-
-    'R01-charges' => {
-        REGLE     => 'calculer-sigma_m',
-        CHERCHER  => { p => { attribut => 'fm_d' } },    # scope : poutres avec fm_d
-        EXCEPTION => q{defined $p->{sigma_m}},
-        EFFET     => q{
-            my $q = $p->{q_lineique};
-            my $L = $p->{portee};
-            my $b = $p->{largeur};
-            my $h = $p->{hauteur};
-            my $W       = $b * $h * $h / 6;             # module section (mm³)
-            my $M_max   = $q * $L * $L / 8;             # moment max (N·mm)
-            my $sigma_m = $M_max / $W;                  # contrainte (MPa)
-            $p->set('sigma_m', $sigma_m);
-            1
-        },
-    },
-
-);
-
 my $agent_chg = Chorus::Engine->new();
-$agent_chg->loadRules($dir_chg);
+$agent_chg->loadRules("$RULES/charges");
 
 # ---------------------------------------------------------------------------
 # Agent 3 — Vérification EC5 §6.1.6
 # Règle YAML : compare sigma_m à fm_d et pose le statut
 # ---------------------------------------------------------------------------
 
-my $dir_ver = make_rule_dir(
-
-    'R01-verification' => {
-        REGLE     => 'verifier-EC5-6.1.6',
-        CHERCHER  => { p => { attribut => 'sigma_m' } }, # scope : poutres calculées
-        EXCEPTION => q{defined $p->{statut}},
-        EFFET     => q{
-            if ($p->{sigma_m} <= $p->{fm_d}) {
-                $p->set('statut',     'CONFORME');
-            } else {
-                $p->set('statut',     'NON_CONFORME');
-                $p->set('ref_norme',  'EC5-6.1.6');
-            }
-            1
-        },
-    },
-
-);
-
 my $agent_ver = Chorus::Engine->new();
-$agent_ver->loadRules($dir_ver);
+$agent_ver->loadRules("$RULES/verification");
 
 # ---------------------------------------------------------------------------
 # Agent de contrôle — terminaison (règle Perl pur)
@@ -169,8 +107,6 @@ my $agent_ctrl = Chorus::Engine->new();
 $agent_ctrl->addrule(
     _SCOPE => { p => sub { [ fmatch(slot => 'classe_bois') ] } },
     _APPLY => sub {
-        my %opts = @_;
-        # Attendre que tous les frames 'classe_bois' aient un statut
         my @poutres = fmatch(slot => 'classe_bois');
         return unless @poutres && (grep { defined $_->{statut} } @poutres) == scalar(@poutres);
         $agent_ctrl->solved();
