@@ -661,17 +661,14 @@ sub _setN {
   my $crossedValue = $this->{$nextStep};
 
   if (_isa($crossedValue, 'Chorus::Frame')) {
-    if ($followWay) {
-      # Multi-niveaux : CoW si le sous-frame ne nous appartient pas
-      unless (defined($crossedValue->{_PARENT_KEY}) && $crossedValue->{_PARENT_KEY} eq $this->{_KEY}) {
-        my $shadow = Chorus::Frame->new(_ISA => $crossedValue);
-        $shadow->{_PARENT_KEY} = $this->{_KEY};
-        _setSlot($this, $nextStep, $shadow);
-        return _setN($shadow, $followWay, $info);
-      }
+    # CoW : tout franchissement d'un Frame non-propriétaire crée un shadow local,
+    # quelle que soit la profondeur du chemin (followWay vide ou non).
+    unless (defined($crossedValue->{_PARENT_KEY}) && $crossedValue->{_PARENT_KEY} eq $this->{_KEY}) {
+      my $shadow = Chorus::Frame->new(_ISA => $crossedValue);
+      $shadow->{_PARENT_KEY} = $this->{_KEY};
+      _setSlot($this, $nextStep, $shadow);
+      return _setN($shadow, $followWay, $info);
     }
-    # Comportement original : traverser le sous-frame (y compris $followWay vide
-    # → _setValue → déclenche _BEFORE/_AFTER)
     return _setN($crossedValue, $followWay, $info);
   }
 

@@ -14,7 +14,7 @@
 #     so that procedural hooks (_BEFORE / _AFTER) still fire correctly.
 
 use strict;
-use Test::More tests => 10;
+use Test::More tests => 13;
 use Chorus::Frame;
 
 diag("Testing Chorus::Frame Copy-on-Write (_PARENT_KEY) $Chorus::Frame::VERSION, Perl $], $^X");
@@ -136,6 +136,22 @@ diag("Testing Chorus::Frame Copy-on-Write (_PARENT_KEY) $Chorus::Frame::VERSION,
 
   is($body_before, $body_after, 'Test 8 - no shadow created when sub-frame is already owned');
   is($f->get('body color'), 'green', 'Test 8b - owned sub-frame is mutated in place');
+}
+
+# -----------------------------------------------------------------------
+# Test 9 : set simple (followWay vide) sur frame partagé → shadow CoW
+#           (le vrai défaut architectural — corrigé par suppression de la garde)
+# -----------------------------------------------------------------------
+{
+  my $shared = Chorus::Frame->new(_DEFAULT => 'blue');
+  my $f1     = Chorus::Frame->new(color => $shared);
+  my $f2     = Chorus::Frame->new(color => $shared);
+
+  $f2->set('color', 'red');
+
+  isnt($f2->{color}, $shared,  'Test 9  - single-level set on shared frame creates shadow');
+  is($f1->get('color'), 'blue', 'Test 9b - f1 not mutated after f2 single-level CoW set');
+  is($f2->get('color'), 'red',  'Test 9c - f2 sees the new value');
 }
 
 done_testing();
