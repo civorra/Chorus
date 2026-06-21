@@ -82,18 +82,20 @@ our $LIST = Chorus::Frame->new(
     #  connect_left : Double chainage (prev & succ) a gauche de $SELF
     #
     connect_left  => sub {
-      my $to = shift;
+      my $to   = shift;
       return unless $to;
-      $SELF->set('prev',  $to);
-      $to->set('succ',  $SELF);
+      my $self = $SELF;        # capture before $to->set() overwrites $SELF
+      $self->set('prev', $to);
+      $to->set('succ', $self);
     },
 
     #  connect_right : Double chainage (prev & succ) a droite de $SELF
     #
     connect_right  => sub {
-      my $to = shift;
-      $SELF->set('succ',  $to);
-      $to->set('prev',  $SELF);
+      my $to   = shift;
+      my $self = $SELF;        # capture before $to->set() overwrites $SELF
+      $self->set('succ', $to);
+      $to->set('prev', $self);
     },
 
     #  unshift_items : ajout d'éléments à gauche de $SELF

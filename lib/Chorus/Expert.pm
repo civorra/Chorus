@@ -79,6 +79,12 @@ sub new {
 
 =cut
 
+# _reset() - for testing only: clear the singleton state (agents list + board)
+sub _reset {
+  @agents = ();
+  $board  = Chorus::Frame->new();
+}
+
 sub register {
   my $this = shift;                 # -> @_ ~equiv. @agents
   $_->set('BOARD', $board) for @_;  # BOARD shared between agents
