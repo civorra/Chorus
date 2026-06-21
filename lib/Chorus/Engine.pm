@@ -253,38 +253,7 @@ sub unchanged {
     return shift;
 }
 
-sub setFilter {
-  my ($f) = @_;
-  return '' unless $f;
-  $f = [ $f ] unless ref($f) eq 'ARRAY';
-  return 'grep { ' . join (' and ', map { $SELF->codeTest($_) } @$f ) . ' }'; #  ET implicite !!
-}
 
-sub setScope {
-  my ($desc) = @_;
-  return setFilter($desc->{filtre}) . " fmatch(slot => '" . $desc->{attribut} . "')";
-}
-
-sub setCondition {
-  my ($c) = @_;
-  return '' unless $c;
-  $c = [ $c ] unless ref($c) eq 'ARRAY';
-  return join ("\n      or ", map { $SELF->codeCondition($_) } @$c ); #  OU implicite !!
-}
-
-sub setException {
-  my ($c) = @_;
-  return '' unless $c;
-  $c = [ $c ] unless ref($c) eq 'ARRAY';
-  return join ("\n      or ", map { $SELF->codeException($_) } @$c ); #  OU implicite !!
-}
-
-sub setEffect {
-  my ($ef) = @_;
-  return '' unless $ef;
-  $ef = [ $ef ] unless ref($ef) eq 'ARRAY';
-  return join (";\n    ", map { $SELF->codeEffect($_) } @$ef ); #  ET séquentiel
-}
 
 sub readRule {
   my (%opt) = @_;
@@ -302,7 +271,7 @@ sub readRule {
 }
 
 sub codeRule {
-    my ($rule, %opts) = @_;    # internal struct from YAML
+    my ($engine, $rule, %opts) = @_;    # internal struct from YAML
 
     return unless defined $rule;
 
@@ -317,14 +286,14 @@ sub codeRule {
     $res .= "  _TERMINAL  => '$terminal',\n" if $terminal;
     $res .= ( "  _PREMISSES => {\n    " . join( ",\n    ", map {"$_ => 'Y'"} @$premisses ) . "\n  },\n" ) if scalar(@$premisses);
     $res .= "  _SCOPE => {\n    ";
-    $res .= join( ",\n    ", map { "$_ => sub { [ " . setScope( $scp->{$_} ) . ' ] }' } keys( %{$scp} ) );
+    $res .= join( ",\n    ", map { "$_ => sub { [ " . $engine->setScope( $scp->{$_} ) . ' ] }' } keys( %{$scp} ) );
     $res .= "\n  },\n\n";
 
     my $scope_mapping = join( ";\n", map {"my \$$_ = \$opts{$_}"} keys( %{$scp} ) );
-    my $exception     = $rule->{EXCEPTION} ? ( '   return if ' . setException( $rule->{EXCEPTION} ) . ';' ) : '# none';
-    my $condition     = setCondition( $rule->{CONDITION} );
+    my $exception     = $rule->{EXCEPTION} ? ( '   return if ' . $engine->setException( $rule->{EXCEPTION} ) . ';' ) : '# none';
+    my $condition     = $engine->setCondition( $rule->{CONDITION} );
     my $guard         = $condition ? "return unless $condition;" : '# no condition';
-    my $effect        = setEffect( $rule->{EFFET} );
+    my $effect        = $engine->setEffect( $rule->{EFFET} );
 
     $res .= <<EOT;
 
@@ -370,7 +339,7 @@ sub loadRules {
         $debug = [ $debug ] unless ref($debug) eq 'ARRAY';
 	$debug = { map { $_ => 'Y' } @$debug };
  
-        my $code = '$SELF->addrule(' . codeRule( readRule( file => "$dir/$_" ), debug => $debug ) . ');';
+        my $code = '$SELF->addrule(' . codeRule( $SELF, readRule( file => "$dir/$_" ), debug => $debug ) . ');';
 
         eval $code;
 
@@ -462,6 +431,39 @@ my $ENGINE = Chorus::Frame->new(
   addrule => sub { push @{$SELF->{_RULES}}, Chorus::Frame->new(@_) },
 
   reorder => \&reorderRules,
+
+  setFilter => sub {
+    my ($f) = @_;
+    return '' unless $f;
+    $f = [ $f ] unless ref($f) eq 'ARRAY';
+    return 'grep { ' . join(' and ', map { $SELF->codeTest($_) } @$f) . ' }'; # ET implicite
+  },
+
+  setScope => sub {
+    my ($desc) = @_;
+    return $SELF->setFilter($desc->{filtre}) . " fmatch(slot => '" . $desc->{attribut} . "')";
+  },
+
+  setCondition => sub {
+    my ($c) = @_;
+    return '' unless $c;
+    $c = [ $c ] unless ref($c) eq 'ARRAY';
+    return join("\n      or ", map { $SELF->codeCondition($_) } @$c); # OU implicite
+  },
+
+  setException => sub {
+    my ($c) = @_;
+    return '' unless $c;
+    $c = [ $c ] unless ref($c) eq 'ARRAY';
+    return join("\n      or ", map { $SELF->codeException($_) } @$c); # OU implicite
+  },
+
+  setEffect => sub {
+    my ($ef) = @_;
+    return '' unless $ef;
+    $ef = [ $ef ] unless ref($ef) eq 'ARRAY';
+    return join(";\n    ", map { $SELF->codeEffect($_) } @$ef); # ET séquentiel
+  },
 
   codeEffect    => { _DEFAULT => \&unchanged }, # default (no change) unless provided by agents !
   codeCondition => { _DEFAULT => \&unchanged },
