@@ -74,7 +74,7 @@ BEGIN {
   use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
   @ISA         = qw(Exporter);
-  @EXPORT      = qw($SELF &fmatch REQUIRE_FAILED);
+  @EXPORT      = qw($SELF &fmatch &setMode REQUIRE_FAILED );
   @EXPORT_OK   = qw();
 
   # %EXPORT_TAGS = ( );		# eg: TAG => [ qw!name1 name2! ];
@@ -140,9 +140,16 @@ sub _isa {
 =cut
 
 sub setMode {
-  my (%opt) = @_;
-  $getMode = MODE_N if defined($opt{GET}) and uc($opt{GET}) eq 'N';
-  $getMode = MODE_Z if defined($opt{GET}) and uc($opt{GET}) eq 'Z';
+  if (@_ == 1) {
+    # short form: setMode('Z') or setMode('N')
+    my $m = uc(shift);
+    $getMode = MODE_N if $m eq 'N';
+    $getMode = MODE_Z if $m eq 'Z';
+  } else {
+    my (%opt) = @_;
+    $getMode = MODE_N if defined($opt{GET}) and uc($opt{GET}) eq 'N';
+    $getMode = MODE_Z if defined($opt{GET}) and uc($opt{GET}) eq 'Z';
+  }
 }
 
 =head1 METHODS
@@ -441,6 +448,29 @@ sub _inherited {
   return _inherited($next, $slot, @rest);
 }
 
+# _all_slot_frames($this, $slot, $seen)
+# BFS over the outer inheritance tree of $this, collecting all frames that
+# directly provide $slot (no inner _ISA traversal inside the slot values).
+sub _all_slot_frames {
+  my ($this, $slot, $seen) = @_;
+  $seen //= {};
+  my $k = $this->{_KEY} // '';
+  return () if $seen->{$k}++;
+
+  my @res;
+  push @res, $this->{$slot} if exists $this->{$slot};
+
+  if (exists $this->{_ISA}) {
+    my @parents = _isa($this->{_ISA}, 'ARRAY')
+                  ? map { expand($_) || () } @{$this->{_ISA}}
+                  : (expand($this->{_ISA}) || ());
+    for my $p (@parents) {
+      push @res, _all_slot_frames($p, $slot, $seen);
+    }
+  }
+  return @res;
+}
+
 sub _value_Z {
   my ($info, @args) = @_;
 
@@ -460,7 +490,21 @@ sub _getZ {
   $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
   my ($nextStep, $followWay) = ($1, $2);
 
-  return _value_Z(_inherited($this, $nextStep), @args) unless $followWay;
+  unless ($followWay) {
+    # Mode Z last step: test each valuation key across ALL candidates before
+    # moving to the next key — i.e. VALUE on all, then DEFAULT on all, then NEEDED.
+    my @candidates = _all_slot_frames($this, $nextStep);
+    for my $vkey (VALUATION_ORDER) {
+      for my $cand (@candidates) {
+        next unless _isa($cand, 'Chorus::Frame');
+        if (exists $cand->{$vkey}) {
+          return expand($cand->{$vkey}, @args);
+        }
+      }
+    }
+    # fallback: return first candidate as-is (scalar value or frame)
+    return @candidates ? expand($candidates[0], @args) : undef;
+  }
 
   my $next = _inherited($this, $nextStep);
   return _isa($next, 'Chorus::Frame') ? _getZ($next, $followWay, @args) : undef;

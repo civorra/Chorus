@@ -1,6 +1,6 @@
 #!perl -T
 
-use Test::More tests => 3;
+use Test::More tests => 4;
 
 BEGIN {
 }
@@ -34,8 +34,6 @@ sub test_NEEDED_inherited {
 
 }
 
-# --
-
 sub test_DEFAULT_inherited {
    my $f1 = Chorus::Frame->new (
     val => {
@@ -45,6 +43,9 @@ sub test_DEFAULT_inherited {
 
   my $f2 = Chorus::Frame->new (
     _ISA => $f1,
+    val => {
+ 	 _DEFAULT => "DEFAULT FROM F2"
+    }
   );
 
   my $f3 = Chorus::Frame->new (
@@ -54,9 +55,7 @@ sub test_DEFAULT_inherited {
   $res = $f3->val; 
 }
 
-# --
-
-sub test_MULTIPLE_inheritance {
+sub test_MULTIPLE_inheritance_N {
 
    my $f1 = Chorus::Frame->new (
     val => {
@@ -66,14 +65,14 @@ sub test_MULTIPLE_inheritance {
 
    my $f2 = Chorus::Frame->new (
     val => {
- 	 _DEFAULT => "DEFAULT FROM F2"
+ 	 _NEEDED => "NEEDED FROM F2"
     }
   );
 
   my $f3 = Chorus::Frame->new (
     _ISA => $f1,
     val => {
- 	 _NEEDED => "NEEDED FROM F3"
+ 	 _DEFAULT => "DEFAULT FROM F3"
     }
   );
 
@@ -86,15 +85,50 @@ sub test_MULTIPLE_inheritance {
   $res = $f4->val; 
 }
 
-# --
+sub test_MULTIPLE_inheritance_Z {
+
+   setMode 'Z';
+   
+   my $f1 = Chorus::Frame->new (
+    val => {
+ 	 _NEEDED => "NEEDED FROM F1"
+    }
+  );
+
+   my $f2 = Chorus::Frame->new (
+    val => {
+ 	 _NEEDED => "NEEDED FROM F2"
+    }
+  );
+
+  my $f3 = Chorus::Frame->new (
+    _ISA => $f1,
+    val => {
+ 	 _DEFAULT => "DEFAULT FROM F3"
+    }
+  );
+
+  my $f4 = Chorus::Frame->new (
+    _ISA => $f2,
+  );
+
+  $f4->_inherits($f3);        
+  
+  $res = $f4->val; 
+}
+
+# --
 
 test_NEEDED_inherited();
 is ($res, 'NEEDED FROM F2' ,'TEST 1');
 
 test_DEFAULT_inherited();
-is ($res, 'DEFAULT FROM F1', 'TEST 2');
+is ($res, 'DEFAULT FROM F2', 'TEST 2');
 
-test_MULTIPLE_inheritance();
-is ($res, 'DEFAULT FROM F2', 'TEST 3');
+test_MULTIPLE_inheritance_N();
+is ($res, 'NEEDED FROM F2', 'TEST 3');
+
+test_MULTIPLE_inheritance_Z();
+is ($res, 'DEFAULT FROM F3', 'TEST 4');
 
 done_testing();
