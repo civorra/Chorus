@@ -43,6 +43,8 @@ Version 1.03
 
 =cut
 
+use FindBin qw($Bin);
+
 use Chorus::Expert;
 use Chorus::Engine;
 
@@ -135,25 +137,10 @@ $eng->addrule( # RULE 2
 
 # --
 
-$eng->addrule( # RULE 3
-      _SCOPE => { frame => sub { [ grep { $_->level < 5 } fmatch(slot=>'level') ] } }, # frames with level < 5
-      _APPLY => sub {
-         my %opt = @_;
-      	  $opt{frame}->increase;
-      }
-      
-);
-
-# --
-
-$eng->addrule( # RULE 4
-      _SCOPE => { frame => sub { [ grep { $_->level > 5 } fmatch(slot=>'level') ] } }, # frames with level > 5
-      _APPLY => sub {
-      	 my %opt = @_;
-      	 $opt{frame}->decrease;
-      }
-      
-);
+# Rules 3 & 4 are loaded from YAML (rules/cursors/).
+# Rules 1 & 2 stay in Perl: their scope uses 'once => [1]' which is not
+# supported by the loadRules() YAML DSL (no CHERCHER/attribut equivalent).
+$eng->loadRules("$Bin/rules/cursors");
 
 # --
 
