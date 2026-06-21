@@ -1,0 +1,11 @@
+Makefile
+MYMETA.*
+blib/
+pm_to_blib
+*.o
+*.bs
+*.tar.gz
+*.bak
+*.orig
+_build/
+Build
