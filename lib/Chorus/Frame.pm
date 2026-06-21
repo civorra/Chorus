@@ -163,7 +163,7 @@ sub setMode {
 
 sub _keys {
   my ($this) = @_;
-  grep { $_ ne '_KEY' } keys %{$this}; # WARN - Amm frames have an EXTRA _KEY slot !!
+  grep { $_ ne '_KEY' && $_ ne '_PARENT_KEY' } keys %{$this}; # WARN - frames have EXTRA _KEY and _PARENT_KEY slots !!
 }
 
 sub pushself {
@@ -255,6 +255,7 @@ sub _blessToFrameRec {
           next if $val->{_NOFRAME};
           bless($val, 'Chorus::Frame');
           _register($val);
+          $val->{_PARENT_KEY} //= $_->{_KEY} if _isa($_, 'Chorus::Frame') && exists $_->{_KEY};
           _blessToFrameRec($val);
        } else {
           _blessToFrameRec($_->{$k}) if _isa($val,'ARRAY');
@@ -644,6 +645,7 @@ sub _setValue {
 sub _setSlot {
   my ($this, $slot, $info) = @_;
   blessToFrame($info);
+  $info->{_PARENT_KEY} //= $this->{_KEY} if _isa($info, 'Chorus::Frame');
   $this->{$slot} = $info;
   _registerSlot($this, $slot);
   return $info;
@@ -658,7 +660,33 @@ sub _setN {
   my ($nextStep, $followWay) = ($1, $2);
   my $crossedValue = $this->{$nextStep};
 
-  return _setN($crossedValue, $followWay, $info) if _isa($crossedValue, 'Chorus::Frame');
+  if (_isa($crossedValue, 'Chorus::Frame')) {
+    if ($followWay) {
+      # Multi-niveaux : CoW si le sous-frame ne nous appartient pas
+      unless (defined($crossedValue->{_PARENT_KEY}) && $crossedValue->{_PARENT_KEY} eq $this->{_KEY}) {
+        my $shadow = Chorus::Frame->new(_ISA => $crossedValue);
+        $shadow->{_PARENT_KEY} = $this->{_KEY};
+        _setSlot($this, $nextStep, $shadow);
+        return _setN($shadow, $followWay, $info);
+      }
+    }
+    # Comportement original : traverser le sous-frame (y compris $followWay vide
+    # → _setValue → déclenche _BEFORE/_AFTER)
+    return _setN($crossedValue, $followWay, $info);
+  }
+
+  # Le slot n'est pas localement un Frame : chercher via héritage pour chemin multi-niveaux
+  if ($followWay) {
+    my $inherited_frame = _inherited($this, $nextStep);
+    if (_isa($inherited_frame, 'Chorus::Frame')) {
+      # Créer un shadow CoW depuis le frame hérité
+      my $shadow = Chorus::Frame->new(_ISA => $inherited_frame);
+      $shadow->{_PARENT_KEY} = $this->{_KEY};
+      _setSlot($this, $nextStep, $shadow);
+      return _setN($shadow, $followWay, $info);
+    }
+    # Aucun Frame trouvé par héritage : laisser tomber vers la création d'un nouveau frame
+  }
 
   unless ($followWay) {
     if ($nextStep eq '_VALUE') {
@@ -674,6 +702,7 @@ sub _setN {
 
   $this->{$nextStep} = (exists($this->{$nextStep})) ? new Chorus::Frame (_VALUE => $crossedValue)
                                                     : new Chorus::Frame;
+  $this->{$nextStep}->{_PARENT_KEY} = $this->{_KEY};
 
   return _setN($this->{$nextStep}, $followWay, $info); # (keep current context)
 }
