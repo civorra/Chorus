@@ -319,8 +319,9 @@ sub codeRule {
     $res .= "\n  },\n\n";
 
     my $scope_mapping = join( ";\n", map {"my \$$_ = \$opts{$_}"} keys( %{$scp} ) );
-    my $exception     = $rule->{EXCEPTION} ? ( '   return if ' . setException( $rule->{EXCEPTION} ) ) : '# none';
+    my $exception     = $rule->{EXCEPTION} ? ( '   return if ' . setException( $rule->{EXCEPTION} ) . ';' ) : '# none';
     my $condition     = setCondition( $rule->{CONDITION} );
+    my $guard         = $condition ? "return unless $condition;" : '# no condition';
     my $effect        = setEffect( $rule->{EFFET} );
 
     $res .= <<EOT;
@@ -329,7 +330,7 @@ sub codeRule {
     my (%opts) = \@_;
     $scope_mapping;
 
-    return unless $condition;
+    $guard
 
     # Exceptions
     #
