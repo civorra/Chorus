@@ -57,6 +57,8 @@ use Chorus::Frame;
 my @agents = ();
 my $board  = Chorus::Frame->new(); # shared with $self->BOARS between agents
 
+use constant DEFAULT_MAX_ITER => 10_000;
+
 sub new {
   my $class = shift;
   return bless {}, $class;
@@ -115,7 +117,13 @@ sub debug {
 sub process {
   my ($this, $input) = @_;
   $board->set('INPUT', $input);  # $self->BOARD->INPUT is the default INPUT shared between agents
+  my $max_iter = $this->{_MAX_ITER} // DEFAULT_MAX_ITER;
+  my $iter = 0;
   do {
+       if (++$iter > $max_iter) {
+           warn "Chorus::Expert - process() reached max iterations ($max_iter) without SOLVED or FAILED\n";
+           return;
+       }
        my @processed = ();
        for my $agent (@agents) {
 

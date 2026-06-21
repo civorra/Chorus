@@ -1,7 +1,7 @@
 #!perl -T
 
 use strict;
-use Test::More tests => 8;
+use Test::More tests => 9;
 use Chorus::Frame;
 use Chorus::Engine;
 use Chorus::Expert;
@@ -106,6 +106,23 @@ diag("Testing Chorus::Expert $Chorus::Expert::VERSION, Perl $], $^X");
   );
   $xprt->process();
   is_deeply(\@order, ['e1', 'e2'], 'Test 8 - agents called in registration order');
+  Chorus::Expert->_reset();
+}
+
+# Test 9 : loop() émet un warning et converge si _MAX_CYCLES est dépassé
+{
+  my $xprt = Chorus::Expert->new();
+  my $e    = Chorus::Engine->new();
+  $e->set('_MAX_CYCLES', 3);   # limite basse pour le test
+  $xprt->register($e);
+  $e->addrule(
+    _SCOPE => { x => [1] },
+    _APPLY => sub { return 1; }  # toujours vrai → jamais solved ni failed
+  );
+  my $warned = 0;
+  local $SIG{__WARN__} = sub { $warned = 1 if $_[0] =~ /max cycles/ };
+  $e->loop();
+  ok($warned, 'Test 9 - loop() emits a warning when _MAX_CYCLES is exceeded');
   Chorus::Expert->_reset();
 }
 

@@ -334,6 +334,24 @@ sub new {
   return blessToFrame({@desc});
 }
 
+=head2 _reset
+
+  For testing only: clears all global registries (FMAP, REPOSITORY, INSTANCES, SERIAL)
+  and resets the context stack ($SELF, @Heap) and inheritance mode to N.
+  Use between tests to ensure frame isolation.
+
+=cut
+
+sub _reset {
+  %REPOSITORY = ();
+  %FMAP       = ();
+  %INSTANCES  = ();
+  %SERIAL     = ();
+  $SELF       = undef;
+  @Heap       = ();
+  $getMode    = MODE_N;
+}
+
 # WARN - Should be automatically called by carbage collector EVEN with those 2 remaining references : $INSTANCES{$k} AND $FMAP{$k} !!!
 #
 sub DESTROY {
@@ -778,7 +796,7 @@ sub fmatch {
 
   return () unless $firstslot;
 
-  my %filter = map { $_->{_KEY} => 'Y' || () } @{_framesProvidingSlot($firstslot)};
+  my %filter = map { $_->{_KEY} ? ($_->{_KEY} => 'Y') : () } @{_framesProvidingSlot($firstslot)};
 
   for (@otherslots) {
     %filter = map { $filter{$_->{_KEY}} ? ($_->{_KEY} => 'Y') : () } @{_framesProvidingSlot($_)};

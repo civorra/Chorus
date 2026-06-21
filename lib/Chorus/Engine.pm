@@ -389,7 +389,8 @@ sub loadRules {
 
 sub applyrules {
 
-  sub apply_rec {
+  my $apply_rec;
+  $apply_rec = sub {
     my ($rule, $stillworking) = @_;
     my (%opt, $res);
 
@@ -415,16 +416,16 @@ sub applyrules {
     delete $SELF->{_LAST} if $SELF->{_LAST};
 
     return if $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL};
- 
+
     $SELF->{_SUCCES} ||= $stillworking;
 
     return $stillworking unless $SELF->{_QUEUE}->[0];
-    return apply_rec (shift @{$SELF->{_QUEUE}}, $stillworking);
-  }
+    return $apply_rec->(shift @{$SELF->{_QUEUE}}, $stillworking);
+  };
 
   return if $SELF->{_SLEEPING};
   $SELF->{_QUEUE} = [ @{$SELF->{_RULES} || [] } ];
-  return apply_rec(shift @{$SELF->{_QUEUE}});
+  return $apply_rec->(shift @{$SELF->{_QUEUE}});
 }
 
 # --
@@ -438,9 +439,15 @@ my $ENGINE = Chorus::Frame->new(
 
   loop    => sub {
     $SELF->{_SUCCES} = 0;
+    my $max = $SELF->get('_MAX_CYCLES') // 10_000;
+    my $cycles = 0;
     while ( applyrules() ) {
       my $b = $SELF->get('BOARD');
       last if $b and ($b->{SOLVED} or $b->{FAILED});
+      if (++$cycles >= $max) {
+        warn "Chorus::Engine - loop() reached max cycles ($max) without convergence\n";
+        last;
+      }
     }
   },
 
