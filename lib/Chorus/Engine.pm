@@ -311,8 +311,10 @@ sub codeRule {
     my $rulename  = $rule->{REGLE}     || '';
     my $premisses = $rule->{PREMISSES} || [];
     my $scp       = $rule->{CHERCHER};
+    my $terminal  = $rule->{TERMINAL}  || '';
 
     $res .= "\n  _ID        => '$rulename',\n";
+    $res .= "  _TERMINAL  => '$terminal',\n" if $terminal;
     $res .= ( "  _PREMISSES => {\n    " . join( ",\n    ", map {"$_ => 'Y'"} @$premisses ) . "\n  },\n" ) if scalar(@$premisses);
     $res .= "  _SCOPE => {\n    ";
     $res .= join( ",\n    ", map { "$_ => sub { [ " . setScope( $scp->{$_} ) . ' ] }' } keys( %{$scp} ) );
@@ -403,7 +405,7 @@ sub applyrules {
 
     my $i    = 0;
     my $head = 'JUMP: {' . join('', map { $i++; 'foreach my $k' . $i . ' (@{$scope{' . $_ . '}}) {$opt{' . $_ . '}=$k' . $i . ';' } keys(%scope));
-    my $body = '$res = $rule->_APPLY(%opt); last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or do { my $_b=$SELF->get(\'BOARD\'); $_b && ($_b->{SOLVED} || $_b->{FAILED}) }';
+    my $body = '$res = $rule->_APPLY(%opt); if ($res && $rule->{_TERMINAL}) { $SELF->solved() if $rule->{_TERMINAL} eq "solved"; $SELF->failed() if $rule->{_TERMINAL} eq "failed"; } last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or do { my $_b=$SELF->get(\'BOARD\'); $_b && ($_b->{SOLVED} || $_b->{FAILED}) }';
     my $tail = '}' x scalar(keys(%scope)) . '}';
 
     eval $head . $body . $tail;
