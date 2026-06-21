@@ -403,7 +403,7 @@ sub applyrules {
 
     my $i    = 0;
     my $head = 'JUMP: {' . join('', map { $i++; 'foreach my $k' . $i . ' (@{$scope{' . $_ . '}}) {$opt{' . $_ . '}=$k' . $i . ';' } keys(%scope));
-    my $body = '$res = $rule->_APPLY(%opt); last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or $SELF->BOARD->SOLVED or $SELF->BOARD->FAILED';
+    my $body = '$res = $rule->_APPLY(%opt); last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or do { my $_b=$SELF->get(\'BOARD\'); $_b && ($_b->{SOLVED} || $_b->{FAILED}) }';
     my $tail = '}' x scalar(keys(%scope)) . '}';
 
     eval $head . $body . $tail;
@@ -412,7 +412,7 @@ sub applyrules {
     $stillworking ||= $res;
 
     delete $SELF->{_CUT}  if $SELF->{_CUT};
-    $SELF->{_QUEUE} = []  if $SELF->{_LAST} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or $SELF->BOARD->SOLVED or $SELF->BOARD->FAILED;
+    { my $_b = $SELF->get('BOARD'); $SELF->{_QUEUE} = [] if $SELF->{_LAST} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or ($_b && ($_b->{SOLVED} || $_b->{FAILED})); }
     delete $SELF->{_LAST} if $SELF->{_LAST};
 
     return if $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL};
@@ -437,7 +437,13 @@ my $ENGINE = Chorus::Frame->new(
   replay      => sub { $SELF->{_REPLAY}     = 'Y' }, # (returned value ignored)
   replay_all  => sub { $SELF->{_REPLAY_ALL} = 'Y' }, # (returned value ignored)
 
-  loop    => sub { $SELF->{_SUCCES} = 0; do {} while(applyrules() and (! $SELF->BOARD or (! $SELF->BOARD->SOLVED and ! $SELF->BOARD->FAILED))) },
+  loop    => sub {
+    $SELF->{_SUCCES} = 0;
+    while ( applyrules() ) {
+      my $b = $SELF->get('BOARD');
+      last if $b and ($b->{SOLVED} or $b->{FAILED});
+    }
+  },
 
   solved  => sub { $SELF->BOARD->{SOLVED} = 'Y'; return },
   failed  => sub { $SELF->BOARD->{FAILED} = 'Y'; return },

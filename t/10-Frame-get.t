@@ -72,16 +72,16 @@ sub test_MULTIPLE_inheritance {
 
   my $f3 = Chorus::Frame->new (
     _ISA => $f1,
-    val_RENAMED => {
+    val => {
  	 _NEEDED => "NEEDED FROM F3"
     }
   );
 
   my $f4 = Chorus::Frame->new (
-    _ISA => $f3,
+    _ISA => $f2,
   );
 
-  $f3->_inherits($f2);              # extends inheritance : F1, then F2 (will provides _DEFAULT prior to _NEEDED in same inheritance level)
+  $f4->_inherits($f3);        
   
   $res = $f4->val; 
 }
