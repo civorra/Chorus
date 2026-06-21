@@ -3,7 +3,7 @@ package Chorus::Frame;
 use 5.006;
 use strict;
 
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 =head1 NAME
 
@@ -11,7 +11,7 @@ Chorus::Frame - A short implementation of frames from knowledge representation.
 
 =head1 VERSION
 
-Version 1.04
+Version 1.05
 
 =cut
 

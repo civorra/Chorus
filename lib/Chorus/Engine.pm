@@ -4,7 +4,7 @@ use 5.006;
 use strict;
 use warnings;
 
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 use Chorus::Frame;
 use Chorus::Collection::Filter qw(@_VFILTER);
@@ -16,7 +16,7 @@ Chorus::Engine - A very light inference engine combined with the frame model for
 
 =head1 VERSION
 
-Version 1.04
+Version 1.05
 
 =cut
 

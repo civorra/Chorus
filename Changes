@@ -1,5 +1,18 @@
 Revision history for Chorus::Expert
 
+1.05    2026-06-21
+        - Engine.pm : add TERMINAL field to YAML DSL for declarative pipeline termination
+          (solved/failed callable from pure YAML rules)
+        - Engine.pm : promote setFilter/setScope/setCondition/setException/setEffect
+          to engine methods (was package-level functions relying on implicit $SELF)
+        - Frame.pm  : fmatch() fix — dead code 'Y' || () replaced with conditional
+          to avoid undef key in %filter
+        - Engine.pm : apply_rec converted from named sub to proper closure
+        - Engine.pm : loop() guard against infinite loops (_MAX_CYCLES, default 10_000)
+        - Frame.pm  : _reset() added — clears %FMAP, %REPOSITORY, %INSTANCES, %SERIAL,
+          $SELF, @Heap, $getMode (test isolation)
+        - Tests: t/26-Frame-reset.t, t/27-Engine-terminal.t added
+
 1.03    2015-12-14
 		- Some tests added (Chorus::Frame : get - set - delete - getZ - getN - fmatch - weaken
 		- Frame method inherits() renamed to _inherits()
