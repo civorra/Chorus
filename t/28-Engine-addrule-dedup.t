@@ -7,7 +7,8 @@
 # must not fire twice per cycle.
 
 use strict;
-use Test::More tests => 7;
+use Test::More;
+use Test::Warn;
 use Chorus::Frame;
 use Chorus::Engine;
 use File::Temp qw(tempdir);
@@ -21,15 +22,6 @@ sub make_engine {
     return $e;
 }
 
-# Capture warnings into an arrayref
-sub capture_warnings (&) {
-    my ($code) = @_;
-    my @warns;
-    local $SIG{__WARN__} = sub { push @warns, @_ };
-    $code->();
-    return \@warns;
-}
-
 # -----------------------------------------------------------------------
 # Test 1-2 : addrule() direct — doublon détecté, warning émis
 # -----------------------------------------------------------------------
@@ -40,11 +32,9 @@ sub capture_warnings (&) {
     $e->addrule(_ID => 'my-rule', _SCOPE => {}, _APPLY => sub { });
     is(scalar @{$e->{_RULES}}, 1, 'Test 1 - première règle chargée');
 
-    my $warns = capture_warnings {
+    warning_like {
         $e->addrule(_ID => 'my-rule', _SCOPE => {}, _APPLY => sub { });
-    };
-    ok((grep { /duplicate rule _ID 'my-rule'/ } @$warns),
-        "Test 2 - doublon via addrule() émet un warning");
+    } qr/duplicate rule _ID 'my-rule'/, 'Test 2 - doublon via addrule() émet un warning';
 }
 
 # -----------------------------------------------------------------------
@@ -56,10 +46,12 @@ sub capture_warnings (&) {
     my $e = make_engine();
     $e->addrule(_ID => 'my-rule', _SCOPE => {}, _APPLY => sub { });
 
-    capture_warnings { $e->addrule(_ID => 'my-rule', _SCOPE => {}, _APPLY => sub { }) };
+    warning_like {
+        $e->addrule(_ID => 'my-rule', _SCOPE => {}, _APPLY => sub { });
+    } qr/duplicate rule _ID 'my-rule'/, 'Test 3 - warning confirmé (deuxième appel)';
 
     is(scalar @{$e->{_RULES}}, 1,
-        'Test 3 - _RULES contient 1 seule règle après doublon');
+        'Test 4 - _RULES contient 1 seule règle après doublon');
 }
 
 # -----------------------------------------------------------------------
@@ -71,11 +63,11 @@ sub capture_warnings (&) {
     my $e = make_engine();
     $e->addrule(_SCOPE => {}, _APPLY => sub { });
     $e->addrule(_SCOPE => {}, _APPLY => sub { });
-    is(scalar @{$e->{_RULES}}, 2, 'Test 4 - deux règles sans _ID coexistent');
+    is(scalar @{$e->{_RULES}}, 2, 'Test 5 - deux règles sans _ID coexistent');
 
     $e->addrule(_ID => 'rule-a', _SCOPE => {}, _APPLY => sub { });
     $e->addrule(_ID => 'rule-b', _SCOPE => {}, _APPLY => sub { });
-    is(scalar @{$e->{_RULES}}, 4, 'Test 5 - deux règles avec _ID distincts coexistent');
+    is(scalar @{$e->{_RULES}}, 4, 'Test 6 - deux règles avec _ID distincts coexistent');
 }
 
 # -----------------------------------------------------------------------
@@ -102,14 +94,15 @@ sub capture_warnings (&) {
         EFFET     => q{$x->set('count', ($x->{count} || 0) + 1); 1},
     });
 
-    my $warns = capture_warnings { $e->loadRules($dir) };
-    ok((grep { /duplicate rule _ID 'tag-frame'/ } @$warns),
-        "Test 6 - loadRules() émet un warning pour le doublon YAML");
+    warnings_like {
+        $e->loadRules($dir);
+    } [qr/duplicate rule _ID 'tag-frame'/],
+        'Test 7 - loadRules() émet un warning pour le doublon YAML';
 
     $e->loop();
 
     is($f1->count, 1,
-        "Test 7 - règle dupliquée en YAML ne s'applique qu'une fois (count=1)");
+        "Test 8 - règle dupliquée en YAML ne s'applique qu'une fois (count=1)");
 }
 
 done_testing();
