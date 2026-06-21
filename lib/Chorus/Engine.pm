@@ -272,14 +272,12 @@ sub setCondition {
   return join ("\n      or ", map { $SELF->codeCondition($_) } @$c ); #  OU implicite !!
 }
 
-=head
 sub setException {
   my ($c) = @_;
   return '' unless $c;
   $c = [ $c ] unless ref($c) eq 'ARRAY';
   return join ("\n      or ", map { $SELF->codeException($_) } @$c ); #  OU implicite !!
 }
-=cut
 
 sub setEffect {
   my ($ef) = @_;
@@ -321,7 +319,7 @@ sub codeRule {
     $res .= "\n  },\n\n";
 
     my $scope_mapping = join( ";\n", map {"my \$$_ = \$opts{$_}"} keys( %{$scp} ) );
-    my $exception     = $rule->{EXCEPTION} ? ( '   return if ' . setCondition( $rule->{EXCEPTION} ) ) : '# none';
+    my $exception     = $rule->{EXCEPTION} ? ( '   return if ' . setException( $rule->{EXCEPTION} ) ) : '# none';
     my $condition     = setCondition( $rule->{CONDITION} );
     my $effect        = setEffect( $rule->{EFFET} );
 
