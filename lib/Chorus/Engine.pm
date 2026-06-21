@@ -428,7 +428,17 @@ my $ENGINE = Chorus::Frame->new(
   pause   => sub { $SELF->{_SLEEPING} = 'Y' },
   wakeup  => sub { $SELF->delete('_SLEEPING')},
 
-  addrule => sub { push @{$SELF->{_RULES}}, Chorus::Frame->new(@_) },
+  addrule => sub {
+    my @rule_def = @_;
+    my %args = @rule_def;
+    if (my $id = $args{_ID}) {
+      if (grep { $_->{_ID} && $_->{_ID} eq $id } @{$SELF->{_RULES}}) {
+        warn "Chorus::Engine - addrule: duplicate rule _ID '$id' — skipped\n";
+        return;
+      }
+    }
+    push @{$SELF->{_RULES}}, Chorus::Frame->new(@rule_def);
+  },
 
   reorder => \&reorderRules,
 
