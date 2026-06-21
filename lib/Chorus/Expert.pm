@@ -81,7 +81,7 @@ sub new {
 
 sub register {
   my $this = shift;                 # -> @_ ~equiv. @agents
-  $_->set('BOARD', $board) for @_;  # BORAD shared between agents
+  $_->set('BOARD', $board) for @_;  # BOARD shared between agents
   $_->set('EXPERT', $this) for @_;  # each agent can talk to me
   push @agents, @_;
   return $this;
@@ -89,7 +89,7 @@ sub register {
 
 # --
 
-=head$mot = $opts{mot}2 process
+=head2 process
 
    Tells the Chorus::Expert object to enter in an infinite loop until one of the engines
    set the attribute $SELF->BOARD->{SOLVED} to something true.
@@ -101,11 +101,9 @@ sub register {
    $xprt->process($something);  # this argument will become $SELF->BOARD->INPUT for all agents
 
 =cut
-my $DEBUG = 0;
-
 sub debug {
   my ($this, $level) = @_;
-  $DEBUG = $level;
+  $this->{_DEBUG} = $level;
 }
 
 sub process {
@@ -113,31 +111,31 @@ sub process {
   $board->set('INPUT', $input);  # $self->BOARD->INPUT is the default INPUT shared between agents
   do {
        my @processed = ();
-       for (@agents) {
+       for my $agent (@agents) {
 
-          if ($_->_LOCK_UNTIL_STABLE ) {
-             print STDERR "Chorus::Expert - Agent $_->{_IDENT} is tagged with LOCK_UNTIL_STABLE\n" if $DEBUG;
+          if ($agent->_LOCK_UNTIL_STABLE ) {
+             print STDERR "Chorus::Expert - Agent $agent->{_IDENT} is tagged with LOCK_UNTIL_STABLE\n" if $this->{_DEBUG};
              last if grep { $_->_SUCCES } @processed;
-             print STDERR "Chorus::Expert - None of agents [" . join (',', map { $_->{_IDENT} || 'NO_NAME' } @processed) . "] have succeeded\n" if $DEBUG;
+             print STDERR "Chorus::Expert - None of agents [" . join (',', map { $_->{_IDENT} || 'NO_NAME' } @processed) . "] have succeeded\n" if $this->{_DEBUG};
           }
 
           do {
 
-            if ($_->_REPLAY) {
-              print STDERR "Chorus::Expert - REPLAYING AGENT $_->{_IDENT} NOW.\n" if $DEBUG;
-             $_->delete('_REPLAY');
+            if ($agent->_REPLAY) {
+              print STDERR "Chorus::Expert - REPLAYING AGENT $agent->{_IDENT} NOW.\n" if $this->{_DEBUG};
+             $agent->delete('_REPLAY');
             }
 
-            print STDERR "Chorus::Expert - LOOPING ON AGENT $_->{_IDENT} NOW.\n" if $DEBUG;
-            $_->loop() unless $board->SOLVED or $board->FAILED;
+            print STDERR "Chorus::Expert - LOOPING ON AGENT $agent->{_IDENT} NOW.\n" if $this->{_DEBUG};
+            $agent->loop() unless $board->SOLVED or $board->FAILED;
 
-         } while($_->_REPLAY);
+         } while($agent->_REPLAY);
 
-         push @processed, $_;
+         push @processed, $agent;
 
-          if ($_->_REPLAY_ALL) {
-            print STDERR "Chorus::Expert - WILL REPLAY ALL AGENTS NOW.\n" if $DEBUG;
-            $_->delete('_REPLAY_ALL');
+          if ($agent->_REPLAY_ALL) {
+            print STDERR "Chorus::Expert - WILL REPLAY ALL AGENTS NOW.\n" if $this->{_DEBUG};
+            $agent->delete('_REPLAY_ALL');
             last;
           }
        }

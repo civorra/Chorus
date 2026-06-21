@@ -2,6 +2,7 @@ package Chorus::Engine;
 
 use 5.006;
 use strict;
+use warnings;
 
 our $VERSION = '1.04';
 
@@ -284,7 +285,7 @@ sub setEffect {
   my ($ef) = @_;
   return '' unless $ef;
   $ef = [ $ef ] unless ref($ef) eq 'ARRAY';
-  return join (";\n    ", map { $SELF->codeEffect($_) } @$ef ); #  OU or OU implicite !!????????
+  return join (";\n    ", map { $SELF->codeEffect($_) } @$ef ); #  ET séquentiel
 }
 
 sub readRule {
@@ -436,7 +437,7 @@ my $ENGINE = Chorus::Frame->new(
   replay      => sub { $SELF->{_REPLAY}     = 'Y' }, # (returned value ignored)
   replay_all  => sub { $SELF->{_REPLAY_ALL} = 'Y' }, # (returned value ignored)
 
-  loop    => sub { $SELF->{_SUCCES} = 0; do {} while(applyrules() and (! $SELF->BOARD or ! $SELF->BOARD->SOLVED or ! $SELF->BOARD->FAILED)) },
+  loop    => sub { $SELF->{_SUCCES} = 0; do {} while(applyrules() and (! $SELF->BOARD or (! $SELF->BOARD->SOLVED and ! $SELF->BOARD->FAILED))) },
 
   solved  => sub { $SELF->BOARD->{SOLVED} = 'Y'; return },
   failed  => sub { $SELF->BOARD->{FAILED} = 'Y'; return },
@@ -462,7 +463,7 @@ my $ENGINE = Chorus::Frame->new(
 
 sub new {
     shift;                                            # get rid of clasical bless $class here !!
-    my $res = Chorus::Frame->new( @_, _RULES => [] ); # may already contains _ISA !
+    my $res = Chorus::Frame->new( _RULES => [], @_ ); # may already contains _ISA !
     $res->_inherits($ENGINE);                         # -> possible multiple inheritance !!
     return $res;
 }

@@ -81,7 +81,7 @@ BEGIN {
 }
 
 use strict;
-# use warnings;
+use warnings;
 use Carp;			# warn of errors (from perspective of caller)
 use Digest::MD5;
 use Scalar::Util qw(weaken);
@@ -182,7 +182,7 @@ sub expand {
 sub _push {
   my ($this, $slot, @elems) = @_;
   return unless scalar(@elems);
-  $this->{$slot} = [ $this->{$slot} || () ] unless ref($this->{$slot}) eq 'ARRAY';
+  $this->{$slot} = [ defined($this->{$slot}) ? ($this->{$slot}) : () ] unless ref($this->{$slot}) eq 'ARRAY';
   push @{$this->{$slot}}, @elems;
 }
 
@@ -220,68 +220,63 @@ sub _removeInstance {
   delete $INSTANCES{$this->{_KEY}}->{$k};
 }
 
+sub _register {
+  my ($this) = @_;
+  my $k;
+  do { $k = Digest::MD5::md5_base64(rand) } while exists($FMAP{$k});
+
+  foreach my $slot (keys(%$this)) { # register all slots      # not yet _KEY
+    $REPOSITORY{$slot} = {} unless exists $REPOSITORY{$slot};
+    $REPOSITORY{$slot}->{$k} = 'Y';
+  }
+
+  $this->{_KEY} = $k; # _KEY SET HERE !!
+  $FMAP{$k} = $this;
+
+  $SERIAL{$this->{_SERIALIZE}} = $k if exists $this->{_SERIALIZE}; # FOR SERIALIZED STORAGE (JSON or BSON)
+
+  weaken($FMAP{$k}); # will not increase garbage ref counter to $this !!
+  return $this;
+}
+
+sub _blessToFrameRec {
+  local $_ = shift;
+
+  if (_isa($_,'Chorus::Frame')) {
+    while(my ($k, $val) = each %$_) {
+       if (_isa($val,'HASH')) { # Warn - Will convert all hash tables to Chorus::Frame -> be carefull with function ref() !!
+          next if $val->{_NOFRAME};
+          bless($val, 'Chorus::Frame');
+          _register($val);
+          _blessToFrameRec($val);
+       } else {
+          _blessToFrameRec($_->{$k}) if _isa($val,'ARRAY');
+       }
+       if ($k eq '_ISA') {
+         foreach my $inherited (_isa($val,'ARRAY') ? map { expand($_) || () } @{$val}
+                                                       : (expand($val))) {
+            $inherited->_addInstance($_) if $inherited;
+         }
+       }
+    }
+    return;
+  }
+
+  if (_isa($_,'ARRAY')) {
+    foreach my $idx (0 .. scalar(@$_) - 1) {
+      if (_isa($_->[$idx], 'HASH')) {
+        next if exists $_->[$idx]->{_NOFRAME};
+        bless($_->[$idx], 'Chorus::Frame');
+        _register($_->[$idx]);
+        _blessToFrameRec($_->[$idx]);
+      } else {
+        _blessToFrameRec($_->[$idx]) if _isa($_->[$idx],'ARRAY');
+      }
+    }
+  }
+}
+
 sub blessToFrame {
-
-  sub register {
-
-    my ($this) = @_;
-    my $k;
-    do { $k = Digest::MD5::md5_base64(rand) } while exists($FMAP{$k});
-
-    foreach my $slot (keys(%$this)) { # register all slots      # not yet _KEY
-      $REPOSITORY{$slot} = {} unless exists $REPOSITORY{$slot};
-      $REPOSITORY{$slot}->{$k} = 'Y';
-    }
-
-    $this->{_KEY} = $k; # _KEY SET HERE !!
-    $FMAP{$k} = $this;
-
-    $SERIAL{$this->{_SERIALIZE}} = $k if exists $this->{_SERIALIZE}; # FOR SERIALIZED STORAGE (JSON or BSON)
-
-    weaken($FMAP{$k}); # will not increase garbage ref counter to $this !!
-    return $this;
-  }
-
-  sub blessToFrameRec {
-
-    local $_ = shift;
-
-    if (_isa($_,'Chorus::Frame')) {
-
-      while(my ($k, $val) = each %$_) {
-         if (_isa($val,'HASH')) { # Warn - Will convert all hash tables to Chorus::Frame -> be carefull with function ref() !!
-            next if $val->{_NOFRAME};
-            bless($val, 'Chorus::Frame');
-            register($val);
-            blessToFrameRec($val);
-         } else {
-            blessToFrameRec($_->{$k}) if _isa($val,'ARRAY');
-         }
-         if ($k eq '_ISA') {
-           foreach my $inherited (_isa($val,'ARRAY') ? map \&expand, @{$val}
-                                                         : (expand($val))) {
-              $inherited->_addInstance($_) if $inherited;
-           }
-         }
-      }
-
-      return;
-    }
-
-    if (_isa($_,'ARRAY')) { # à revoir (sans $idx)
-      foreach my $idx (0 .. scalar(@$_) - 1) {
-        if (_isa($_[$idx], 'HASH')) {
-          next if exists $_[$idx]->{_NOFRAME};
-          bless($_[$idx], 'Chorus::Frame');
-          register($_[$idx]);
-          blessToFrameRec($_[$idx]);
-        } else {
-          blessToFrameRec($_[$idx]) if _isa($_[$idx],'ARRAY');
-        }
-      }
-    }
-  }
-
   my $res = shift;
   return $res if _isa($res, 'Chorus::Frame'); # already blessed
 
@@ -289,14 +284,14 @@ sub blessToFrame {
 
     _isa($res, 'HASH') && do {
       return $res if exists $res->{_NOFRAME};
-      register(bless($res, 'Chorus::Frame'));
-      blessToFrameRec $res if _keys($res); # will ignore _KEY !
+      _register(bless($res, 'Chorus::Frame'));
+      _blessToFrameRec $res if _keys($res); # will ignore _KEY !
       last SWITCH;;
     };
 
     _isa($res, 'ARRAY') && do {
       return $res unless scalar(@$res);
-      blessToFrameRec $res;
+      _blessToFrameRec $res;
       last SWITCH;
     };
 
@@ -340,7 +335,7 @@ sub DESTROY {
 
     delete $INSTANCES{$k} if exists $INSTANCES{$k};
 
-    foreach my $inherited (_isa($this->{_ISA}, 'ARRAY') ? map \&expand, @{$this->{_ISA}} : (expand($this->{_ISA}))) {
+    foreach my $inherited (_isa($this->{_ISA}, 'ARRAY') ? map { expand($_) || () } @{$this->{_ISA}} : (expand($this->{_ISA}))) {
       my $ik = $inherited->{_KEY} or next;
       delete $INSTANCES{$ik}->{$k} if exists $INSTANCES{$ik}->{$k};
     }
@@ -408,105 +403,99 @@ Ex. $f->foo;                   # equiv to $f->get('foo');
 
 =cut
 
+# first() - returns expanded $slot if explicitly (not inherited) provided by $this
+#           ret = SUCCESS whatever the slot expansion returns !!
+sub _first {
+  my ($this, $slots, @args) = @_;
+  for (@{$slots}) {
+    return { ret => SUCCESS, res => expand($this->{$_}, @args) } if exists $this->{$_};
+  }
+  return;
+}
+
+sub _expandInherits {
+  my ($this, $tryValuations, @args) = @_;
+
+  my $res = _first($this, $tryValuations, @args);
+  return $res if defined($res) and $res->{ret};
+
+  if (exists($this->{_ISA})) {
+    my @h = _isa($this->{_ISA}, 'ARRAY') ? map { expand($_) || () } @{$this->{_ISA}} : (expand($this->{_ISA}) || ());
+    for (@h) { # upper level
+      $res = _expandInherits($_, $tryValuations, @args);
+      return $res if defined($res) and $res->{ret};
+    }
+  }
+  return { ret => FAILED };
+}
+
+sub _inherited {
+  my ($this, $slot, @rest) = @_;
+
+  return $this->{$slot} if exists($this->{$slot}); # first that match (better than buildtree) !!
+
+  $this->{_ISA} and push @rest, _isa($this->{_ISA}, 'ARRAY') ? @{$this->{_ISA}} : $this->{_ISA};
+  my $next = shift @rest;
+
+  return unless $next;
+  return _inherited($next, $slot, @rest);
+}
+
+sub _value_Z {
+  my ($info, @args) = @_;
+
+  return expand($info, @args) unless _isa($info, 'Chorus::Frame');
+
+  my $res = _expandInherits($info, [VALUATION_ORDER], @args);
+
+  return $res->{res} if defined($res) and $res->{ret};
+  return $info;
+}
+
+sub _getZ {
+  my ($this, $way, @args) = @_;
+
+  return _value_Z($this, @args) unless $way;
+
+  $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
+  my ($nextStep, $followWay) = ($1, $2);
+
+  return _value_Z(_inherited($this, $nextStep), @args) unless $followWay;
+
+  my $next = _inherited($this, $nextStep);
+  return _isa($next, 'Chorus::Frame') ? _getZ($next, $followWay, @args) : undef;
+}
+
+sub _value_N {
+  my ($info, @args) = @_;
+
+  return expand($info, @args) unless _isa($info, 'Chorus::Frame');
+
+  for (VALUATION_ORDER) {
+    my $res = _expandInherits($info, [$_], @args);
+    return $res->{res} if defined($res) and $res->{ret};
+  }
+
+  return $info;
+}
+
+sub _getN {
+  my ($this, $way, @args) = @_;
+
+  return _value_N($this, @args) unless $way;
+
+  $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
+  my ($nextStep, $followWay) = ($1, $2);
+
+  return _value_N(_inherited($this, $nextStep), @args) unless $followWay;
+
+  my $next = _inherited($this, $nextStep);
+  return _isa($next, 'Chorus::Frame') ? _getN($next, $followWay, @args) : undef;
+}
+
 sub get {
-
-  sub expandInherits {
-
-    # first() - returns expanded $slot if explicitely (not inherited) provided by this
-    #           ret = SUCCESS whaterver the slot expansion returns !!
-    #
-    sub first {
-      my ($this, $slots, @args) = @_;
-      for (@{$slots}) {
-        return { ret => SUCCESS, res => expand($this->{$_}, @args) } if exists $this->{$_};
-      }
-      return;
-    }
-
-    my ($this, $tryValuations, @args) = @_;
-
-    my $res = $this->first($tryValuations, @args);
-    return $res if defined($res) and $res->{ret};
-
-    if (exists($this->{_ISA})) {
-      my @h = _isa($this->{_ISA}, 'ARRAY') ? map { expand($_) || () } @{$this->{_ISA}} : (expand($this->{_ISA}) || ());
-      for (@h) { # upper level
-        $res = $_->expandInherits($tryValuations,@args);
-        return $res if defined($res) and $res->{ret};
-      }
-    }
-    return { ret => FAILED };
-  } # expandInherits
-
-  sub inherited {
-    my ($this,$slot,@rest) = @_;
-
-    return $this->{$slot} if exists($this->{$slot}); # first that match (better than buildtree) !!
-
-    $this->{_ISA} and push @rest, _isa($this->{_ISA}, 'ARRAY') ? @{$this->{_ISA}} : $this->{_ISA}; # see expand
-    my $next = shift @rest;
-
-    return unless $next;
-    return $next->inherited($slot,@rest);
-  }
-
-  sub getZ {
-
-    sub value_Z {
-
-      my ($info, @args) = @_;
-	
-      return expand($info,@args) unless _isa($info,'Chorus::Frame');
-
-      my $res = $info->expandInherits([VALUATION_ORDER], @args);
-
-      return $res->{res} if defined($res) and $res->{ret};
-      return $info;
-    }
-
-    my ($this, $way, @args) = @_;
-
-    return $this->value_Z(@args) unless $way;
-
-    $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
-    my ($nextStep, $followWay) = ($1,$2);
-
-    return value_Z($this->inherited($nextStep), @args) unless $followWay;
-
-    my $next = $this->inherited($nextStep);
-    return _isa($next,'Chorus::Frame') ? $next->getZ($followWay, @args) : undef;
-  }
-
-  sub getN {
-
-    sub value_N {
-      my ($info, @args) = @_;
-
-      return expand($info,@args) unless _isa($info, 'Chorus::Frame');
-
-      for (VALUATION_ORDER) {
-        my $res = $info->expandInherits([$_], @args);
-        return $res->{res} if defined($res) and $res->{ret};
-      }
-
-      return $info;
-    }
-
-    my ($this, $way, @args) = @_;
-
-    return $this->value_N(@args) unless $way;
-
-    $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
-    my ($nextStep, $followWay) = ($1,$2);
-
-    return value_N($this->inherited($nextStep), @args) unless $followWay;
-
-    my $next = $this->inherited($nextStep);
-    return _isa($next,'Chorus::Frame') ? $next->getN($followWay, @args) : undef;
-  }
-
   pushself(shift);
-  my $res = $getMode == MODE_N ? getN($SELF,@_) : getZ($SELF,@_);
+  my $res = $getMode == MODE_N ? _getN($SELF, @_) : _getZ($SELF, @_);
   popself();
   return $res;
 }
@@ -519,39 +508,35 @@ sub get {
 
 =cut
 
+sub _unregisterSlot {
+  my ($this, $slot) = @_;
+  return unless exists $REPOSITORY{$slot};
+  delete $REPOSITORY{$slot}->{$this->{_KEY}} if exists $REPOSITORY{$slot}->{$this->{_KEY}};
+}
+
+sub _deleteSlot {
+  my ($this, $slot) = @_;
+  _unregisterSlot($this, $slot);
+  delete($this->{$slot}) if exists $this->{$slot};
+}
+
+sub _deleteN {
+  my ($this, $way) = @_;
+
+  return unless $way;
+
+  $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
+  my ($nextStep, $followWay) = ($1, $2);
+
+  return _deleteSlot($this, $nextStep) unless $followWay;
+
+  my $next = _inherited($this, $nextStep);
+  return _isa($next, 'Chorus::Frame') ? _deleteN($next, $followWay) : undef;
+}
+
 sub delete {
-
-  sub deleteSlot {
-
-    sub unregisterSlot {
-      my ($this,$slot) = @_;
-      return unless exists $REPOSITORY{$slot};
-      delete $REPOSITORY{$slot}->{$this->{_KEY}} if exists $REPOSITORY{$slot}->{$this->{_KEY}};
-    }
-
-    my ($this,$slot) = @_;
-
-    $this->unregisterSlot($slot);
-    delete($this->{$slot}) if exists $this->{$slot};
-  }
-
-  sub deleteN {
-
-    my ($this, $way) = @_;
-
-    return unless $way;
-
-    $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
-    my ($nextStep, $followWay) = ($1,$2);
-
-    return $this->deleteSlot($nextStep) unless $followWay;
-
-    my $next = $this->inherited($nextStep);
-    return _isa($next,'Chorus::Frame') ? $next->deleteN($followWay) : undef;
-  }
-
   pushself(shift);
-  my $res = $SELF->deleteN(@_);
+  my $res = _deleteN($SELF, @_);
   popself();
   return $res;
 }
@@ -589,80 +574,79 @@ sub delete {
 
 =cut
 
-sub set {
+sub _registerSlot {
+  my ($this, $slot) = @_;
+  $REPOSITORY{$slot} = {} unless exists $REPOSITORY{$slot};
+  $REPOSITORY{$slot}->{$this->{_KEY}} = 'Y';
+}
 
-  sub registerSlot {
-    my ($this,$slot) = @_;
-    $REPOSITORY{$slot} = {} unless exists $REPOSITORY{$slot};
-    $REPOSITORY{$slot}->{$this->{_KEY}} = 'Y';
-  }
+sub _setValue {
+  my ($this, $val) = @_;
 
-  sub setValue {
-    my ($this, $val) = @_;
+  my $req = _getN($this, '_REQUIRE', $val);
+  return if defined($req) && !ref($req) && $req =~ /^-?\d+$/ && $req == REQUIRE_FAILED;
 
-    return if $this->getN('_REQUIRE', $val) == REQUIRE_FAILED;
+  _getN($this, '_BEFORE', $val); # or return;
 
-    $this->getN('_BEFORE', $val); # or return;
+  blessToFrame($val);
+  $this->{'_VALUE'} = $val;
+  _registerSlot($this, '_VALUE');
 
-    blessToFrame($val);
-    $this->{'_VALUE'} = $val;
-    $this->registerSlot('_VALUE');
+  _getN($this, '_AFTER', $val); # or return;
 
-    $this->getN('_AFTER', $val); # or return;
+  return $val;
+}
 
-    return $val;
-  }
+sub _setSlot {
+  my ($this, $slot, $info) = @_;
+  blessToFrame($info);
+  $this->{$slot} = $info;
+  _registerSlot($this, $slot);
+  return $info;
+}
 
-  sub setSlot {
-    my ($this, $slot, $info) = @_;
-    blessToFrame($info);
-    $this->{$slot} = $info;
-    $this->registerSlot($slot);
-    return $info;
-  }
+sub _setN {
+  my ($this, $way, $info) = @_;
 
-  sub setN {
-    my ($this, $way, $info) = @_;
+  return _setValue($this, $info) unless $way;
 
-    return $this->setValue($info) unless $way;
+  $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
+  my ($nextStep, $followWay) = ($1, $2);
+  my $crossedValue = $this->{$nextStep};
 
-    $way =~ /^\s*(\S*)\s*(.*?)\s*$/o or die "Unexpected way format : '$way'";
-    my ($nextStep, $followWay) = ($1,$2);
-    my $crossedValue = $this->{$nextStep};
+  return _setN($crossedValue, $followWay, $info) if _isa($crossedValue, 'Chorus::Frame');
 
-    return $crossedValue->setN($followWay, $info) if _isa($crossedValue,'Chorus::Frame');
-
-    unless ($followWay) {
-      if ($nextStep eq '_VALUE') {
-        return $this->setValue($info);
+  unless ($followWay) {
+    if ($nextStep eq '_VALUE') {
+      return _setValue($this, $info);
+    } else {
+      if (_isa($this->{$nextStep}, 'Chorus::Frame') and exists($this->{$nextStep}->{_VALUE})) {
+        return _setValue($this->{$nextStep}, $info);
       } else {
-        if (_isa($this->{$nextStep}, 'Chorus::Frame') and exists($this->{$nextStep}->{_VALUE})) {
-          return $this->{$nextStep}->setValue($info)
-        } else {
-          return $this->setSlot($nextStep, $info);
-        }
+        return _setSlot($this, $nextStep, $info);
       }
     }
+  }
 
-    $this->{$nextStep} = (exists($this->{$nextStep})) ? new Chorus::Frame (_VALUE => $crossedValue)
-                                                      : new Chorus::Frame;
+  $this->{$nextStep} = (exists($this->{$nextStep})) ? new Chorus::Frame (_VALUE => $crossedValue)
+                                                    : new Chorus::Frame;
 
-    return $this->{$nextStep}->setN($followWay, $info); # (keep current context)
+  return _setN($this->{$nextStep}, $followWay, $info); # (keep current context)
+}
 
-  } # set is setN !!!!
-
+sub set {
   pushself(shift);
 
   my %desc = @_;
   my $res;
 
-  while(my($k,$val) = each %desc) {
-    $res = $SELF->setN($k, $val);    # set is setN !!
+  while(my($k, $val) = each %desc) {
+    $res = _setN($SELF, $k, $val);
   }
 
   popself();
-  return $res;  # wil return last set if multiple pairs (key=>val) !!
- }
+  return $res;  # will return last set if multiple pairs (key=>val) !!
+}
 
 =head2 fmatch
 
@@ -682,63 +666,56 @@ sub set {
 
 =cut
 
+# firstInheriting() : returns frames inheriting DIRECTLY from $this (via %INSTANCES)
+sub _firstInheriting {
+  my ($this) = @_;
+  my $k = $this->{_KEY};
+  return ($INSTANCES{$k} ? values(%{$INSTANCES{$k}}) : ());
+}
+
+# _hasSlot() : all frames providing $slot DIRECTLY (from %REPOSITORY)
+sub _hasSlot {
+  my ($slot) = @_;
+  return map { $FMAP{$_} || () } keys(%{$REPOSITORY{$slot}});
+}
+
+# _wholeTree() : recursive, produces the full list of inheriting frames
+sub _wholeTree {
+  my ($res, @dig) = @_;
+  return $res unless $dig[0];
+  my @inheriting = map { _firstInheriting($_) } @dig;
+  push(@$res, @inheriting);
+  return _wholeTree($res, @inheriting);
+}
+
+# _framesProvidingSlot() : all frames providing $slot DIRECTLY OR BY INHERITANCE
+sub _framesProvidingSlot {
+  my ($slot) = @_;
+
+  my @res = _hasSlot($slot);
+  my @inheriting = map { _firstInheriting($_) } @res;
+
+  push @res, @inheriting;
+  return _wholeTree(\@res, @inheriting);
+}
+
 # TODO - bench fmatch() versions !
 #
 sub fmatch {
-
-  #  framesProvidingSlot() : Fournit la liste de tous les frames fournissant l'attribut $slot DIRECTEMENT OU PAR HERITAGE
-  #
-  sub framesProvidingSlot {
-
-    # firstInheriting() : retoune la liste des frames héritant DIRECTEMENT de $this (~ via %INSTANCES)
-    #
-    sub firstInheriting {
-      my ($this) = @_;
-      my $k = $this->{_KEY};
-      return ($INSTANCES{$k} ? values(%{$INSTANCES{$k}}) : ());
-    }
-
-    # hasSlot() : tous les frames fournissant DIRECTEMENT l'attribut $slot (d'après %REPOSITORY)
-    #
-    sub hasSlot {
-       my ($slot) = @_;
-       return map { $FMAP{$_} || () } keys(%{$REPOSITORY{$slot}})
-    }
-
-    # wholeTree () : recursif, produit la liste
-    #
-    sub wholeTree {
-       my ($res, @dig) = @_;
-       return $res unless $dig[0];
-       my @inheriting = map { firstInheriting($_) } @dig;
-       push(@$res, @inheriting);
-       return wholeTree($res,@inheriting);
-    }
-
-    my ($slot) = @_;
-
-    my @res = hasSlot($slot);
-    my @inheriting = map { firstInheriting($_) } @res;
-
-    push @res, @inheriting;
-    return wholeTree(\@res, @inheriting);
-
-  } # framesProvidingSlot
-
   my %opts = @_;
-  $opts{slot} = [ $opts{slot} || () ] unless _isa($opts{slot},'ARRAY');
-  my ($firstslot,@otherslots) = @{$opts{slot} || []};
+  $opts{slot} = [ $opts{slot} || () ] unless _isa($opts{slot}, 'ARRAY');
+  my ($firstslot, @otherslots) = @{$opts{slot} || []};
 
   return () unless $firstslot;
 
-  my %filter = map { $_->{_KEY} => 'Y' || () } @{framesProvidingSlot($firstslot)};
+  my %filter = map { $_->{_KEY} => 'Y' || () } @{_framesProvidingSlot($firstslot)};
 
-  for(@otherslots) {
-    %filter = map { $filter{$_->{_KEY}} ? ($_->{_KEY} => 'Y') : () } @{framesProvidingSlot($_)};
+  for (@otherslots) {
+    %filter = map { $filter{$_->{_KEY}} ? ($_->{_KEY} => 'Y') : () } @{_framesProvidingSlot($_)};
   }
 
   return grep { $filter{$_->{_KEY}} } @{$opts{from}} if $opts{from};
-  return map { $FMAP{$_} || ()} keys(%filter);
+  return map { $FMAP{$_} || () } keys(%filter);
 
 } # fmatch
 
