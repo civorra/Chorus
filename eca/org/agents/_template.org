@@ -1,0 +1,148 @@
+#+TITLE: Agent <Nom>
+#+AGENT: <Namespace::Agent::Nom>       ex: MyExpert::Agent::Conformite
+#+PIPELINE_POS: <N>                    position dans register() de l'Expert (1 = premier)
+#+RULES_DIR: rules/<slug>/             répertoire des fichiers YAML de cet agent
+
+# ============================================================
+# NOTICE
+# Ce fichier est la KB (Knowledge Base) d'un agent Chorus.
+# Il est lu par ECA (skill chorus-feed) pour :
+#   - générer les fichiers YAML de règles
+#   - générer le module Perl de l'agent
+#   - vérifier la cohérence du pipeline inter-agents
+# ============================================================
+
+* Domaine
+  Description de la spécialité de cet agent :
+  - quelle partie du corpus / de la norme il traite
+  - quel problème il résout (classification, validation, calcul, terminaison…)
+  - dépendances fonctionnelles vis-à-vis des agents précédents
+
+* Slots de ciblage                                                        :SCOPE:
+  /Section critique — détermine quels Frames sont visibles dans _SCOPE de cet agent./
+  /Ces slots DOIVENT être posés sur les Frames AVANT que cet agent soit actif./
+
+** Stratégie retenue
+   Choisir UNE des deux stratégies (ou les combiner si justifié) :
+
+   - *Stratégie A — slot discriminant (valeur)* :
+     un slot commun à plusieurs Frames, filtré par valeur dans CHERCHER.
+     ~CHERCHER.filtre: '$_->{phase} eq "fiscale"'~
+     → fmatch ramène trop de Frames, le grep réduit ensuite.
+     Efficace si les valeurs sont bien distribuées ET le volume de Frames global est petit.
+
+   - *Stratégie B — slot de présence (existence)* :
+     un slot propre à cet agent, posé uniquement sur les Frames qu'il doit traiter.
+     ~CHERCHER.attribut: besoin_agent_xxx~ (sans filtre)
+     → fmatch retourne directement et seulement les Frames concernés.
+     Préférable dès que le volume global de Frames est grand (évite l'explosion combinatoire).
+
+   Stratégie retenue : <A | B | A+B>
+   Justification      : <pourquoi ce choix pour ce domaine>
+
+** Tableau des slots de ciblage
+   | Slot                  | Stratégie | Posé par                   | Valeur / condition      |
+   |-----------------------+-----------+----------------------------+-------------------------|
+   | <slot_presence_agent> | B         | <agent N-1 ou feed>        | existence seule suffit  |
+   | <slot_discriminant>   | A         | <initialisation corpus>    | eq '<valeur>'           |
+
+** Contrat de pré-population
+   Avant que cet agent soit actif, les Frames suivants DOIVENT déjà porter leur slot de ciblage :
+   - Frame <X> → slot ~<slot_presence_agent>~ — posé par : <qui ?>
+   - Frame <Y> → slot ~<slot_discriminant>~ = ~'<valeur>'~ — posé par : <qui ?>
+
+   ⚠ Si ce contrat n'est pas respecté, _SCOPE retourne une liste vide → les règles ne tirent jamais.
+
+* Pipeline — contrat E/S
+** Slots entrants (CHERCHER / fmatch)
+   Slots que cet agent *lit* pour travailler (au-delà des slots de ciblage ci-dessus).
+
+   | Slot            | Frame(s) source   | Posé par        | Description                        |
+   |-----------------+-------------------+-----------------+------------------------------------|
+   | <slot_entrant>  | <NomFrame>        | <agent ou feed> | <à quoi ça sert pour cet agent>    |
+
+** Slots sortants (posés par cet agent)
+   Slots que cet agent *crée ou modifie* sur les Frames traités.
+
+   | Slot             | Frame(s) cible | Type / valeurs  | Description                        |
+   |------------------+----------------+-----------------+------------------------------------|
+   | <slot_sortant>   | <NomFrame>     | str / OK|KO     | <résultat posé>                    |
+
+   → Le premier slot sortant est typiquement le slot de ciblage de l'agent suivant.
+
+* Ontologie
+  Concepts du domaine et leurs relations — sert à décider quels Frames créer et comment les nommer.
+
+  - Concept A  → Frame ~NomFrameA~ avec slots [x, y, z]
+  - Concept B  → dérive de A (_ISA => $NomFrameA)
+  - Relation A↔B → slot croisé sur A ~→ b_ref~ ou _AFTER hook sur slot ~x~
+
+* Catalogue des Frames
+** Frame : <NomFrame1>
+   Rôle : <description>
+
+   | Slot              | Type    | Valeurs possibles | Contrainte  | Description           |
+   |-------------------+---------+-------------------+-------------+-----------------------|
+   | <slot_ciblage>    | flag    | 'Y' ou undef      | posé amont  | slot de présence §2   |
+   | <slot_entrant>    | str     | libre             |             | données brutes        |
+   | <slot_sortant>    | enum    | OK/KO/SKIP        | obligatoire | décision finale       |
+   | <slot_calcule>    | num     | 0..N              | ≥ 0         | valeur dérivée        |
+
+   Héritage (_ISA) : <NomFrameParent> ou ~-~
+   Hooks :
+   - ~_AFTER~ sur ~<slot>~ → <effet : propagation vers quel autre Frame/slot>
+   - ~_NEEDED~ pour ~<slot>~ → <logique de dernier recours / chaînage arrière>
+   - ~_REQUIRE~ sur ~<slot>~ → <contrainte de validation>
+
+** Frame : <NomFrame2>
+   (même structure)
+
+* Dictionnaire des slots
+  Liste plate de tous les slots impliqués dans cet agent (ciblage + entrants + sortants).
+  Référence directe pour écrire CHERCHER et fmatch() sans erreur de nom.
+
+  | Slot               | Frame(s)           | Rôle                  | fmatch cible ? |
+  |--------------------+--------------------+-----------------------+----------------|
+  | <slot_ciblage>     | NomFrame1          | ciblage _SCOPE        | oui            |
+  | <slot_entrant>     | NomFrame1          | lecture _APPLY        | non            |
+  | <slot_sortant>     | NomFrame1          | écriture _APPLY       | non            |
+
+* Catalogue des règles
+** Règle : R01-<nom>
+   Intent    : <ce que la règle accomplit en une phrase>
+   Priorité  : 1 (chargée en premier — ordre alphabétique des fichiers .yml)
+
+   CHERCHER  :
+   - ~var1~ → attribut: ~<slot_ciblage>~  [pas de filtre — stratégie B]
+   - ~var2~ → attribut: ~<slot_entrant>~  [filtre: ~'$_->{x} > 0'~]
+
+   CONDITION : ~<expression Perl — return unless ...>~
+   EXCEPTION : ~defined $var1->{<slot_sortant>}~   ← idempotence obligatoire
+   EFFET     :
+   #+BEGIN_SRC perl
+   $var1->set('<slot_sortant>', <valeur calculée>);
+   1
+   #+END_SRC
+
+   Notes     : <précisions, cas limites, dépendances>
+
+** Règle : R02-<nom>
+   (même structure)
+
+* Helpers Perl
+** <helper_name>
+   Signature   : ~sub helper_name($frame) → $valeur~
+   Description : <ce qu'il calcule ou vérifie>
+   Appelé par  : R01-<nom>, R02-<nom>
+   Exporté     : oui — ajouter à ~@EXPORT_OK~
+   Notes       : <particularités, dépendances externes>
+
+* Contraintes & Pitfalls
+  Contraintes spécifiques au domaine de cet agent (en plus des pitfalls génériques du moteur) :
+
+  - [ ] <contrainte norme : ex. "si champ vide → défaut = 0, pas undef — sinon fmatch rate le Frame">
+  - [ ] <ordre critique : R01 DOIT tirer avant R03 car elle pose le slot que R03 consomme>
+  - [ ] <cas de bord : Frame avec _ISA multiple → get() en mode Z si héritage ambigu>
+  - [ ] Toujours terminer EFFET par ~1~ ou expression truthy
+  - [ ] Toujours ajouter EXCEPTION idempotence sur le slot posé
+  - [ ] Le slot de ciblage doit être posé AVANT register() de cet agent
