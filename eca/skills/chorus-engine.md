@@ -472,6 +472,19 @@ if ($filtre->check(@tokens)) {
 ### ✅ Règles YAML
 
 - [ ] **Toujours** terminer `EFFET` par une valeur vraie (`1` ou expression truthy)
+- [ ] **Pitfall EFFET conditionnel sans `else`** : si le `if` ne modifie rien et que la règle retourne `1`,
+      le moteur croit qu'elle a travaillé → `applyrules()` retourne vrai → boucle infinie jusqu'à `_MAX_CYCLES`.
+      **Règle :** retourner `0` (ou `return 0`) quand aucun slot n'a été modifié.
+      ```yaml
+      # FAUX — boucle infinie si la condition n'est jamais vraie
+      EFFET: |
+        if ($p->{val} > 5) { $p->set('flag', 'KO') }
+        1
+      # CORRECT
+      EFFET: |
+        if ($p->{val} > 5) { $p->set('flag', 'KO'); return 1 }
+        0
+      ```
 - [ ] **Toujours** ajouter `EXCEPTION: defined $var->{slot_pose}` pour l'idempotence
 - [ ] Utiliser `|` (block scalar) pour les `EFFET` multi-lignes, jamais `>`
 - [ ] Nommer les fichiers avec préfixe `R01-`, `R02-` pour contrôler l'ordre

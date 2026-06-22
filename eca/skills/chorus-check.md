@@ -384,6 +384,10 @@ Présenter le rapport à l'utilisateur en mettant en évidence :
 - [ ] Si `reorder()` utilisé : la fonction de tri consulte `_PREMISSES` — cohérent avec les YAML
 - [ ] Si `_LOCK_UNTIL_STABLE` activé : l'agent peut être sauté — vérifier que ce comportement est voulu
 - [ ] BOARD : les clés utilisées en inter-agents sont documentées dans `index.org`
+- [ ] **YAML — EFFET conditionnel sans `else`** : si le `if` ne modifie rien et que la règle retourne `1`,
+      le moteur boucle jusqu'à `_MAX_CYCLES` (warning). Vérifier chaque YAML dont l'EFFET
+      contient un `if` sans `else` → retourner `0` quand aucun slot n'est modifié :
+      `if (...) { ...; return 1 } 0`
 
 ---
 
