@@ -102,7 +102,9 @@ my %SLOTS_REQUIS = (
 sub load_projet {
     my ($fichier) = @_;
 
-    open my $fh, '<:utf8', $fichier
+    # JSON->new->utf8->decode() opère lui-même le décodage UTF-8 depuis les octets
+    # bruts — ouvrir sans ':utf8' pour éviter le double décodage (Wide character).
+    open my $fh, '<', $fichier
         or die "Impossible d'ouvrir $fichier : $!\n";
     my $json = do { local $/; <$fh> };
     close $fh;
