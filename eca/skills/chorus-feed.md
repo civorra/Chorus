@@ -1,10 +1,11 @@
 # Skill — chorus-feed
 
-> Déclencheur : `chorus-feed <sandbox-name> <corpus>`
+> Déclencheur : `chorus-feed <sandbox-name> <corpus> [--enrich]`
 > Agent : `architect`
 >
 > `<sandbox-name>` : nom du répertoire sandbox sous `$CHORUS/sandboxes/`
 > `<corpus>` : fichier texte/PDF ou contenu inline fourni par l'utilisateur
+> `--enrich` : active le Mode B (enrichissement incrémental) — absent par défaut
 >
 > **Responsabilité unique : enrichir la connaissance.**
 > Ce skill ne génère jamais de code d'infrastructure (Feed, Agent shell, Expert, run.pl).
@@ -24,7 +25,24 @@ Charger : `chorus-engine.md` — référence moteur (Frame, Engine, fmatch, YAML
 
 ---
 
-## Mode A — Initialisation (sandbox vide ou nouveau corpus)
+## Sélection du mode
+
+**Par défaut : Mode A — toujours, quelle que soit l'état du sandbox.**
+
+Le flag `--enrich` est obligatoire pour activer le Mode B.
+
+| Condition | Mode |
+|---|---|
+| Aucun flag `--enrich` | **Mode A** — ignorer toute KB existante dans le sandbox |
+| Flag `--enrich` présent | **Mode B** — lire la KB existante et enrichir |
+
+> ⚠ Sans `--enrich`, ne **jamais** lire `eca/agents/`, les YAML existants ou
+> tout autre artefact KB du sandbox — même si le répertoire `<sandbox-name>` existe déjà.
+> Le corpus fourni est traité comme une source fraîche, indépendamment du contexte existant.
+
+---
+
+## Mode A — Initialisation (nouveau corpus, base fraîche)
 
 Utilisé quand `<sandbox-name>` n'existe pas encore ou ne contient pas de KB.
 
@@ -105,6 +123,28 @@ Sinon                                                        → Stratégie B
 ```
 Doute → préférer B (toujours plus efficace).
 
+> ⚠️ **Scalabilité — règle volume :** si le nombre de Frames attendus dépasse 100,
+> **forcer systématiquement la stratégie B** (slot de présence + `EXCEPTION` sur chaque règle).
+> La stratégie A sans `filtre` sur un scope de > 100 Frames expose au risque O(N²)
+> dès que `CHERCHER` a plusieurs variables (produit cartésien non réduit).
+
+**2.3 Dimensionnement `_MAX_CYCLES`**
+
+Documenter dans la section `Contraintes & Pitfalls` de chaque KB agent :
+
+```
+_MAX_CYCLES recommandé : N_frames × N_règles_agent × N_agents × 10
+```
+
+Exemple pour un pipeline construction réel (300 éléments, 5 agents, 8 règles/agent) :
+
+```perl
+_MAX_CYCLES => 300 * 8 * 5 * 10,   # = 120 000
+```
+
+La valeur par défaut du moteur (`10 000`) est un garde-fou contre les boucles
+infinies — elle doit être calibrée au volume attendu, pas utilisée telle quelle.
+
 **2.3 Stratégie B — slot de présence**
 - Nommer : `besoin_<slug_underscore>` (convention)
 - Posé par : feed initial (agent 1) ou agent N-1 dans son EFFET (agents suivants)
@@ -133,6 +173,22 @@ Ordre de remplissage obligatoire :
 > s'il encode de la **connaissance extraite du corpus** : table de valeurs,
 > calcul normalisé, seuil réglementaire. Il n'appartient PAS à `chorus-feed`
 > s'il relève de l'infrastructure (accès fichier, parsing, réseau).
+
+> ⚠️ **Tables normatives — externaliser dans des Helpers, pas inline dans les YAML.**
+> Pour les domaines à corpus denses (normes, DTU, EC5, NF EN…), les valeurs
+> normatives (résistances, classes d'exposition, seuils réglementaires…) doivent
+> être centralisées dans `Helpers.pm` plutôt que codées en scalaires dans les `EFFET` YAML.
+> Avantages : mise à jour lors d'une révision normative sans toucher les YAML ;
+> traçabilité vers la source (commentaire `Source corpus : §<N> — <titre>`) ;
+> tests unitaires indépendants des règles.
+>
+> **Règle de traçabilité :** chaque seuil ou table normative dans `Helpers.pm`
+> doit être annoté avec sa source corpus :
+> ```perl
+> # Source corpus : §5.3 tab. 1 — NF EN 338:2016 — Résistance en flexion par classe
+> my %FM_PAR_CLASSE = (C14 => 14, C16 => 16, C18 => 18, C24 => 24, C30 => 30);
+> ```
+> Si la source n'est pas identifiable → documenter l'incertitude dans un commentaire `# TODO`.
 
 Points de vigilance :
 - Idempotence : `EXCEPTION: defined $var->{<slot_pose>}` sur toute règle qui pose un slot
@@ -179,21 +235,50 @@ CHERCHER:                        # obligatoire — définit _SCOPE
 EXCEPTION: defined $<var>->{<slot_pose>}   # idempotence — return if
 CONDITION: '<garde optionnelle>'            # return unless
 EFFET: |
-  # Contrôles de flux disponibles dans EFFET (appelables sur $agent capturé) :
-  #   $agent->cut()        → sort du scope courant → règle suivante (même agent)
-  #   $agent->last()       → sort de la boucle de règles → agent suivant
-  #   $agent->replay()     → redémarre depuis la 1re règle de cet agent
-  #   $agent->replay_all() → redémarre depuis le 1er agent (Expert)
-  #   $agent->solved()     → BOARD->{SOLVED} = 'Y' → arrêt immédiat
-  #   $agent->failed()     → BOARD->{FAILED} = 'Y' → arrêt immédiat
+  # ⚠️ Dans un EFFET YAML, les contrôles de flux s'appellent via $SELF — PAS $agent.
+  # $agent n'est PAS dans le scope de l'eval Chorus::Engine → Global symbol "$agent"...
+  # $SELF = le Frame-règle courant (scope Engine) → il porte les méthodes de flux.
+  #
+  # Contrôles de flux disponibles dans EFFET (sur $SELF) :
+  #   $SELF->cut()        → sort du scope courant → règle suivante (même agent)
+  #   $SELF->last()       → sort de la boucle de règles → agent suivant
+  #   $SELF->replay()     → redémarre depuis la 1re règle de cet agent
+  #   $SELF->replay_all() → redémarre depuis le 1er agent (Expert)
+  #   $SELF->solved()     → BOARD->{SOLVED} = 'Y' → arrêt immédiat
+  #   $SELF->failed()     → BOARD->{FAILED} = 'Y' → arrêt immédiat
+  #
+  # Pour appeler $agent->solved() → utiliser addrule() Perl pur (voir chorus-check.md).
   <code Perl>
   1
 ```
 
-**Quand utiliser `TERMINAL` vs `solved()` dans EFFET :**
+**Quand utiliser `TERMINAL` vs `$SELF->solved()` dans EFFET :**
 - `TERMINAL: solved` — la règle se déclenche sur UN Frame et cela suffit à terminer
-- `$agent->solved()` dans EFFET — nécessite un test global préalable
-  (ex. vérifier que TOUS les Frames ont leur statut avant de terminer)
+- `$SELF->solved()` dans EFFET — quand la règle doit vérifier une condition avant de conclure.
+  ⚠️ `$agent` n'est **pas** disponible dans un EFFET YAML (erreur `Global symbol "$agent"`) —
+  utiliser **exclusivement `$SELF`** pour les contrôles de flux dans les EFFETs.
+
+> ⚠️ **Antipattern critique — terminaison YAML + fmatch global = boucle infinie :**
+> Une règle YAML avec `fmatch` global dans l'EFFET (sans `EXCEPTION` couvrant le slot final)
+> ne converge jamais : elle se déclenche sur chaque Frame, retourne 0 indéfiniment, et
+> `applyrules()` ne peut jamais conclure. `_MAX_CYCLES` sera atteint à chaque run.
+>
+> ```yaml
+> # ⛔ ANTIPATTERN — boucle infinie garantie
+> REGLE: terminaison
+> CHERCHER:
+>   p:
+>     attribut: besoin_conformite
+> EFFET: |
+>   my @sans = grep { !defined $_->{statut} }
+>              Chorus::Frame::fmatch(slot => 'besoin_conformite');
+>   if (@sans == 0) { $SELF->solved(); return 1 }
+>   0
+> ```
+>
+> **Solution** : règle de terminaison globale → **`addrule()` Perl pur** dans le shell Agent,
+> avec `$agent` capturé en closure (voir `chorus-check.md`, Phase 3, règle de terminaison).
+> Ne jamais coder une terminaison par `fmatch` global dans un YAML.
 
 **Quand documenter `PREMISSES` :**
 Toujours documenter si l'agent est susceptible d'utiliser `reorder()` pour
@@ -204,9 +289,67 @@ Checklist YAML :
 - [ ] Noms de slots = Dictionnaire des slots de la KB
 - [ ] Chaque règle qui pose un slot a son `EXCEPTION` idempotence
 - [ ] `EFFET` termine par `1` ou expression truthy
+- [ ] ⛔ **Pitfall critique `$f->{slot} = val` dans EFFET** : l'affectation directe bypass
+      `_setSlot` → `_registerSlot` → `%REPOSITORY` n'est pas mis à jour → `fmatch(slot => 'slot')`
+      retourne **0 Frames** dans les agents suivants. Bug **silencieux** : pas d'erreur, le slot
+      existe sur le Frame mais est invisible à tout ciblage.
+      **Dans un EFFET YAML, toujours utiliser `$f->set('slot', val)`.**
+
+      ```yaml
+      # ⛔ FAUX — slot invisible à fmatch → agents aval aveugles (pipeline cassé sans erreur)
+      EFFET: |
+        $f->{besoin_conformite} = 1;
+        1
+
+      # ✅ CORRECT — slot enregistré dans %REPOSITORY → visible par fmatch
+      EFFET: |
+        $f->set('besoin_conformite', 1);
+        1
+      ```
+- [ ] ⛔ **Pitfall CONDITION trop restrictive sur `type_element`** : une CONDITION du type
+      `$p->{type_element} eq "X"` exclut **silencieusement** tout Frame d'un autre type, même
+      si la règle devrait s'appliquer à plusieurs types.
+      Pas d'erreur, pas de crash — le pipeline SOLVED, mais certains Frames ne sont jamais contrôlés.
+      **Détection impossible à petit volume** (les Frames exclus passent quand même à la règle suivante
+      qui pose le slot OK de façon défensive).
+
+      ```yaml
+      # ⛔ FAUX — ne cible qu'un seul type, exclut les autres porteurs du slot
+      CONDITION: '$p->{type_element} eq "type_A" && defined $p->{slot_mesure}'
+
+      # ✅ CORRECT — cibler sur la présence du slot sémantique, pas sur le type
+      CONDITION: 'defined $p->{slot_mesure} && defined $p->{slot_classe}'
+
+      # ✅ CORRECT aussi — si le filtrage par type est intentionnel, lister TOUS les types
+      CONDITION: '$p->{type_element} =~ /^(type_A|type_B|type_C)$/ && defined $p->{slot_mesure}'
+      ```
+
+      **Règle :** dans la CONDITION d'une règle qui contrôle un slot sémantique (ex. slot de mesure,
+      slot de classification), préférer tester **la présence du slot** plutôt que
+      le `type_element`, sauf si l'exclusion de certains types est **intentionnelle et documentée**
+      dans le `Catalogue des règles` de la KB agent.
+
+- [ ] **Pitfall EFFET conditionnel** : si un `if` ne modifie rien, retourner `0` — jamais `1` inconditionnellement.
+      Le moteur interprète `1` comme "la règle a travaillé" → `applyrules()` retourne vrai → boucle infinie
+      jusqu'à `_MAX_CYCLES`. À l'échelle (100+ Frames), ce pitfall est invisible en sandbox et critique en production.
+
+      ```yaml
+      # DANGEREUX — retourne 1 même si rien n'est modifié
+      EFFET: |
+        if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO') }
+        1
+
+      # CORRECT — le moteur sait qu'il n'a pas travaillé
+      EFFET: |
+        if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO'); return 1 }
+        0
+      ```
 - [ ] Utiliser `|` (block scalar) pour les `EFFET` multi-lignes — jamais `>`
 - [ ] Fichiers nommés `R<NN>-<slug>.yml` (ordre alpha = ordre de chargement)
-- [ ] Règle de terminaison : `TERMINAL: solved` ou `$agent->solved()` — une seule voie par agent
+- [ ] Règle de terminaison : `TERMINAL: solved` ou `$SELF->solved()` dans EFFET — une seule voie par agent.
+      ⛔ **Jamais `$agent->solved()` dans un EFFET YAML** — `$agent` hors scope → crash.
+      ⛔ **Jamais `fmatch` global dans un EFFET YAML pour la terminaison** → boucle infinie.
+      Si terminaison globale (vérifier tous les Frames) → `addrule()` Perl pur (voir `chorus-check.md`).
 - [ ] Si `PREMISSES` présent : cohérent avec le `Dictionnaire des slots` de la KB
 
 ### Phase 5.5 — Générer les Helpers Perl
@@ -304,11 +447,10 @@ Mettre à jour `README.org` :
 
 ---
 
-## Mode B — Enrichissement incrémental
+## Mode B — Enrichissement incrémental (`--enrich` requis)
 
-Utilisé quand `<sandbox-name>` existe déjà et contient une KB.
-Déclenché quand le corpus fourni est **un nouveau fragment** (nouvelle section
-de norme, correction, extension de domaine).
+Utilisé **uniquement** quand `--enrich` est présent dans la commande.
+`<sandbox-name>` doit exister et contenir une KB.
 
 ### Phase B0 — Lire la KB existante
 

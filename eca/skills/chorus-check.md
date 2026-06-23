@@ -21,12 +21,14 @@
 Charger :
 - `chorus-engine.md` — référence moteur
 - Lire `$SANDBOX/eca/agents/index.org` — pipeline, agents, namespace
-- Lire chaque `$SANDBOX/eca/agents/<slug>.org` — Catalogues des Frames,
-  Dictionnaires des slots, Helpers Perl
+
+> ⚠️ Ne pas lire les KB agents (`<slug>.org`) ni les YAML à ce stade.
+> Ils ne sont nécessaires qu'en cas de génération (infrastructure absente).
+> Les lire systématiquement avant exécution est une perte de contexte inutile.
 
 ---
 
-## Phase 0 — Vérification des prérequis
+## Phase 0 — Vérification des prérequis KB
 
 ```
 $SANDBOX/eca/agents/index.org     ← doit exister
@@ -41,6 +43,40 @@ Extraire depuis `index.org` :
 - Le namespace Perl du projet
 - La liste ordonnée des agents (pos, slug, module Perl)
 - L'agent de terminaison (dernier)
+
+---
+
+## Phase 0b — Détection de l'infrastructure existante
+
+Vérifier la présence des fichiers suivants dans `$SANDBOX` :
+
+```
+$SANDBOX/lib/<Namespace>/Feed.pm
+$SANDBOX/lib/<Namespace>/Expert.pm
+$SANDBOX/lib/<Namespace>/Agent/<Nom>.pm  ← au moins un
+$SANDBOX/run.pl
+```
+
+**Si tous ces fichiers existent → infrastructure présente.**
+
+```
+→ Sauter les Phases 1–5 (génération).
+→ Aller directement en Phase 6 (exécution).
+→ Auditer YAML/Helpers uniquement si crash ou résultat inattendu.
+→ La Phase 7 (checklist) ne s'applique pas à ce chemin.
+```
+
+**Si l'un de ces fichiers est absent → infrastructure absente ou incomplète.**
+
+```
+→ Lire les KB agents (<slug>.org) et les YAML nécessaires.
+→ Exécuter les Phases 1–5 (génération complète ou partielle).
+→ Puis Phase 6 (exécution) et Phase 7 (checklist post-génération).
+```
+
+> **Cas de régénération forcée :** si l'utilisateur demande explicitement
+> une régénération (ex. après un `chorus-feed` enrichissant la KB),
+> traiter comme "infrastructure absente" même si les fichiers existent.
 
 ---
 
@@ -116,8 +152,16 @@ sub load_projet {
         my $id   = $elem->{id}   // die "Élément sans 'id'\n";
         my $type = $elem->{type} // die "Élément '$id' sans 'type'\n";
 
-        my $requis = $SLOTS_REQUIS{$type}
-            or die "Type inconnu '$type' (élément '$id')\n";
+        my $requis = $SLOTS_REQUIS{$type};
+        unless ($requis) {
+            # Type hors-périmètre de ce sandbox : ignorer sans planter.
+            # La partition des éléments par sandbox est la responsabilité
+            # de chorus-import-project (flag _hors_perimetre). Ce warn est
+            # un filet de sécurité pour les JSON mixtes qui atteindraient
+            # run.pl malgré tout.
+            warn "Type '$type' (élément '$id') hors-périmètre — ignoré\n";
+            next;
+        }
 
         for my $slot (@$requis) {
             die "Slot '$slot' manquant pour '$id' (type $type)\n"
@@ -179,12 +223,23 @@ sub build {
         _IDENT      => '<Nom>',
         _MAX_CYCLES => $opts{max_cycles} // 10_000,  # sécurité boucle infinie
                                                       # augmenter si pipeline long
+                                                      # heuristique : N_frames × N_règles × N_agents × 10
         # _LOCK_UNTIL_STABLE => 'Y',   # optionnel : sauter cet agent si un
                                        # agent précédent a déjà réussi dans
                                        # l'itération courante (optimisation)
     );
 
-    # Les helpers sont déjà dans le namespace — loadRules() peut les appeler
+    # ⚠️ Injecter les helpers dans Chorus::Engine AVANT loadRules().
+    # Les EFFET YAML sont eval'd dans Chorus::Engine — un simple `use ... qw(fn)`
+    # dans ce module ne suffit pas : le helper doit être visible dans le namespace
+    # Chorus::Engine au moment de l'eval.
+    # Pattern obligatoire pour tout agent avec Helpers.pm :
+    {
+        no strict 'refs';
+        *{'Chorus::Engine::<helper1>'} = \&<helper1>;
+        *{'Chorus::Engine::<helper2>'} = \&<helper2>;
+    }
+
     $agent->loadRules("$base/rules/<slug>");
 
     # reorder() optionnel — trier les règles par pertinence après loadRules()
@@ -209,7 +264,19 @@ sub build {
 **Règle pour l'agent de terminaison :**
 Si la KB indique `TERMINAL: solved` dans un YAML → pas de code Perl supplémentaire.
 Si la terminaison nécessite un test global (ex. vérifier que TOUS les Frames ont
-leur statut) → ajouter une règle Perl pure via `addrule()` après `loadRules()` :
+leur statut) → **ne pas coder ça dans un YAML** (risque de boucle infinie avec `fmatch`
+global) — ajouter une règle Perl pure via `addrule()` après `loadRules()` :
+
+> ⚠️ **`$SELF` (YAML EFFET) vs `$agent` (Perl pur addrule()) :**
+> | Contexte | Variable correcte | Raison |
+> |---|---|---|
+> | EFFET YAML | **`$SELF`** | `$agent` hors scope de l'eval Engine → crash `Global symbol` |
+> | `_APPLY` dans `addrule()` | **`$agent` (closure)** | `$SELF` est le Frame-règle, pas l'Engine |
+>
+> Ce sont deux contextes d'exécution distincts — la confusion entre les deux
+> a causé des crashs silencieux ou des boucles infinies. La règle est simple :
+> - Dans un **fichier `.yml`** → toujours `$SELF->solved()`, `$SELF->cut()`, etc.
+> - Dans un **`addrule()`** Perl pur → capturer `$agent` en closure, jamais `$SELF`.
 
 ```perl
 $agent->addrule(
@@ -267,11 +334,13 @@ sub run {
     my ($class, %opts) = @_;
     my $base = $opts{base_dir} // '.';
 
-    my $a1 = <Namespace>::Agent::<Nom1>->build(base_dir => $base);
-    my $a2 = <Namespace>::Agent::<Nom2>->build(base_dir => $base);
+    my $a1 = <Namespace>::Agent::<Nom1>->build(base_dir => $base, max_cycles => $opts{max_cycles});
+    my $a2 = <Namespace>::Agent::<Nom2>->build(base_dir => $base, max_cycles => $opts{max_cycles});
     # ... dans l'ordre de #+PIPELINE_POS
 
     my $xprt = Chorus::Expert->new();
+    # ⚠️ Bug connu : new() ignore ses arguments — forcer _MAX_ITER par affectation directe
+    $xprt->{_MAX_ITER} = $opts{max_iter} // 50_000;
     $xprt->register($a1, $a2);   # ordre = pipeline (#+PIPELINE_POS)
 
     # BOARD — tableau de bord partagé entre tous les agents
@@ -324,29 +393,185 @@ my $fichier = shift @ARGV
 my @elements = load_projet($fichier);
 printf "Feed : %d élément(s) chargé(s)\n\n", scalar @elements;
 
+# Calibrer _MAX_CYCLES au volume réel du projet
+# Heuristique : N_frames × N_règles_total_estimé × marge
+# Valeur sûre : N_éléments × 50 × 10 (50 règles max, marge ×10)
+my $max_cycles = scalar(@elements) * 50 * 10;
+$max_cycles = 10_000 if $max_cycles < 10_000;  # minimum de sécurité
+
 # Pipeline
 my ($ok) = <Namespace>::Expert->run(
-    base_dir => $Bin,
-    input    => { elements => \@elements },
+    base_dir   => $Bin,
+    input      => { elements => \@elements },
+    max_cycles => $max_cycles,
 );
 
-# Rapport
-print "=" x 60 . "\n";
-print "  RAPPORT DE CONFORMITÉ\n";
-print "=" x 60 . "\n\n";
+# Slots de résultat à afficher (posés par les agents)
+# ⚠️ Adapter @slots_resultat_display au pipeline réel du sandbox.
+my @slots_resultat_display = qw(
+    qualifie motif_refus
+    <slot_ok_agent1> <motif_refus_agent1>
+    <slot_ok_agent2> <motif_refus_agent2>
+    statut_conformite raison_non_conformite
+    besoin_<agent1> besoin_<agent2> besoin_conformite
+);
 
-my $n = 0;
+print "=" x 62 . "\n";
+print "  RAPPORT DE CONFORMITÉ — <Namespace>\n";
+print "=" x 62 . "\n\n";
+
+my $n_conforme     = 0;
+my $n_non_conforme = 0;
+my $n_non_traite   = 0;
+
 for my $e (@elements) {
-    $n++;
-    printf "  Élément %d [%s — %s]\n", $n, $e->{id}//'?', $e->{type}//'?';
-    # Slots de résultat : tous les slots posés par les agents (non système)
-    for my $slot (sort grep { $_ !~ /^_/ && defined $e->{$_} } keys %$e) {
-        printf "    %-28s : %s\n", $slot, $e->{$slot};
+    my $id   = $e->{id}   // '?';
+    my $type = $e->{type_element} // $e->{type} // '?';
+    my $stat = $e->{statut_conformite} // '(non traité)';
+
+    if    ($stat eq 'CONFORME')     { $n_conforme++ }
+    elsif ($stat eq 'NON_CONFORME') { $n_non_conforme++ }
+    else                            { $n_non_traite++ }
+
+    my $flag = $stat eq 'CONFORME'     ? '✅'
+             : $stat eq 'NON_CONFORME' ? '❌'
+             : '⚠️ ';
+
+    printf "  %s  [%s — %s]\n", $flag, $id, $type;
+
+    my @res = grep { defined $e->{$_} } @slots_resultat_display;
+    for my $slot (@res) {
+        next if $slot eq 'raison_non_conformite';
+        printf "       %-32s : %s\n", $slot, $e->{$slot};
+    }
+    if (defined $e->{raison_non_conformite}) {
+        printf "       %-32s : %s\n", '→ raison', $e->{raison_non_conformite};
     }
     print "\n";
 }
 
-printf "Pipeline : %s\n\n", $ok ? 'SOLVED' : 'FAILED/TIMEOUT';
+# ── Bloc 1 : Taux de conformité ───────────────────────────────────────────
+my $n_total = scalar @elements;
+my $taux    = $n_total ? int(0.5 + 100 * $n_conforme / $n_total) : 0;
+my $bar_ok  = int($taux / 5);
+my $bar_ko  = 20 - $bar_ok;
+my $barre   = '█' x $bar_ok . '░' x $bar_ko;
+
+print "─" x 62 . "\n";
+printf "  Conformes      : %d / %d  (%d%%)\n", $n_conforme,     $n_total, $taux;
+printf "  Non conformes  : %d / %d\n",          $n_non_conforme, $n_total;
+printf "  Non traités    : %d / %d\n",           $n_non_traite,   $n_total;
+printf "  [%s]  %d%%\n", $barre, $taux;
+printf "  Pipeline       : %s\n", $ok ? 'SOLVED ✅' : 'FAILED/TIMEOUT ❌';
+print "─" x 62 . "\n";
+
+# ── Bloc 2 : Processus de validation — traversée par agent ────────────────
+# Adapter @pipeline_def à l'index.org du sandbox :
+#   [ label, slot_ciblage, slot_resultat_ok ]
+{
+    my @pipeline_def = (
+        [ '<Agent1>', 'besoin_<agent1>', '<slot_ok_agent1>' ],
+        [ '<Agent2>', 'besoin_<agent2>', '<slot_ok_agent2>' ],
+        [ 'Conformite', 'besoin_conformite', 'statut_conformite' ],
+    );
+
+    print "\n  Processus de validation — traversée par agent\n";
+    print "  " . "─" x 58 . "\n";
+    printf "  %-16s  %7s  %6s  %6s  %5s\n", 'Agent', 'Ciblés', 'OK', 'KO', 'NA';
+    print "  " . "─" x 58 . "\n";
+
+    for my $def (@pipeline_def) {
+        my ($label, $slot_cible, $slot_res) = @$def;
+        my @cibles   = grep { defined $_->{$slot_cible} } @elements;
+        my $n_cibles = scalar @cibles;
+        my ($n_ok, $n_ko, $n_na) = (0, 0, 0);
+        for my $e (@cibles) {
+            my $res = $e->{$slot_res} // '';
+            if    ($res eq 'NA')                              { $n_na++ }
+            elsif ($res =~ /^(OUI|CONFORME|1)$/i)            { $n_ok++ }
+            elsif ($res =~ /^(NON|NON_CONFORME|KO)$/i)       { $n_ko++ }
+            elsif ($slot_res eq 'statut_conformite') {
+                if    ($res eq 'CONFORME')     { $n_ok++ }
+                elsif ($res eq 'NON_CONFORME') { $n_ko++ }
+            }
+        }
+        printf "  %-16s  %7d  %6s  %6s  %5s\n",
+            $label, $n_cibles,
+            $n_ok ? $n_ok : '-',
+            $n_ko ? $n_ko : '-',
+            $n_na ? $n_na : '-';
+    }
+    print "  " . "─" x 58 . "\n";
+
+    # Chemin de chaque élément à travers les agents
+    print "\n  Chemin de validation par élément\n";
+    print "  " . "─" x 58 . "\n";
+    for my $e (@elements) {
+        my $id   = $e->{id}   // '?';
+        my $stat = $e->{statut_conformite} // '';
+        my $flag = $stat eq 'CONFORME'     ? '✅'
+                 : $stat eq 'NON_CONFORME' ? '❌'
+                 : '⚠️ ';
+        my @chemin;
+        for my $def (@pipeline_def) {
+            my ($label, $slot_cible, $slot_res) = @$def;
+            next unless defined $e->{$slot_cible};
+            my $res = $e->{$slot_res} // '?';
+            my $res_short = $res =~ /^(OUI|CONFORME|1)$/i      ? '✓'
+                          : $res =~ /^(NON|NON_CONFORME|KO)$/i ? '✗'
+                          : $res eq 'NA'                        ? '–'
+                          : '?';
+            push @chemin, "$label($res_short)";
+        }
+        printf "  %s  %-18s  %s\n", $flag, $id, join(' → ', @chemin);
+    }
+    print "  " . "─" x 58 . "\n";
+}
+
+# ── Bloc 3 : Répartition par type d'élément ───────────────────────────────
+{
+    my (%ok_par_type, %ko_par_type, %tous_types);
+    for my $e (@elements) {
+        my $type = $e->{type_element} // $e->{type} // '?';
+        $tous_types{$type}++;
+        my $stat = $e->{statut_conformite} // '';
+        if    ($stat eq 'CONFORME')     { $ok_par_type{$type}++ }
+        elsif ($stat eq 'NON_CONFORME') { $ko_par_type{$type}++ }
+    }
+    print "\n  Répartition par type d'élément\n";
+    print "  " . "─" x 46 . "\n";
+    printf "  %-30s  %5s  %5s\n", 'Type', '✅', '❌';
+    print "  " . "─" x 46 . "\n";
+    for my $t (sort keys %tous_types) {
+        printf "  %-30s  %5d  %5d\n",
+            $t,
+            $ok_par_type{$t} // 0,
+            $ko_par_type{$t} // 0;
+    }
+    print "  " . "─" x 46 . "\n";
+}
+
+# ── Bloc 4 : Synthèse des non-conformités ─────────────────────────────────
+{
+    my @nc;
+    for my $e (@elements) {
+        push @nc, $e if ($e->{statut_conformite} // '') eq 'NON_CONFORME';
+    }
+    if (@nc) {
+        print "\n  Synthèse des non-conformités\n";
+        print "  " . "─" x 58 . "\n";
+        for my $e (@nc) {
+            my $id   = $e->{id}   // '?';
+            my $type = $e->{type_element} // $e->{type} // '?';
+            # Adapter la cascade de motifs aux slots du sandbox
+            my $raison = $e->{raison_non_conformite}
+                      // $e->{motif_refus}
+                      // '(raison non renseignée)';
+            printf "  ❌  %-18s [%s]\n      %s\n\n", $id, $type, $raison;
+        }
+        print "  " . "─" x 58 . "\n";
+    }
+}
 ```
 
 ---
@@ -364,23 +589,37 @@ Capturer la sortie. Si des erreurs Perl surviennent :
 - Erreur `Can't locate` → vérifier `use lib` et le namespace
 - Pipeline `FAILED/TIMEOUT` → vérifier la règle de terminaison
 
-Présenter le rapport à l'utilisateur en mettant en évidence :
-- Éléments `NON_CONFORME` avec leur `ref_corpus`
+**Afficher la sortie complète verbatim** dans un bloc de code — systématiquement, sans
+résumé ni reformulation à la place. C'est le rapport principal ; ne jamais le remplacer
+par une synthèse tabulaire.
+
+Après la sortie verbatim, signaler en commentaire court (optionnel) :
+- Éléments `NON_CONFORME` avec leur motif si `ref_corpus` absent
 - Éléments `(non traité)` → slot de ciblage probablement absent du Feed
+- Écarts avec les `_resultats_attendus` du fichier projet (si présents)
 
 ---
 
-## Phase 7 — Vérification finale
+## Phase 7 — Vérification finale *(post-génération uniquement)*
+
+> ⚠️ Cette checklist s'applique **uniquement après génération** des Phases 1–5.
+> Ne pas l'exécuter si l'infrastructure était déjà présente (Phase 0b → chemin direct).
 
 - [ ] `Feed.pm` : slot de ciblage agent 1 présent dans `%SLOTS_REQUIS`
 - [ ] `Feed.pm` : validation slots obligatoires couvre tous les types du projet
+- [ ] `Feed.pm` : types inconnus → `warn + next` (pas `die`) — filet de sécurité JSON mixte multi-sandboxes
 - [ ] `Expert.pm` : ordre `register()` = ordre `#+PIPELINE_POS`
+- [ ] `Expert.pm` : `$xprt->{_MAX_ITER}` forcé **après** `new()` (bug connu : `new()` ignore ses arguments)
 - [ ] `run.pl` : chemin `../../Engine/lib` correct depuis le sandbox
 - [ ] `run.pl` : aucune donnée codée en dur
 - [ ] Rapport : aucun élément `(non traité)` inattendu
-- [ ] `_MAX_CYCLES` : valeur suffisante pour le volume de Frames attendu
-      (règle : N_frames × N_règles × N_agents < `_MAX_CYCLES`)
-- [ ] Agent de terminaison : `solved()` appelé sur `$agent` (closure), jamais sur `$SELF`
+- [ ] `_MAX_CYCLES` : valeur calibrée au volume réel de Frames attendu.
+      Heuristique : `N_frames × N_règles_total × N_agents × 10 < _MAX_CYCLES`.
+      Dans `run.pl` : calculer depuis `scalar(@elements)` et passer via `Expert->run(max_cycles => ...)`.
+      Ne jamais laisser la valeur par défaut (`10_000`) pour un pipeline de production.
+- [ ] Agent de terminaison : `solved()` appelé sur `$agent` (closure) dans `addrule()`, jamais sur `$SELF`.
+      Dans un EFFET YAML → `$SELF->solved()`. Dans un `addrule()` Perl pur → `$agent->solved()` (capturé en closure).
+      ⛔ **Ne jamais coder une terminaison par `fmatch` global dans un YAML** → boucle infinie garantie.
 - [ ] Si `reorder()` utilisé : la fonction de tri consulte `_PREMISSES` — cohérent avec les YAML
 - [ ] Si `_LOCK_UNTIL_STABLE` activé : l'agent peut être sauté — vérifier que ce comportement est voulu
 - [ ] BOARD : les clés utilisées en inter-agents sont documentées dans `index.org`

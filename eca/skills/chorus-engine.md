@@ -137,6 +137,23 @@ my $ok = $xprt->process($input);  # 1=solved, undef=failed
 - Communication inter-agents : écrire/lire des slots sur `$agent->BOARD`.
 - `_LOCK_UNTIL_STABLE` sur un agent : il est sauté si un agent précédent a déjà réussi dans l'itération courante.
 
+> ⚠️ **Bug connu `Chorus::Expert->new()` ignore ses arguments :**
+> Les arguments passés à `new()` (ex. `_MAX_ITER => 50_000`) sont silencieusement
+> ignorés — la valeur reste à son défaut interne.
+> **Pattern obligatoire : affecter directement après `new()`** :
+>
+> ```perl
+> # ⛔ FAUX — _MAX_ITER ignoré
+> my $xprt = Chorus::Expert->new(_MAX_ITER => 50_000);
+>
+> # ✅ CORRECT — affectation directe post-new
+> my $xprt = Chorus::Expert->new();
+> $xprt->{_MAX_ITER} = 50_000;   # obligatoire pour les pipelines longs
+> ```
+>
+> Heuristique de dimensionnement : `N_frames × N_règles_total × marge_sécurité`.
+> Pour un pipeline de production (100 frames, 40 règles) : `_MAX_ITER ≥ 100_000`.
+
 ---
 
 ## 2. Pattern multi-spécialités
@@ -485,6 +502,20 @@ if ($filtre->check(@tokens)) {
         if ($p->{val} > 5) { $p->set('flag', 'KO'); return 1 }
         0
       ```
+      Exemple domaine construction — humidité/classe bois :
+      ```yaml
+      # DANGEREUX à l'échelle — retourne 1 même si rien n'est modifié
+      EFFET: |
+        if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO') }
+        1
+      # CORRECT — le moteur sait qu'il n'a pas travaillé
+      EFFET: |
+        if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO'); return 1 }
+        0
+      ```
+      > Ce pitfall est invisible sur un sandbox (6 frames) et critique à l'échelle réelle
+      > (300 frames × 40 règles = explosion jusqu'à `_MAX_CYCLES` avec warning).
+      > Systématiquement vérifier chaque YAML dont l'EFFET contient un `if` sans `else`.
 - [ ] **Toujours** ajouter `EXCEPTION: defined $var->{slot_pose}` pour l'idempotence
 - [ ] Utiliser `|` (block scalar) pour les `EFFET` multi-lignes, jamais `>`
 - [ ] Nommer les fichiers avec préfixe `R01-`, `R02-` pour contrôler l'ordre
@@ -493,7 +524,25 @@ if ($filtre->check(@tokens)) {
 ### ✅ Frames
 
 - [ ] Ne jamais utiliser `$f->{slot}` pour lire une valeur — utiliser `$f->slot` ou `$f->get('slot')`
-- [ ] Ne jamais utiliser `$f->{slot} = $val` pour écrire — utiliser `$f->set('slot', $val)`
+- [ ] ⛔ **Ne jamais utiliser `$f->{slot} = $val` pour écrire** — utiliser `$f->set('slot', $val)`
+
+  **Pitfall critique `$f->{slot} = val` :** l'affectation directe bypass `_setSlot`
+  → `_registerSlot` → `%REPOSITORY` **n'est pas mis à jour** → `fmatch(slot => 'slot')`
+  retourne 0 Frames → les agents suivants ne trouvent jamais le Frame.
+  Ce bug est **silencieux** : pas d'erreur, le slot existe sur le Frame,
+  mais il est invisible à tout ciblage `fmatch`.
+
+  ```perl
+  # ⛔ FAUX — slot créé mais invisible à fmatch (pipeline silencieusement cassé)
+  $f->{besoin_conformite} = 1;
+
+  # ✅ CORRECT — slot enregistré dans %REPOSITORY → visible par fmatch
+  $f->set('besoin_conformite', 1);
+  ```
+
+  Cas à risque : EFFET YAML généré par LLM, copie depuis un hash Perl ordinaire,
+  code issu d'un tutoriel Perl sans connaissance du moteur Chorus.
+
 - [ ] Ne jamais utiliser `delete $f->{slot}` — utiliser `$f->delete('slot')`
 - [ ] Ne jamais nommer un slot métier avec un `_MAJUSCULE` (réservé au système)
 - [ ] Dans `_AFTER` : capturer `$SELF` **avant** tout appel à `set()` sur un autre Frame
@@ -510,6 +559,8 @@ _AFTER => sub { my $ctx = $SELF; $other->set('x', $ctx->val) }
 
 - [ ] Au moins un agent ou une règle doit appeler `solved()` (sinon boucle infinie)
 - [ ] Vérifier `_MAX_CYCLES` si le pipeline est long
+- [ ] **`Chorus::Expert->new()` ignore ses arguments** — toujours forcer `_MAX_ITER` par affectation directe :
+      `$xprt->{_MAX_ITER} = N;` immédiatement après `new()` (voir §1.4)
 - [ ] L'agent de terminaison doit être enregistré **en dernier** dans `register()`
 - [ ] Dédupliquer les `_ID` : deux règles avec le même `REGLE` dans le même agent → la 2e est silencieusement ignorée
 - [ ] `addrule()` est appelé avec `$SELF` comme contexte lors de `loadRules()` — ne pas appeler depuis un autre contexte Frame
@@ -524,7 +575,17 @@ _AFTER => sub { my $ctx = $SELF; $other->set('x', $ctx->val) }
 
 - [ ] **1 spécialité = 1 agent = 1 répertoire YAML = 1 module Perl optionnel**
 - [ ] Le pipeline implicite : chaque agent lit le slot posé par le précédent
-- [ ] Les helpers Perl doivent être dans le namespace au moment du `loadRules()` / `eval`
+- [ ] **Helpers Perl — injection obligatoire dans `Chorus::Engine` avant `loadRules()`** :
+      les EFFET YAML sont eval'd dans `Chorus::Engine` — un `use Module qw(fn)` dans le
+      module Agent ne rend PAS `fn` visible dans les EFFET.
+      Pattern obligatoire :
+      ```perl
+      use MyAgent::Helpers qw(mon_helper);
+      # ...
+      { no strict 'refs'; *{'Chorus::Engine::mon_helper'} = \&mon_helper; }
+      $agent->loadRules("$base/rules/mon-agent");
+      ```
+      Sans ce typeglob, l'erreur est : `Undefined subroutine &Chorus::Engine::mon_helper`.
 - [ ] `eca/` jamais commité dans le dépôt git Engine
 
 ---
