@@ -1,0 +1,30 @@
+# Version control
+^\.git/
+\.gitignore
+
+# ECA / session artefacts
+^eca/
+^\.eca/
+
+# Documentation source (not shipped in distribution)
+^doc/
+
+# Build artefacts
+^blib/
+^_build/
+^Makefile$
+^MYMETA\.(yml|json)$
+^pm_to_blib
+^\.lwpcookies
+^cover_db/
+^nytprof/
+
+# Distribution tarballs
+\.tar\.gz$
+\.zip$
+Chorus-Engine-
+
+# Temp / editor files
+~$
+\.swp$
+\.orig$
