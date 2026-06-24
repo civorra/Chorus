@@ -32,7 +32,7 @@ C<solved>...) are slots on a shared prototype frame, accessible through inherita
 The engine integrates naturally with L<Chorus::Frame>: use C<fmatch()> inside C<_SCOPE>
 closures to target only frames that provide the slots your rule needs.
 
-Optional YAML rule files can be loaded with C<loadRules()>; see L</YAML DSL> below.
+Optional YAML rule files can be loaded with C<loadRules()>; see L</"YAML DSL"> below.
 
 =head1 SYNOPSIS
 
@@ -237,6 +237,106 @@ Files are loaded sorted alphabetically; prefix filenames with C<R01->, C<R02->..
 control order.  Multiple calls accumulate rules.
 
 Compilation errors are printed to STDERR with the generated code for inspection.
+
+=head2 setScope
+
+  $agent->setScope( \%desc )
+
+Compiles one C<FIND> / C<CHERCHER> entry into the Perl string used inside
+C<_SCOPE>.  C<%desc> has two optional keys:
+
+=over 4
+
+=item C<attribut>
+
+The slot name passed to C<fmatch()>.
+
+=item C<filtre>
+
+An optional Perl expression (string) evaluated as C<grep { ... }> before the
+scope array is passed to C<_APPLY>.  The expression receives C<$_> bound to
+each candidate frame.
+
+=back
+
+Override this slot on a per-agent basis to customise scope compilation:
+
+  $agent->set('setScope', sub { ... });
+
+=head2 setFilter
+
+  $agent->setFilter( $filter_expr | \@filter_exprs )
+
+Compiles one or more filter expressions (from C<filtre:> in YAML) into a
+C<grep { ... }> string.  Multiple expressions are joined with C<and> (implicit
+AND).  Returns an empty string when C<$filter_expr> is false.
+
+=head2 setCondition
+
+  $agent->setCondition( $condition | \@conditions )
+
+Compiles the C<CONDITION> / C<CONDITION> value into a Perl guard expression
+(C<return unless ...>).  Multiple conditions are joined with C<or> (implicit OR).
+Returns an empty string when no condition is present.
+
+=head2 setException
+
+  $agent->setException( $exception | \@exceptions )
+
+Compiles the C<EXCEPTION> / C<EXCEPTION> value into a Perl guard expression
+(C<return if ...>).  Multiple exceptions are joined with C<or>.
+Returns an empty string when no exception is present.
+
+=head2 setEffect
+
+  $agent->setEffect( $effect | \@effects )
+
+Compiles the C<ACTION> / C<EFFET> value into the body of C<_APPLY>.  A list of
+effects is joined sequentially (implicit AND/sequence).
+Returns an empty string when C<$effect> is false.
+
+=head2 codeRule
+
+  Chorus::Engine::codeRule( $engine, \%yaml_rule, %opts )
+
+Internal function called by C<loadRules()> to compile one parsed YAML hash into
+the Perl argument string for C<addrule()>.  Exposed here for completeness; you
+rarely need to call it directly.
+
+C<%opts> may contain C<< debug => \@rule_names >> to print generated code for the
+named rules to STDOUT.
+
+=head1 CUSTOMISATION HOOKS
+
+The following slots are defined on the engine prototype with a default identity
+implementation (C<sub { shift }>).  Override them on a per-agent instance to
+implement a custom DSL on top of the YAML keys — for example, to wrap every
+effect expression in a domain-specific decorator.
+
+=head2 codeEffect
+
+Called by C<setEffect()> on each effect string extracted from C<ACTION> /
+C<EFFET>.  The default passes the string through unchanged.
+
+  $agent->set('codeEffect', sub {
+      my ($expr) = @_;
+      return "do { local \$_ = $_; $expr }";   # custom wrapper
+  });
+
+=head2 codeCondition
+
+Called by C<setCondition()> on each condition string from C<CONDITION>.
+Default: identity.
+
+=head2 codeException
+
+Called by C<setException()> on each exception string from C<EXCEPTION>.
+Default: identity.
+
+=head2 codeTest
+
+Called by C<setFilter()> on each filter expression from C<filtre:>.
+Default: identity.
 
 =head1 YAML DSL
 
@@ -620,46 +720,5 @@ sub new {
     $res->_inherits($ENGINE);                         # -> possible multiple inheritance !!
     return $res;
 }
-
-=head1 AUTHOR
-
-Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
-
-=head1 BUGS
-
-Please report bugs via the CPAN request tracker:
-L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>
-
-=head1 SUPPORT
-
-  perldoc Chorus::Engine
-
-=over 4
-
-=item * RT -- L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine>
-
-=item * AnnoCPAN -- L<http://annocpan.org/dist/Chorus-Engine>
-
-=item * CPAN Ratings -- L<http://cpanratings.perl.org/d/Chorus-Engine>
-
-=item * Search CPAN -- L<http://search.cpan.org/dist/Chorus-Engine/>
-
-=back
-
-=head1 SEE ALSO
-
-L<Chorus::Frame>, L<Chorus::Expert>
-
-=head1 LICENSE AND COPYRIGHT
-
-Copyright 2013 Christophe Ivorra.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See L<http://dev.perl.org/licenses/> for more information.
-
-=cut
 
 1; # End of Chorus::Engine
