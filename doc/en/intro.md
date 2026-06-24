@@ -124,21 +124,15 @@ For projects with many rules, Chorus provides a YAML DSL that avoids writing
 Perl code by hand:
 
 ```yaml
-REGLE: compute-known-cry
-CHERCHER:
+RULE: compute-known-cry
+FIND:
   animal:
     attribut: cry
 EXCEPTION: defined $animal->{known_cry}
-EFFET: |
+ACTION: |
   $animal->set('known_cry', $animal->cry);
   1
 ```
-
-YAML rules are compiled into internal Perl rules via `loadRules()`.
-Loading order is alphabetical — prefixing files with `R01-`, `R02-`… is enough
-to control priority.
-
----
 
 ## Why this model?
 

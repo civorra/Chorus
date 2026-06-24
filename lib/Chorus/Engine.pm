@@ -191,27 +191,53 @@ Compilation errors are printed to STDERR with the generated code for inspection.
 
 =head1 YAML DSL
 
-Rules can be written in YAML instead of Perl.  Each file defines one rule:
+Rules can be written in YAML instead of Perl.  Each file defines one rule.
 
-  REGLE:     rule-name          # mandatory -- becomes _ID
+Keywords are available in both B<English> and B<French> — use whichever fits
+your project.  When both are present in the same file, the French keyword takes
+precedence.
+
+  English     French      Meaning
+  -------     ------      -------
+  RULE        REGLE       Rule name — becomes _ID (mandatory)
+  FIND        CHERCHER    Scope definition — defines _SCOPE (mandatory)
+  ACTION      EFFET       Effect body — body of _APPLY (mandatory)
+  TERMINAL    TERMINAL    Optional: 'solved' or 'failed'
+  PREMISES    PREMISSES   Optional: metadata for reorder()
+  CONDITION   CONDITION   Optional: guard — return unless CONDITION
+  EXCEPTION   EXCEPTION   Optional: guard — return if EXCEPTION
+
+Example using English keywords:
+
+  RULE:      rule-name          # mandatory -- becomes _ID
   TERMINAL:  solved             # optional  -- 'solved' or 'failed'
-  PREMISSES:                    # optional  -- metadata for reorder()
+  PREMISES:                     # optional  -- metadata for reorder()
     - slot-name
-  CHERCHER:                     # mandatory -- defines _SCOPE
+  FIND:                         # mandatory -- defines _SCOPE
     var:
       attribut: slot-name       # fmatch(slot => 'slot-name')
       filtre: '$_->score > 0'   # optional grep filter applied before _APPLY
   CONDITION: '$var->ok'         # optional -- return unless CONDITION
   EXCEPTION: 'defined $var->r'  # optional -- return if EXCEPTION
-  EFFET: |                      # mandatory -- body of _APPLY (must return true when fired)
+  ACTION: |                     # mandatory -- body of _APPLY (must return true when fired)
     $var->set('result', 42);
     1
 
-B<Important> -- the last instruction of C<EFFET> must return a true value when the
-rule has made a change.  If a conditional block may leave nothing modified, return
-C<0> rather than C<1>:
+Example using French keywords (equivalent):
 
+  REGLE:     rule-name
+  CHERCHER:
+    var:
+      attribut: slot-name
   EFFET: |
+    $var->set('result', 42);
+    1
+
+B<Important> -- the last instruction of C<ACTION> / C<EFFET> must return a true
+value when the rule has made a change.  If a conditional block may leave nothing
+modified, return C<0> rather than C<1>:
+
+  ACTION: |
     if ($var->score > 5) { $var->set('flag', 'KO'); return 1 }
     0
 
@@ -297,9 +323,9 @@ sub codeRule {
 
     my $res = '';
 
-    my $rulename  = $rule->{REGLE}     || '';
-    my $premisses = $rule->{PREMISSES} || [];
-    my $scp       = $rule->{CHERCHER};
+    my $rulename  = $rule->{REGLE}   // $rule->{RULE}   // '';
+    my $premisses = $rule->{PREMISSES} // $rule->{PREMISES} // [];
+    my $scp       = $rule->{CHERCHER} // $rule->{FIND};
     my $terminal  = $rule->{TERMINAL}  || '';
 
     $res .= "\n  _ID        => '$rulename',\n";
@@ -313,7 +339,7 @@ sub codeRule {
     my $exception     = $rule->{EXCEPTION} ? ( '   return if ' . $engine->setException( $rule->{EXCEPTION} ) . ';' ) : '# none';
     my $condition     = $engine->setCondition( $rule->{CONDITION} );
     my $guard         = $condition ? "return unless $condition;" : '# no condition';
-    my $effect        = $engine->setEffect( $rule->{EFFET} );
+    my $effect        = $engine->setEffect( $rule->{EFFET} // $rule->{ACTION} );
 
     $res .= <<EOT;
 

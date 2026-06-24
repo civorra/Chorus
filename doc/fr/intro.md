@@ -138,12 +138,6 @@ EFFET: |
   1
 ```
 
-Les règles YAML sont compilées en règles Perl internes via `loadRules()`.
-L'ordre de chargement est alphabétique — préfixer les fichiers avec `R01-`,
-`R02-`… suffit à contrôler la priorité.
-
----
-
 ## Pourquoi ce modèle ?
 
 L'avantage d'un système à règles explicites est la **traçabilité** :
