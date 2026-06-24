@@ -3,7 +3,7 @@ package Chorus::Frame;
 use 5.006;
 use strict;
 
-our $VERSION = '1.05';
+our $VERSION = '2.01';
 
 =head1 NAME
 
