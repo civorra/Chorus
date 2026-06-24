@@ -1,0 +1,351 @@
+=encoding UTF-8
+
+=head1 NAME
+
+Chorus::Engine::ECA - ECA integration for compliance-validation applications
+
+=head1 VERSION
+
+This documentation applies to Chorus::Engine 1.05 and later.
+
+=head1 DESCRIPTION
+
+Starting with version 1.05, C<Chorus::Engine> ships an optional companion
+directory, C<eca/>, that turns the inference engine into a B<normed-corpus
+compliance-validation platform> when used together with the B<ECA> editor
+assistant (L<https://eca.dev>).
+
+The companion provides:
+
+=over 4
+
+=item * B<Agent knowledge templates> — Emacs org-mode files that capture the
+domain knowledge extracted from normative corpora (standards, DTUs, Eurocodes,
+regulations…) for each pipeline agent.
+
+=item * B<Four ECA skills> — reusable prompt-driven workflows (C<chorus-feed>,
+C<chorus-create-project>, C<chorus-import-project>, C<chorus-check>) that drive
+ECA to build and run complete validation applications from a corpus.
+
+=back
+
+The resulting workflow is entirely deterministic: the rules are derived from
+the corpus, encoded as transparent YAML files, and executed verbatim by the
+Chorus inference engine — no LLM black-box in the hot path.
+
+=head1 OVERVIEW
+
+The architecture connects three layers:
+
+  ┌──────────────────────────────────────────────────────────┐
+  │  Normative corpus  (PDF, DTU, Eurocode, regulation…)     │
+  └────────────────────────┬─────────────────────────────────┘
+                           │  chorus-feed
+                           ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  KB org-mode  (eca/agents/<slug>.org)                    │
+  │  · Frames catalogue    · Slot dictionary                 │
+  │  · Rules catalogue     · Perl helpers (normative tables) │
+  └────────────────────────┬─────────────────────────────────┘
+                 ┌─────────┴──────────┐
+      chorus-check│                   │chorus-create-project
+                 ▼                   ▼
+  ┌──────────────────────┐   ┌──────────────────────────┐
+  │ YAML rules           │   │ projet.json              │
+  │ Perl helpers         │   │ (test data or real        │
+  │ Feed.pm / Expert.pm  │   │  engineering project)     │
+  │ run.pl               │   └──────────────────────────┘
+  └────────────┬─────────┘
+               │  perl run.pl projet.json
+               ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  Chorus::Expert pipeline                                 │
+  │  Agent1 → Agent2 → … → AgentN (termination)             │
+  └────────────────────────┬─────────────────────────────────┘
+                           │
+                           ▼
+               Compliance report (stdout)
+
+=head1 ECA SKILLS
+
+The four skills live in C<eca/skills/> and are loaded on demand by ECA.
+They cover the entire lifecycle of a compliance-validation application.
+
+=head2 chorus-feed
+
+  chorus-feed <sandbox-name> <corpus> [--enrich]
+
+Reads a normative corpus and produces all the B<knowledge artefacts> for the
+sandbox:
+
+=over 4
+
+=item * One C<eca/agents/E<lt>slugE<gt>.org> KB file per agent (domain, Frame
+catalogue, slot dictionary, rules catalogue, Perl helpers).
+
+=item * One YAML rules file per rule (C<rules/E<lt>slugE<gt>/RNN-name.yml>).
+
+=item * One C<Helpers.pm> per agent (normative tables, computed thresholds).
+
+=item * C<eca/agents/index.org> (pipeline registry).
+
+=back
+
+C<chorus-feed> does B<not> generate any infrastructure code (C<Feed.pm>,
+C<Expert.pm>, C<run.pl>).  Infrastructure is the sole responsibility of
+C<chorus-check>.
+
+The C<--enrich> flag activates incremental-enrichment mode (Mode B): the
+existing KB is read and new corpus knowledge is merged into it.  Without
+C<--enrich>, the corpus is always treated as a fresh source.
+
+=head2 chorus-create-project
+
+  chorus-create-project <sandbox-name> <output.json>
+
+Reads the KB org files of the sandbox and generates a B<project JSON file>
+populated with both conforming and non-conforming elements that exercise all
+rules.  The skill never reads C<Helpers.pm> or any generated C<.pm> file;
+the canonical source is always the KB org.
+
+=head2 chorus-import-project
+
+  chorus-import-project <sandbox-name> <source...> [--out <file.json>] [--batch]
+
+Aligns the engineer's own project document (PDF, Word, Excel, plain text, or
+inline data) with the KB slot terminology and produces a valid project JSON
+file.  Three invocation modes are supported:
+
+=over 4
+
+=item * B<Unit mode> — one source file produces one JSON.
+
+=item * B<Fusion mode> — N source files (same project, complementary) produce
+one merged JSON.
+
+=item * B<Batch mode> — a directory or a glob produces one JSON per source
+file plus a synthesis report.
+
+=back
+
+=head2 chorus-check
+
+  chorus-check <sandbox-name> <project-file.json>
+
+The end-to-end validation command.  Given a sandbox with a complete KB (the
+output of C<chorus-feed>) and a project JSON file, it:
+
+=over 4
+
+=item 1. Detects whether the sandbox already contains generated infrastructure
+(C<run.pl>, C<Feed.pm>, C<Expert.pm>, at least one C<Agent/*.pm>).
+
+=item 2. B<Fast path> — if the infrastructure is already present, goes
+directly to execution.  A different project file never triggers
+a regeneration.
+
+=item 3. B<Full path> — if the infrastructure is absent, generates
+C<Feed.pm>, one shell C<Agent/*.pm> per pipeline agent, C<Expert.pm>,
+and C<run.pl> from the KB, then executes the pipeline.
+
+=item 4. Displays the full compliance report verbatim (four blocks: global
+rate + ASCII bar, per-agent traversal, per-element-type breakdown,
+non-conformity summary with cascaded reasons).
+
+=back
+
+=head1 KB MODEL
+
+Each agent's knowledge is stored in a single org-mode file following the
+template C<eca/org/agents/_template.org>.  The template has ten sections:
+
+  * Domaine              — agent speciality and corpus scope
+  * Slots de ciblage     — _SCOPE strategy (A: discriminant value,
+                            B: presence slot) + pre-population contract
+  * Pipeline — contrat E/S — incoming slots (read) / outgoing slots (written)
+  * Ontologie            — domain concepts → Frame mapping
+  * Catalogue des Frames — per-Frame slot tables with constraints and hooks
+  * Dictionnaire des slots — flat slot reference for writing CHERCHER/fmatch()
+  * Catalogue des règles — per-rule intent, CHERCHER, CONDITION, EXCEPTION, EFFET
+  * Helpers Perl         — normative helper signatures + full bodies
+  * Contraintes & Pitfalls — domain-specific caveats
+
+The pipeline registry C<eca/agents/index.org> records all agents in pipeline
+order with their Perl module name, slug, KB file, and status.
+
+=head1 SANDBOX LAYOUT
+
+A sandbox is a self-contained directory under C<$CHORUS/sandboxes/> that
+holds the corpus, the KB, the generated infrastructure, and the project files
+for one application domain:
+
+  <sandbox-name>/
+    README.org              pipeline overview, corpus list, agent status
+    corpus/
+      001-<source>.txt      normative corpus (numbered for incremental feed)
+    eca/
+      agents/
+        index.org           pipeline registry
+        <slug>.org          per-agent KB file
+    rules/
+      <slug>/
+        R01-<name>.yml      YAML rules (alphabetical order = load order)
+        R02-<name>.yml
+    lib/
+      <Namespace>/
+        Feed.pm             JSON → Chorus::Frame loader
+        Expert.pm           pipeline assembly + process()
+        Agent/
+          <Name>.pm         shell: build(), loadRules(), Helpers injection
+          <Name>/
+            Helpers.pm      normative tables and computations (from corpus-feed)
+    run.pl                  entry point: Feed → Expert → report
+    projet-01.json          project data files
+    projet-02.json
+
+=head1 EXAMPLE
+
+The sandbox C<test-corpus-04-scaling> (included in the distribution under
+C<$CHORUS/sandboxes/>) illustrates a full seven-agent compliance pipeline for
+timber-frame construction (DTU 31.2 — French standard for light wood framing).
+
+=head2 Domain
+
+14 structural elements (load-bearing studs, OSB panels, ridge beam, rafters,
+thermal insulation, waterproofing membrane…) are validated against the full set
+of DTU 31.2 requirements.
+
+=head2 Pipeline
+
+  Pos  Module                        Targeting slot        Posts
+  ---  ----------------------------  --------------------  ---------------------------
+   1   COB::Agent::Qualification     (feed-populated)      qualifie, besoin_ossature
+   2   COB::Agent::Ossature          besoin_ossature       ossature_ok, besoin_charpente
+   3   COB::Agent::Charpente         besoin_charpente      charpente_ok, besoin_thermique
+   4   COB::Agent::Thermique         besoin_thermique      thermique_ok, besoin_securite
+   5   COB::Agent::SecuriteFeu       besoin_securite       feu_ok, besoin_revetement
+   6   COB::Agent::Revetement        besoin_revetement     revetement_ok, besoin_conformite
+   7   COB::Agent::Conformite        besoin_conformite     statut_conformite → solved()
+
+=head2 Sizing
+
+  _MAX_CYCLES (each agent) : 21 000
+  _MAX_ITER   (Expert)     : 168 000
+
+  # Expert sizing — mandatory direct assignment (new() ignores its arguments):
+  my $xprt = Chorus::Expert->new();
+  $xprt->{_MAX_ITER} = 168_000;
+
+  # run.pl heuristic
+  my $max_cycles = scalar(@elements) * 50 * 10;
+  $max_cycles = 21_000 if $max_cycles < 21_000;
+
+=head2 Running the example
+
+  cd $CHORUS/sandboxes/test-corpus-04-scaling
+  perl run.pl projet-01.json
+
+The report displays a global conformance rate with an ASCII progress bar,
+a per-agent traversal table with the validation path of each element, a
+per-element-type breakdown, and a non-conformity summary with cascaded reasons.
+
+=head1 WORKFLOW SUMMARY
+
+  1. chorus-feed <sandbox> <corpus.txt>
+        → KB org files  + YAML rules  + Helpers.pm
+
+  2. chorus-create-project <sandbox> projet.json     (or chorus-import-project)
+        → projet.json  (conforming + non-conforming elements)
+
+  3. chorus-check <sandbox> projet.json
+        → Feed.pm  Expert.pm  Agent/*.pm  run.pl  → compliance report
+
+  # Incremental enrichment with a second corpus:
+  4. chorus-feed <sandbox> <second-corpus.txt> --enrich
+        → updated KB + new YAML rules
+
+  # Re-validate with a new project (infrastructure already present → fast path):
+  5. chorus-check <sandbox> projet-02.json
+        → compliance report  (no regeneration)
+
+=head1 DESIGN PRINCIPLES
+
+=over 4
+
+=item * B<Separation of concerns> — C<chorus-feed> owns knowledge; C<chorus-check>
+owns infrastructure.  The two are orthogonal: a KB enrichment does not
+require a project, and a new project does not require re-feeding.
+
+=item * B<Full traceability> — every normative threshold and table in
+C<Helpers.pm> carries a C<# Source corpus: §N — title> annotation.  Every
+YAML rule name maps to a section of the KB catalogue.
+
+=item * B<Deterministic execution> — the LLM (ECA) participates only in the
+knowledge-extraction and code-generation phases.  The hot path (rule firing,
+Frame inference, report) is pure Chorus — no LLM call at runtime.
+
+=item * B<Incremental design> — a sandbox accumulates knowledge across
+multiple C<chorus-feed> invocations.  The generated infrastructure is always
+derived from the current state of the KB.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item C<eca/skills/chorus-engine.md>
+
+Full motor reference (Frame, Engine, Expert, Collection, YAML DSL, anti-pitfalls).
+Loaded automatically by ECA when Perl code is created or modified inside
+C<$ENGINE>.
+
+=item C<eca/skills/chorus-feed.md>
+
+Detailed instructions for the C<chorus-feed> skill (Mode A + Mode B).
+
+=item C<eca/skills/chorus-check.md>
+
+Detailed instructions for the C<chorus-check> skill (fast path + full path).
+
+=item C<eca/skills/chorus-create-project.md>
+
+Detailed instructions for the C<chorus-create-project> skill.
+
+=item C<eca/skills/chorus-import-project.md>
+
+Detailed instructions for the C<chorus-import-project> skill (unit / fusion /
+batch modes).
+
+=item C<eca/org/agents/_template.org>
+
+Canonical KB template for a pipeline agent (all ten sections).
+
+=item C<eca/org/agents/index.org>
+
+Pipeline registry template (agent table, pipeline notes, corpus index).
+
+=back
+
+=head1 SEE ALSO
+
+L<Chorus::Engine>, L<Chorus::Expert>, L<Chorus::Frame>,
+L<Chorus::Collection::List>, L<Chorus::Collection::Filter>
+
+ECA editor assistant: L<https://eca.dev>
+
+=head1 AUTHOR
+
+Christophe Ivorra, E<lt>ch.ivorra@free.frE<gt>
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2026 Christophe Ivorra.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published by
+the Free Software Foundation; or the Artistic License.
+
+See L<http://dev.perl.org/licenses/> for more information.
+
+=cut

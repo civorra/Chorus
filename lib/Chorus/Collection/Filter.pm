@@ -387,3 +387,222 @@ our $FILTER = Chorus::Frame->new(
 END {}
 
 1;
+
+__END__
+
+=encoding UTF-8
+
+=head1 NAME
+
+Chorus::Collection::Filter - Pattern matching on ordered sequences of Chorus::Frame objects
+
+=head1 VERSION
+
+This module is part of Chorus::Engine 1.05.
+
+=head1 SYNOPSIS
+
+  use Chorus::Frame;
+  use Chorus::Collection::Filter qw($FILTER @_VFILTER);
+
+  # Build a token sequence (e.g. from Chorus::Collection::List)
+  # Each $token is a Chorus::Frame with a 'categorie' slot.
+
+  my $f = Chorus::Frame->new(_ISA => $FILTER);
+
+  # Tell the filter how to extract a comparable value from a Frame
+  $f->set_node_test(sub {
+      my ($frame) = @_;
+      return $frame->categorie;
+  });
+
+  # Compile a pattern
+  $f->set_filter('^DET NOM (ADJ+) !PONCT*$');
+
+  # Test a sequence
+  if ($f->check(@tokens)) {
+      my ($adjectives) = @_VFILTER;   # captured group (ADJ+)
+  }
+
+=head1 DESCRIPTION
+
+C<Chorus::Collection::Filter> provides C<$FILTER>, a L<Chorus::Frame> prototype
+for testing whether an ordered sequence of Frames matches a pattern.
+
+The pattern language is inspired by regular expressions but operates on
+sequences of discrete tokens rather than characters.  Each position in the
+pattern is matched against the result of a user-supplied B<node test> function
+(set with L<"set_node_test">) that extracts a comparable value from each Frame.
+
+Captured groups (enclosed in parentheses) are collected in the exported array
+C<@_VFILTER> after a successful L<"check"> call, in the same way C<$1>, C<$2>,
+etc., work with Perl regular expressions.
+
+=head1 EXPORTS
+
+Nothing is exported by default.  The following symbols are available on
+request:
+
+  use Chorus::Collection::Filter qw($FILTER @_VFILTER);
+
+=over 4
+
+=item C<$FILTER>
+
+The Frame prototype.  Use C<_ISA =E<gt> $FILTER> to create filter instances.
+C<$FILTER> itself inherits from L<Chorus::Collection::List/$LIST> — a compiled
+pattern is stored internally as a linked list of node Frames.
+
+=item C<@_VFILTER>
+
+Global array of captured groups.  Each element is an arrayref containing the
+Frames matched by the corresponding capture group in the last successful
+L<"check"> call.
+
+  # pattern: '^DET NOM (ADJ+) !PONCT*$'
+  if ($f->check(@tokens)) {
+      my ($adjs) = @_VFILTER;   # arrayref of ADJ Frames
+  }
+
+B<Note:> C<@_VFILTER> is reset at the start of every L<"check"> call.  Capture
+the value immediately after the call if you need to keep it across further
+C<check> invocations.
+
+=back
+
+=head1 CONSTANTS
+
+=head2 Match-mode constants
+
+  ANYTHING    # matches any token (equivalent to . in regexp)
+  IS          # token must be in the node's token set  (default)
+  IS_NOT      # token must NOT be in the node's token set (prefix !)
+
+=head2 Count-mode constants
+
+  EXACTLY_ONE   # exactly one occurrence  (default, no quantifier)
+  ZERO_OR_MORE  # zero or more occurrences  (quantifier *)
+  ONE_OR_MORE   # one or more occurrences   (quantifier +)
+  INTERVALLE    # between min and max occurrences  (quantifier {m,n})
+
+=head2 C<COUNT_MAX_LIMIT>
+
+Maximum number of occurrences considered for C<*> and C<+> quantifiers.
+Currently set to B<100>.
+
+=head1 METHODS
+
+All methods are slots on the C<$FILTER> prototype and are called on any Frame
+that inherits from C<$FILTER>.
+
+=head2 set_node_test
+
+  $f->set_node_test( \&sub )
+
+Installs the function used to extract a comparable token value from a Frame
+during pattern matching.  The function receives a single Frame argument and
+should return a scalar (string, number) or an arrayref of strings for
+multi-valued tokens.
+
+  $f->set_node_test(sub {
+      my ($frame) = @_;
+      return $frame->categorie;        # e.g. 'NOM', 'ADJ', 'VRB'
+  });
+
+The B<default> node test is the identity function (returns the Frame itself).
+Always call C<set_node_test> before L<"check"> unless you intentionally compare
+Frame references.
+
+=head2 set_filter
+
+  $f->set_filter( $pattern_string )
+
+Compiles C<$pattern_string> into an internal linked list of node Frames and
+stores it as the current pattern.  Resets any previously compiled pattern.
+
+  $f->set_filter('^DET NOM (ADJ+) !PONCT*$');
+
+See L</PATTERN SYNTAX> for a description of the pattern language.
+
+=head2 check
+
+  $f->check( @frames )
+
+Tests the sequence C<@frames> against the compiled pattern.  Returns true (1)
+on success, or C<undef> on failure.
+
+On success, C<@_VFILTER> is populated with one arrayref per capture group
+(same order as the parentheses in the pattern).
+
+  if ($f->check(@tokens)) {
+      my ($group1, $group2) = @_VFILTER;
+  }
+
+B<Note:> C<@_VFILTER> is reset to C<()> on every call, including failed ones.
+
+=head1 PATTERN SYNTAX
+
+A pattern is a space-separated string of node descriptors, optionally bounded
+by anchors.
+
+=head2 Anchors
+
+  ^    Start-of-sequence anchor.  The pattern must match from the first token.
+  $    End-of-sequence anchor.  The pattern must match through the last token.
+
+=head2 Token descriptors
+
+  X         Matches exactly the token X  (IS mode).
+  !X        Matches any token that is NOT X  (IS_NOT mode).
+  .         Matches any single token  (ANYTHING mode).
+  [A B C]   Matches any token that is A, B, or C  (OR group).
+
+=head2 Quantifiers
+
+Quantifiers follow a token descriptor immediately (no space):
+
+  X+        One or more occurrences of X.
+  X*        Zero or more occurrences of X  (greedy).
+  X?        Zero or one occurrence of X  (lazy / short match).
+  X{m,n}    Between m and n occurrences of X.
+  X{n}      Exactly n occurrences of X.
+
+=head2 Capture groups
+
+Parentheses delimit a capture group.  The Frames matched by the group are
+collected as an arrayref in C<@_VFILTER>:
+
+  (ADJ+)         captures one or more ADJ Frames → $VFILTER[0]
+  (PREP{0,1})    captures zero or one PREP Frame  → $VFILTER[1]
+
+=head2 Examples
+
+  'NOM ADJ'                    # NOM followed by ADJ anywhere in the sequence
+  '^DET NOM$'                  # exactly DET then NOM, full sequence
+  '^NOM (ADJ+) !PONCT*$'       # NOM, one-or-more ADJ (captured), opt non-PONCT tail
+  '[NOM ADJ]+ VRB'             # one or more NOM-or-ADJ, then VRB
+
+=head1 SEE ALSO
+
+L<Chorus::Frame>, L<Chorus::Collection::List>, L<Chorus::Engine>
+
+=head1 AUTHOR
+
+Christophe Ivorra, E<lt>ch.ivorra@free.frE<gt>
+
+=head1 BUGS
+
+Please report bugs via L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine>.
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2013-2026 Christophe Ivorra.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published by
+the Free Software Foundation; or the Artistic License.
+
+See L<http://dev.perl.org/licenses/> for more information.
+
+=cut
+
