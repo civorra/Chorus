@@ -7,66 +7,106 @@ our $VERSION = '1.05';
 
 =head1 NAME
 
-Chorus::Frame - A short implementation of frames from knowledge representation.
+Chorus::Frame - Frame-based knowledge representation with inheritance and procedural attachments.
 
 =head1 VERSION
 
 Version 1.05
-
-=cut
 
 =head1 SYNOPSIS
 
   use Chorus::Frame;
 
   my $f1 = Chorus::Frame->new(
-     b => {
-             _DEFAULT => 'inherited default for b'
-          }
+      color => { _DEFAULT => 'blue' },
   );
 
   my $f2 = Chorus::Frame->new(
-    a => {
-           b1 => sub { $SELF->get('a b2') }, # procedural attachment using context $SELF
-           b2 => {
-                   _ISA    => $f1->{b},
-                   _NEEDED => 'needed for b  # needs mode Z to precede inherited _DEFAULT
-                 }
-         }
+      _ISA  => $f1,
+      label => sub { 'I am ' . $SELF->color },   # $SELF = frame calling get()
   );
 
-  Chorus::Frame::setMode(GET => 'N');
-  print $f2->get('a b1') . "\n";       # print 'inherited default for b'
+  print $f2->color;   # 'blue'   (inherited _DEFAULT)
+  print $f2->label;   # 'I am blue'
 
+  # Inheritance mode affects how _VALUE/_DEFAULT/_NEEDED are resolved
   Chorus::Frame::setMode(GET => 'Z');
-  print $f2->get('a b1') . "\n";       # print 'needed for b'
+  Chorus::Frame::setMode(GET => 'N');   # back to default
 
-=cut
+  # Select frames by slot (uses internal registry for fast lookup)
+  my @colored = fmatch(slot => 'color');
+  my @both    = fmatch(slot => ['color', 'score']);
 
 =head1 DESCRIPTION
 
-  - A frame is a generic object structure described by slots (properties).
-  - A frame can inherit slots from other frames.
-  - A frame can have specific slots describing :
+A B<frame> is a Perl hash blessed into C<Chorus::Frame>.  Its entries are called B<slots>.
 
-    * how it can be associated to a target information,
-    * how he reacts when its target information changes
-    * what it can try when a missing property is requested.
+Key features:
 
-  - The slots _VALUE,_DEFAULT,_NEEDED are tested in this order to obtain the target information
-    of a given frame (can be inherited).
-  - Two other special slots _BEFORE & _AFTER can define what a frame has to do before or after
-    one of its properties changes.
-  - The slot _ISA is used to define the inheritance.
+=over 4
 
-  Two modes 'N' (default) or 'Z' are used to define the priority between a frame and its inherited
-  frames in order to process its target information
+=item * B<Inheritance> via the C<_ISA> slot (single frame or arrayref of frames).
 
-  The globale variable $SELF returns the current CONTEXT which is the most recent frame called for the method get().
-  A slot defined by a function sub { .. } can refer to the current context $SELF in its body.
+=item * B<Procedural slots> -- any slot value may be a C<sub {}>, evaluated lazily on
+access.  The variable C<$SELF> holds the frame on which C<get()> was originally called,
+making it available inside coderefs.
 
-  All frames are automaticaly referenced in a repository used to optimise the selection of frames for a given action.
-  The function fmatch() can be used to quicly select all the frames responding to a given test on their properties.
+=item * B<Target-information slots> -- C<_VALUE>, C<_DEFAULT> and C<_NEEDED> are tested
+in that order to resolve the I<value> of a frame.
+
+=item * B<Lifecycle hooks> -- C<_BEFORE>, C<_AFTER> and C<_REQUIRE> intercept writes.
+
+=item * B<Global registry> -- every frame is registered automatically; C<fmatch()> uses
+this registry for O(1) slot-based lookups.
+
+=back
+
+=head2 Special slots
+
+The following names are reserved.  Never use them as application slot names
+(except C<_ISA> and C<_NOFRAME>):
+
+  _KEY          Unique MD5 key assigned at construction.  Never set manually.
+  _PARENT_KEY   Tracks sub-frame ownership for Copy-on-Write inside set().
+  _ISA          Inheritance: a single frame or an arrayref of frames.
+  _VALUE        Primary target information of this frame.
+  _DEFAULT      Fallback when _VALUE is absent.
+  _NEEDED       Last-resort coderef called when both _VALUE and _DEFAULT are absent
+                (backward chaining).
+  _BEFORE       Hook called before a slot value changes.
+  _AFTER        Hook called after a slot value changes (forward propagation).
+  _REQUIRE      Validation hook: return REQUIRE_FAILED to block the write.
+  _NOFRAME      Prevents automatic promotion of a nested hash to a frame.
+  _SERIALIZE    Key used for serialisation round-trips (FREEZE/THAW).
+
+=head2 Inheritance modes N and Z
+
+The global mode controls how C<get()> walks the inheritance chain.
+
+B<Mode N> (default) -- each valuation key is scanned across the whole inheritance tree
+before the next key is tried:
+
+  _VALUE  on (frame, frame._ISA, frame._ISA._ISA, ...)
+  _DEFAULT on the same tree
+  _NEEDED  on the same tree
+
+B<Mode Z> -- the full sequence C<(_VALUE, _DEFAULT, _NEEDED)> is tried on each frame
+before descending to its parents:
+
+  frame     : _VALUE, _DEFAULT, _NEEDED
+  frame._ISA: _VALUE, _DEFAULT, _NEEDED  ...
+
+Switch with C<< Chorus::Frame::setMode(GET => 'Z') >> or C<< setMode(GET => 'N') >>.
+
+=head2 Exports
+
+C<Chorus::Frame> exports by default:
+
+  $SELF          Current frame context, updated by get() and set().
+  &fmatch        Slot-based frame selection function.
+  &setMode       Switches the inheritance mode (N or Z).
+  REQUIRE_FAILED Constant (-1) returned by _REQUIRE to abort a write.
+
 =cut
 
 BEGIN {
@@ -121,21 +161,18 @@ sub _isa {
   return (ref($ref) eq $str);
 }
 
-=head1 SUBROUTINES
-=cut
+=head1 FUNCTIONS
 
 =head2 setMode
 
- Defines the inheritance mode of methods get() for the special slots _VALUE,_DEFAULT,_NEEDED
- the default mode is 'N'.
+Sets the global inheritance mode used by C<get()> to resolve target information
+(C<_VALUE>, C<_DEFAULT>, C<_NEEDED>).
 
-    'N' : ex. a single slot from the sequence _VALUE,_DEFAULT,_NEEDED will be tested in all inherited
-              frames before trying the next one.
+  Chorus::Frame::setMode(GET => 'N');   # Mode N -- default
+  Chorus::Frame::setMode(GET => 'Z');   # Mode Z
+  Chorus::Frame::setMode('N');          # short form
 
-    'Z' : the whole sequence _VALUE,_DEFAULT,_NEEDED will be tested from the frame before being
-          tested from the inherited frames
-
-    ex. Chorus::Frame::setMode(GET => 'Z');
+See L</Inheritance modes N and Z> in the DESCRIPTION for a detailed comparison.
 
 =cut
 
@@ -153,12 +190,16 @@ sub setMode {
 }
 
 =head1 METHODS
-=cut
 
 =head2 _keys
 
-  my @k = $f->keys; # replaces usual functions 'keys'.
-  same as CORE::keys but excludes the special slot '_KEY' specific to all frames
+Returns the slot names of the frame, excluding the internal keys C<_KEY> and C<_PARENT_KEY>.
+
+  my @slots = $frame->_keys;
+
+Use this instead of C<keys %$frame> when you need to iterate over application slots
+without exposing internal bookkeeping entries.
+
 =cut
 
 sub _keys {
@@ -183,7 +224,10 @@ sub expand {
 
 =head2 _push
 
-  push new elements to a given slot (becomes an array if necessary)
+Appends one or more elements to a slot, converting it to an arrayref when necessary.
+
+  $frame->_push('tags', 'red', 'big');
+
 =cut
 
 sub _push {
@@ -206,8 +250,14 @@ sub _addInstance {
 
 =head2 _inherits
 
-  add inherited new frame(s) outside constructor
-  ex. $f->_inherits($F1,$F2);
+Adds one or more parent frames to the inheritance chain outside the constructor.
+Each parent is added at most once; duplicates are silently ignored.
+
+  $frame->_inherits($parent1, $parent2);
+
+Used internally by C<Chorus::Engine::new()> to wire agent instances to the engine
+prototype.
+
 =cut
 
 sub _inherits {
@@ -310,23 +360,24 @@ sub blessToFrame {
 
 =head2 new
 
-  Constructor : Converts a hashtable definition into a Chorus::Frame object.
+Constructor.  Converts a flat list of key/value pairs into a C<Chorus::Frame> object.
 
-  Important - All nested hashtables are recursively converted to Chorus::Frame,
-              except those providing a slot _NO_FRAME
+  my $f = Chorus::Frame->new(
+      slot_a => 'value',
+      slot_b => sub { 'computed: ' . $SELF->slot_a },   # procedural slot
+      nested => {
+          _ISA    => $proto,
+          _NEEDED => sub { compute_default() },
+      },
+  );
 
-  All frames are associated to a unique key and registered in an internal repository (see fmatch)
+All nested plain hashes are automatically and recursively promoted to
+C<Chorus::Frame>, unless they contain the C<_NOFRAME> flag.  Every frame
+receives a unique C<_KEY> and is registered in the global repository so
+that C<fmatch()> can find it.
 
-  Ex. $f = Chorus::Frame->new(
-                       slotA1 => {
-                        _ISA   => [ $f2->slotA, $f3->slotA ] # multiple inheritance
-                        slotA2 => sub { $SELF };             # procedural attachements
-                        slotA3 => 'value for A3'
-                       },
-                       slotB => {
-                        _NEEDED => sub { .. }
-                       }
-                    );
+Do B<not> set C<_KEY> or C<_PARENT_KEY> manually.
+
 =cut
 
 sub new {
@@ -336,9 +387,12 @@ sub new {
 
 =head2 _reset
 
-  For testing only: clears all global registries (FMAP, REPOSITORY, INSTANCES, SERIAL)
-  and resets the context stack ($SELF, @Heap) and inheritance mode to N.
-  Use between tests to ensure frame isolation.
+Clears all global registries (C<%FMAP>, C<%REPOSITORY>, C<%INSTANCES>, C<%SERIAL>),
+resets the C<$SELF> context stack and restores the inheritance mode to B<N>.
+
+  Chorus::Frame::_reset();
+
+B<For testing only.>  Call between test cases to guarantee frame isolation.
 
 =cut
 
@@ -410,22 +464,28 @@ sub THAW {
 
 =head2 get
 
-This method provides the information associated to a sequence of slots.
-This sequence is given in a string composed with slot names separated by spaces.
-The last slot is tested for the target information with the sequence _VALUE,_DEFAULT,_NEEDED.
-If a frame doesn't provide any of those slots, the target information is the frame itself.
+Returns the value associated with a space-separated slot path.
 
-A frame called with the method get() becomes the current context wich can be referred with the variable $SELF.
+  $frame->get('slot')
+  $frame->get('slot_a slot_b')   # traverse slot_a, then resolve slot_b
+  $frame->slot_a                 # AUTOLOAD short form -- equivalent to get('slot_a')
 
-Note - The short form $f->SLOTNAME() can by used instead of $f->get('SLOTNAME');
+The last step in the path is resolved through C<_VALUE>, C<_DEFAULT> and C<_NEEDED>
+in that order (subject to the current L</Inheritance modes N and Z>).
 
-Ex. $f->foo;                   # equiv to $f->get('foo');
-    $f->foo(@args);            # equiv to $f->get('foo')(@args);
+C<get()> pushes the current frame onto a stack and sets C<$SELF> to it, so procedural
+slots can refer back to the calling frame:
 
-    $f->get('foo bar');        # $SELF (context) is $f while processing 'bar'
+  my $f = Chorus::Frame->new(
+      name  => 'Chorus',
+      label => sub { 'Module: ' . $SELF->name },
+  );
+  print $f->label;   # "Module: Chorus"
 
-    $f->get('foo')->get('bar') # $SELF (context) is $f->foo while processing 'bar'
-    $f->foo->bar;              # short form
+The short form C<< $f->slotname >> is equivalent to C<< $f->get('slotname') >>.
+Arguments are forwarded when the resolved value is a coderef:
+
+  $f->slotname(@args);   # calls get('slotname'), then invokes the result with @args
 
 =cut
 
@@ -565,9 +625,13 @@ sub get {
 
 =head2 delete
 
-   All Frames properties are registered in a single table, especially to optimize the method fmatch().
-   This why frames have to use the form $f->delete($slotname) instead of delete($f->{$slotname})
-   otherwise a frame will be considered by fmatch() as providing a slot even after this one have been removed.
+Removes a slot and unregisters it from the global repository.
+
+  $frame->delete('slot');
+  $frame->delete('slot_a slot_b');   # deletes slot_b inside slot_a
+
+Always use this method instead of C<delete $frame->{slot}>.  Direct hash deletion
+bypasses the registry, causing C<fmatch()> to return stale results for that slot.
 
 =cut
 
@@ -606,34 +670,31 @@ sub delete {
 
 =head2 set
 
-   This method tells a frame to associated target information to a sequence of slots
-   A frame called for this method becomes the new context.
+Associates a value to a slot (or slot path) and updates the global registry.
 
-    Ex. $f1 = Chorus::Frame->new(
-          a => {
-              b => {
-                c => 'C'
-              }
-          }
-        );
+  $frame->set('slot', $value);
+  $frame->set('slot_a slot_b', $value);
 
-    $f1->set('a b', 'B');  # 'B' becomes the target _VALUE for $f1->get('a b')
-    $f1->get('a b');       # returns 'B'
+Always use this method instead of C<< $frame->{slot} = $value >>.  Direct hash
+assignment bypasses C<_registerSlot()>, so C<fmatch(slot =E<gt> 'slot')> will B<not>
+return this frame -- the slot exists on the hash but is invisible to the inference
+engine.
 
-    $f1->get('a b c');     # still returns 'C'
-    $f1->delete('a b c');
-    $f1->get('a b c');     # undef
+B<Lifecycle hooks> -- when the terminal slot has them, they fire in order:
 
-    $f2 = Chorus::Frame->new(
-          _ISA => $1,
-    );
+  1. _REQUIRE is called with the new value.
+     Return REQUIRE_FAILED (-1) to abort the write.
+  2. _BEFORE is called with the new value.
+  3. The value is stored in _VALUE and registered.
+  4. _AFTER is called with the new value (forward chaining).
 
-    $f2->get('a b c');     # returns 'C'
+B<Copy-on-Write> -- when traversing a sub-frame whose C<_PARENT_KEY> differs from
+the current frame's C<_KEY>, a shadow frame (C<_ISA =E<gt> $shared>) is created
+locally before writing.  This prevents mutations from affecting shared structures.
 
-    $f2->set('a b', 'AB'); # cancel inheritance for first slot 'a'
-    $f2->get('a b');       # returns 'AB'
-
-    $f2->get('a b c');     # undefined
+  my $f = Chorus::Frame->new(a => { b => { _VALUE => 'old' } });
+  $f->set('a b', 'new');
+  print $f->get('a b');   # "new"
 
 =cut
 
@@ -738,19 +799,17 @@ sub set {
 
 =head2 fmatch
 
- This function returns the list of the frames providing all the slots given as argument.
- The result can contains the frames providing these the slots by inheritance.
- This function can be used to minimise the list of frames that should be candidate for a given process.
+Returns all frames that provide the given slot(s), either directly or by inheritance,
+using the internal registry for efficient lookups.
 
- An optional argument 'from' can provide a list of frames as search space
+  my @frames = fmatch(slot => 'color');                      # all frames having 'color'
+  my @frames = fmatch(slot => ['color', 'score']);           # intersection
+  my @frames = fmatch(slot => 'color', from => \@list);      # restricted space
+  my @high   = grep { $_->score > 5 } fmatch(slot => 'score');
 
- ex. @l = grep { $_->score > 5 } fmatch(
-                                         slot => ['foo', 'score'],
-                                         from => \@framelist       # optional : limit search scope
-                                       );
-     #
-     # all frames, optionnaly from @framelist, providing both slots 'foo' and 'score' (possible
-     # inheritance) and on which the method get('score') returns a value > 5
+C<slot> may be a scalar or an arrayref.  Multiple slot names return only frames
+providing B<all> of them.  The optional C<from> arrayref narrows the search to a
+known subset.
 
 =cut
 
@@ -813,42 +872,29 @@ Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-chorus-frame at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Frame>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+Please report bugs via the CPAN request tracker:
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Frame>
 
 =head1 SUPPORT
 
-You can find documentation for this module with the perldoc command.
-
-    perldoc Chorus::Frame
-
-
-You can also look for information at:
+  perldoc Chorus::Frame
 
 =over 4
 
-=item * RT: CPAN's request tracker (report bugs here)
+=item * RT -- L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Frame>
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Frame>
+=item * AnnoCPAN -- L<http://annocpan.org/dist/Chorus-Frame>
 
-=item * AnnoCPAN: Annotated CPAN documentation
+=item * CPAN Ratings -- L<http://cpanratings.perl.org/d/Chorus-Frame>
 
-L<http://annocpan.org/dist/Chorus-Frame>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Chorus-Frame>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Chorus-Frame/>
+=item * Search CPAN -- L<http://search.cpan.org/dist/Chorus-Frame/>
 
 =back
 
+=head1 SEE ALSO
 
-=head1 ACKNOWLEDGEMENTS
-
+L<Chorus::Engine>, L<Chorus::Expert>, L<Chorus::Collection::List>,
+L<Chorus::Collection::Filter>
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -858,8 +904,7 @@ This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
 by the Free Software Foundation; or the Artistic License.
 
-See http://dev.perl.org/licenses/ for more information.
-
+See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 

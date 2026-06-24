@@ -12,232 +12,252 @@ use YAML qw(LoadFile);
 
 =head1 NAME
 
-Chorus::Engine - A very light inference engine combined with the frame model for knowledge representation.
+Chorus::Engine - A lightweight inference engine for rule-based reasoning over frames.
 
 =head1 VERSION
 
 Version 1.05
 
-=cut
+=head1 DESCRIPTION
 
-=head1 INTRODUCTION
+C<Chorus::Engine> makes it easy to write rule-based systems in Perl.  Rules declare
+their own working scope (C<_SCOPE>), so the engine only generates combinations that
+are relevant to each rule rather than iterating over all objects.
 
-    Chorus-Engine makes possible to simply develop in Perl with an Articial Intelligence approach
-    by defining the knowledge with rules the inference engine will try to apply on your objects.
+An engine instance is itself a L<Chorus::Frame>.  All methods (C<loop>, C<addrule>,
+C<solved>...) are slots on a shared prototype frame, accessible through inheritance.
 
-    Because inference engines use to waste a lot of time before finding interesting instanciations
-    for rules, the property _SCOPE is used to optimise the space on which each rule must be tested.
+The engine integrates naturally with L<Chorus::Frame>: use C<fmatch()> inside C<_SCOPE>
+closures to target only frames that provide the slots your rule needs.
 
-    This not necessary but, uou can combinate Chorus::Engine with Chorus::Frame which gives a first level
-    for knowledge representation. The inference engine can then work on Frames using the function 'fmatch'
-    top optimise the _SCOPE for the rules which work on frames.
-
-=cut
+Optional YAML rule files can be loaded with C<loadRules()>; see L</YAML DSL> below.
 
 =head1 SYNOPSIS
 
     use Chorus::Engine;
 
-    my $agent = new Chorus::Engine();
+    my $agent = Chorus::Engine->new();
 
     $agent->addrule(
 
-      _SCOPE => {             # These arrays will be combinated as parameters (HASH) when calling _APPLY
-             a => $subset,    # static array_ref
-             b => sub { .. }  # returns an array ref
+      _SCOPE => {
+          a => sub { [ fmatch(slot => 'color') ] },   # dynamic -- re-evaluated each cycle
+          b => [1, 2, 3],                              # static array_ref
       },
 
       _APPLY => sub {
-        my %opts = @_;        # provides $opt{a},$opt{b} (~ one combinaison of _SCOPE)
+          my %opts = @_;   # $opts{a} and $opts{b} hold one combination of _SCOPE values
 
-        if ( .. ) {
-          ..
-          return 1;           # rule could be applied (~ something has changed)
-        }
-
-        return;         # rule didn't apply
-      }
+          return unless $opts{a}->color eq 'blue';  # guard: rule does not apply
+          $opts{a}->set('tagged', 'y');
+          return 1;   # rule fired (something changed)
+      },
     );
 
     $agent->loop();
 
-=head1 SUBROUTINES/METHODS
-=cut
+=head1 METHODS
 
-=head2 addrule()
+=head2 new
 
-       Defines a new rule for the Chorus::Engine object
+Creates a new engine instance.  The instance is a C<Chorus::Frame> that inherits
+from the internal C<$ENGINE> prototype.
 
-       arguments :
+  my $agent = Chorus::Engine->new();
+  my $agent = Chorus::Engine->new(_IDENT => 'MyAgent');   # named agent (used in debug output)
 
-         _SCOPE : a hashtable defining the variables and their search scope for instanciation
-                  Values must be SCALAR or ARRAY_REF
+=head2 addrule
 
-         _APPLY : function which will be called in a loop with all the possible
-                  combinaisons from scopes on a & b
+Adds a rule to the engine.
 
-       Ex. use Chorus::Engine;
-           use Chorus::Frames;
+  $agent->addrule(
+      _ID    => 'rule-name',    # optional -- used for deduplication; duplicates are skipped
+      _SCOPE => {
+          x => sub { [ fmatch(slot => 'slot_name') ] },   # dynamic scope
+          y => \@static_list,                              # static scope
+      },
+      _APPLY => sub {
+          my %opts = @_;
+          return unless <condition>;   # rule does not apply
+          # ... effects ...
+          return 1;   # rule fired
+      },
+  );
 
-           my $e=Chorus::Engine->new();
+Additional optional slots on the rule frame:
 
-           $e->addrule(
+  _TERMINAL   'solved' or 'failed' -- auto-terminates the engine when the rule fires.
+  _PREMISSES  Hashref of slot names used as metadata for reorder().
 
-              _SCOPE => {
+The C<_APPLY> sub receives one combination of C<_SCOPE> values as a hash.  It should
+return a true value when it has made a change, or false/undef when it has not.
 
-                  foo  => [ fmatch( .. ) ],         # selection of Frames bases on the filter 'fmatch' (static)
-                  bar  => sub { [ fmatch( .. ) ] }, # same kind more dynamic
-                  baz  => [ .. ]                    # any other array (not only frames)
+B<Important> -- rules with the same C<_ID> in the same agent are deduplicated: the
+second definition is silently ignored.
 
-              },
+=head2 loop
 
-              _APPLY => sub {
-                         my %opts = @_;          # provides $opt{foo},$opt{bar},$opt{baz}
+Enters the inference loop.  Calls C<applyrules()> repeatedly until no rule fires in
+a full pass, or until the shared BOARD signals C<SOLVED> or C<FAILED>, or until
+C<_MAX_CYCLES> (default: 10,000) is reached.
 
-                         return if ( .. ); # rule didn't apply
+  $agent->loop();
 
-                         if ( .. ) {
-                           ..             # some actions
-                           return 1;      # rule could be applied
-                         }
+=head2 applyrules
 
-                         return;    # rule didn't apply (last instruction)
-              });
-=cut
+Runs one pass over all rules.  For each rule, evaluates C<_SCOPE> to get candidate
+arrays, generates all combinations, and calls C<_APPLY> for each.  Returns a true
+value if at least one rule fired.
 
-=head2 loop()
+This method is called internally by C<loop()>; you rarely need to call it directly.
 
-       Tells the Chorus::Engine object to enter its inference loop.
-       The loop will end only after all rules fail (~ return false) in the same iteration
+=head2 cut
 
-           Ex. my $agent = new Chorus::Engine();
+Exits the scope-combination loops of the current rule and moves to the next rule in
+the same agent.
 
-               $agent->addrule( .. );
-               ..
-               $agent->addrule( .. );
+  $agent->cut();    # inside _APPLY
 
-               $agent->loop();
-=cut
+=head2 last
 
-=head2 cut()
+Exits the rule loop for the current agent and moves to the next agent.
+Implies C<cut()>.
 
-       Go directly to the next rule (same loop, same agent). This will break all nested instanciation loops
-       on _SCOPE of the current rule. -> GO DIRECTLY TO NEXT RULE (SAME AGENT)
+  $agent->last();   # inside _APPLY
 
-           Ex. $agent->addrule(
-             _SCOPE => { .. },
-             _APPLY => sub {
-              if ( .. ) {
-                 $agent->cut();    # ~ exit the rule
-              }
-           );
-=cut
+=head2 replay
 
-=head2 last()
+Restarts the current agent from its first rule.  Implies C<cut()>.
 
-       Breaks the current loop (on rules) for the current agent -> GO DIRECTLY TO NEXT AGENT
-       This will force a cut() too.
+  $agent->replay();   # inside _APPLY
 
-           Ex. $agent->addrule(
-             _SCOPE => { .. },
-             _APPLY => sub {
-              if ( .. ) {
-                 $agent->last();
-              }
-           );
-=cut
+=head2 replay_all
 
-=head2 replay()
+Restarts the whole pipeline from the first agent (propagates up to
+C<Chorus::Expert::process()>).  Implies C<cut()>.
 
-       Restart FROM THE BEGINNING (1st rule) for the CURRENT AGENT. This will force a cut() too.
+  $agent->replay_all();   # inside _APPLY
 
-           Ex. $agent->addrule(
-             _SCOPE => { .. },
-             _APPLY => sub {
-              if ( .. ) {
-                 $agent->replay();
-              }
-           );
-=cut
+=head2 solved
 
-=head2 replay_all()
+Signals successful termination.  Sets C<< BOARD->{SOLVED} >>, which stops all loops.
 
-       Restart FROM THE BEGINNING for the FIRST AGENT. This will force a cut() too.
+  $agent->solved();   # inside _APPLY
 
-           Ex. $agent->addrule(
-             _SCOPE => { .. },
-             _APPLY => sub {
-              if ( .. ) {
-                 $agent->replay_all();
-              }
-           );
-=cut
+=head2 failed
 
-=head2 solved()
+Signals failed termination.  Sets C<< BOARD->{FAILED} >>, which stops all loops.
 
-       Tells the Chorus::Engine to terminate immediately. This will force a last() too
+  $agent->failed();   # inside _APPLY
 
-           Ex. $agent->addrule(
-             _SCOPE => { .. },
-             _APPLY => sub {
-              if ( .. ) {
-                 $agent->solved();
-              }
-           );
-=cut
+=head2 reorder
 
-=head2 reorder()
+Re-sorts the rule list using a comparator function, then calls C<replay()>.
+Useful for dynamically prioritising rules after a domain event.
 
-       the rules of the agent will be reordered according to the function given as argument (works like with sort()).
-       Note - The method last() will be automatically invoked.
+  sub by_interest {
+      my ($r1, $r2) = @_;
+      return 1  if $r1->{_PREMISSES}{CAT_NOUN};
+      return -1 if $r2->{_PREMISSES}{CAT_NOUN};
+      return 0;
+  }
+  $agent->reorder(\&by_interest);
 
-       Exemple : the current rule in a syntax analyser has found the category 'CAT_C' for a word.
-                 The next step whould invoque as soon as possible the rules declared as interested
-                 in this category.
+=head2 pause
 
-           sub sortA {
-               my ($r1, $r2) = @_;
-               return 1  if $r1->_INTEREST->CAT_C;
-               return -1 if $r2->_INTEREST->CAT_C;
-               return 0;
-           }
+Disables the engine until C<wakeup()> is called.  While paused, C<loop()> has no
+effect.  Use this to skip agents that have nothing to do in the current context.
 
-           $agent->addrule(     # rule 1
-             _INTEREST => {     # user slot
-                 CAT_C => 'Y',
-                 # ..
-             },
-             _SCOPE => { .. }
-             _APPLY => sub { .. }
-           );
+  $agent->pause();
 
-           $agent->addrule(     # rule n
-             _SCOPE => { .. }
-             _APPLY => sub {
-               # ..
-               If ( .. ) {
-                 # ..
-                 $agent->reorder(sortA);  # will put rules interested in CAT_A to the head of the queue
-               }
-             }
-           );
-=cut
+=head2 wakeup
 
-=head2 pause()
+Re-enables a paused engine.
 
-       Disable a Chorus::Engine object until call to wakeup(). In this mode, the method loop() has no effect.
-       This method can optimise the application by de-activating a Chorus::Engine object until it has
-       a good reason to work (ex. when a certain state is reached in the application ).
-=cut
+  $agent->wakeup();
 
-=head2 wakeup()
+=head2 loadRules
 
-       Enable a Chorus::Engine object -> will try again to apply its rules after next call to loop()
-=cut
+Loads all C<*.yml> files from a directory in alphabetical order, compiles each one
+to a Perl C<addrule()> call, and evaluates it.
 
-=head2 reorderRules()
+  $agent->loadRules('/path/to/rules/dir');
+  $agent->loadRules('/path/to/rules/dir', debug => ['rule-name']);
 
-  use from rules body to optimize the engine defining best candidates (rules) for next loop (break the current loop)
+Files are loaded sorted alphabetically; prefix filenames with C<R01->, C<R02->... to
+control order.  Multiple calls accumulate rules.
+
+Compilation errors are printed to STDERR with the generated code for inspection.
+
+=head1 YAML DSL
+
+Rules can be written in YAML instead of Perl.  Each file defines one rule:
+
+  REGLE:     rule-name          # mandatory -- becomes _ID
+  TERMINAL:  solved             # optional  -- 'solved' or 'failed'
+  PREMISSES:                    # optional  -- metadata for reorder()
+    - slot-name
+  CHERCHER:                     # mandatory -- defines _SCOPE
+    var:
+      attribut: slot-name       # fmatch(slot => 'slot-name')
+      filtre: '$_->score > 0'   # optional grep filter applied before _APPLY
+  CONDITION: '$var->ok'         # optional -- return unless CONDITION
+  EXCEPTION: 'defined $var->r'  # optional -- return if EXCEPTION
+  EFFET: |                      # mandatory -- body of _APPLY (must return true when fired)
+    $var->set('result', 42);
+    1
+
+B<Important> -- the last instruction of C<EFFET> must return a true value when the
+rule has made a change.  If a conditional block may leave nothing modified, return
+C<0> rather than C<1>:
+
+  EFFET: |
+    if ($var->score > 5) { $var->set('flag', 'KO'); return 1 }
+    0
+
+The C<codeEffect>, C<codeCondition>, C<codeException> and C<codeTest> slots on the
+engine frame are called during compilation and default to the identity function.
+Override them on a per-agent basis to implement a custom DSL on top of the YAML keys.
+
+=head1 AUTHOR
+
+Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
+
+=head1 BUGS
+
+Please report bugs via the CPAN request tracker:
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>
+
+=head1 SUPPORT
+
+  perldoc Chorus::Engine
+
+=over 4
+
+=item * RT -- L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine>
+
+=item * AnnoCPAN -- L<http://annocpan.org/dist/Chorus-Engine>
+
+=item * CPAN Ratings -- L<http://cpanratings.perl.org/d/Chorus-Engine>
+
+=item * Search CPAN -- L<http://search.cpan.org/dist/Chorus-Engine/>
+
+=back
+
+=head1 SEE ALSO
+
+L<Chorus::Frame>, L<Chorus::Expert>
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2013 Christophe Ivorra.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published
+by the Free Software Foundation; or the Artistic License.
+
+See L<http://dev.perl.org/licenses/> for more information.
+
 =cut
 
 sub reorderRules {
@@ -352,11 +372,6 @@ sub loadRules {
 
     return $SELF;
 }
-
-=head2 applyrules()
-
-  main engine loop (iterates on $SELF->_RULES)
-=cut
 
 sub applyrules {
 
@@ -483,10 +498,6 @@ my $ENGINE = Chorus::Frame->new(
   loadRules => \&loadRules,
 );
 
-=head2 new
-  contructor : initialize a new engine
-=cut
-
 sub new {
     shift;                                            # get rid of clasical bless $class here !!
     my $res = Chorus::Frame->new( _RULES => [], @_ ); # may already contains _ISA !
@@ -500,42 +511,28 @@ Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-chorus-engine at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+Please report bugs via the CPAN request tracker:
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>
 
 =head1 SUPPORT
 
-You can find documentation for this module with the perldoc command.
-
-    perldoc Chorus::Engine
-
-
-You can also look for information at:
+  perldoc Chorus::Engine
 
 =over 4
 
-=item * RT: CPAN's request tracker (report bugs here)
+=item * RT -- L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine>
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine>
+=item * AnnoCPAN -- L<http://annocpan.org/dist/Chorus-Engine>
 
-=item * AnnoCPAN: Annotated CPAN documentation
+=item * CPAN Ratings -- L<http://cpanratings.perl.org/d/Chorus-Engine>
 
-L<http://annocpan.org/dist/Chorus-Engine>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Chorus-Engine>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Chorus-Engine/>
+=item * Search CPAN -- L<http://search.cpan.org/dist/Chorus-Engine/>
 
 =back
 
+=head1 SEE ALSO
 
-=head1 ACKNOWLEDGEMENTS
-
+L<Chorus::Frame>, L<Chorus::Expert>
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -545,8 +542,7 @@ This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
 by the Free Software Foundation; or the Artistic License.
 
-See http://dev.perl.org/licenses/ for more information.
-
+See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 

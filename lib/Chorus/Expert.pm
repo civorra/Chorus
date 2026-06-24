@@ -8,47 +8,111 @@ our $VERSION = '1.05';
 
 =head1 NAME
 
-Chorus::Expert - A simple skeleton of application using one or more Chorus::Engine objects (inference engines)
-                 working together on a common task.
+Chorus::Expert - Orchestrator for one or more Chorus::Engine agents working on a shared task.
 
 =head1 VERSION
 
 Version 1.05
 
-=cut
+=head1 DESCRIPTION
+
+C<Chorus::Expert> does three things:
+
+=over 4
+
+=item 1.
+
+Registers one or more L<Chorus::Engine> agents.
+
+=item 2.
+
+Provides every agent with a shared L<Chorus::Frame> called B<BOARD>, used for
+inter-agent communication and to carry the input to the pipeline.
+
+=item 3.
+
+Runs a C<do/until> loop over the agents until one of them signals C<SOLVED> or
+C<FAILED>.
+
+=back
 
 =head1 SYNOPSIS
 
-Chorus::Expert does 3 simple things :
+  use Chorus::Expert;
+  use Chorus::Engine;
 
-  1 - Registers one or more Chorus::Engine objects
-  2 - Provides to each of them a shared working area ($SELF->BOARD)
-  3 - Enter an infinite loop on each inference engine until one of them declares the system as SOLVED.
+  my $agent1 = Chorus::Engine->new(_IDENT => 'Enrich');
+  $agent1->addrule( ... );
 
-   package A;
+  my $agent2 = Chorus::Engine->new(_IDENT => 'Validate');
+  $agent2->addrule( ... );
 
-   use Chorus::Engine;
-   our $agent = Chorus::Engine->new();
-   $agent->addrule(...);
+  my $xprt = Chorus::Expert->new();
+  $xprt->register($agent1, $agent2);
 
-   # --
+  my $ok = $xprt->process($input);   # 1 = solved, undef = failed
 
-   package B;
-   use Chorus::Engine;
-   our $agent = Chorus::Engine->new();
-   $agent->addrule(...);
+=head1 METHODS
 
-   # --
+=head2 new
 
-   use Chorus::Expert;
-   use A;
-   use B;
+Creates a new C<Chorus::Expert> instance with an empty agent list and a fresh
+shared BOARD frame.
 
-   my $xprt = Chorus::Expert->new();
-   $xprt->register($A::agent);
-   $xprt->register($B::agent);
+  my $xprt = Chorus::Expert->new();
 
-   $xprt->process();
+B<Note> -- arguments passed to C<new()> are currently ignored.  To override
+C<_MAX_ITER>, assign directly after construction:
+
+  my $xprt = Chorus::Expert->new();
+  $xprt->{_MAX_ITER} = 50_000;   # default is 10,000
+
+=head2 register
+
+Registers one or more agents.  Each agent receives:
+
+=over 4
+
+=item * C<BOARD> -- the shared frame, accessible as C<< $agent->BOARD >>.
+
+=item * C<EXPERT> -- a back-reference to this expert instance.
+
+=back
+
+  $xprt->register($agent1, $agent2, $agent3);
+
+Agents are stored in registration order, which determines the order in which
+C<process()> calls their C<loop()> method.
+
+The termination agent (the one that calls C<solved()>) should be registered
+B<last>.
+
+=head2 debug
+
+Enables verbose output to STDERR for the main process loop.
+
+  $xprt->debug(1);   # enable
+  $xprt->debug(0);   # disable
+
+=head2 process
+
+Runs the pipeline.
+
+  my $ok = $xprt->process();           # no input
+  my $ok = $xprt->process($something); # $something available as $agent->BOARD->INPUT
+
+The main loop iterates over all registered agents in order, calling C<loop()>
+on each one, until C<BOARD->{SOLVED}> or C<BOARD->{FAILED}> is set.  It respects
+C<_REPLAY> and C<_REPLAY_ALL> signals from the agents.
+
+An agent tagged with C<_LOCK_UNTIL_STABLE> is skipped when any earlier agent in
+the current iteration has already succeeded (C<_SUCCES> is true).  This allows
+priority-based sequencing without explicit coupling.
+
+If C<_MAX_ITER> full iterations complete without termination, a warning is emitted
+and C<process()> returns C<undef>.
+
+Returns C<1> if C<SOLVED>, C<undef> if C<FAILED> or if C<_MAX_ITER> is exceeded.
 
 =cut
 
@@ -64,23 +128,6 @@ sub new {
   }, $class;
 }
 
-=head1 SUBROUTINES/METHODS
-
-=head2 register
-
-   use Chorus::Expert;
-   use Chorus::Engine;
-
-   my $xprt = Chorus::Expert->new();
-
-   my $e1 = Chorus::Engine->new();    # inference engine 1
-   my $e2 = Chorus::Engine->new();    # inference engine 2
-
-   $xprt->register($e1,$e2);          # $e1 and $e2 added to the list of agents
-                                      # providing to all of them a shared attribute named BOARD
-
-=cut
-
 sub register {
   my $this  = shift;
   my $board = $this->{_board};
@@ -91,19 +138,6 @@ sub register {
 }
 
 # --
-
-=head2 process
-
-   Tells the Chorus::Expert object to enter in an infinite loop until one of the engines
-   set the attribute $SELF->BOARD->{SOLVED} to something true.
-   The Chorus::Expert object will ask its agents, one after one, to test all its rules with all
-   possible combinations of its _SCOPE attributes. An agent never ends while at least one of its rules
-   returns a true value in the same loop (see Chorus::Engine documentation).
-
-   $xprt->process();            # without argument
-   $xprt->process($something);  # this argument will become $SELF->BOARD->INPUT for all agents
-
-=cut
 
 sub debug {
   my ($this, $level) = @_;
@@ -163,37 +197,28 @@ Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-chorus-expert at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+Please report bugs via the CPAN request tracker:
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>
 
 =head1 SUPPORT
 
-You can find documentation for this module with the perldoc command.
-
-    perldoc Chorus::Expert
-
-You can also look for information at:
+  perldoc Chorus::Expert
 
 =over 4
 
-=item * RT: CPAN's request tracker (report bugs here)
+=item * RT -- L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Expert>
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Expert>
+=item * AnnoCPAN -- L<http://annocpan.org/dist/Chorus-Expert>
 
-=item * AnnoCPAN: Annotated CPAN documentation
+=item * CPAN Ratings -- L<http://cpanratings.perl.org/d/Chorus-Expert>
 
-L<http://annocpan.org/dist/Chorus-Expert>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Chorus-Expert>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Chorus-Expert/>
+=item * Search CPAN -- L<http://search.cpan.org/dist/Chorus-Expert/>
 
 =back
+
+=head1 SEE ALSO
+
+L<Chorus::Frame>, L<Chorus::Engine>
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -203,7 +228,7 @@ This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
 by the Free Software Foundation; or the Artistic License.
 
-See http://dev.perl.org/licenses/ for more information.
+See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 
