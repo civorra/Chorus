@@ -8,27 +8,56 @@
 >                      ou données fournies inline par l'utilisateur
 >
 > **Responsabilité unique : valider un projet contre la connaissance.**
-> Ce skill lit la KB issue de `chorus-feed` et génère le code d'exécution
-> nécessaire pour lancer le pipeline Chorus et produire un rapport de conformité.
+> Le fichier projet est de la **donnée d'entrée runtime** — il n'influence pas
+> la génération de l'infrastructure. Deux `chorus-check` sur le même sandbox
+> avec des projets différents partagent exactement la même infrastructure.
 >
 > Prérequis : `chorus-feed <sandbox-name>` doit avoir été exécuté au préalable
 > (KB org + YAML présents dans le sandbox).
 
 ---
 
-## 0. Chargements préalables
+## ⚡ Étape 0 — Détection infrastructure (PRIORITAIRE, avant tout chargement)
+
+**C'est la première action à exécuter, sans exception.**
+
+Appeler `eca__directory_tree` sur `$SANDBOX` (max_depth=3) et vérifier :
+
+```
+$SANDBOX/run.pl
+$SANDBOX/lib/<Namespace>/Feed.pm
+$SANDBOX/lib/<Namespace>/Expert.pm
+$SANDBOX/lib/<Namespace>/Agent/<Nom>.pm  ← au moins un
+```
+
+### ✅ Infrastructure présente → CHEMIN RAPIDE
+
+**Aller directement à la Phase 6. Ne pas charger `chorus-engine.md`. Ne pas lire
+`index.org`. Ne pas lire les KB agents. Ne pas générer quoi que ce soit.**
+
+L'infrastructure est liée au corpus/KB, pas au projet. Changer de fichier projet
+ne justifie aucune régénération.
+
+> **Régénération forcée** : uniquement si l'utilisateur mentionne explicitement
+> qu'un `chorus-feed` a été exécuté depuis la dernière génération, ou demande
+> textuellement de "régénérer" / "rebuilder" l'infrastructure.
+> Un deuxième `chorus-check` avec un projet différent n'est **jamais** une
+> régénération forcée.
+
+### ❌ Infrastructure absente ou incomplète → CHEMIN COMPLET
 
 Charger :
 - `chorus-engine.md` — référence moteur
-- Lire `$SANDBOX/eca/agents/index.org` — pipeline, agents, namespace
+- `$SANDBOX/eca/agents/index.org` — pipeline, agents, namespace
 
 > ⚠️ Ne pas lire les KB agents (`<slug>.org`) ni les YAML à ce stade.
 > Ils ne sont nécessaires qu'en cas de génération (infrastructure absente).
-> Les lire systématiquement avant exécution est une perte de contexte inutile.
+
+Puis exécuter les Phases 0, 1–5, 6, 7 dans l'ordre.
 
 ---
 
-## Phase 0 — Vérification des prérequis KB
+## Phase 0 — Vérification des prérequis KB *(chemin complet uniquement)*
 
 ```
 $SANDBOX/eca/agents/index.org     ← doit exister
@@ -43,40 +72,6 @@ Extraire depuis `index.org` :
 - Le namespace Perl du projet
 - La liste ordonnée des agents (pos, slug, module Perl)
 - L'agent de terminaison (dernier)
-
----
-
-## Phase 0b — Détection de l'infrastructure existante
-
-Vérifier la présence des fichiers suivants dans `$SANDBOX` :
-
-```
-$SANDBOX/lib/<Namespace>/Feed.pm
-$SANDBOX/lib/<Namespace>/Expert.pm
-$SANDBOX/lib/<Namespace>/Agent/<Nom>.pm  ← au moins un
-$SANDBOX/run.pl
-```
-
-**Si tous ces fichiers existent → infrastructure présente.**
-
-```
-→ Sauter les Phases 1–5 (génération).
-→ Aller directement en Phase 6 (exécution).
-→ Auditer YAML/Helpers uniquement si crash ou résultat inattendu.
-→ La Phase 7 (checklist) ne s'applique pas à ce chemin.
-```
-
-**Si l'un de ces fichiers est absent → infrastructure absente ou incomplète.**
-
-```
-→ Lire les KB agents (<slug>.org) et les YAML nécessaires.
-→ Exécuter les Phases 1–5 (génération complète ou partielle).
-→ Puis Phase 6 (exécution) et Phase 7 (checklist post-génération).
-```
-
-> **Cas de régénération forcée :** si l'utilisateur demande explicitement
-> une régénération (ex. après un `chorus-feed` enrichissant la KB),
-> traiter comme "infrastructure absente" même si les fichiers existent.
 
 ---
 
@@ -603,7 +598,7 @@ Après la sortie verbatim, signaler en commentaire court (optionnel) :
 ## Phase 7 — Vérification finale *(post-génération uniquement)*
 
 > ⚠️ Cette checklist s'applique **uniquement après génération** des Phases 1–5.
-> Ne pas l'exécuter si l'infrastructure était déjà présente (Phase 0b → chemin direct).
+> Ne pas l'exécuter sur le chemin rapide (infrastructure déjà présente).
 
 - [ ] `Feed.pm` : slot de ciblage agent 1 présent dans `%SLOTS_REQUIS`
 - [ ] `Feed.pm` : validation slots obligatoires couvre tous les types du projet
