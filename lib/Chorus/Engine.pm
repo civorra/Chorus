@@ -10,6 +10,8 @@ use Chorus::Frame;
 use Chorus::Collection::Filter qw(@_VFILTER);
 use YAML qw(LoadFile);
 
+=encoding UTF-8
+
 =head1 NAME
 
 Chorus::Engine - A lightweight inference engine for rule-based reasoning over frames.
@@ -88,6 +90,7 @@ Additional optional slots on the rule frame:
 
   _TERMINAL   'solved' or 'failed' -- auto-terminates the engine when the rule fires.
   _PREMISSES  Hashref of slot names used as metadata for reorder().
+  _TRACE      If true, logs a line to STDERR each time this rule fires (even without _LOG).
 
 The C<_APPLY> sub receives one combination of C<_SCOPE> values as a hash.  It should
 return a true value when it has made a change, or false/undef when it has not.
@@ -102,6 +105,9 @@ a full pass, or until the shared BOARD signals C<SOLVED> or C<FAILED>, or until
 C<_MAX_CYCLES> (default: 10,000) is reached.
 
   $agent->loop();
+
+The current cycle count is available via C<< $agent->{_CYCLE} >> during execution
+(starts at 0, incremented after each pass that fires at least one rule).
 
 =head2 applyrules
 
@@ -163,6 +169,49 @@ Useful for dynamically prioritising rules after a domain event.
   }
   $agent->reorder(\&by_interest);
 
+=head2 _LOG — rule-firing log
+
+Set C<_LOG> on an agent B<before> calling C<loadRules()> or C<addrule()> to get a
+trace of every rule that fires during C<loop()>.
+
+  $agent->set('_LOG', 1);            # default handler → STDERR
+  $agent->set('_LOG', \&my_handler); # custom handler
+
+The custom handler receives C<($engine, $rule_id, \%scope_opts)>:
+
+  sub my_handler {
+      my ($engine, $rule_id, $opts) = @_;
+      printf "fired: %s  cycle=%s\n", $rule_id, $engine->{_CYCLE};
+  }
+
+The default handler prints one line per firing:
+
+  [cycle   1]  MyAgent / rule-name  fired
+               scope: x=frame-id
+
+C<_LOG> is checked at fire time — setting it to C<undef> or C<0> after C<addrule()>
+silently disables logging for subsequent cycles.
+
+The callback is the natural integration point for any external logger.  Example
+with C<Log::Log4perl>:
+
+  use Log::Log4perl qw(:easy);
+  Log::Log4perl->easy_init($DEBUG);
+
+  $agent->set('_LOG', sub {
+      my ($engine, $rule_id, $opts) = @_;
+      DEBUG sprintf "[cycle %s]  %s / %s  fired",
+          $engine->{_CYCLE}, $engine->{_IDENT} // '?', $rule_id;
+  });
+
+C<Log::Log4perl> is B<not> a dependency of C<Chorus::Engine> — the module stays
+lightweight; logging infrastructure is the caller's responsibility.
+
+To trace a B<single rule> without enabling logging on the whole agent, set C<_TRACE>
+on that rule (or add C<TRACE: 1> to the YAML file):
+
+  $agent->addrule( _ID => 'my-rule', _TRACE => 1, _SCOPE => ..., _APPLY => ... );
+
 =head2 pause
 
 Disables the engine until C<wakeup()> is called.  While paused, C<loop()> has no
@@ -206,6 +255,7 @@ precedence.
   PREMISES    PREMISSES   Optional: metadata for reorder()
   CONDITION   CONDITION   Optional: guard — return unless CONDITION
   EXCEPTION   EXCEPTION   Optional: guard — return if EXCEPTION
+  TRACE       TRACE       Optional: 1 — log to STDERR each time this rule fires
 
 Example using English keywords:
 
@@ -299,7 +349,28 @@ sub unchanged {
     return shift;
 }
 
-
+# _log_fire( $engine, $rule_id, \%scope_opts, $log_target )
+#
+# Called after _APPLY returns a truthy value (rule fired).
+# $log_target : 1 or undef  → print to STDERR
+#             : coderef       → called with ($engine, $rule_id, \%scope_opts)
+#
+sub _log_fire {
+    my ($engine, $rule_id, $opts, $log) = @_;
+    if (ref($log) eq 'CODE') {
+        $log->($engine, $rule_id, $opts);
+        return;
+    }
+    # Default: STDERR
+    my $agent = $engine->{_IDENT} // '?';
+    my $cycle = $engine->{_CYCLE} // '?';
+    printf STDERR "[cycle %3s]  %s / %s  fired\n", $cycle, $agent, $rule_id;
+    for my $var (sort keys %$opts) {
+        my $frame = $opts->{$var};
+        my $id    = ref($frame) && $frame->can('get') ? ($frame->get('id') // $frame->get('_KEY') // '?') : "$frame";
+        printf STDERR "            scope: %s=%s\n", $var, $id;
+    }
+}
 
 sub readRule {
   my (%opt) = @_;
@@ -330,6 +401,7 @@ sub codeRule {
 
     $res .= "\n  _ID        => '$rulename',\n";
     $res .= "  _TERMINAL  => '$terminal',\n" if $terminal;
+    $res .= "  _TRACE     => 1,\n" if $rule->{TRACE};
     $res .= ( "  _PREMISSES => {\n    " . join( ",\n    ", map {"$_ => 'Y'"} @$premisses ) . "\n  },\n" ) if scalar(@$premisses);
     $res .= "  _SCOPE => {\n    ";
     $res .= join( ",\n    ", map { "$_ => sub { [ " . $engine->setScope( $scp->{$_} ) . ' ] }' } keys( %{$scp} ) );
@@ -451,11 +523,13 @@ my $ENGINE = Chorus::Frame->new(
 
   loop    => sub {
     $SELF->{_SUCCES} = 0;
+    $SELF->{_CYCLE}  = 0;
     my $max = $SELF->get('_MAX_CYCLES') // 10_000;
     my $cycles = 0;
     while ( applyrules() ) {
       my $b = $SELF->get('BOARD');
       last if $b and ($b->{SOLVED} or $b->{FAILED});
+      ++$SELF->{_CYCLE};
       if (++$cycles >= $max) {
         warn "Chorus::Engine - loop() reached max cycles ($max) without convergence\n";
         last;
@@ -477,6 +551,22 @@ my $ENGINE = Chorus::Frame->new(
         warn "Chorus::Engine - addrule: duplicate rule _ID '$id' — skipped\n";
         return;
       }
+    }
+    # Logging wrapper — active when _LOG is set on the engine OR _TRACE on the rule
+    if (my $orig_apply = $args{_APPLY}) {
+      my $engine   = $SELF;
+      my $rule_id  = $args{_ID} // '(unnamed)';
+      my $do_trace = $args{_TRACE};
+      $args{_APPLY} = sub {
+        my %opts = @_;
+        my $res  = $orig_apply->(%opts);
+        if ($res) {
+          my $log = $engine->{_LOG} // ($do_trace ? 1 : undef);
+          _log_fire($engine, $rule_id, \%opts, $log) if $log;
+        }
+        return $res;
+      };
+      @rule_def = %args;
     }
     push @{$SELF->{_RULES}}, Chorus::Frame->new(@rule_def);
   },
