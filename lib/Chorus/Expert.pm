@@ -198,7 +198,7 @@ does not belong to individual domain frames:
 Use BOARD for pipeline-level flags and counters.  Domain knowledge (facts about
 specific objects) belongs on L<Chorus::Frame> instances, not on the BOARD.
 
-=head1 AUTHOR
+=cut
 
 use Chorus::Frame;
 
