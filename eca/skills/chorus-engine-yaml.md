@@ -73,7 +73,7 @@ $agent->addrule(
 **Inference loop:** `loop()` calls `applyrules()` as long as at least one rule returns true.
 Safety: `_MAX_CYCLES` (default 10,000) → warning + stop if exceeded.
 
-**Flow controls in YAML EFFET — use `$SELF` (never `$agent`):**
+**Flow controls in YAML ACTION — use `$SELF` (never `$agent`):**
 
 | `$SELF->method()` | Effect |
 |---|---|
@@ -84,16 +84,16 @@ Safety: `_MAX_CYCLES` (default 10,000) → warning + stop if exceeded.
 | `$SELF->solved()` | `BOARD->{SOLVED} = 'Y'` → immediate stop |
 | `$SELF->failed()` | `BOARD->{FAILED} = 'Y'` → immediate stop |
 
-> ⛔ `$agent` is **not** in scope inside a YAML EFFET eval → `Global symbol "$agent"` crash.
+> ⛔ `$agent` is **not** in scope inside a YAML ACTION eval → `Global symbol "$agent"` crash.
 > Always use `$SELF` for flow control in `.yml` files.
 
 ---
 
 ## Implicit Slot Pipeline
 
-Agent chaining via the slot targeted in `CHERCHER`:
+Agent chaining via the slot targeted in `FIND`:
 
-| Agent | `CHERCHER.attribut` | Sets the slot |
+| Agent | `FIND.attribut` | Sets the slot |
 |---|---|---|
 | Specialty 1 | `slot_brut` | `slot_enrichi` |
 | Specialty 2 | `slot_enrichi` | `slot_calcule` |
@@ -107,31 +107,38 @@ Agent chaining via the slot targeted in `CHERCHER`:
 
 ## Complete YAML Guide
 
+> **Language rule:** use English keywords by default (`RULE`, `FIND`, `ACTION`, `PREMISES`).
+> Switch to French keywords (`REGLE`, `CHERCHER`, `EFFET`, `PREMISSES`) only when the corpus
+> processed by `chorus-feed` is in French.
+> Sub-keys `attribut` and `filtre` are invariant — no English alias exists in the engine.
+
 ### Rule Structure
 
 ```yaml
-REGLE: nom-de-la-regle          # mandatory — becomes _ID (deduplication)
+RULE: rule-name                  # mandatory — becomes _ID (deduplication)
 TERMINAL: solved                 # optional — 'solved' or 'failed'
-PREMISSES:                       # optional — metadata for reorder()
-  - slot-prerequis
-  - autre-slot
-CHERCHER:                        # mandatory — defines _SCOPE
+PREMISES:                        # optional — metadata for reorder()
+  - slot-prerequisite
+  - another-slot
+FIND:                            # mandatory — defines _SCOPE
   var1:
-    attribut: nom-du-slot        # → fmatch(slot => 'nom-du-slot')
-    filtre: '$_->prop > 0'       # optionnel → grep { ... }
+    attribut: slot-name          # → fmatch(slot => 'slot-name')
+    filtre: '$_->prop > 0'       # optional → grep { ... }
   var2:
-    attribut: autre-slot
-CONDITION: '$var1->ok'           # optionnel — return unless CONDITION
-EXCEPTION: 'defined $var1->{r}' # optionnel — return if EXCEPTION
-EFFET: |                         # obligatoire — corps de _APPLY
+    attribut: another-slot
+CONDITION: '$var1->ok'           # optional — return unless CONDITION
+EXCEPTION: 'defined $var1->{r}' # optional — return if EXCEPTION
+ACTION: |                        # mandatory — body of _APPLY
   $var1->set('result', $var2->value);
   1
 ```
 
-### CHERCHER — Variable Scope
+> French equivalent (corpus in French): `REGLE` / `CHERCHER` / `EFFET` / `PREMISSES`
+
+### FIND — Variable Scope
 
 ```yaml
-CHERCHER:
+FIND:
   p:
     attribut: classe_bois
 # → _SCOPE => { p => sub { [ fmatch(slot => 'classe_bois') ] } }
@@ -154,20 +161,20 @@ CHERCHER:
 
 > **Idempotence:** always add `EXCEPTION: defined $var->{slot_pose}` to prevent re-firing on the same Frame.
 
-### EFFET — Syntaxes
+### ACTION — Syntaxes
 
 ```yaml
 # Single instruction
-EFFET: "$frame->increase; 1"
+ACTION: "$frame->increase; 1"
 
 # Multi-line (use | not >)
-EFFET: |
-  my $W = $p->{largeur} * $p->{hauteur} ** 2 / 6;
+ACTION: |
+  my $W = $p->{width} * $p->{height} ** 2 / 6;
   $p->set('sigma_m', $M / $W);
   1
 
 # Sequential list
-EFFET:
+ACTION:
   - '$p->set("step1", "y")'
   - '$p->set("done", "y"); 1'
 ```
@@ -177,18 +184,18 @@ EFFET:
 ### TERMINAL — Automatic Termination
 
 ```yaml
-REGLE: tout-est-traite
-CHERCHER:
+RULE: all-processed
+FIND:
   p:
-    attribut: statut
+    attribut: status
 TERMINAL: solved
-EXCEPTION: '$p->{statut} ne "FINAL"'
-EFFET: "1"
+EXCEPTION: '$p->{status} ne "FINAL"'
+ACTION: "1"
 ```
 
 - `TERMINAL: solved` — rule fires on ONE Frame and that is sufficient to terminate.
-- `$SELF->solved()` in EFFET — when a condition must be checked before concluding.
-- ⛔ **Never** termination via global `fmatch` in a YAML EFFET → guaranteed infinite loop → use pure Perl `addrule()` (see `chorus-check.md` Phase 3).
+- `$SELF->solved()` in ACTION — when a condition must be checked before concluding.
+- ⛔ **Never** termination via global `fmatch` in a YAML ACTION → guaranteed infinite loop → use pure Perl `addrule()` (see `chorus-check.md` Phase 3).
 
 ### Loading Order
 
@@ -196,7 +203,7 @@ EFFET: "1"
 
 Multiple directories = multiple `loadRules()` calls.
 
-### PREMISSES — for reorder()
+### PREMISES — for reorder()
 
 ```perl
 sub sort_by_interest {
@@ -214,23 +221,23 @@ $agent->reorder(\&sort_by_interest);
 
 ### ✅ YAML Rules
 
-- [ ] **Always** end `EFFET` with a truthy value (`1` or truthy expression)
-- [ ] **Conditional EFFET without `else`**: if the `if` modifies nothing and returns `1` → infinite loop until `_MAX_CYCLES`.
+- [ ] **Always** end `ACTION` with a truthy value (`1` or truthy expression)
+- [ ] **Conditional ACTION without `else`**: if the `if` modifies nothing and returns `1` → infinite loop until `_MAX_CYCLES`.
       ```yaml
       # ⛔ WRONG — infinite loop if condition never true
-      EFFET: |
+      ACTION: |
         if ($p->{val} > 5) { $p->set('flag', 'KO') }
         1
       # ✅ CORRECT
-      EFFET: |
+      ACTION: |
         if ($p->{val} > 5) { $p->set('flag', 'KO'); return 1 }
         0
       ```
       > Invisible on a sandbox (6 frames), critical at real scale (300 frames × 40 rules).
 - [ ] **Always** add `EXCEPTION: defined $var->{slot_pose}` for idempotence
-- [ ] Use `|` (block scalar) for multi-line `EFFET`, never `>`
+- [ ] Use `|` (block scalar) for multi-line `ACTION`, never `>`
 - [ ] Name files `R01-`, `R02-` to control loading order
-- [ ] `filtre` in `CHERCHER` to narrow scope **before** `_APPLY`
+- [ ] `filtre` in `FIND` to narrow scope **before** `_APPLY`
 
 ### ✅ Frames
 
@@ -268,11 +275,11 @@ $agent->reorder(\&sort_by_interest);
 ## Quick Reference — YAML DSL Keys
 
 ```
-REGLE       → _ID
+RULE        → _ID              (alias: REGLE — French corpus)
 TERMINAL    → 'solved' | 'failed'
-PREMISSES   → [slot, ...]
-CHERCHER    → _SCOPE (attribut + filtre optionnel)
+PREMISES    → [slot, ...]      (alias: PREMISSES — French corpus)
+FIND        → _SCOPE (attribut + filtre optional)   (alias: CHERCHER — French corpus)
 CONDITION   → return unless ...
 EXCEPTION   → return if ...
-EFFET       → corps _APPLY (doit retourner vrai)
+ACTION      → _APPLY body (must return true)         (alias: EFFET — French corpus)
 ```

@@ -161,7 +161,7 @@ When in doubt → prefer B (always more efficient).
 > ⚠️ **Scalability — volume rule:** if the expected number of Frames exceeds 100,
 > **always force Strategy B** (presence slot + `EXCEPTION` on each rule).
 > Strategy A without `filtre` on a scope of > 100 Frames risks O(N²)
-> as soon as `CHERCHER` has multiple variables (unreduced Cartesian product).
+> as soon as `FIND` has multiple variables (unreduced Cartesian product).
 
 **2.3 `_MAX_CYCLES` sizing**
 
@@ -182,7 +182,7 @@ The engine's default value (`10 000`) is a safeguard against infinite loops
 
 **2.3 Strategy B — presence slot**
 - Name: `besoin_<slug_underscore>` (convention)
-- Set by: initial feed (agent 1) or agent N-1 in its EFFET (subsequent agents)
+- Set by: initial feed (agent 1) or agent N-1 in its ACTION (subsequent agents)
 
 **2.4 Strategy A — discriminating slot**
 - Identify the common slot + filter value
@@ -212,7 +212,7 @@ Mandatory fill order:
 > ⚠️ **Normative tables — externalize into Helpers, not inline in YAMLs.**
 > For domains with dense corpora (standards, DTU, EC5, NF EN…), normative
 > values (resistances, exposure classes, regulatory thresholds…) must
-> be centralized in `Helpers.pm` rather than coded as scalars in YAML `EFFET`s.
+> be centralized in `Helpers.pm` rather than coded as scalars in YAML `ACTION`s.
 > Advantages: updates during a normative revision without touching the YAMLs;
 > traceability to the source (comment `Source corpus: §<N> — <title>`);
 > unit tests independent of the rules.
@@ -242,7 +242,7 @@ Points to watch:
 
 * Pipeline consistency
   - Agent 1 targeting slot: set by → initial feed
-  - Agent 2 targeting slot: set by → agent 1 (R<NN>-xxx.yml, EFFET)
+  - Agent 2 targeting slot: set by → agent 1 (R<NN>-xxx.yml, ACTION)
   - Termination agent: <Name> pos <N> → rule <Rxx> → solved()
 
 * Integrated corpus
@@ -253,49 +253,52 @@ Points to watch:
 
 ### Phase 5 — Generate YAML files
 
+> **Language rule:** use English keywords by default (`RULE`, `FIND`, `ACTION`, `PREMISES`).
+> Use French keywords (`REGLE`, `CHERCHER`, `EFFET`, `PREMISSES`) only when the corpus is in French.
+
 For each rule in the `Rule catalog` of each KB:
 
 ```yaml
-REGLE: <nom-kebab-case>         # mandatory — becomes _ID (deduplication)
+RULE: <kebab-case-name>          # mandatory — becomes _ID (deduplication)
 TERMINAL: solved                 # optional — 'solved' or 'failed'
                                  # when the rule fires AND TERMINAL is present →
                                  # the engine calls solved()/failed() automatically
-PREMISSES:                       # optional — prerequisite slots for reorder()
-  - <slot-prerequis>             # used by $agent->reorder(\&fn) to sort
-  - <autre-slot>                 # rules by relevance dynamically
-CHERCHER:                        # mandatory — defines _SCOPE
+PREMISES:                        # optional — prerequisite slots for reorder()
+  - <slot-prerequisite>          # used by $agent->reorder(\&fn) to sort
+  - <another-slot>               # rules by relevance dynamically
+FIND:                            # mandatory — defines _SCOPE
   <var>:
-    attribut: <slot_ciblage>
+    attribut: <targeting-slot>
     filtre: '<expression for strategy A>'
-EXCEPTION: defined $<var>->{<slot_pose>}   # idempotence — return if
-CONDITION: '<garde optionnelle>'            # return unless
-EFFET: |
-  # ⚠️ Flow controls in EFFET: use $SELF (not $agent) → chorus-engine §1.3
-  <code Perl>
+EXCEPTION: defined $<var>->{<slot_set>}    # idempotence — return if
+CONDITION: '<optional-guard>'              # return unless
+ACTION: |
+  # ⚠️ Flow controls in ACTION: use $SELF (not $agent) → chorus-engine §1.3
+  <Perl code>
   1
 ```
 
-**When to use `TERMINAL` vs `$SELF->solved()` in EFFET:**
+**When to use `TERMINAL` vs `$SELF->solved()` in ACTION:**
 - `TERMINAL: solved` — the rule fires on ONE Frame and that alone is sufficient to terminate
-- `$SELF->solved()` in EFFET — when the rule must check a condition before concluding.
-  ⚠️ `$agent` is **not** available in a YAML EFFET (error `Global symbol "$agent"`) —
-  use **exclusively `$SELF`** for flow control in EFFETs.
+- `$SELF->solved()` in ACTION — when the rule must check a condition before concluding.
+  ⚠️ `$agent` is **not** available in a YAML ACTION (error `Global symbol "$agent"`) —
+  use **exclusively `$SELF`** for flow control in ACTIONs.
 
 > ⚠️ **Critical antipattern — YAML termination + global fmatch = infinite loop:**
-> A YAML rule with a global `fmatch` in the EFFET (without an `EXCEPTION` covering the final slot)
+> A YAML rule with a global `fmatch` in the ACTION (without an `EXCEPTION` covering the final slot)
 > never converges: it fires on every Frame, returns 0 indefinitely, and
 > `applyrules()` can never conclude. `_MAX_CYCLES` will be reached on every run.
 >
 > ```yaml
-> # ⛔ ANTIPATTERN — boucle infinie garantie
-> REGLE: terminaison
-> CHERCHER:
+> # ⛔ ANTIPATTERN — guaranteed infinite loop
+> RULE: termination
+> FIND:
 >   p:
->     attribut: besoin_conformite
-> EFFET: |
->   my @sans = grep { !defined $_->{statut} }
->              Chorus::Frame::fmatch(slot => 'besoin_conformite');
->   if (@sans == 0) { $SELF->solved(); return 1 }
+>     attribut: needs_check
+> ACTION: |
+>   my @pending = grep { !defined $_->{status} }
+>                 Chorus::Frame::fmatch(slot => 'needs_check');
+>   if (@pending == 0) { $SELF->solved(); return 1 }
 >   0
 > ```
 >
@@ -303,22 +306,22 @@ EFFET: |
 > with `$agent` captured in a closure (see `chorus-check.md`, Phase 3, termination rule).
 > Never code a termination via global `fmatch` in a YAML.
 
-**When to document `PREMISSES`:**
+**When to document `PREMISES`:**
 Always document if the agent is likely to use `reorder()` to
-optimize rule order at runtime. PREMISSES declare
+optimize rule order at runtime. PREMISES declare
 the slots the rule needs — the sorting code consults them via `$rule->_PREMISSES`.
 
 YAML Checklist:
 - [ ] Slot names = Slot dictionary from the KB
-- [ ] Every rule that sets a slot has its idempotence `EXCEPTION: defined $var->{slot_pose}`
-- [ ] `EFFET` ends with `1` or a truthy expression
-- [ ] ⛔ **`$f->{slot} = val` in EFFET** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
+- [ ] Every rule that sets a slot has its idempotence `EXCEPTION: defined $var->{slot_set}`
+- [ ] `ACTION` ends with `1` or a truthy expression
+- [ ] ⛔ **`$f->{slot} = val` in ACTION** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
 - [ ] ⛔ **CONDITION too restrictive on `type_element`** → silently excludes Frames of other types — prefer testing slot presence → `chorus-engine §5`
-- [ ] ⛔ **Conditional EFFET without `else`** → returns `1` even when nothing modified → infinite loop at scale — always `return 1` inside the `if`, `0` as fallback → `chorus-engine §5`
-- [ ] Use `|` (block scalar) for multi-line `EFFET` — never `>`
+- [ ] ⛔ **Conditional ACTION without `else`** → returns `1` even when nothing modified → infinite loop at scale — always `return 1` inside the `if`, `0` as fallback → `chorus-engine §5`
+- [ ] Use `|` (block scalar) for multi-line `ACTION` — never `>`
 - [ ] Files named `R<NN>-<slug>.yml` (alphabetical = load order)
 - [ ] ⛔ **Termination via global `fmatch` in YAML** → guaranteed infinite loop — use pure Perl `addrule()` instead (see `chorus-check.md` Phase 3)
-- [ ] If `PREMISSES` present: consistent with the KB `Slot dictionary`
+- [ ] If `PREMISES` present: consistent with the KB `Slot dictionary`
 
 ### Phase 5.5 — Generate Perl Helpers
 
@@ -355,7 +358,7 @@ our @EXPORT_OK = qw(
 # Source corpus : §<N> — <titre section>
 # -------------------------------------------------------
 # Signature : <helper1>(<args>) → <type retour>
-# Called by: R<NN>-<slug>.yml (EFFET)
+# Called by: R<NN>-<slug>.yml (ACTION)
 sub <helper1> {
     my (<args>) = @_;
     # <corps extrait du corpus>
@@ -399,7 +402,7 @@ sub <helper2> {
 
 #### Helpers Checklist
 
-- [ ] Every helper referenced in a YAML EFFET has its implementation in `Helpers.pm`
+- [ ] Every helper referenced in a YAML ACTION has its implementation in `Helpers.pm`
 - [ ] `@EXPORT_OK` covers all helpers in the file
 - [ ] Every helper has its `Source corpus` comment
 - [ ] No side effects (no `set`, no `fmatch`, no I/O)
