@@ -21,7 +21,7 @@
 
 ## 0. Prerequisites
 
-Load: `chorus-engine.md` — engine reference (Frame, Engine, fmatch, YAML DSL)
+Load: `chorus-engine-yaml.md` — YAML authoring reference (Frame essentials, Engine rule triggering, YAML guide, checklists)
 
 ---
 
@@ -235,19 +235,7 @@ CHERCHER:                        # obligatoire — définit _SCOPE
 EXCEPTION: defined $<var>->{<slot_pose>}   # idempotence — return if
 CONDITION: '<garde optionnelle>'            # return unless
 EFFET: |
-  # ⚠️ Dans un EFFET YAML, les contrôles de flux s'appellent via $SELF — PAS $agent.
-  # $agent n'est PAS dans le scope de l'eval Chorus::Engine → Global symbol "$agent"...
-  # $SELF = le Frame-règle courant (scope Engine) → il porte les méthodes de flux.
-  #
-  # Contrôles de flux disponibles dans EFFET (sur $SELF) :
-  #   $SELF->cut()        → sort du scope courant → règle suivante (même agent)
-  #   $SELF->last()       → sort de la boucle de règles → agent suivant
-  #   $SELF->replay()     → redémarre depuis la 1re règle de cet agent
-  #   $SELF->replay_all() → redémarre depuis le 1er agent (Expert)
-  #   $SELF->solved()     → BOARD->{SOLVED} = 'Y' → arrêt immédiat
-  #   $SELF->failed()     → BOARD->{FAILED} = 'Y' → arrêt immédiat
-  #
-  # Pour appeler $agent->solved() → utiliser addrule() Perl pur (voir chorus-check.md).
+  # ⚠️ Flow controls in EFFET: use $SELF (not $agent) → chorus-engine §1.3
   <code Perl>
   1
 ```
@@ -287,69 +275,14 @@ the slots the rule needs — the sorting code consults them via `$rule->_PREMISS
 
 YAML Checklist:
 - [ ] Slot names = Slot dictionary from the KB
-- [ ] Every rule that sets a slot has its idempotence `EXCEPTION`
+- [ ] Every rule that sets a slot has its idempotence `EXCEPTION: defined $var->{slot_pose}`
 - [ ] `EFFET` ends with `1` or a truthy expression
-- [ ] ⛔ **Critical pitfall `$f->{slot} = val` in EFFET**: direct assignment bypasses
-      `_setSlot` → `_registerSlot` → `%REPOSITORY` is not updated → `fmatch(slot => 'slot')`
-      returns **0 Frames** in downstream agents. **Silent** bug: no error, the slot
-      exists on the Frame but is invisible to any targeting.
-      **In a YAML EFFET, always use `$f->set('slot', val)`.**
-
-      ```yaml
-      # ⛔ FAUX — slot invisible à fmatch → agents aval aveugles (pipeline cassé sans erreur)
-      EFFET: |
-        $f->{besoin_conformite} = 1;
-        1
-
-      # ✅ CORRECT — slot enregistré dans %REPOSITORY → visible par fmatch
-      EFFET: |
-        $f->set('besoin_conformite', 1);
-        1
-      ```
-- [ ] ⛔ **Pitfall CONDITION too restrictive on `type_element`**: a CONDITION of the form
-      `$p->{type_element} eq "X"` **silently** excludes every Frame of a different type, even
-      if the rule should apply to multiple types.
-      No error, no crash — the pipeline SOLVEs, but some Frames are never checked.
-      **Detection impossible at small volume** (the excluded Frames still pass to the next rule
-      which defensively sets the OK slot).
-
-      ```yaml
-      # ⛔ FAUX — ne cible qu'un seul type, exclut les autres porteurs du slot
-      CONDITION: '$p->{type_element} eq "type_A" && defined $p->{slot_mesure}'
-
-      # ✅ CORRECT — cibler sur la présence du slot sémantique, pas sur le type
-      CONDITION: 'defined $p->{slot_mesure} && defined $p->{slot_classe}'
-
-      # ✅ CORRECT aussi — si le filtrage par type est intentionnel, lister TOUS les types
-      CONDITION: '$p->{type_element} =~ /^(type_A|type_B|type_C)$/ && defined $p->{slot_mesure}'
-      ```
-
-      **Rule:** in the CONDITION of a rule that checks a semantic slot (e.g. measurement slot,
-      classification slot), prefer testing **the presence of the slot** rather than
-      the `type_element`, unless excluding certain types is **intentional and documented**
-      in the agent KB `Rule catalog`.
-
-- [ ] **EFFET conditional pitfall**: if an `if` modifies nothing, return `0` — never unconditionally `1`.
-      The engine interprets `1` as "the rule did work" → `applyrules()` returns true → infinite loop
-      until `_MAX_CYCLES`. At scale (100+ Frames), this pitfall is invisible in sandbox and critical in production.
-
-      ```yaml
-      # DANGEREUX — retourne 1 même si rien n'est modifié
-      EFFET: |
-        if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO') }
-        1
-
-      # CORRECT — le moteur sait qu'il n'a pas travaillé
-      EFFET: |
-        if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO'); return 1 }
-        0
-      ```
-- [ ] Use `|` (block scalar) for multi-line `EFFET`s — never `>`
-- [ ] Files named `R<NN>-<slug>.yml` (alphabetical order = load order)
-- [ ] Termination rule: `TERMINAL: solved` or `$SELF->solved()` in EFFET — one path per agent.
-      ⛔ **Never `$agent->solved()` in a YAML EFFET** — `$agent` out of scope → crash.
-      ⛔ **Never global `fmatch` in a YAML EFFET for termination** → infinite loop.
-      If global termination (check all Frames) → pure Perl `addrule()` (see `chorus-check.md`).
+- [ ] ⛔ **`$f->{slot} = val` in EFFET** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
+- [ ] ⛔ **CONDITION too restrictive on `type_element`** → silently excludes Frames of other types — prefer testing slot presence → `chorus-engine §5`
+- [ ] ⛔ **Conditional EFFET without `else`** → returns `1` even when nothing modified → infinite loop at scale — always `return 1` inside the `if`, `0` as fallback → `chorus-engine §5`
+- [ ] Use `|` (block scalar) for multi-line `EFFET` — never `>`
+- [ ] Files named `R<NN>-<slug>.yml` (alphabetical = load order)
+- [ ] ⛔ **Termination via global `fmatch` in YAML** → guaranteed infinite loop — use pure Perl `addrule()` instead (see `chorus-check.md` Phase 3)
 - [ ] If `PREMISSES` present: consistent with the KB `Slot dictionary`
 
 ### Phase 5.5 — Generate Perl Helpers
