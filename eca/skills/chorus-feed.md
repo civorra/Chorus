@@ -388,6 +388,13 @@ Update `README.org`:
 - `Agent status` section: KB ✓, YAML ✓, Helpers ✓ (or `-` if none)
 - `Identified pipeline` section: complete table
 
+Invalidate the infrastructure hash so the next `chorus-check` triggers a
+full regeneration:
+
+```bash
+rm -f $SANDBOX/eca/.kb-hash
+```
+
 ---
 
 ## Mode B — Incremental Enrichment (`--enrich` required)
@@ -450,6 +457,13 @@ Update `README.org`:
 - Add the row in `Corpus` (number + file + source + date)
 - Update `Agent status` (KB, YAML, Helpers — new or enriched)
 - Increment the enrichment counter of each modified agent
+
+Invalidate the infrastructure hash so the next `chorus-check` triggers a
+full regeneration:
+
+```bash
+rm -f $SANDBOX/eca/.kb-hash
+```
 
 ---
 

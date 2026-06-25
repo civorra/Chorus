@@ -30,19 +30,26 @@ $SANDBOX/lib/<Namespace>/Expert.pm
 $SANDBOX/lib/<Namespace>/Agent/<Nom>.pm  ← au moins un
 ```
 
-### ✅ Infrastructure present → FAST PATH
+### ✅ Infrastructure present → hash check
 
-**Go directly to Phase 6. Do not load `chorus-engine.md`. Do not read
-`index.org`. Do not read agent KBs. Do not generate anything.**
+Compare the current KB hash against the stored one:
 
-The infrastructure is tied to the corpus/KB, not to the project. Changing the project file
-justifies no regeneration.
+```bash
+sha256sum $SANDBOX/eca/agents/*.org > /tmp/kb-hash-current
+```
 
-> **Forced regeneration**: only if the user explicitly mentions
-> that a `chorus-feed` has been run since the last generation, or explicitly asks
-> to "regenerate" / "rebuild" the infrastructure.
+- `$SANDBOX/eca/.kb-hash` **absent** → the infrastructure predates hash tracking
+  → treat as stale → **FULL PATH** (forced regeneration)
+- `$SANDBOX/eca/.kb-hash` **present**, content **identical** to current hash
+  → **FAST PATH**: go directly to Phase 6. Do not load `chorus-engine.md`.
+  Do not read `index.org`. Do not read agent KBs. Do not generate anything.
+- `$SANDBOX/eca/.kb-hash` **present**, content **differs** → KB was enriched
+  since last generation → **FULL PATH** (forced regeneration, no user prompt needed)
+
+> **Manual forced regeneration**: the user explicitly asks to
+> "regenerate" / "rebuild" the infrastructure → FULL PATH regardless of the hash.
 > A second `chorus-check` with a different project is **never** a
-> forced regeneration.
+> forced regeneration (hash comparison handles it automatically).
 
 ### ❌ Infrastructure absent or incomplete → FULL PATH
 
@@ -168,6 +175,20 @@ Create `$SANDBOX/run.pl` from template **T5** (`chorus-templates.md`).
 
 ---
 
+## Phase 5.5 — Record KB hash *(full path only, after Phases 1–5)*
+
+Once all infrastructure files have been generated successfully, record the
+current KB fingerprint so that the next `chorus-check` can detect staleness:
+
+```bash
+sha256sum $SANDBOX/eca/agents/*.org > $SANDBOX/eca/.kb-hash
+```
+
+This file is **never committed** (local artefact, like `sessions/`).
+It is invalidated (deleted) by `chorus-feed` at the end of each run.
+
+---
+
 ## Phase 6 — Execution and report
 
 Run the pipeline:
@@ -197,6 +218,7 @@ After the verbatim output, note briefly (optional):
 > ⚠️ This checklist applies **only after generation** of Phases 1–5.
 > Do not run it on the fast path (infrastructure already present).
 
+- [ ] `eca/.kb-hash` written after generation — contains `sha256sum` of all `eca/agents/*.org`
 - [ ] `Feed.pm`: agent 1 targeting slot present in `%SLOTS_REQUIS`
 - [ ] `Feed.pm`: mandatory slot validation covers all element types in the project
 - [ ] `Feed.pm`: unknown types → `warn + next` (not `die`) — safety net for mixed-sandbox JSON
