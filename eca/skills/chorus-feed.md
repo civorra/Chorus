@@ -4,7 +4,7 @@
 > Agent: `architect`
 >
 > `<sandbox-name>`: name of the sandbox directory under `$CHORUS/sandboxes/`
-> `<corpus>`: text/PDF file or inline content provided by the user
+> `<corpus>`: plain-text file (`.txt`), Markdown file (`.md`), or inline content — **never a PDF**
 > `--enrich`: activates Mode B (incremental enrichment) — absent by default
 >
 > **Single responsibility: enrich knowledge.**
@@ -32,6 +32,31 @@ self-contained unit. Cross-sandbox reads are forbidden in all modes (A and B).
 ## 0. Prerequisites
 
 Load: `chorus-engine-yaml.md` — YAML authoring reference (Frame essentials, Engine rule triggering, YAML guide, checklists)
+
+### ⛔ PDF input guard
+
+**Before doing anything else**, check the `<corpus>` argument.
+If it ends in `.pdf` (case-insensitive) → **stop immediately** and output:
+
+```
+⛔ The corpus provided is a PDF file.
+   chorus-feed requires a plain-text or Markdown file as input.
+
+   Run first:
+     chorus-pdf <sandbox-name> <file.pdf>           (text only, no API key)
+     chorus-pdf <sandbox-name> <file.pdf> --auto    (recommended — pdfminer + vision)
+     chorus-pdf <sandbox-name> <file.pdf> --images  (full vision — scanned PDFs)
+
+   Then re-run:
+     chorus-feed <sandbox-name> corpus/<NNN>-<slug>-text.txt
+     (or: corpus/<NNN>-<slug>-vision.md)
+
+   chorus-pdf extracts text, tables, figures and diagrams and produces
+   a .txt (text mode) or .md (auto/images mode) file ready for chorus-feed.
+```
+
+Do not proceed past this point if the input is a PDF.
+Inline content (no file extension) is always accepted as-is.
 
 ---
 
