@@ -3,7 +3,7 @@ COB Conformité — Construction Ossature Bois / DTU 31.2
 
 Exemple de pipeline de conformité multi-agents illustrant la chaîne complète Chorus+ECA :
   - 5 agents spécialisés en cascade (Qualification → Ossature → Thermique → SecuriteFeu → Conformite)
-  - 25 règles YAML issues du DTU 31.2 / NF EN 338 / EC5 / NF EN 13162
+  - 25 règles YAML issues d'une simulation de DTU minimaliste
   - Helpers Perl encodant les tables normatives (classes de résistance, R_min, seuils Sd)
   - Fichier projet JSON avec 12 éléments couvrant des cas conformes et non conformes
 
