@@ -3,7 +3,8 @@
 \.gitignore
 
 # ECA / session artefacts
-^eca/
+^eca/sessions/
+^eca/skills/cpan-release\.md$
 ^\.eca/
 
 # Documentation source (not shipped in distribution)

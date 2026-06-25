@@ -1,4 +1,11 @@
 Changes
+eca/org/agents/_template.org
+eca/org/agents/index.org
+eca/skills/chorus-check.md
+eca/skills/chorus-create-project.md
+eca/skills/chorus-engine.md
+eca/skills/chorus-feed.md
+eca/skills/chorus-import-project.md
 examples/cursors.pl
 examples/rules/cursors/R01-increase-below-5.yml
 examples/rules/cursors/R02-decrease-above-5.yml
