@@ -1,0 +1,11 @@
+REGLE: non-conforme
+CHERCHER:
+  p:
+    attribut: besoin_conformite
+EXCEPTION: defined $p->{statut_conformite}
+EFFET: |
+  my ($ok, $raison) = @{ est_conforme($p) };
+  return 0 if $ok;
+  $p->set('statut_conformite',     'NON_CONFORME');
+  $p->set('raison_non_conformite', $raison);
+  1

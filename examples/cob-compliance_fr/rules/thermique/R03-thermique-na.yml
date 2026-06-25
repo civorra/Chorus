@@ -1,0 +1,9 @@
+REGLE: thermique-na-structurel
+CHERCHER:
+  p:
+    attribut: besoin_thermique
+EXCEPTION: defined $p->{thermique_ok}
+CONDITION: type_est_structurel_thermique($p->{type_element})
+EFFET: |
+  $p->set('thermique_ok', 'NA');
+  1

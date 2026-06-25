@@ -1,0 +1,8 @@
+REGLE: pose-qualifie-oui
+CHERCHER:
+  p:
+    attribut: besoin_qualification
+EXCEPTION: defined $p->{qualifie}
+EFFET: |
+  $p->set('qualifie', 'OUI');
+  1

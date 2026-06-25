@@ -1,0 +1,14 @@
+REGLE: humidite
+CHERCHER:
+  p:
+    attribut: besoin_qualification
+EXCEPTION: defined $p->{qualifie}
+CONDITION: defined $p->{humidite_pct}
+EFFET: |
+  my $h = $p->{humidite_pct};
+  if ($h < 12 || $h > 18) {
+    $p->set('qualifie',    'NON');
+    $p->set('motif_refus', "Humidite $h% hors plage [12-18%] (art.2.2)");
+    return 1;
+  }
+  0

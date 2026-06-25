@@ -1,0 +1,15 @@
+REGLE: section-non-porteur
+CHERCHER:
+  p:
+    attribut: besoin_ossature
+EXCEPTION: defined $p->{ossature_ok}
+CONDITION: '$p->{type_element} eq "montant_non_porteur"'
+EFFET: |
+  my $b = $p->{section_b_mm} // 0;
+  my $h = $p->{section_h_mm} // 0;
+  if ($b < 45 || $h < 70) {
+    $p->set('ossature_ok',        'NON');
+    $p->set('raison_ossature_ko', "Section ${b}x${h}mm < 45x70mm min (art.3.3)");
+    return 1;
+  }
+  0

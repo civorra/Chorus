@@ -1,0 +1,35 @@
+COB Conformité — Construction Ossature Bois / DTU 31.2
+======================================================
+
+Exemple de pipeline de conformité multi-agents illustrant la chaîne complète Chorus+ECA :
+  - 5 agents spécialisés en cascade (Qualification → Ossature → Thermique → SecuriteFeu → Conformite)
+  - 25 règles YAML issues du DTU 31.2 / NF EN 338 / EC5 / NF EN 13162
+  - Helpers Perl encodant les tables normatives (classes de résistance, R_min, seuils Sd)
+  - Fichier projet JSON avec 12 éléments couvrant des cas conformes et non conformes
+
+Utilisation
+-----------
+
+    perl run.pl projet-demo.json
+
+Prérequis : Chorus::Engine, Chorus::Frame, Chorus::Expert (voir Engine/lib)
+
+Pipeline
+--------
+
+  Qualification  — classe matériau (NF EN 338), taux d'humidité, flèche L/300
+  Ossature       — entraxe, sections minimales, continuité des montants porteurs
+  Thermique      — résistance thermique R vs R_min(zone), valeur Sd du pare-vapeur
+  SecuriteFeu    — résistance au feu REI, classe de réaction, épaisseur plaque de plâtre
+  Conformite     — agrège les verdicts de chaque agent → CONFORME / NON_CONFORME
+
+Format du fichier projet
+------------------------
+
+Chaque élément de projet-demo.json porte :
+  - id, type_element
+  - besoin_qualification: 1  (slot de ciblage de l'agent 1)
+  - slots métier selon le type (voir lib/COB/Feed.pm pour les slots requis par type)
+
+Types supportés : montant_porteur, montant_non_porteur, lisse_basse, lisse_haute,
+                  entrait, chevron, isolant_laine, isolant_rigide, membrane_etanche

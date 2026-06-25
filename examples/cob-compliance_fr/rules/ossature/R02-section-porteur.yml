@@ -1,0 +1,16 @@
+REGLE: section-porteur
+CHERCHER:
+  p:
+    attribut: besoin_ossature
+EXCEPTION: defined $p->{ossature_ok}
+CONDITION: type_est_porteur_ossature($p->{type_element})
+EFFET: |
+  my ($b_min, $h_min) = @{ section_min_porteur($p->{hauteur_libre_mm}, $p->{entraxe_mm}) };
+  my $b = $p->{section_b_mm} // 0;
+  my $h = $p->{section_h_mm} // 0;
+  if ($b < $b_min || $h < $h_min) {
+    $p->set('ossature_ok',        'NON');
+    $p->set('raison_ossature_ko', "Section ${b}x${h}mm < min ${b_min}x${h_min}mm (art.3.2)");
+    return 1;
+  }
+  0
