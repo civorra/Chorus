@@ -153,6 +153,20 @@ for t in doc.tables:
 
 ## Phase 1 — Read the KB (canonical terminology)
 
+### 1.0 Sandbox inventory (first tool call — token keepalive)
+
+**Before reading any file**, call `eca__directory_tree $SANDBOX/` immediately.
+
+This serves two purposes:
+1. Acquires the full sandbox structure early (agents list, rules dirs, existing JSON/report files)
+2. Ensures at least one tool call happens before any long reading+thinking cycle,
+   keeping the IDE token active from the very start.
+
+Use this inventory to:
+- Confirm the list of `<slug>.org` files to read in 1.2
+- Know which `rules/<slug>/` directories exist (for the keepalive calls in 1.2)
+- Detect any existing `import-report-*.org` files (for 1.3)
+
 ### 1.1 Pipeline Index
 
 Read `$SANDBOX/eca/agents/index.org`:
@@ -161,13 +175,22 @@ Read `$SANDBOX/eca/agents/index.org`:
 
 ### 1.2 Per-agent terminology
 
-For each agent, read `$SANDBOX/eca/agents/<slug>.org` and extract:
+For each agent, apply this two-step sequence:
+
+1. **Read** `$SANDBOX/eca/agents/<slug>.org` and extract:
 
 | KB Section | What we extract |
 |---|---|
 | `Ontologie` | Domain concepts, synonyms, relationships (e.g. "entrait" = horizontal truss beam) |
 | `Catalogue des Frames` | Exact types (`type_element`), mandatory slots per type |
 | `Dictionnaire des slots` | Canonical names, value types, units, allowed domains |
+
+2. **Immediately after** (no thinking between the two calls): call
+   `eca__directory_tree $SANDBOX/rules/<slug>/` to list the rule files for this agent.
+
+> **Why the immediate tool call:** Opus extended thinking after reading a dense KB file
+> can be long enough to expire the IDE token. Calling `eca__directory_tree` right after
+> each read resets the token TTL and produces a useful rules inventory at no extra cost.
 
 Build an internal **terminology reference**:
 ```
@@ -191,6 +214,21 @@ If `$SANDBOX/eca/import-report-*.org` exists, read the latest report:
 ---
 
 ## Phase 2 — Raw Inventory of Project Elements
+
+### Keepalive checkpoint (token refresh before long thinking phases)
+
+**Before starting the inventory**, if the source is a filesystem file, call:
+```bash
+wc -l "<fichier-source-extrait>"
+```
+or, if working from inline/already-extracted text, call `eca__directory_tree $SANDBOX/eca/`
+to confirm the report directory.
+
+> **Why:** Phases 2, 3 and 4 are pure thinking phases with no tool calls.
+> On a complex project (many element types, many ambiguous terms), the combined
+> thinking time across these three phases can expire the IDE token before Phase 5
+> triggers the next tool call (JSON write). This checkpoint resets the TTL just
+> before entering the silent zone.
 
 Scan the source data and produce a **raw inventory**:
 an uninterpreted list of what the engineer has provided.

@@ -26,6 +26,20 @@
 
 ## Phase 0 — Read the KB (single source)
 
+### 0.0 Sandbox inventory (first tool call — token keepalive)
+
+**Before reading any file**, call `eca__directory_tree $SANDBOX/` immediately.
+
+This serves two purposes:
+1. Acquires the full sandbox structure early (agents list, rules dirs, existing JSON files)
+2. Ensures at least one tool call happens before any long reading+thinking cycle,
+   keeping the IDE token active from the very start.
+
+Use this inventory to:
+- Confirm the list of `<slug>.org` files to read in 0.2
+- Detect any existing `projet-*.json` file (for Phase 0.3)
+- Know which `rules/<slug>/` directories exist (for the keepalive calls in 0.2)
+
 ### 0.1 Pipeline index
 
 Read `$SANDBOX/eca/agents/index.org`:
@@ -35,7 +49,9 @@ Read `$SANDBOX/eca/agents/index.org`:
 
 ### 0.2 KB of each agent
 
-For each agent, read `$SANDBOX/eca/agents/<slug>.org` and extract:
+For each agent, apply this two-step sequence:
+
+1. **Read** `$SANDBOX/eca/agents/<slug>.org` and extract:
 
 | KB Section | What to extract |
 |---|---|
@@ -45,6 +61,13 @@ For each agent, read `$SANDBOX/eca/agents/<slug>.org` and extract:
 | `Helpers Perl` (KB section) | Normative tables: thresholds, ranges, admitted classes |
 | `Contraintes & Pitfalls` | Edge cases to cover in the project |
 
+2. **Immediately after** (no thinking between the two calls): call
+   `eca__directory_tree $SANDBOX/rules/<slug>/` to list the rule files for this agent.
+
+> **Why the immediate tool call:** Opus extended thinking after reading a dense KB file
+> can be long enough to expire the IDE token. Calling `eca__directory_tree` right after
+> each read resets the token TTL and produces a useful rules inventory at no extra cost.
+>
 > **Rule:** threshold tables are in the `Helpers Perl` section of the org KBs —
 > they are identical to the code in `Helpers.pm`. Do not open `Helpers.pm`.
 
