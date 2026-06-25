@@ -17,10 +17,10 @@
 
 ```
 Chorus::Expert          loop orchestration + termination
-  └─ Chorus::Engine     agent = Frame héritant de $ENGINE
-       └─ _RULES        liste de Frames-règles
-            └─ _SCOPE   adresse des Chorus::Frame du domaine
-                 └─ Chorus::Frame   connaissance + hooks
+  └─ Chorus::Engine     agent = Frame inheriting from $ENGINE
+       └─ _RULES        list of rule-Frames
+            └─ _SCOPE   addresses domain Chorus::Frames
+                 └─ Chorus::Frame   knowledge + hooks
 ```
 
 | Level | Responsibility |
@@ -128,14 +128,14 @@ my $ok = $xprt->process($input);  # 1=solved, undef=failed
 > ⚠️ **Known bug: `Chorus::Expert->new()` ignores its arguments.**
 > Always force `_MAX_ITER` via direct assignment after `new()`:
 > ```perl
-> # ⛔ FAUX — _MAX_ITER ignoré
+> # ⛔ WRONG — _MAX_ITER ignored
 > my $xprt = Chorus::Expert->new(_MAX_ITER => 50_000);
 >
 > # ✅ CORRECT
 > my $xprt = Chorus::Expert->new();
 > $xprt->{_MAX_ITER} = 50_000;
 > ```
-> Sizing heuristic: `N_frames × N_règles_total × marge_sécurité`.
+> Sizing heuristic: `N_frames × N_rules_total × safety_margin`.
 > For a production pipeline (100 frames, 40 rules): `_MAX_ITER ≥ 100_000`.
 
 ---

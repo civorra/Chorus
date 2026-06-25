@@ -31,8 +31,8 @@ my %SLOTS_REQUIS = (
 sub load_projet {
     my ($fichier) = @_;
 
-    # JSON->new->utf8->decode() opère lui-même le décodage UTF-8 depuis les octets
-    # bruts — ouvrir sans ':utf8' pour éviter le double décodage (Wide character).
+    # JSON->new->utf8->decode() handles UTF-8 decoding from raw bytes itself
+    # — open without ':utf8' to avoid double decoding (Wide character).
     open my $fh, '<', $fichier
         or die "Impossible d'ouvrir $fichier : $!\n";
     my $json = do { local $/; <$fh> };
@@ -42,17 +42,17 @@ sub load_projet {
     my @frames;
 
     for my $elem (@{ $data->{elements} }) {
-        my $id   = $elem->{id}   // die "Élément sans 'id'\n";
-        my $type = $elem->{type} // die "Élément '$id' sans 'type'\n";
+        my $id   = $elem->{id}   // die "Element without 'id'\n";
+        my $type = $elem->{type} // die "Element '$id' without 'type'\n";
 
         my $requis = $SLOTS_REQUIS{$type};
         unless ($requis) {
-            # Type hors-périmètre de ce sandbox : ignorer sans planter.
-            # La partition des éléments par sandbox est la responsabilité
-            # de chorus-import-project (flag _hors_perimetre). Ce warn est
-            # un filet de sécurité pour les JSON mixtes qui atteindraient
-            # run.pl malgré tout.
-            warn "Type '$type' (élément '$id') hors-périmètre — ignoré\n";
+            # Type out-of-scope for this sandbox: skip without dying.
+            # Partitioning elements by sandbox is the responsibility
+            # of chorus-import-project (flag _hors_perimetre). This warn is
+            # a safety net for mixed JSON files that somehow reach
+            # run.pl despite partitioning.
+            warn "Type '$type' (element '$id') out-of-scope — skipped\n";
             next;
         }
 
@@ -61,8 +61,8 @@ sub load_projet {
                 unless defined $elem->{$slot};
         }
 
-        # Le slot de ciblage de l'agent 1 (<slot_ciblage_agent1>) est
-        # garanti présent par la validation ci-dessus.
+        # The agent 1 targeting slot (<slot_ciblage_agent1>) is
+        # guaranteed present by the validation above.
         push @frames, Chorus::Frame->new(%$elem);
     }
 
@@ -88,14 +88,14 @@ use warnings;
 use Chorus::Engine;
 use Chorus::Frame;
 
-# Helpers de connaissance métier — produits par chorus-feed
-# Importés AVANT loadRules() pour être disponibles dans les EFFET YAML (eval)
+# Business knowledge helpers — produced by chorus-feed
+# Imported BEFORE loadRules() to be available in YAML EFFETs (eval)
 use <Namespace>::Agent::<Nom>::Helpers qw(
     <helper1>
     <helper2>
 );
 
-# Helpers partagés entre agents (si présents)
+# Shared helpers between agents (if present)
 # use <Namespace>::Helpers::Shared qw(<helper_partage>);
 
 use Exporter 'import';
@@ -109,19 +109,19 @@ sub build {
 
     $agent = Chorus::Engine->new(
         _IDENT      => '<Nom>',
-        _MAX_CYCLES => $opts{max_cycles} // 10_000,  # sécurité boucle infinie
-                                                      # augmenter si pipeline long
-                                                      # heuristique : N_frames × N_règles × N_agents × 10
-        # _LOCK_UNTIL_STABLE => 'Y',   # optionnel : sauter cet agent si un
-                                       # agent précédent a déjà réussi dans
-                                       # l'itération courante (optimisation)
+        _MAX_CYCLES => $opts{max_cycles} // 10_000,  # infinite loop safeguard
+                                                      # increase for long pipelines
+                                                      # heuristic: N_frames × N_rules × N_agents × 10
+        # _LOCK_UNTIL_STABLE => 'Y',   # optional: skip this agent if a previous
+                                       # agent already succeeded in the current
+                                       # iteration (optimization)
     );
 
-    # ⚠️ Injecter les helpers dans Chorus::Engine AVANT loadRules().
-    # Les EFFET YAML sont eval'd dans Chorus::Engine — un simple `use ... qw(fn)`
-    # dans ce module ne suffit pas : le helper doit être visible dans le namespace
-    # Chorus::Engine au moment de l'eval.
-    # Pattern obligatoire pour tout agent avec Helpers.pm :
+    # ⚠️ Inject helpers into Chorus::Engine BEFORE loadRules().
+    # YAML EFFETs are eval'd inside Chorus::Engine — a simple `use ... qw(fn)`
+    # in this module is not enough: the helper must be visible in the
+    # Chorus::Engine namespace at eval time.
+    # Mandatory pattern for any agent with Helpers.pm:
     {
         no strict 'refs';
         *{'Chorus::Engine::<helper1>'} = \&<helper1>;
@@ -130,8 +130,8 @@ sub build {
 
     $agent->loadRules("$base/rules/<slug>");
 
-    # reorder() optionnel — trier les règles par pertinence après loadRules()
-    # si la KB définit des PREMISSES et qu'un tri initial est bénéfique :
+    # reorder() optional — sort rules by relevance after loadRules()
+    # if the KB defines PREMISSES and an initial sort is beneficial:
     # $agent->reorder(sub {
     #     my ($r1, $r2) = @_;
     #     return 1  if $r1->_PREMISSES && $r1->_PREMISSES->{<slot_cle>};
@@ -139,8 +139,8 @@ sub build {
     #     return 0;
     # });
 
-    # pause() optionnel — désactiver l'agent jusqu'à ce qu'une condition
-    # externe appelle $agent->wakeup() :
+    # pause() optional — disable the agent until an external condition
+    # calls $agent->wakeup():
     # $agent->pause() if $opts{deferred};
 
     return $agent;
@@ -172,7 +172,7 @@ $agent->addrule(
         my @sans = grep { !defined $_->{statut} }
                    Chorus::Frame::fmatch(slot => '<slot_ciblage>');
         if (@sans == 0) {
-            $agent->solved();   # $agent capturé en closure — correct
+            $agent->solved();   # $agent captured as closure — correct
             return 1;
         }
         return;
@@ -219,13 +219,13 @@ sub run {
     $xprt->{_MAX_ITER} = $opts{max_iter} // 50_000;
     $xprt->register($a1, $a2);   # ordre = pipeline (#+PIPELINE_POS)
 
-    # BOARD — tableau de bord partagé entre tous les agents
-    # Accessible dans les règles via : $agent->BOARD->{<cle>}
-    # Exemples d'usage inter-agents :
-    #   $a1->BOARD->{phase_courante} = 'validation';   # posé par a1
-    #   $a2->BOARD->{phase_courante}                   # lu par a2
-    # Les clés SOLVED et FAILED sont réservées au moteur.
-    # INPUT est posé par process() : $agent->BOARD->{INPUT} = $input
+    # BOARD — shared state between all agents
+    # Accessible in rules via: $agent->BOARD->{<key>}
+    # Inter-agent usage examples:
+    #   $a1->BOARD->{current_phase} = 'validation';   # set by a1
+    #   $a2->BOARD->{current_phase}                   # read by a2
+    # SOLVED and FAILED keys are reserved by the engine.
+    # INPUT is set by process(): $agent->BOARD->{INPUT} = $input
 
     return $xprt->process($opts{input} // {});
 }
@@ -261,15 +261,15 @@ my $fichier = shift @ARGV
     or die "Usage : perl run.pl <fichier-projet.json>\n";
 -f $fichier or die "Fichier introuvable : $fichier\n";
 
-# Feed — données projet → Frames Chorus
+# Feed — project data → Chorus Frames
 my @elements = load_projet($fichier);
-printf "Feed : %d élément(s) chargé(s)\n\n", scalar @elements;
+printf "Feed: %d element(s) loaded\n\n", scalar @elements;
 
-# Calibrer _MAX_CYCLES au volume réel du projet
-# Heuristique : N_frames × N_règles_total_estimé × marge
-# Valeur sûre : N_éléments × 50 × 10 (50 règles max, marge ×10)
+# Calibrate _MAX_CYCLES to the actual project volume
+# Heuristic: N_frames × N_rules_total_estimated × margin
+# Safe value: N_elements × 50 × 10 (50 rules max, margin ×10)
 my $max_cycles = scalar(@elements) * 50 * 10;
-$max_cycles = 10_000 if $max_cycles < 10_000;  # minimum de sécurité
+$max_cycles = 10_000 if $max_cycles < 10_000;  # safety minimum
 
 # Pipeline
 my ($ok) = <Namespace>::Expert->run(
@@ -278,8 +278,8 @@ my ($ok) = <Namespace>::Expert->run(
     max_cycles => $max_cycles,
 );
 
-# Slots de résultat à afficher (posés par les agents)
-# ⚠️ Adapter @slots_resultat_display au pipeline réel du sandbox.
+# Result slots to display (set by agents)
+# ⚠️ Adapt @slots_resultat_display to the actual sandbox pipeline.
 my @slots_resultat_display = qw(
     qualifie motif_refus
     <slot_ok_agent1> <motif_refus_agent1>
@@ -289,7 +289,7 @@ my @slots_resultat_display = qw(
 );
 
 print "=" x 62 . "\n";
-print "  RAPPORT DE CONFORMITÉ — <Namespace>\n";
+print "  COMPLIANCE REPORT — <Namespace>\n";
 print "=" x 62 . "\n\n";
 
 my $n_conforme     = 0;
@@ -299,7 +299,7 @@ my $n_non_traite   = 0;
 for my $e (@elements) {
     my $id   = $e->{id}   // '?';
     my $type = $e->{type_element} // $e->{type} // '?';
-    my $stat = $e->{statut_conformite} // '(non traité)';
+    my $stat = $e->{statut_conformite} // '(unprocessed)';
 
     if    ($stat eq 'CONFORME')     { $n_conforme++ }
     elsif ($stat eq 'NON_CONFORME') { $n_non_conforme++ }
@@ -322,7 +322,7 @@ for my $e (@elements) {
     print "\n";
 }
 
-# ── Bloc 1 : Taux de conformité ───────────────────────────────────────────
+# ── Block 1: Compliance rate ──────────────────────────────────────────────
 my $n_total = scalar @elements;
 my $taux    = $n_total ? int(0.5 + 100 * $n_conforme / $n_total) : 0;
 my $bar_ok  = int($taux / 5);
@@ -332,13 +332,13 @@ my $barre   = '█' x $bar_ok . '░' x $bar_ko;
 print "─" x 62 . "\n";
 printf "  Conformes      : %d / %d  (%d%%)\n", $n_conforme,     $n_total, $taux;
 printf "  Non conformes  : %d / %d\n",          $n_non_conforme, $n_total;
-printf "  Non traités    : %d / %d\n",           $n_non_traite,   $n_total;
+printf "  Unprocessed    : %d / %d\n",           $n_non_traite,   $n_total;
 printf "  [%s]  %d%%\n", $barre, $taux;
 printf "  Pipeline       : %s\n", $ok ? 'SOLVED ✅' : 'FAILED/TIMEOUT ❌';
 print "─" x 62 . "\n";
 
-# ── Bloc 2 : Processus de validation — traversée par agent ────────────────
-# Adapter @pipeline_def à l'index.org du sandbox :
+# ── Block 2: Validation process — traversal by agent ──────────────────────
+# Adapt @pipeline_def to the sandbox's index.org:
 #   [ label, slot_ciblage, slot_resultat_ok ]
 {
     my @pipeline_def = (
@@ -347,9 +347,9 @@ print "─" x 62 . "\n";
         [ 'Conformite', 'besoin_conformite', 'statut_conformite' ],
     );
 
-    print "\n  Processus de validation — traversée par agent\n";
+    print "\n  Validation process — traversal by agent\n";
     print "  " . "─" x 58 . "\n";
-    printf "  %-16s  %7s  %6s  %6s  %5s\n", 'Agent', 'Ciblés', 'OK', 'KO', 'NA';
+    printf "  %-16s  %7s  %6s  %6s  %5s\n", 'Agent', 'Targeted', 'OK', 'KO', 'NA';
     print "  " . "─" x 58 . "\n";
 
     for my $def (@pipeline_def) {
@@ -375,8 +375,8 @@ print "─" x 62 . "\n";
     }
     print "  " . "─" x 58 . "\n";
 
-    # Chemin de chaque élément à travers les agents
-    print "\n  Chemin de validation par élément\n";
+    # Path of each element through agents
+    print "\n  Validation path per element\n";
     print "  " . "─" x 58 . "\n";
     for my $e (@elements) {
         my $id   = $e->{id}   // '?';
@@ -400,7 +400,7 @@ print "─" x 62 . "\n";
     print "  " . "─" x 58 . "\n";
 }
 
-# ── Bloc 3 : Répartition par type d'élément ───────────────────────────────
+# ── Block 3: Distribution by element type ─────────────────────────────────
 {
     my (%ok_par_type, %ko_par_type, %tous_types);
     for my $e (@elements) {
@@ -410,7 +410,7 @@ print "─" x 62 . "\n";
         if    ($stat eq 'CONFORME')     { $ok_par_type{$type}++ }
         elsif ($stat eq 'NON_CONFORME') { $ko_par_type{$type}++ }
     }
-    print "\n  Répartition par type d'élément\n";
+    print "\n  Distribution by element type\n";
     print "  " . "─" x 46 . "\n";
     printf "  %-30s  %5s  %5s\n", 'Type', '✅', '❌';
     print "  " . "─" x 46 . "\n";
@@ -423,14 +423,14 @@ print "─" x 62 . "\n";
     print "  " . "─" x 46 . "\n";
 }
 
-# ── Bloc 4 : Synthèse des non-conformités ─────────────────────────────────
+# ── Block 4: Non-conformity summary ───────────────────────────────────────
 {
     my @nc;
     for my $e (@elements) {
         push @nc, $e if ($e->{statut_conformite} // '') eq 'NON_CONFORME';
     }
     if (@nc) {
-        print "\n  Synthèse des non-conformités\n";
+        print "\n  Non-conformity summary\n";
         print "  " . "─" x 58 . "\n";
         for my $e (@nc) {
             my $id   = $e->{id}   // '?';
@@ -438,7 +438,7 @@ print "─" x 62 . "\n";
             # Adapter la cascade de motifs aux slots du sandbox
             my $raison = $e->{raison_non_conformite}
                       // $e->{motif_refus}
-                      // '(raison non renseignée)';
+                      // '(reason not specified)';
             printf "  ❌  %-18s [%s]\n      %s\n\n", $id, $type, $raison;
         }
         print "  " . "─" x 58 . "\n";

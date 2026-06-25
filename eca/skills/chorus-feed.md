@@ -73,14 +73,14 @@ Create `README.org`:
   |-----+----------------------------+---------------------+------------|
   | 001 | corpus/001-<slug>.txt      | <origine>           | <date>     |
 
-* Pipeline identifié
-  (rempli en Phase 1)
+* Identified pipeline
+  (filled in during Phase 1)
 
-* Statut des agents
-  | Agent | KB | YAML | Helpers | Enrichissements |
-  |-------+----+------+---------+-----------------|
+* Agent status
+  | Agent | KB | YAML | Helpers | Enrichments |
+  |-------+----+------+---------+-------------|
 
-* Notes de session
+* Session notes
 ```
 
 ### Phase 1 — Corpus Analysis
@@ -185,7 +185,7 @@ Mandatory fill order:
 > **Traceability rule:** each threshold or normative table in `Helpers.pm`
 > must be annotated with its corpus source:
 > ```perl
-> # Source corpus : §5.3 tab. 1 — NF EN 338:2016 — Résistance en flexion par classe
+> # Source corpus: §5.3 tab. 1 — NF EN 338:2016 — Bending resistance by class
 > my %FM_PAR_CLASSE = (C14 => 14, C16 => 16, C18 => 18, C24 => 24, C30 => 30);
 > ```
 > If the source is not identifiable → document the uncertainty in a `# TODO` comment.
@@ -205,15 +205,15 @@ Points to watch:
   |-----+-------------------------+---------+--------------------+--------|
   |   1 | <Namespace>::Agent::Xxx | <slug>  | eca/agents/x.org   | draft  |
 
-* Cohérence du pipeline
-  - Slot ciblage agent 1 : posé par → feed initial
-  - Slot ciblage agent 2 : posé par → agent 1 (R<NN>-xxx.yml, EFFET)
-  - Agent terminaison    : <Nom> pos <N> → règle <Rxx> → solved()
+* Pipeline consistency
+  - Agent 1 targeting slot: set by → initial feed
+  - Agent 2 targeting slot: set by → agent 1 (R<NN>-xxx.yml, EFFET)
+  - Termination agent: <Name> pos <N> → rule <Rxx> → solved()
 
-* Corpus intégré
-  | Num | Fichier              | Agents impactés     |
+* Integrated corpus
+  | Num | Fichier              | Agents affected     |
   |-----+----------------------+---------------------|
-  | 001 | corpus/001-xxx.txt   | tous (initialisation)|
+  | 001 | corpus/001-xxx.txt   | all (initialization)|
 ```
 
 ### Phase 5 — Generate YAML files
@@ -221,17 +221,17 @@ Points to watch:
 For each rule in the `Rule catalog` of each KB:
 
 ```yaml
-REGLE: <nom-kebab-case>         # obligatoire — devient _ID (déduplication)
-TERMINAL: solved                 # optionnel — 'solved' ou 'failed'
-                                 # quand la règle tire ET TERMINAL présent →
-                                 # le moteur appelle solved()/failed() automatiquement
-PREMISSES:                       # optionnel — slots prérequis pour reorder()
-  - <slot-prerequis>             # utilisé par $agent->reorder(\&fn) pour trier
-  - <autre-slot>                 # les règles par pertinence dynamiquement
-CHERCHER:                        # obligatoire — définit _SCOPE
+REGLE: <nom-kebab-case>         # mandatory — becomes _ID (deduplication)
+TERMINAL: solved                 # optional — 'solved' or 'failed'
+                                 # when the rule fires AND TERMINAL is present →
+                                 # the engine calls solved()/failed() automatically
+PREMISSES:                       # optional — prerequisite slots for reorder()
+  - <slot-prerequis>             # used by $agent->reorder(\&fn) to sort
+  - <autre-slot>                 # rules by relevance dynamically
+CHERCHER:                        # mandatory — defines _SCOPE
   <var>:
     attribut: <slot_ciblage>
-    filtre: '<expression si stratégie A>'
+    filtre: '<expression for strategy A>'
 EXCEPTION: defined $<var>->{<slot_pose>}   # idempotence — return if
 CONDITION: '<garde optionnelle>'            # return unless
 EFFET: |
@@ -309,7 +309,7 @@ use strict;
 use warnings;
 use Exporter 'import';
 
-# Liste exhaustive des helpers exportés — chorus-check les importe tous
+# Exhaustive list of exported helpers — chorus-check imports them all
 our @EXPORT_OK = qw(
     <helper1>
     <helper2>
@@ -320,7 +320,7 @@ our @EXPORT_OK = qw(
 # Source corpus : §<N> — <titre section>
 # -------------------------------------------------------
 # Signature : <helper1>(<args>) → <type retour>
-# Appelé par : R<NN>-<slug>.yml (EFFET)
+# Called by: R<NN>-<slug>.yml (EFFET)
 sub <helper1> {
     my (<args>) = @_;
     # <corps extrait du corpus>
@@ -354,7 +354,7 @@ sub <helper2> {
 - **`$SELF` pitfall**: in an `_AFTER` hook or a closure that calls `set()`
   on another Frame, capture `$SELF` **before** any call to `set()`:
   ```perl
-  # FAUX — $SELF sera écrasé par le set() interne
+  # WRONG — $SELF will be overwritten by the internal set()
   _AFTER => sub { $other->set('x', $SELF->val) }
   # CORRECT
   _AFTER => sub { my $ctx = $SELF; $other->set('x', $ctx->val) }

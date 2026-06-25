@@ -202,7 +202,7 @@ perl $SANDBOX/run.pl $SANDBOX/<fichier.json>
 
 Check:
 - [ ] No Feed crash (unknown type, missing slot)
-- [ ] `Non traités : 0` — every element must reach the final conformity status
+- [ ] `Unprocessed: 0` — every element must reach the final conformity status
 - [ ] Expected KO elements are indeed `NON_CONFORME` with the correct reason
 - [ ] Expected OK elements are indeed `CONFORME`
 - [ ] `Pipeline : SOLVED ✅`

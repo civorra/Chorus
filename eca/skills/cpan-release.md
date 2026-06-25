@@ -23,7 +23,7 @@ grep "VERSION" /home/civorra/Documents/Chorus/Engine/lib/Chorus/Engine.pm | head
 # Dernier tag git
 git -C /home/civorra/Documents/Chorus/Engine tag --sort=-v:refname | head -5
 
-# Statut du dépôt
+# Repository status
 git -C /home/civorra/Documents/Chorus/Engine status
 ```
 
@@ -151,7 +151,7 @@ Checkpoints:
 Verify that `~/.pause` exists and contains the credentials:
 
 ```bash
-test -f ~/.pause && echo "OK" || echo "MANQUANT — créer ~/.pause avec user/password PAUSE"
+test -f ~/.pause && echo "OK" || echo "MISSING — create ~/.pause with PAUSE user/password"
 ```
 
 Format of `~/.pause`:
@@ -217,11 +217,11 @@ Removes: `Makefile`, `MYMETA.*`, `pm_to_blib`, `blib/`, the `.tar.gz` tarball.
 ## Quick Reference
 
 ```
-1. grep VERSION lib/Chorus/Engine.pm          # version actuelle
-2. [éditer $VERSION + Changes]
+1. grep VERSION lib/Chorus/Engine.pm          # current version
+2. [edit $VERSION + Changes]
 3. git add lib/Chorus/Engine.pm Changes && git commit -m "release: bump version to X.YY"
-4. perl Makefile.PL && make manifest          # synchroniser MANIFEST
-5. make distcheck                             # vérifier les écarts
+4. perl Makefile.PL && make manifest          # synchronise MANIFEST
+5. make distcheck                             # check discrepancies
 6. make test                                  # tous verts
 7. AUTHOR_TESTING=1 make test                 # POD
 8. make dist                                  # → Chorus-Engine-X.YY.tar.gz

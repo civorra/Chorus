@@ -61,9 +61,9 @@ Then execute Phases 0, 1–5, 6, 7 in order.
 ## Phase 0 — KB prerequisite check *(full path only)*
 
 ```
-$SANDBOX/eca/agents/index.org     ← doit exister
-$SANDBOX/eca/agents/<slug>.org    ← au moins un agent
-$SANDBOX/rules/<slug>/            ← au moins un fichier YAML par agent
+$SANDBOX/eca/agents/index.org     ← must exist
+$SANDBOX/eca/agents/<slug>.org    ← at least one agent
+$SANDBOX/rules/<slug>/            ← at least one YAML file per agent
 ```
 
 If any of these is missing → stop and report:
@@ -86,7 +86,7 @@ Extract from `index.org`:
   "elements": [
     {
       "id": "<identifiant unique>",
-      "type": "<type d'élément>",
+      "type": "<element type>",
       "<slot1>": <valeur1>,
       "<slot2>": <valeur2>
     }
@@ -187,7 +187,7 @@ with a tabular summary.
 
 After the verbatim output, note briefly (optional):
 - `NON_CONFORME` elements with their reason if `ref_corpus` is absent
-- `(non traité)` elements → targeting slot probably missing from the Feed
+- `(unprocessed)` elements → targeting slot probably missing from the Feed
 - Discrepancies with `_resultats_attendus` in the project file (if present)
 
 ---
@@ -204,9 +204,9 @@ After the verbatim output, note briefly (optional):
 - [ ] `Expert.pm`: `$xprt->{_MAX_ITER}` forced **after** `new()` (known bug: `new()` ignores its arguments)
 - [ ] `run.pl`: `../../Engine/lib` path correct from the sandbox
 - [ ] `run.pl`: no hardcoded data
-- [ ] Report: no unexpected `(non traité)` elements
+- [ ] Report: no unexpected `(unprocessed)` elements
 - [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume.
-      Heuristic: `N_frames × N_règles_total × N_agents × 10 < _MAX_CYCLES`.
+      Heuristic: `N_frames × N_rules_total × N_agents × 10 < _MAX_CYCLES`.
       In `run.pl`: compute from `scalar(@elements)` and pass via `Expert->run(max_cycles => ...)`.
       Never leave the default value (`10_000`) for a production pipeline.
 - [ ] Termination agent: `solved()` called on `$agent` (closure) in `addrule()`, never on `$SELF`.

@@ -32,8 +32,8 @@ use Chorus::Collection::List qw($LIST);
 my $sequence = Chorus::Frame->new(_ISA => $LIST);
 $sequence->build($f1, $f2, $f3);   # initialise _ITEMS, pose _CONTAINER sur chaque item
 
-$sequence->push_items($f4);         # ajout à droite
-$sequence->unshift_items($f0);      # ajout à gauche
+$sequence->push_items($f4);         # append to the right
+$sequence->unshift_items($f0);      # prepend to the left
 $sequence->first_item;              # $f0
 $sequence->last_item;               # $f4
 $sequence->length;                  # 5
@@ -52,9 +52,9 @@ $f2->connect_right($f3);   # $f2->succ = $f3, $f3->prev = $f2
 
 **List merging:**
 ```perl
-$target->merge_left($list_a, $list_b);   # déplace les items à gauche
-$target->merge_right($list_c);           # déplace les items à droite
-# les listes sources sont vidées après merge
+$target->merge_left($list_a, $list_b);   # moves items to the left
+$target->merge_right($list_c);           # moves items to the right
+# source lists are emptied after merge
 ```
 
 **Container name:** `_CONTAINER` by default, customizable:

@@ -46,26 +46,26 @@
 ### Mode Detection and Source Collection
 
 ```
-# Mode Batch (répertoire)
-Si <source> est un répertoire :
+# Batch Mode (directory)
+If <source> is a directory:
   files = glob("$source/*.{pdf,docx,xlsx,csv,txt}")
-  Trier par nom — traiter chaque fichier indépendamment (→ Phase 0B par fichier)
-  Passer en Phase 0-BATCH après collecte
+  Sort by name — process each file independently (→ Phase 0B per file)
+  Continue to Phase 0-BATCH after collection
 
-# Mode Batch (glob / --batch explicite)
-Si --batch présent ou N sources de formats homogènes (N > 1 même extension) :
-  files = liste des sources
-  Trier par nom — traiter chaque fichier indépendamment
-  Passer en Phase 0-BATCH après collecte
+# Batch Mode (glob / explicit --batch)
+If --batch present or N homogeneous-format sources (N > 1 same extension):
+  files = source list
+  Sort by name — process each file independently
+  Continue to Phase 0-BATCH after collection
 
-# Mode Fusion (N sources, formats mixtes, sans --batch)
-Si N > 1 sources sans --batch :
-  Extraire chaque source séparément → produire N blocs texte étiquetés
-  Fusionner les blocs avant Phase 2 (inventaire global)
-  ⚠️ Signaler si deux fichiers semblent couvrir les mêmes éléments (id dupliqués potentiels)
+# Merge Mode (N sources, mixed formats, without --batch)
+If N > 1 sources without --batch:
+  Extract each source separately → produce N labelled text blocks
+  Merge blocks before Phase 2 (global inventory)
+  ⚠️ Warn if two files appear to cover the same elements (potential duplicate ids)
 
-# Mode Unitaire
-1 source non-répertoire, sans --batch → comportement historique (Phase 0A/0B ci-dessous)
+# Single Mode
+1 non-directory source, without --batch → original behaviour (Phase 0A/0B below)
 ```
 
 ### Phase 0-BATCH — Batch Processing
@@ -194,14 +194,14 @@ For each agent, apply this two-step sequence:
 
 Build an internal **terminology reference**:
 ```
-concept_kb        → type_element / slot_kb       unité_kb    domaine
+concept_kb        → type_element / slot_kb       unit_kb     domain
 ────────────────────────────────────────────────────────────────────
 montant porteur   → montant_porteur              —           —
-lisse              → lisse_basse / lisse_haute   —           à préciser
+lisse              → lisse_basse / lisse_haute   —           to clarify
 classe résistance → classe_bois                 —           C14/C16/C18/C24/C30
-épaisseur isolant → epaisseur_mm                mm          entier positif
+épaisseur isolant → epaisseur_mm                mm          positive integer
 conductivité λ    → classe_conductivite         —           "031"/"035"/"040"
-hauteur libre     → hauteur_libre_m             m           décimal
+hauteur libre     → hauteur_libre_m             m           decimal
 section           → section_bois                —           "BxH" ex. "45x145"
 ```
 
@@ -234,7 +234,7 @@ Scan the source data and produce a **raw inventory**:
 an uninterpreted list of what the engineer has provided.
 
 ```
-Ligne / Cellule source          Terme identifié      Valeurs associées
+Source line / cell              Term identified      Associated values
 ────────────────────────────────────────────────────────────────────────
 "Poteau porteur 45×145 C24"    "poteau porteur"     dim=45×145, classe=C24
 "h libre 2,5m, entraxe 40cm"  "h libre"            2.5m / "entraxe"=40cm
@@ -253,31 +253,31 @@ This is the core phase. For each term from the raw inventory, cross-reference ag
 the KB reference (Phase 1.2) and produce an alignment table:
 
 ```
-Terme projet                  Slot KB / type_element    Valeur KB        Confiance
+Project term                  KB slot / type_element    KB value         Confidence
 ──────────────────────────────────────────────────────────────────────────────────
-"poteau porteur"              type_element              montant_porteur  ✅ sûr
-"45×145"                      section_bois              "45x145"         ✅ sûr
-"C24"                         classe_bois               "C24"            ✅ sûr
-"h libre 2,5m"                hauteur_libre_m           2.5              ✅ sûr
-"entraxe 40cm"                entraxe_mm                400              ✅ sûr (×10)
-"laine de verre λ035"         type_element              isolant_laine    ✅ sûr
-                              classe_conductivite       "035"            ✅ sûr
-"panneau OSB 12mm"            type_element              panneau_osb      ✅ sûr
-                              osb_epaisseur_mm          12               ✅ sûr
-"poteau intérieur cloison"    type_element              montant_non_porteur ⚠️ probable
-"panneau contreventement"     type_element              panneau_osb ?    ❓ ambigu
-"traitement cl. 2"            traitement_applique ?     ?                ❓ à préciser
+"poteau porteur"              type_element              montant_porteur  ✅ certain
+"45×145"                      section_bois              "45x145"         ✅ certain
+"C24"                         classe_bois               "C24"            ✅ certain
+"h libre 2,5m"                hauteur_libre_m           2.5              ✅ certain
+"entraxe 40cm"                entraxe_mm                400              ✅ certain (×10)
+"laine de verre λ035"         type_element              isolant_laine    ✅ certain
+                              classe_conductivite       "035"            ✅ certain
+"panneau OSB 12mm"            type_element              panneau_osb      ✅ certain
+                              osb_epaisseur_mm          12               ✅ certain
+"poteau intérieur cloison"    type_element              montant_non_porteur ⚠️ likely
+"panneau contreventement"     type_element              panneau_osb ?    ❓ ambiguous
+"traitement cl. 2"            traitement_applique ?     ?                ❓ to clarify
 ```
 
 ### Confidence Levels
 
 | Symbol | Meaning | Action |
 |---|---|---|
-| ✅ sûr | Direct or near-direct match with the KB | Map without asking |
-| ⚠️ probable | Logical match but term is not exact | Propose + ask for confirmation |
-| ❓ ambigu | Multiple possible mappings or unknown KB term | Block + ask for clarification |
+| ✅ certain | Direct or near-direct match with the KB | Map without asking |
+| ⚠️ likely | Logical match but term is not exact | Propose + ask for confirmation |
+| ❓ ambiguous | Multiple possible mappings or unknown KB term | Block + ask for clarification |
 | ⛔ gap | Mandatory slot absent from the source document | Report — do not invent |
-| ⬜ hors-périmètre | `type_element` absent from this sandbox's KB | Exclude from JSON — flag `_hors_perimetre: 1` + report |
+| ⬜ out-of-scope | `type_element` absent from this sandbox's KB | Exclude from JSON — flag `_hors_perimetre: 1` + report |
 
 > **Out-of-scope rule:** an element receives `⬜` if its `type_element` is not recognised
 > by **any** `Catalogue des Frames` in the target sandbox. This is non-blocking — the import
@@ -290,14 +290,14 @@ Terme projet                  Slot KB / type_element    Valeur KB        Confian
 > that concern it.
 >
 > ```bash
-> # Projet mixte → deux imports ciblés
+> # Mixed project → two targeted imports
 > chorus-import-project sandbox-structurel ./dossier-projet/ --batch
->     # → JSON contenant uniquement montant_porteur, lisse_basse, ...
->     # → éléments isolant_laine, membrane_etanche → ⬜ exclus + rapport
+>     # → JSON containing only montant_porteur, lisse_basse, ...
+>     # → elements isolant_laine, membrane_etanche → ⬜ excluded + report
 >
 > chorus-import-project sandbox-thermique ./dossier-projet/ --batch
->     # → JSON contenant uniquement isolant_laine, membrane_etanche, ...
->     # → éléments montant_porteur, lisse_basse → ⬜ exclus + rapport
+>     # → JSON containing only isolant_laine, membrane_etanche, ...
+>     # → elements montant_porteur, lisse_basse → ⬜ excluded + report
 > ```
 
 ### Unit Transformations
@@ -317,10 +317,10 @@ Explicitly document every conversion:
 
 For each ❓ term, present the following to the engineer:
 ```
-❓ "panneau contreventement" — plusieurs interprétations possibles :
-   1. panneau_osb     (panneau OSB structurel §3.1)
-   2. panneau_fibragglo (panneau de contreventement §3.2)
-   Quel type correspond à votre document ?
+❓ "panneau contreventement" — multiple interpretations possible:
+   1. panneau_osb     (structural OSB panel §3.1)
+   2. panneau_fibragglo (bracing panel §3.2)
+   Which type matches your document?
 ```
 
 **Do not proceed until blocking ❓ items are resolved** (ambiguous `type_element` slots).
@@ -333,10 +333,10 @@ For each ❓ term, present the following to the engineer:
 For each element, cross-reference the present slots against the KB `Catalogue des Frames`:
 
 ```
-Type            Slot obligatoire    Présent ?   Source
+Type            Mandatory slot      Present?    Source
 ──────────────────────────────────────────────────────────
 montant_porteur classe_bois         ✅          "C24"
-montant_porteur humidite_pct        ⛔ ABSENT   non mentionné
+montant_porteur humidite_pct        ⛔ ABSENT   not mentioned
 montant_porteur hauteur_libre_m     ✅          "h=2.5m"
 ```
 
@@ -360,7 +360,7 @@ Once all ❓ items are resolved and critical gaps are filled:
 ```json
 {
   "projet": "<nom-projet-ingenieur>",
-  "description": "Import depuis <source> — <date> — <N> éléments",
+  "description": "Import from <source> — <date> — <N> elements",
   "_import": {
     "source": "<nom-fichier-ou-inline>",
     "sources": ["<f1>", "<f2>"],
@@ -368,7 +368,7 @@ Once all ❓ items are resolved and critical gaps are filled:
     "date": "<date>",
     "gaps": ["<id>: <slot manquant>", "..."],
     "a_confirmer": ["<id>: <terme ambigu>", "..."],
-    "conflits": ["<id>: présent dans f1 et f2 — doublon renommé", "..."]
+    "conflits": ["<id>: present in f1 and f2 — duplicate renamed", "..."]
   },
   "elements": [
     {
@@ -402,42 +402,42 @@ No cross-file merging — each JSON is self-contained and can be piped independe
 Create `$SANDBOX/eca/import-report-<NNN>.org`:
 
 ```org
-#+TITLE: Rapport d'import — <source> — <date>
+#+TITLE: Import report — <source> — <date>
 #+STATUS: draft
 
 * Source
-  Fichier : <chemin ou "inline">
+  File    : <path or "inline">
   Date    : <date>
-  Éléments extraits : N
+  Elements extracted: N
 
-* Tableau d'alignement
-  | Terme projet | Slot KB | Valeur KB | Confiance | Décision |
+* Alignment table
+  | Project term | KB slot | KB value | Confidence | Decision |
   |---|---|---|---|---|
-  | ...          | ...     | ...       | ✅/⚠️/❓   | ...      |
+  | ...          | ...     | ...      | ✅/⚠️/❓   | ...      |
 
-* Transformations d'unités appliquées
-  | Source | Transformation | Slot KB |
+* Unit transformations applied
+  | Source | Transformation | KB slot |
   |---|---|---|
 
-* Gaps identifiés
-  | Élément | Slot manquant | Action |
+* Gaps identified
+  | Element | Missing slot | Action |
   |---|---|---|
 
-* Ambiguïtés résolues
-  | Terme | Options | Décision ingénieur |
+* Ambiguities resolved
+  | Term | Options | Engineer decision |
   |---|---|---|
 
-* Éléments avec _a_confirmer
-  | id | Raison |
+* Elements with _a_confirmer
+  | id | Reason |
   |---|---|
 
-* Éléments hors-périmètre (⬜)
-  | id | type_element source | Sandbox recommandé |
+* Out-of-scope elements (⬜)
+  | id | source type_element | Recommended sandbox |
   |---|---|---|
 
-* Fichier produit
-  <chemin projet-*.json>
-  N éléments retenus / N complets / N avec gaps / N à confirmer / N hors-périmètre (exclus)
+* Output file
+  <path projet-*.json>
+  N elements retained / N complete / N with gaps / N to confirm / N out-of-scope (excluded)
 ```
 
 > This report is the **alignment decision memory** for this sandbox.
@@ -448,43 +448,43 @@ Create `$SANDBOX/eca/import-report-<NNN>.org`:
 In addition to the individual reports, create `$SANDBOX/eca/import-batch-<NNN>.org`:
 
 ```org
-#+TITLE: Rapport de synthèse batch — <répertoire ou glob> — <date>
+#+TITLE: Batch summary report — <directory or glob> — <date>
 #+STATUS: draft
 
-* Paramètres
-  Source    : <répertoire ou liste de fichiers>
+* Parameters
+  Source    : <directory or file list>
   Sandbox   : <sandbox-name>
-  Fichiers  : N traités / M ignorés (format non supporté)
+  Files     : N processed / M skipped (unsupported format)
   Date      : <date>
 
-* Résultats par fichier
-  | Fichier | JSON produit | Éléments | Retenus | Gaps | À confirmer | Conflits | Hors-périmètre |
+* Results per file
+  | File    | JSON produced | Elements | Retained | Gaps | To confirm | Conflicts | Out-of-scope |
   |---|---|---|---|---|---|---|---|
   | f1.pdf  | projet-import-001.json | 34 | 26 | 6 | 2 | 0 | 0 |
   | f2.xlsx | projet-import-002.json | 18 | 15 | 3 | 0 | 0 | 3 |
   | ...     | ...                    | .. | .. | . | . | . | . |
 
-* Totaux
-  Éléments traités    : N
-  Retenus (dans JSON) : N
-  Avec gaps           : N
-  À confirmer         : N
-  Hors-périmètre      : N (exclus du JSON — à importer dans un autre sandbox)
-  Conflits d'id       : N (mode fusion uniquement — N/A en batch)
+* Totals
+  Elements processed  : N
+  Retained (in JSON)  : N
+  With gaps           : N
+  To confirm          : N
+  Out-of-scope        : N (excluded from JSON — import in another sandbox)
+  Id conflicts        : N (merge mode only — N/A in batch)
 
-* Termes nouveaux détectés
-  Termes non présents dans import-report-*.org précédents → à intégrer dans la KB
-  | Terme source | Fichier | Alignement proposé | Confiance |
+* New terms detected
+  Terms absent from previous import-report-*.org → to integrate into the KB
+  | Source term | File | Proposed alignment | Confidence |
   |---|---|---|---|
 
-* Fichiers ignorés
-  | Fichier | Raison |
+* Skipped files
+  | File | Reason |
   |---|---|
-  | scan-brouillon.pdf | Extraction texte vide — relire ou fournir inline |
+  | scan-brouillon.pdf | Empty text extraction — re-read or provide inline |
 
-* Prochaine étape suggérée
+* Suggested next step
   perl $SANDBOX/run.pl <JSON1> <JSON2> ...
-  (lancer le pipeline sur chaque JSON produit)
+  (run the pipeline on each produced JSON)
 ```
 
 > **New terms**: if a source term was not present in previous reports AND received a
@@ -529,18 +529,18 @@ Out-of-scope elements (⬜) are cleanly excluded at import time; `run.pl` and
 `Feed.pm` only receive the types they know.
 
 ```
-dossier-projet/                      ← source unique (tous domaines mélangés)
+dossier-projet/                      ← single source (all domains mixed)
   charpente.pdf
   isolation.xlsx
   bardage.docx
 
   ↓ chorus-import-project sandbox-structurel ./dossier-projet/ --batch
 projet-structurel-001.json           ← montants, lisses, chevrons
-                                        isolants → ⬜ exclus
+                                        # → elements isolant_laine, membrane_etanche → ⬜ excluded + report
 
   ↓ chorus-import-project sandbox-thermique ./dossier-projet/ --batch
 projet-thermique-001.json            ← isolants, membranes
-                                        montants → ⬜ exclus
+                                        # → elements montant_porteur, lisse_basse → ⬜ excluded + report
 
   ↓
 perl sandbox-structurel/run.pl projet-structurel-001.json → rapport_struct.txt

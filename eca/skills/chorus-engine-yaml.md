@@ -20,7 +20,7 @@
 ```perl
 # In a Perl frame:
 my $f = Chorus::Frame->new(
-    label => sub { "Je suis " . $SELF->name },
+    label => sub { "I am " . $SELF->name },
     name  => 'Chorus',
 );
 ```
@@ -110,12 +110,12 @@ Agent chaining via the slot targeted in `CHERCHER`:
 ### Rule Structure
 
 ```yaml
-REGLE: nom-de-la-regle          # obligatoire — devient _ID (déduplication)
-TERMINAL: solved                 # optionnel — 'solved' ou 'failed'
-PREMISSES:                       # optionnel — métadonnées pour reorder()
+REGLE: nom-de-la-regle          # mandatory — becomes _ID (deduplication)
+TERMINAL: solved                 # optional — 'solved' or 'failed'
+PREMISSES:                       # optional — metadata for reorder()
   - slot-prerequis
   - autre-slot
-CHERCHER:                        # obligatoire — définit _SCOPE
+CHERCHER:                        # mandatory — defines _SCOPE
   var1:
     attribut: nom-du-slot        # → fmatch(slot => 'nom-du-slot')
     filtre: '$_->prop > 0'       # optionnel → grep { ... }
@@ -217,7 +217,7 @@ $agent->reorder(\&sort_by_interest);
 - [ ] **Always** end `EFFET` with a truthy value (`1` or truthy expression)
 - [ ] **Conditional EFFET without `else`**: if the `if` modifies nothing and returns `1` → infinite loop until `_MAX_CYCLES`.
       ```yaml
-      # ⛔ FAUX — boucle infinie si condition jamais vraie
+      # ⛔ WRONG — infinite loop if condition never true
       EFFET: |
         if ($p->{val} > 5) { $p->set('flag', 'KO') }
         1
@@ -236,7 +236,7 @@ $agent->reorder(\&sort_by_interest);
 
 - [ ] ⛔ **Never `$f->{slot} = $val`** — use `$f->set('slot', $val)` — direct assignment bypasses `%REPOSITORY` → `fmatch` returns 0 Frames → **silent** pipeline break
       ```perl
-      # ⛔ FAUX — slot invisible à fmatch (pipeline silencieusement cassé)
+      # ⛔ WRONG — slot invisible to fmatch (pipeline silently broken)
       $f->{besoin_conformite} = 1;
       # ✅ CORRECT
       $f->set('besoin_conformite', 1);
@@ -245,7 +245,7 @@ $agent->reorder(\&sort_by_interest);
 - [ ] Never name a domain slot with a `_UPPERCASE` prefix (reserved for the system)
 - [ ] In `_AFTER`: capture `$SELF` **before** any call to `set()` on another Frame:
       ```perl
-      # ⛔ FAUX — $SELF écrasé par set() interne
+      # ⛔ WRONG — $SELF overwritten by internal set()
       _AFTER => sub { $other->set('x', $SELF->val) }
       # ✅ CORRECT
       _AFTER => sub { my $ctx = $SELF; $other->set('x', $ctx->val) }
