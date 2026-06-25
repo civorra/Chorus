@@ -19,6 +19,16 @@
 
 ---
 
+## ⛔ Strict sandbox isolation
+
+**Never read any file, KB, YAML, or artifact from a sandbox other than `<sandbox-name>`.**
+
+This applies regardless of context: even if another sandbox appears to contain similar
+or related knowledge, it must be completely ignored. Each sandbox is an independent,
+self-contained unit. Cross-sandbox reads are forbidden in all modes (A and B).
+
+---
+
 ## 0. Prerequisites
 
 Load: `chorus-engine-yaml.md` — YAML authoring reference (Frame essentials, Engine rule triggering, YAML guide, checklists)
