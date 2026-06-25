@@ -1,58 +1,58 @@
 # Skill — Chorus::Engine
 
-> Chargé automatiquement pour tout code Perl créé ou modifié dans `$ENGINE`.
-> Référence : rapport `$SESSIONS/2026-06-22-16-54-deep-analysis-engine.md`
+> Automatically loaded for any Perl code created or modified in `$ENGINE`.
+> Reference: report `$SESSIONS/2026-06-22-16-54-deep-analysis-engine.md`
 
 ---
 
-## 1. Mécanismes fondamentaux
+## 1. Core Mechanisms
 
-### 1.1 La chaîne Expert → Agent → Frame
+### 1.1 The Expert → Agent → Frame Chain
 
 ```
-Chorus::Expert          orchestration de la boucle + terminaison
+Chorus::Expert          loop orchestration + termination
   └─ Chorus::Engine     agent = Frame héritant de $ENGINE
        └─ _RULES        liste de Frames-règles
             └─ _SCOPE   adresse des Chorus::Frame du domaine
                  └─ Chorus::Frame   connaissance + hooks
 ```
 
-**Règle de conception :** chaque niveau a une responsabilité unique.
+**Design principle:** each level has a single responsibility.
 
-| Niveau | Responsabilité |
+| Level | Responsibility |
 |---|---|
-| Expert | quand itérer les agents, détecter la terminaison |
-| Agent | quelles règles, dans quel ordre, contrôle de flux |
-| Frame | connaissance métier, héritage, hooks procéduraux |
+| Expert | when to iterate agents, detect termination |
+| Agent | which rules, in what order, flow control |
+| Frame | domain knowledge, inheritance, procedural hooks |
 
 ---
 
-### 1.2 Chorus::Frame — slots essentiels
+### 1.2 Chorus::Frame — Essential Slots
 
-| Slot | Rôle |
+| Slot | Role |
 |---|---|
-| `_ISA` | héritage (scalar ou arrayref de Frames) |
-| `_VALUE` | valeur principale du Frame |
-| `_DEFAULT` | fallback si `_VALUE` absent |
-| `_NEEDED` | coderef de dernier recours (chaînage arrière) |
-| `_BEFORE` | hook avant modification d'un slot |
-| `_AFTER` | hook après modification d'un slot (propagation avant) |
-| `_REQUIRE` | validation : retourner `REQUIRE_FAILED` bloque `_setValue` |
-| `_NOFRAME` | empêche la promotion automatique d'un hash en Frame |
+| `_ISA` | inheritance (scalar or arrayref of Frames) |
+| `_VALUE` | Frame's primary value |
+| `_DEFAULT` | fallback if `_VALUE` is absent |
+| `_NEEDED` | last-resort coderef (backward chaining) |
+| `_BEFORE` | hook before a slot is modified |
+| `_AFTER` | hook after a slot is modified (forward propagation) |
+| `_REQUIRE` | validation: returning `REQUIRE_FAILED` blocks `_setValue` |
+| `_NOFRAME` | prevents automatic promotion of a hash to a Frame |
 
-**Slots système réservés** — ne jamais utiliser comme noms de slots métier :
+**Reserved system slots** — never use as domain slot names:
 `_KEY` `_PARENT_KEY` `_ISA` `_VALUE` `_DEFAULT` `_NEEDED` `_BEFORE` `_AFTER` `_REQUIRE` `_NOFRAME` `_SERIALIZE`
 
-**Modes d'héritage `get()` :**
-- **Mode N** (défaut) : pour chaque clé de valuation (`_VALUE`, `_DEFAULT`, `_NEEDED`), parcourir tout l'arbre avant de passer à la suivante.
-- **Mode Z** : tester la séquence complète `(_VALUE, _DEFAULT, _NEEDED)` sur chaque Frame avant de descendre dans les parents.
+**`get()` inheritance modes:**
+- **Mode N** (default): for each valuation key (`_VALUE`, `_DEFAULT`, `_NEEDED`), traverse the entire tree before moving to the next.
+- **Mode Z**: test the full sequence `(_VALUE, _DEFAULT, _NEEDED)` on each Frame before descending into parents.
 
 ```perl
 Chorus::Frame::setMode(GET => 'Z');   # passe en mode Z
 Chorus::Frame::setMode(GET => 'N');   # retour au mode N
 ```
 
-**`$SELF`** = contexte courant, disponible dans tout slot de type `sub { }` :
+**`$SELF`** = current context, available in any slot of type `sub { }`:
 
 ```perl
 my $f = Chorus::Frame->new(
@@ -61,7 +61,7 @@ my $f = Chorus::Frame->new(
 );
 ```
 
-**`fmatch()`** — sélection efficace par slot via `%REPOSITORY` + `%INSTANCES` :
+**`fmatch()`** — efficient slot-based selection via `%REPOSITORY` + `%INSTANCES`:
 
 ```perl
 # tous les Frames ayant le slot 'couleur'
@@ -76,15 +76,15 @@ my @r = fmatch(slot => 'couleur', from => \@subset);
 
 ---
 
-### 1.3 Chorus::Engine — déclenchement des règles
+### 1.3 Chorus::Engine — Rule Triggering
 
-Un agent est **lui-même un Frame** héritant du prototype interne `$ENGINE`.
+An agent is **itself a Frame** inheriting from the internal `$ENGINE` prototype.
 
 ```perl
 my $agent = Chorus::Engine->new(_IDENT => 'MonAgent');
 ```
 
-**Structure d'une règle :**
+**Rule structure:**
 
 ```perl
 $agent->addrule(
@@ -103,27 +103,27 @@ $agent->addrule(
 );
 ```
 
-**Boucle d'inférence :**
-- `loop()` appelle `applyrules()` en boucle tant qu'au moins une règle retourne vrai.
-- Pour chaque règle : expansion de `_SCOPE` → produit cartésien → appel `_APPLY(%opts)`.
-- Sécurité : `_MAX_CYCLES` (défaut 10 000) → warning + arrêt si dépassé.
+**Inference loop:**
+- `loop()` calls `applyrules()` in a loop as long as at least one rule returns true.
+- For each rule: `_SCOPE` expansion → cartesian product → `_APPLY(%opts)` call.
+- Safety: `_MAX_CYCLES` (default 10,000) → warning + stop if exceeded.
 
-**Contrôles de flux :**
+**Flow controls:**
 
-| Méthode | Portée | Effet |
+| Method | Scope | Effect |
 |---|---|---|
-| `$agent->cut()` | règle courante | sort des boucles de scope → règle suivante (même agent) |
-| `$agent->last()` | agent courant | sort de la boucle de règles → agent suivant |
-| `$agent->replay()` | agent courant | redémarre depuis la 1re règle de cet agent |
-| `$agent->replay_all()` | tous les agents | redémarre depuis le 1er agent (remonte à l'Expert) |
-| `$agent->solved()` | global | `BOARD->{SOLVED} = 'Y'` → arrêt immédiat |
-| `$agent->failed()` | global | `BOARD->{FAILED} = 'Y'` → arrêt immédiat |
-| `$agent->pause()` | agent | désactive jusqu'à `wakeup()` |
-| `$agent->reorder(\&fn)` | agent | retrie `_RULES` + `replay()` |
+| `$agent->cut()` | current rule | exits scope loops → next rule (same agent) |
+| `$agent->last()` | current agent | exits the rules loop → next agent |
+| `$agent->replay()` | current agent | restarts from the 1st rule of this agent |
+| `$agent->replay_all()` | all agents | restarts from the 1st agent (bubbles up to Expert) |
+| `$agent->solved()` | global | `BOARD->{SOLVED} = 'Y'` → immediate stop |
+| `$agent->failed()` | global | `BOARD->{FAILED} = 'Y'` → immediate stop |
+| `$agent->pause()` | agent | disabled until `wakeup()` |
+| `$agent->reorder(\&fn)` | agent | re-sorts `_RULES` + `replay()` |
 
 ---
 
-### 1.4 Chorus::Expert — orchestration
+### 1.4 Chorus::Expert — Orchestration
 
 ```perl
 my $xprt = Chorus::Expert->new();
@@ -131,16 +131,16 @@ $xprt->register($agent1, $agent2, $agent3);
 my $ok = $xprt->process($input);  # 1=solved, undef=failed
 ```
 
-- `register()` injecte le **BOARD partagé** dans chaque agent (`$agent->BOARD`).
+- `register()` injects the **shared BOARD** into each agent (`$agent->BOARD`).
 - `process()` : `do { for each agent: agent->loop() } until BOARD->{SOLVED|FAILED}`
 - `$input` accessible via `$agent->BOARD->INPUT`.
-- Communication inter-agents : écrire/lire des slots sur `$agent->BOARD`.
-- `_LOCK_UNTIL_STABLE` sur un agent : il est sauté si un agent précédent a déjà réussi dans l'itération courante.
+- Inter-agent communication: write/read slots on `$agent->BOARD`.
+- `_LOCK_UNTIL_STABLE` on an agent: it is skipped if a previous agent already succeeded in the current iteration.
 
-> ⚠️ **Bug connu `Chorus::Expert->new()` ignore ses arguments :**
-> Les arguments passés à `new()` (ex. `_MAX_ITER => 50_000`) sont silencieusement
-> ignorés — la valeur reste à son défaut interne.
-> **Pattern obligatoire : affecter directement après `new()`** :
+> ⚠️ **Known bug: `Chorus::Expert->new()` ignores its arguments:**
+> Arguments passed to `new()` (e.g. `_MAX_ITER => 50_000`) are silently
+> ignored — the value stays at its internal default.
+> **Required pattern: assign directly after `new()`**:
 >
 > ```perl
 > # ⛔ FAUX — _MAX_ITER ignoré
@@ -151,14 +151,14 @@ my $ok = $xprt->process($input);  # 1=solved, undef=failed
 > $xprt->{_MAX_ITER} = 50_000;   # obligatoire pour les pipelines longs
 > ```
 >
-> Heuristique de dimensionnement : `N_frames × N_règles_total × marge_sécurité`.
-> Pour un pipeline de production (100 frames, 40 règles) : `_MAX_ITER ≥ 100_000`.
+> Sizing heuristic: `N_frames × N_règles_total × marge_sécurité`.
+> For a production pipeline (100 frames, 40 rules): `_MAX_ITER ≥ 100_000`.
 
 ---
 
-## 2. Pattern multi-spécialités
+## 2. Multi-Specialty Pattern
 
-### 2.1 Structure de projet recommandée
+### 2.1 Recommended Project Structure
 
 ```
 MyExpert/
@@ -181,7 +181,7 @@ MyExpert/
     01-pipeline.t
 ```
 
-### 2.2 Template d'agent avec helpers Perl
+### 2.2 Agent Template with Perl Helpers
 
 ```perl
 package MyExpert::Agent::Specialite1;
@@ -218,7 +218,7 @@ sub build {
 1;
 ```
 
-### 2.3 Template d'assembly Expert
+### 2.3 Expert Assembly Template
 
 ```perl
 package MyExpert::Expert;
@@ -256,25 +256,25 @@ sub run {
 1;
 ```
 
-### 2.4 Pipeline implicite par slot
+### 2.4 Implicit Slot Pipeline
 
-Le chaînage des agents se fait par le slot ciblé dans `CHERCHER` :
+Agent chaining is done via the slot targeted in `CHERCHER`:
 
-| Agent | `CHERCHER.attribut` | Pose le slot |
+| Agent | `CHERCHER.attribut` | Sets the slot |
 |---|---|---|
-| Spécialité 1 | `slot_brut` | `slot_enrichi` |
-| Spécialité 2 | `slot_enrichi` | `slot_calcule` |
-| Spécialité 3 | `slot_calcule` | `statut` |
-| Ctrl | `slot_cle` (+ vérif `statut`) | appelle `solved()` |
+| Specialty 1 | `slot_brut` | `slot_enrichi` |
+| Specialty 2 | `slot_enrichi` | `slot_calcule` |
+| Specialty 3 | `slot_calcule` | `statut` |
+| Ctrl | `slot_cle` (+ check `statut`) | calls `solved()` |
 
-> **Règle d'or :** chaque agent cherche un slot que seul l'agent précédent peut avoir posé.
-> Cela garantit l'ordre d'exécution sans couplage explicite.
+> **Golden rule:** each agent looks for a slot that only the previous agent can have set.
+> This guarantees execution order without explicit coupling.
 
 ---
 
-## 3. Guide YAML complet
+## 3. Complete YAML Guide
 
-### 3.1 Structure complète d'une règle
+### 3.1 Complete Rule Structure
 
 ```yaml
 REGLE: nom-de-la-regle          # obligatoire — devient _ID (déduplication)
@@ -295,7 +295,7 @@ EFFET: |                         # obligatoire — corps de _APPLY
   1
 ```
 
-### 3.2 CHERCHER — portée des variables
+### 3.2 CHERCHER — Variable Scope
 
 ```yaml
 CHERCHER:
@@ -309,32 +309,32 @@ CHERCHER:
 # → _SCOPE => { p => sub { [ grep { $_->level < 5 } fmatch(slot => 'level') ] } }
 ```
 
-- **`attribut`** : slot passé à `fmatch` — définit l'espace de recherche.
-- **`filtre`** : expression Perl sur `$_` (le Frame courant) — rétrécit l'espace avant `_APPLY`.
-- Le filtre est évalué **avant** la boucle combinatoire → optimisation critique.
+- **`attribut`**: slot passed to `fmatch` — defines the search space.
+- **`filtre`**: Perl expression on `$_` (the current Frame) — narrows the space before `_APPLY`.
+- The filter is evaluated **before** the combinatorial loop → critical optimization.
 
 ### 3.3 CONDITION vs EXCEPTION
 
-| Clé | Sémantique | Code généré |
+| Key | Semantics | Generated code |
 |---|---|---|
-| `CONDITION` | La règle **doit** être vraie pour s'appliquer | `return unless <CONDITION>;` |
-| `EXCEPTION` | La règle **ne doit pas** s'appliquer si vraie | `return if <EXCEPTION>;` |
+| `CONDITION` | The rule **must** be true to fire | `return unless <CONDITION>;` |
+| `EXCEPTION` | The rule **must not** fire if true | `return if <EXCEPTION>;` |
 
-> **Convention d'idempotence :** toujours ajouter `EXCEPTION: defined $var->{slot_pose}`
-> pour éviter qu'une règle se déclenche en boucle sur le même Frame.
+> **Idempotence convention:** always add `EXCEPTION: defined $var->{slot_pose}`
+> to prevent a rule from firing repeatedly on the same Frame.
 
 ```yaml
 EXCEPTION: defined $p->{fm_d}    # ne s'applique pas si fm_d déjà calculé
 ```
 
-### 3.4 EFFET — syntaxes
+### 3.4 EFFET — Syntaxes
 
-**Bloc mono-instruction :**
+**Single-instruction block:**
 ```yaml
 EFFET: "$frame->increase; 1"
 ```
 
-**Bloc multi-lignes (YAML block scalar `|`) :**
+**Multi-line block (YAML block scalar `|`):**
 ```yaml
 EFFET: |
   my $W = $p->{largeur} * $p->{hauteur} ** 2 / 6;
@@ -343,19 +343,19 @@ EFFET: |
   1
 ```
 
-**Liste d'effets séquentiels :**
+**Sequential effect list:**
 ```yaml
 EFFET:
   - '$p->set("step1", "y")'
   - '$p->set("done", "y"); 1'
 ```
 
-> ⚠️ La **dernière instruction doit retourner une valeur vraie** pour que la règle soit
-> considérée comme ayant "tiré". Terminer par `1` ou par une expression vraie.
+> ⚠️ The **last instruction must return a truthy value** for the rule to be considered
+> as having "fired". End with `1` or a truthy expression.
 
-> ⚠️ Utiliser `|` (newlines préservés) et non `>` (newlines pliés) pour les blocs multi-lignes.
+> ⚠️ Use `|` (newlines preserved) and not `>` (newlines folded) for multi-line blocks.
 
-### 3.5 TERMINAL — terminaison automatique
+### 3.5 TERMINAL — Automatic Termination
 
 ```yaml
 REGLE: tout-est-traite
@@ -367,11 +367,11 @@ EXCEPTION: '$p->{statut} ne "FINAL"'
 EFFET: "1"
 ```
 
-Quand la règle tire **et** `_TERMINAL => 'solved'`, l'engine appelle automatiquement `solved()`.
+When the rule fires **and** `_TERMINAL => 'solved'`, the engine automatically calls `solved()`.
 
-### 3.6 Ordre de chargement
+### 3.6 Loading Order
 
-`loadRules($dir)` charge les fichiers `*.yml` en **ordre alphabétique**.
+`loadRules($dir)` loads `*.yml` files in **alphabetical order**.
 
 ```
 R01-etape-un.yml      → chargée en premier
@@ -379,15 +379,15 @@ R02-etape-deux.yml
 R10-etape-finale.yml
 ```
 
-Plusieurs répertoires = plusieurs appels `loadRules()` :
+Multiple directories = multiple `loadRules()` calls:
 ```perl
 $agent->loadRules("$RULES/phase1");
 $agent->loadRules("$RULES/phase2");
 ```
 
-### 3.7 PREMISSES — pour reorder()
+### 3.7 PREMISSES — for reorder()
 
-`PREMISSES` est une liste de slots que la règle nécessite. Non utilisé par le moteur directement, mais accessible via `$rule->_PREMISSES` pour trier dynamiquement les règles :
+`PREMISSES` is a list of slots required by the rule. Not used directly by the engine, but accessible via `$rule->_PREMISSES` to dynamically sort rules:
 
 ```perl
 sub sort_by_interest {
@@ -403,7 +403,7 @@ $agent->reorder(\&sort_by_interest);
 
 ## 4. Chorus::Collection
 
-### 4.1 Collection::List — séquences ordonnées de Frames
+### 4.1 Collection::List — Ordered Frame Sequences
 
 ```perl
 use Chorus::Collection::List qw($LIST);
@@ -423,26 +423,26 @@ $sequence->STARTS_WITH('slot');     # teste le premier item
 $sequence->ENDS_WITH('slot');       # teste le dernier item
 ```
 
-**Double chaînage prev/succ :**
+**Bidirectional prev/succ chaining:**
 ```perl
 $f2->connect_left($f1);    # $f2->prev = $f1, $f1->succ = $f2
 $f2->connect_right($f3);   # $f2->succ = $f3, $f3->prev = $f2
 ```
 
-**Fusion de listes :**
+**List merging:**
 ```perl
 $target->merge_left($list_a, $list_b);   # déplace les items à gauche
 $target->merge_right($list_c);           # déplace les items à droite
 # les listes sources sont vidées après merge
 ```
 
-**Nom du container :** par défaut `_CONTAINER`, personnalisable :
+**Container name:** `_CONTAINER` by default, customizable:
 ```perl
 $sequence->set_container_name('_PHRASE');
 # chaque item aura un slot _PHRASE → $item->_PHRASE == $sequence
 ```
 
-### 4.2 Collection::Filter — pattern matching sur séquences
+### 4.2 Collection::Filter — Pattern Matching on Sequences
 
 ```perl
 use Chorus::Collection::Filter qw($FILTER @_VFILTER);
@@ -464,34 +464,34 @@ if ($filtre->check(@tokens)) {
 }
 ```
 
-**Syntaxe des motifs :**
+**Pattern syntax:**
 
-| Token | Signification |
+| Token | Meaning |
 |---|---|
-| `^` | ancre début de séquence |
-| `$` | ancre fin de séquence |
-| `X` | exactement le token X |
-| `[A B C]` | OU : A ou B ou C |
-| `!X` | NON : n'est pas X |
-| `.` | ANYTHING : n'importe quel token |
-| `X+` | 1 ou plusieurs |
-| `X*` | 0 ou plusieurs (greedy) |
-| `X?` | 0 ou 1 (lazy) |
-| `X{m,n}` | entre m et n occurrences |
-| `(...)` | groupe de capture → `@_VFILTER` |
+| `^` | sequence start anchor |
+| `$` | sequence end anchor |
+| `X` | exactly token X |
+| `[A B C]` | OR: A or B or C |
+| `!X` | NOT: is not X |
+| `.` | ANYTHING: any token |
+| `X+` | 1 or more |
+| `X*` | 0 or more (greedy) |
+| `X?` | 0 or 1 (lazy) |
+| `X{m,n}` | between m and n occurrences |
+| `(...)` | capture group → `@_VFILTER` |
 
-> `@_VFILTER` est réinitialisé à chaque `check()`. Capturer immédiatement après.
+> `@_VFILTER` is reset on each `check()` call. Capture immediately after.
 
 ---
 
-## 5. Checklist — anti-pitfalls
+## 5. Checklist — Anti-Pitfalls
 
-### ✅ Règles YAML
+### ✅ YAML Rules
 
-- [ ] **Toujours** terminer `EFFET` par une valeur vraie (`1` ou expression truthy)
-- [ ] **Pitfall EFFET conditionnel sans `else`** : si le `if` ne modifie rien et que la règle retourne `1`,
-      le moteur croit qu'elle a travaillé → `applyrules()` retourne vrai → boucle infinie jusqu'à `_MAX_CYCLES`.
-      **Règle :** retourner `0` (ou `return 0`) quand aucun slot n'a été modifié.
+- [ ] **Always** end `EFFET` with a truthy value (`1` or truthy expression)
+- [ ] **Conditional EFFET without `else` pitfall**: if the `if` modifies nothing and the rule returns `1`,
+      the engine thinks it did work → `applyrules()` returns true → infinite loop until `_MAX_CYCLES`.
+      **Rule:** return `0` (or `return 0`) when no slot has been modified.
       ```yaml
       # FAUX — boucle infinie si la condition n'est jamais vraie
       EFFET: |
@@ -502,7 +502,7 @@ if ($filtre->check(@tokens)) {
         if ($p->{val} > 5) { $p->set('flag', 'KO'); return 1 }
         0
       ```
-      Exemple domaine construction — humidité/classe bois :
+      Construction domain example — moisture/wood class:
       ```yaml
       # DANGEREUX à l'échelle — retourne 1 même si rien n'est modifié
       EFFET: |
@@ -513,24 +513,24 @@ if ($filtre->check(@tokens)) {
         if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO'); return 1 }
         0
       ```
-      > Ce pitfall est invisible sur un sandbox (6 frames) et critique à l'échelle réelle
-      > (300 frames × 40 règles = explosion jusqu'à `_MAX_CYCLES` avec warning).
-      > Systématiquement vérifier chaque YAML dont l'EFFET contient un `if` sans `else`.
-- [ ] **Toujours** ajouter `EXCEPTION: defined $var->{slot_pose}` pour l'idempotence
-- [ ] Utiliser `|` (block scalar) pour les `EFFET` multi-lignes, jamais `>`
-- [ ] Nommer les fichiers avec préfixe `R01-`, `R02-` pour contrôler l'ordre
-- [ ] `filtre` dans `CHERCHER` pour réduire le scope **avant** `_APPLY`
+      > This pitfall is invisible on a sandbox (6 frames) and critical at real scale
+      > (300 frames × 40 rules = explosion up to `_MAX_CYCLES` with a warning).
+      > Systematically check every YAML whose EFFET contains an `if` without `else`.
+- [ ] **Always** add `EXCEPTION: defined $var->{slot_pose}` for idempotence
+- [ ] Use `|` (block scalar) for multi-line `EFFET`, never `>`
+- [ ] Name files with prefix `R01-`, `R02-` to control loading order
+- [ ] `filtre` in `CHERCHER` to narrow the scope **before** `_APPLY`
 
 ### ✅ Frames
 
-- [ ] Ne jamais utiliser `$f->{slot}` pour lire une valeur — utiliser `$f->slot` ou `$f->get('slot')`
-- [ ] ⛔ **Ne jamais utiliser `$f->{slot} = $val` pour écrire** — utiliser `$f->set('slot', $val)`
+- [ ] Never use `$f->{slot}` to read a value — use `$f->slot` or `$f->get('slot')`
+- [ ] ⛔ **Never use `$f->{slot} = $val` to write** — use `$f->set('slot', $val)`
 
-  **Pitfall critique `$f->{slot} = val` :** l'affectation directe bypass `_setSlot`
-  → `_registerSlot` → `%REPOSITORY` **n'est pas mis à jour** → `fmatch(slot => 'slot')`
-  retourne 0 Frames → les agents suivants ne trouvent jamais le Frame.
-  Ce bug est **silencieux** : pas d'erreur, le slot existe sur le Frame,
-  mais il est invisible à tout ciblage `fmatch`.
+  **Critical pitfall `$f->{slot} = val`:** direct assignment bypasses `_setSlot`
+  → `_registerSlot` → `%REPOSITORY` **is not updated** → `fmatch(slot => 'slot')`
+  returns 0 Frames → subsequent agents never find the Frame.
+  This bug is **silent**: no error, the slot exists on the Frame,
+  but it is invisible to any `fmatch` targeting.
 
   ```perl
   # ⛔ FAUX — slot créé mais invisible à fmatch (pipeline silencieusement cassé)
@@ -540,12 +540,12 @@ if ($filtre->check(@tokens)) {
   $f->set('besoin_conformite', 1);
   ```
 
-  Cas à risque : EFFET YAML généré par LLM, copie depuis un hash Perl ordinaire,
-  code issu d'un tutoriel Perl sans connaissance du moteur Chorus.
+  At-risk cases: LLM-generated YAML EFFET, copy from a plain Perl hash,
+  code from a Perl tutorial without knowledge of the Chorus engine.
 
-- [ ] Ne jamais utiliser `delete $f->{slot}` — utiliser `$f->delete('slot')`
-- [ ] Ne jamais nommer un slot métier avec un `_MAJUSCULE` (réservé au système)
-- [ ] Dans `_AFTER` : capturer `$SELF` **avant** tout appel à `set()` sur un autre Frame
+- [ ] Never use `delete $f->{slot}` — use `$f->delete('slot')`
+- [ ] Never name a domain slot with a `_UPPERCASE` prefix (reserved for the system)
+- [ ] In `_AFTER`: capture `$SELF` **before** any call to `set()` on another Frame
 
 ```perl
 # FAUX — $SELF sera écrasé par le set() interne
@@ -557,42 +557,42 @@ _AFTER => sub { my $ctx = $SELF; $other->set('x', $ctx->val) }
 
 ### ✅ Engine / Expert
 
-- [ ] Au moins un agent ou une règle doit appeler `solved()` (sinon boucle infinie)
-- [ ] Vérifier `_MAX_CYCLES` si le pipeline est long
-- [ ] **`Chorus::Expert->new()` ignore ses arguments** — toujours forcer `_MAX_ITER` par affectation directe :
-      `$xprt->{_MAX_ITER} = N;` immédiatement après `new()` (voir §1.4)
-- [ ] L'agent de terminaison doit être enregistré **en dernier** dans `register()`
-- [ ] Dédupliquer les `_ID` : deux règles avec le même `REGLE` dans le même agent → la 2e est silencieusement ignorée
-- [ ] `addrule()` est appelé avec `$SELF` comme contexte lors de `loadRules()` — ne pas appeler depuis un autre contexte Frame
+- [ ] At least one agent or rule must call `solved()` (otherwise infinite loop)
+- [ ] Check `_MAX_CYCLES` if the pipeline is long
+- [ ] **`Chorus::Expert->new()` ignores its arguments** — always force `_MAX_ITER` via direct assignment:
+      `$xprt->{_MAX_ITER} = N;` immediately after `new()` (see §1.4)
+- [ ] The termination agent must be registered **last** in `register()`
+- [ ] Deduplicate `_ID`s: two rules with the same `REGLE` in the same agent → the 2nd is silently ignored
+- [ ] `addrule()` is called with `$SELF` as context during `loadRules()` — do not call from another Frame context
 
 ### ✅ Collection::Filter
 
-- [ ] Toujours appeler `set_node_test()` avant `check()` (le défaut retourne le Frame brut)
-- [ ] `@_VFILTER` est global partagé — capturer immédiatement après `check()`
-- [ ] Un motif avec `^` et `$` doit couvrir **exactement** toute la séquence
+- [ ] Always call `set_node_test()` before `check()` (the default returns the raw Frame)
+- [ ] `@_VFILTER` is a shared global — capture immediately after `check()`
+- [ ] A pattern with `^` and `$` must cover **exactly** the entire sequence
 
-### ✅ Architecture multi-spécialités
+### ✅ Multi-Specialty Architecture
 
-- [ ] **1 spécialité = 1 agent = 1 répertoire YAML = 1 module Perl optionnel**
-- [ ] Le pipeline implicite : chaque agent lit le slot posé par le précédent
-- [ ] **Helpers Perl — injection obligatoire dans `Chorus::Engine` avant `loadRules()`** :
-      les EFFET YAML sont eval'd dans `Chorus::Engine` — un `use Module qw(fn)` dans le
-      module Agent ne rend PAS `fn` visible dans les EFFET.
-      Pattern obligatoire :
+- [ ] **1 specialty = 1 agent = 1 YAML directory = 1 optional Perl module**
+- [ ] The implicit pipeline: each agent reads the slot set by the previous one
+- [ ] **Perl helpers — mandatory injection into `Chorus::Engine` before `loadRules()`**:
+      YAML EFFETs are eval'd in `Chorus::Engine` — a `use Module qw(fn)` in the
+      Agent module does NOT make `fn` visible in EFFETs.
+      Required pattern:
       ```perl
       use MyAgent::Helpers qw(mon_helper);
       # ...
       { no strict 'refs'; *{'Chorus::Engine::mon_helper'} = \&mon_helper; }
       $agent->loadRules("$base/rules/mon-agent");
       ```
-      Sans ce typeglob, l'erreur est : `Undefined subroutine &Chorus::Engine::mon_helper`.
-- [ ] `eca/` jamais commité dans le dépôt git Engine
+      Without this typeglob, the error is: `Undefined subroutine &Chorus::Engine::mon_helper`.
+- [ ] `eca/` never committed to the Engine git repository
 
 ---
 
-## 6. Référence rapide
+## 6. Quick Reference
 
-### Symbols exportés
+### Exported Symbols
 
 ```perl
 # Chorus::Frame
@@ -605,7 +605,7 @@ use Chorus::Collection::List qw($LIST);
 use Chorus::Collection::Filter qw($FILTER @_VFILTER);
 ```
 
-### Clés YAML DSL
+### YAML DSL Keys
 
 ```
 REGLE       → _ID
@@ -617,7 +617,7 @@ EXCEPTION   → return if ...
 EFFET       → corps _APPLY (doit retourner vrai)
 ```
 
-### Slots Engine internes
+### Internal Engine Slots
 
 ```
 _RULES  _SCOPE  _APPLY  _ID  _TERMINAL  _PREMISSES
@@ -625,7 +625,7 @@ _CUT  _LAST  _REPLAY  _REPLAY_ALL  _SLEEPING  _SUCCES
 _MAX_CYCLES  _LOCK_UNTIL_STABLE  _IDENT
 ```
 
-### Slots BOARD (Expert)
+### BOARD Slots (Expert)
 
 ```
 SOLVED   FAILED   INPUT

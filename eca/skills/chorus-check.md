@@ -1,27 +1,27 @@
 # Skill — chorus-check
 
-> Déclencheur : `chorus-check <sandbox-name> <fichier-projet>`
-> Agent : `architect`
+> Trigger: `chorus-check <sandbox-name> <fichier-projet>`
+> Agent: `architect`
 >
-> `<sandbox-name>` : sandbox contenant la KB et les règles YAML (produits par `chorus-feed`)
-> `<fichier-projet>` : fichier JSON décrivant les éléments du projet à valider,
->                      ou données fournies inline par l'utilisateur
+> `<sandbox-name>`: sandbox containing the KB and YAML rules (produced by `chorus-feed`)
+> `<fichier-projet>`: JSON file describing the project elements to validate,
+>                      or data provided inline by the user
 >
-> **Responsabilité unique : valider un projet contre la connaissance.**
-> Le fichier projet est de la **donnée d'entrée runtime** — il n'influence pas
-> la génération de l'infrastructure. Deux `chorus-check` sur le même sandbox
-> avec des projets différents partagent exactement la même infrastructure.
+> **Single responsibility: validate a project against the knowledge base.**
+> The project file is **runtime input data** — it does not influence
+> infrastructure generation. Two `chorus-check` runs on the same sandbox
+> with different projects share exactly the same infrastructure.
 >
-> Prérequis : `chorus-feed <sandbox-name>` doit avoir été exécuté au préalable
-> (KB org + YAML présents dans le sandbox).
+> Prerequisite: `chorus-feed <sandbox-name>` must have been run beforehand
+> (KB org + YAML present in the sandbox).
 
 ---
 
-## ⚡ Étape 0 — Détection infrastructure (PRIORITAIRE, avant tout chargement)
+## ⚡ Step 0 — Infrastructure detection (PRIORITY, before any loading)
 
-**C'est la première action à exécuter, sans exception.**
+**This is the first action to execute, without exception.**
 
-Appeler `eca__directory_tree` sur `$SANDBOX` (max_depth=3) et vérifier :
+Call `eca__directory_tree` on `$SANDBOX` (max_depth=3) and verify:
 
 ```
 $SANDBOX/run.pl
@@ -30,34 +30,34 @@ $SANDBOX/lib/<Namespace>/Expert.pm
 $SANDBOX/lib/<Namespace>/Agent/<Nom>.pm  ← au moins un
 ```
 
-### ✅ Infrastructure présente → CHEMIN RAPIDE
+### ✅ Infrastructure present → FAST PATH
 
-**Aller directement à la Phase 6. Ne pas charger `chorus-engine.md`. Ne pas lire
-`index.org`. Ne pas lire les KB agents. Ne pas générer quoi que ce soit.**
+**Go directly to Phase 6. Do not load `chorus-engine.md`. Do not read
+`index.org`. Do not read agent KBs. Do not generate anything.**
 
-L'infrastructure est liée au corpus/KB, pas au projet. Changer de fichier projet
-ne justifie aucune régénération.
+The infrastructure is tied to the corpus/KB, not to the project. Changing the project file
+justifies no regeneration.
 
-> **Régénération forcée** : uniquement si l'utilisateur mentionne explicitement
-> qu'un `chorus-feed` a été exécuté depuis la dernière génération, ou demande
-> textuellement de "régénérer" / "rebuilder" l'infrastructure.
-> Un deuxième `chorus-check` avec un projet différent n'est **jamais** une
-> régénération forcée.
+> **Forced regeneration**: only if the user explicitly mentions
+> that a `chorus-feed` has been run since the last generation, or explicitly asks
+> to "regenerate" / "rebuild" the infrastructure.
+> A second `chorus-check` with a different project is **never** a
+> forced regeneration.
 
-### ❌ Infrastructure absente ou incomplète → CHEMIN COMPLET
+### ❌ Infrastructure absent or incomplete → FULL PATH
 
-Charger :
-- `chorus-engine.md` — référence moteur
+Load:
+- `chorus-engine.md` — engine reference
 - `$SANDBOX/eca/agents/index.org` — pipeline, agents, namespace
 
-> ⚠️ Ne pas lire les KB agents (`<slug>.org`) ni les YAML à ce stade.
-> Ils ne sont nécessaires qu'en cas de génération (infrastructure absente).
+> ⚠️ Do not read agent KBs (`<slug>.org`) or YAML files at this stage.
+> They are only needed during generation (infrastructure absent).
 
-Puis exécuter les Phases 0, 1–5, 6, 7 dans l'ordre.
+Then execute Phases 0, 1–5, 6, 7 in order.
 
 ---
 
-## Phase 0 — Vérification des prérequis KB *(chemin complet uniquement)*
+## Phase 0 — KB prerequisite check *(full path only)*
 
 ```
 $SANDBOX/eca/agents/index.org     ← doit exister
@@ -65,19 +65,19 @@ $SANDBOX/eca/agents/<slug>.org    ← au moins un agent
 $SANDBOX/rules/<slug>/            ← au moins un fichier YAML par agent
 ```
 
-Si l'un de ces éléments est absent → stopper et indiquer :
-`"KB incomplète — lancer chorus-feed <sandbox-name> <corpus> d'abord."`
+If any of these is missing → stop and report:
+`"KB incomplete — run chorus-feed <sandbox-name> <corpus> first."`
 
-Extraire depuis `index.org` :
-- Le namespace Perl du projet
-- La liste ordonnée des agents (pos, slug, module Perl)
-- L'agent de terminaison (dernier)
+Extract from `index.org`:
+- The Perl namespace of the project
+- The ordered list of agents (pos, slug, Perl module)
+- The termination agent (last)
 
 ---
 
-## Phase 1 — Analyser le fichier projet
+## Phase 1 — Analyse the project file
 
-### 1.1 Format attendu
+### 1.1 Expected format
 
 ```json
 {
@@ -93,25 +93,25 @@ Extraire depuis `index.org` :
 }
 ```
 
-Si le fichier projet est fourni **inline** (données collées dans le message) →
-l'écrire dans `$SANDBOX/projet.json` avant de continuer.
+If the project file is provided **inline** (data pasted in the message) →
+write it to `$SANDBOX/projet.json` before continuing.
 
-### 1.2 Déduire les slots obligatoires
+### 1.2 Deduce mandatory slots
 
-Pour chaque type d'élément présent dans le fichier projet, croiser avec le
-`Catalogue des Frames` des KB pour identifier les slots marqués `obligatoire`.
-Ces slots alimenteront la validation du Feed.
+For each element type present in the project file, cross-reference with the
+`Catalogue des Frames` in the KBs to identify slots marked `obligatoire`.
+These slots will drive the Feed validation.
 
-### 1.3 Identifier le slot de ciblage de l'agent 1
+### 1.3 Identify the targeting slot for agent 1
 
-Lire la section `Slots de ciblage` de la KB de l'agent en position 1.
-Ce slot doit être présent sur tous les Frames créés par le Feed.
+Read the `Slots de ciblage` section of the KB for the agent at position 1.
+This slot must be present on all Frames created by the Feed.
 
 ---
 
-## Phase 2 — Générer `Feed.pm`
+## Phase 2 — Generate `Feed.pm`
 
-Créer `$SANDBOX/lib/<Namespace>/Feed.pm` :
+Create `$SANDBOX/lib/<Namespace>/Feed.pm`:
 
 ```perl
 package <Namespace>::Feed;
@@ -174,18 +174,18 @@ sub load_projet {
 1;
 ```
 
-**Substitutions depuis les KB :**
-- `%SLOTS_REQUIS` ← slots `obligatoire` du Catalogue des Frames de chaque KB
-- commentaire slot de ciblage agent 1 ← section `Slots de ciblage` KB pos 1
+**Substitutions from the KBs:**
+- `%SLOTS_REQUIS` ← `obligatoire` slots from the Catalogue des Frames of each KB
+- agent 1 targeting slot comment ← `Slots de ciblage` section KB pos 1
 
 ---
 
-## Phase 3 — Générer les modules Agent
+## Phase 3 — Generate Agent modules
 
-Pour chaque agent de l'index, créer `$SANDBOX/lib/<Namespace>/Agent/<Nom>.pm`.
+For each agent in the index, create `$SANDBOX/lib/<Namespace>/Agent/<Nom>.pm`.
 
-Ce module est **de l'infrastructure pure** — il ne contient aucune logique métier.
-La logique métier est dans les YAML (règles) et dans `Helpers.pm` (produit par `chorus-feed`).
+This module is **pure infrastructure** — it contains no business logic.
+Business logic lives in the YAML files (rules) and in `Helpers.pm` (produced by `chorus-feed`).
 
 ```perl
 package <Namespace>::Agent::<Nom>;
@@ -256,22 +256,22 @@ sub build {
 1;
 ```
 
-**Règle pour l'agent de terminaison :**
-Si la KB indique `TERMINAL: solved` dans un YAML → pas de code Perl supplémentaire.
-Si la terminaison nécessite un test global (ex. vérifier que TOUS les Frames ont
-leur statut) → **ne pas coder ça dans un YAML** (risque de boucle infinie avec `fmatch`
-global) — ajouter une règle Perl pure via `addrule()` après `loadRules()` :
+**Rule for the termination agent:**
+If the KB indicates `TERMINAL: solved` in a YAML → no additional Perl code needed.
+If termination requires a global test (e.g. verifying that ALL Frames have
+their status set) → **do not code this in a YAML** (risk of infinite loop with a global `fmatch`)
+— add a pure Perl rule via `addrule()` after `loadRules()`:
 
-> ⚠️ **`$SELF` (YAML EFFET) vs `$agent` (Perl pur addrule()) :**
-> | Contexte | Variable correcte | Raison |
+> ⚠️ **`$SELF` (YAML EFFET) vs `$agent` (pure Perl addrule()):**
+> | Context | Correct variable | Reason |
 > |---|---|---|
-> | EFFET YAML | **`$SELF`** | `$agent` hors scope de l'eval Engine → crash `Global symbol` |
-> | `_APPLY` dans `addrule()` | **`$agent` (closure)** | `$SELF` est le Frame-règle, pas l'Engine |
+> | YAML EFFET | **`$SELF`** | `$agent` is out of scope in the Engine eval → `Global symbol` crash |
+> | `_APPLY` in `addrule()` | **`$agent` (closure)** | `$SELF` is the rule-Frame, not the Engine |
 >
-> Ce sont deux contextes d'exécution distincts — la confusion entre les deux
-> a causé des crashs silencieux ou des boucles infinies. La règle est simple :
-> - Dans un **fichier `.yml`** → toujours `$SELF->solved()`, `$SELF->cut()`, etc.
-> - Dans un **`addrule()`** Perl pur → capturer `$agent` en closure, jamais `$SELF`.
+> These are two distinct execution contexts — confusing them has caused
+> silent crashes or infinite loops. The rule is simple:
+> - In a **`.yml` file** → always `$SELF->solved()`, `$SELF->cut()`, etc.
+> - In a **pure Perl `addrule()`** → capture `$agent` as a closure, never `$SELF`.
 
 ```perl
 $agent->addrule(
@@ -293,26 +293,26 @@ $agent->addrule(
 );
 ```
 
-> ⚠ **Contrôles de flux disponibles dans `_APPLY`** (Perl pur ou EFFET YAML) :
-> - `$agent->cut()`        → sort du scope courant → règle suivante (même agent)
-> - `$agent->last()`       → sort de la boucle de règles → agent suivant
-> - `$agent->replay()`     → redémarre depuis la 1re règle de cet agent
-> - `$agent->replay_all()` → redémarre depuis le 1er agent
-> - `$agent->solved()`     → `BOARD->{SOLVED} = 'Y'` → arrêt immédiat
-> - `$agent->failed()`     → `BOARD->{FAILED} = 'Y'` → arrêt immédiat
+> ⚠ **Flow controls available in `_APPLY`** (pure Perl or YAML EFFET):
+> - `$agent->cut()`        → exits the current scope → next rule (same agent)
+> - `$agent->last()`       → exits the rule loop → next agent
+> - `$agent->replay()`     → restarts from the 1st rule of this agent
+> - `$agent->replay_all()` → restarts from the 1st agent
+> - `$agent->solved()`     → `BOARD->{SOLVED} = 'Y'` → immediate stop
+> - `$agent->failed()`     → `BOARD->{FAILED} = 'Y'` → immediate stop
 >
-> ⚠ **`$agent` doit être capturé en closure** dans `addrule()` Perl pur.
-> Ne jamais utiliser `$SELF->solved()` — `$SELF` est le Frame-règle courant,
-> pas l'agent Engine.
+> ⚠ **`$agent` must be captured as a closure** in pure Perl `addrule()`.
+> Never use `$SELF->solved()` — `$SELF` is the current rule-Frame,
+> not the Engine agent.
 
-**Si `Helpers.pm` est absent pour un agent** (aucun helper dans la KB) :
-→ omettre les lignes `use ... ::Helpers`.
+**If `Helpers.pm` is absent for an agent** (no helpers in the KB):
+→ omit the `use ... ::Helpers` lines.
 
 ---
 
-## Phase 4 — Générer `Expert.pm`
+## Phase 4 — Generate `Expert.pm`
 
-Créer `$SANDBOX/lib/<Namespace>/Expert.pm` :
+Create `$SANDBOX/lib/<Namespace>/Expert.pm`:
 
 ```perl
 package <Namespace>::Expert;
@@ -352,21 +352,21 @@ sub run {
 1;
 ```
 
-**Communication inter-agents via BOARD :**
-Si la KB documente des dépendances entre agents qui ne passent pas par des slots
-de Frames (ex. un flag global, un compteur, un état de phase) → utiliser `BOARD`.
-Le BOARD est injecté dans tous les agents par `register()` — chaque agent y accède
+**Inter-agent communication via BOARD:**
+If the KB documents dependencies between agents that do not go through Frame slots
+(e.g. a global flag, a counter, a phase state) → use `BOARD`.
+BOARD is injected into all agents by `register()` — each agent accesses it
 via `$agent->BOARD`.
 
-> ⚠ Ne pas confondre BOARD et Frames :
-> - **Frame** : connaissance sur un objet du domaine (élément, entité)
-> - **BOARD** : état partagé de l'exécution (flags globaux, compteurs, INPUT)
+> ⚠ Do not confuse BOARD and Frames:
+> - **Frame**: knowledge about a domain object (element, entity)
+> - **BOARD**: shared execution state (global flags, counters, INPUT)
 
 ---
 
-## Phase 5 — Générer `run.pl`
+## Phase 5 — Generate `run.pl`
 
-`run.pl` est le point d'entrée unique. Il ne contient **aucune donnée** :
+`run.pl` is the single entry point. It contains **no hardcoded data**:
 
 ```perl
 #!/usr/bin/env perl
@@ -571,72 +571,72 @@ print "─" x 62 . "\n";
 
 ---
 
-## Phase 6 — Exécution et rapport
+## Phase 6 — Execution and report
 
-Lancer le pipeline :
+Run the pipeline:
 
 ```bash
 perl $SANDBOX/run.pl $SANDBOX/projet.json
 ```
 
-Capturer la sortie. Si des erreurs Perl surviennent :
-- Erreur `loadRules` → vérifier les YAML (syntaxe, indentation)
-- Erreur `Can't locate` → vérifier `use lib` et le namespace
-- Pipeline `FAILED/TIMEOUT` → vérifier la règle de terminaison
+Capture the output. If Perl errors occur:
+- `loadRules` error → check the YAML files (syntax, indentation)
+- `Can't locate` error → check `use lib` and the namespace
+- `FAILED/TIMEOUT` pipeline → check the termination rule
 
-**Afficher la sortie complète verbatim** dans un bloc de code — systématiquement, sans
-résumé ni reformulation à la place. C'est le rapport principal ; ne jamais le remplacer
-par une synthèse tabulaire.
+**Display the complete verbatim output** in a code block — always, without
+summarizing or rephrasing in its place. This is the main report; never replace it
+with a tabular summary.
 
-Après la sortie verbatim, signaler en commentaire court (optionnel) :
-- Éléments `NON_CONFORME` avec leur motif si `ref_corpus` absent
-- Éléments `(non traité)` → slot de ciblage probablement absent du Feed
-- Écarts avec les `_resultats_attendus` du fichier projet (si présents)
+After the verbatim output, note briefly (optional):
+- `NON_CONFORME` elements with their reason if `ref_corpus` is absent
+- `(non traité)` elements → targeting slot probably missing from the Feed
+- Discrepancies with `_resultats_attendus` in the project file (if present)
 
 ---
 
-## Phase 7 — Vérification finale *(post-génération uniquement)*
+## Phase 7 — Final verification *(post-generation only)*
 
-> ⚠️ Cette checklist s'applique **uniquement après génération** des Phases 1–5.
-> Ne pas l'exécuter sur le chemin rapide (infrastructure déjà présente).
+> ⚠️ This checklist applies **only after generation** of Phases 1–5.
+> Do not run it on the fast path (infrastructure already present).
 
-- [ ] `Feed.pm` : slot de ciblage agent 1 présent dans `%SLOTS_REQUIS`
-- [ ] `Feed.pm` : validation slots obligatoires couvre tous les types du projet
-- [ ] `Feed.pm` : types inconnus → `warn + next` (pas `die`) — filet de sécurité JSON mixte multi-sandboxes
-- [ ] `Expert.pm` : ordre `register()` = ordre `#+PIPELINE_POS`
-- [ ] `Expert.pm` : `$xprt->{_MAX_ITER}` forcé **après** `new()` (bug connu : `new()` ignore ses arguments)
-- [ ] `run.pl` : chemin `../../Engine/lib` correct depuis le sandbox
-- [ ] `run.pl` : aucune donnée codée en dur
-- [ ] Rapport : aucun élément `(non traité)` inattendu
-- [ ] `_MAX_CYCLES` : valeur calibrée au volume réel de Frames attendu.
-      Heuristique : `N_frames × N_règles_total × N_agents × 10 < _MAX_CYCLES`.
-      Dans `run.pl` : calculer depuis `scalar(@elements)` et passer via `Expert->run(max_cycles => ...)`.
-      Ne jamais laisser la valeur par défaut (`10_000`) pour un pipeline de production.
-- [ ] Agent de terminaison : `solved()` appelé sur `$agent` (closure) dans `addrule()`, jamais sur `$SELF`.
-      Dans un EFFET YAML → `$SELF->solved()`. Dans un `addrule()` Perl pur → `$agent->solved()` (capturé en closure).
-      ⛔ **Ne jamais coder une terminaison par `fmatch` global dans un YAML** → boucle infinie garantie.
-- [ ] Si `reorder()` utilisé : la fonction de tri consulte `_PREMISSES` — cohérent avec les YAML
-- [ ] Si `_LOCK_UNTIL_STABLE` activé : l'agent peut être sauté — vérifier que ce comportement est voulu
-- [ ] BOARD : les clés utilisées en inter-agents sont documentées dans `index.org`
-- [ ] **YAML — EFFET conditionnel sans `else`** : si le `if` ne modifie rien et que la règle retourne `1`,
-      le moteur boucle jusqu'à `_MAX_CYCLES` (warning). Vérifier chaque YAML dont l'EFFET
-      contient un `if` sans `else` → retourner `0` quand aucun slot n'est modifié :
+- [ ] `Feed.pm`: agent 1 targeting slot present in `%SLOTS_REQUIS`
+- [ ] `Feed.pm`: mandatory slot validation covers all element types in the project
+- [ ] `Feed.pm`: unknown types → `warn + next` (not `die`) — safety net for mixed-sandbox JSON
+- [ ] `Expert.pm`: `register()` order = `#+PIPELINE_POS` order
+- [ ] `Expert.pm`: `$xprt->{_MAX_ITER}` forced **after** `new()` (known bug: `new()` ignores its arguments)
+- [ ] `run.pl`: `../../Engine/lib` path correct from the sandbox
+- [ ] `run.pl`: no hardcoded data
+- [ ] Report: no unexpected `(non traité)` elements
+- [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume.
+      Heuristic: `N_frames × N_règles_total × N_agents × 10 < _MAX_CYCLES`.
+      In `run.pl`: compute from `scalar(@elements)` and pass via `Expert->run(max_cycles => ...)`.
+      Never leave the default value (`10_000`) for a production pipeline.
+- [ ] Termination agent: `solved()` called on `$agent` (closure) in `addrule()`, never on `$SELF`.
+      In a YAML EFFET → `$SELF->solved()`. In a pure Perl `addrule()` → `$agent->solved()` (captured as closure).
+      ⛔ **Never code a termination via global `fmatch` in a YAML** → guaranteed infinite loop.
+- [ ] If `reorder()` is used: the sort function consults `_PREMISSES` — consistent with the YAML files
+- [ ] If `_LOCK_UNTIL_STABLE` is enabled: the agent may be skipped — verify this is the intended behaviour
+- [ ] BOARD: inter-agent keys are documented in `index.org`
+- [ ] **YAML — conditional EFFET without `else`**: if the `if` modifies nothing and the rule returns `1`,
+      the engine loops until `_MAX_CYCLES` (warning). Check every YAML whose EFFET
+      contains an `if` without `else` → return `0` when no slot is modified:
       `if (...) { ...; return 1 } 0`
 
 ---
 
-## Séparation des responsabilités — résumé
+## Separation of concerns — summary
 
 | | `chorus-feed` | `chorus-check` |
 |---|---|---|
-| **Lit** | corpus de normes | KB org + YAML + Helpers.pm du sandbox |
-| **Produit** | KB org, YAML, `Helpers.pm` | `Feed.pm`, `Agent/<Nom>.pm` (shell), `Expert.pm`, `run.pl` |
-| **Ne produit pas** | code infrastructure | KB org, YAML, Helpers.pm |
-| **Déclenché par** | nouvelle norme / enrichissement | projet à valider |
-| **Résultat** | connaissance persistante | rapport de conformité |
+| **Reads** | standards corpus | sandbox KB org + YAML + Helpers.pm |
+| **Produces** | KB org, YAML, `Helpers.pm` | `Feed.pm`, `Agent/<Nom>.pm` (shell), `Expert.pm`, `run.pl` |
+| **Does not produce** | infrastructure code | KB org, YAML, Helpers.pm |
+| **Triggered by** | new standard / enrichment | project to validate |
+| **Output** | persistent knowledge | compliance report |
 
-> Un sandbox peut subir N `chorus-feed` successifs (enrichissements)
-> puis N `chorus-check` indépendants (projets différents).
-> La KB et les Helpers sont stables et cumulatifs.
-> Les artefacts d'infrastructure (Feed, Agent shell, Expert, run.pl)
-> sont régénérés à chaque `chorus-check`.
+> A sandbox can undergo N successive `chorus-feed` runs (enrichments)
+> then N independent `chorus-check` runs (different projects).
+> The KB and Helpers are stable and cumulative.
+> Infrastructure artefacts (Feed, Agent shell, Expert, run.pl)
+> are regenerated at each `chorus-check`.

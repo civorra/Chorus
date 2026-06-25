@@ -1,49 +1,49 @@
 # Skill — chorus-import-project
 
-> Déclencheur : `chorus-import-project <sandbox-name> <source…> [--out <fichier.json>] [--batch]`
-> Agent : `architect`
+> Trigger: `chorus-import-project <sandbox-name> <source…> [--out <fichier.json>] [--batch]`
+> Agent: `architect`
 >
-> `<sandbox-name>` : sandbox contenant une KB produite par `chorus-feed`
-> `<source…>`      : une ou plusieurs sources projet de l'ingénieur (voir modes ci-dessous)
->                    Formats acceptés : PDF, Word (.docx), Excel (.xlsx/.csv),
->                    texte brut, tableau collé dans le chat, chemin de répertoire
-> `--out`          : nom du fichier JSON de sortie (mode fusion uniquement ;
->                    défaut : `projet-import-<NNN>.json`)
-> `--batch`        : forcer le mode batch même si une seule source est donnée
+> `<sandbox-name>` : sandbox containing a KB produced by `chorus-feed`
+> `<source…>`      : one or more project sources from the engineer (see modes below)
+>                    Accepted formats: PDF, Word (.docx), Excel (.xlsx/.csv),
+>                    plain text, table pasted in the chat, directory path
+> `--out`          : output JSON filename (merge mode only;
+>                    default: `projet-import-<NNN>.json`)
+> `--batch`        : force batch mode even if a single source is provided
 >
-> ### Modes d'invocation
+> ### Invocation Modes
 >
-> | Syntaxe | Mode | Comportement |
+> | Syntax | Mode | Behavior |
 > |---|---|---|
-> | `chorus-import-project sb fichier.pdf` | **Unitaire** | 1 source → 1 JSON (comportement historique) |
-> | `chorus-import-project sb f1.pdf f2.xlsx f3.docx` | **Fusion** | N sources → 1 JSON fusionné (même projet, fichiers complémentaires) |
-> | `chorus-import-project sb ./dossier/` | **Batch** | Répertoire → 1 JSON par fichier + rapport de synthèse |
-> | `chorus-import-project sb *.pdf --batch` | **Batch** | Glob explicite → 1 JSON par fichier + rapport de synthèse |
+> | `chorus-import-project sb fichier.pdf` | **Single** | 1 source → 1 JSON (original behavior) |
+> | `chorus-import-project sb f1.pdf f2.xlsx f3.docx` | **Merge** | N sources → 1 merged JSON (same project, complementary files) |
+> | `chorus-import-project sb ./dossier/` | **Batch** | Directory → 1 JSON per file + summary report |
+> | `chorus-import-project sb *.pdf --batch` | **Batch** | Explicit glob → 1 JSON per file + summary report |
 >
-> **Règle de détection automatique du mode :**
-> - 1 argument source non-répertoire → Unitaire
-> - N > 1 arguments sources (même format ou formats mixtes) → Fusion
-> - 1 argument répertoire ou flag `--batch` présent → Batch
+> **Automatic mode detection rule:**
+> - 1 non-directory source argument → Single
+> - N > 1 source arguments (same or mixed formats) → Merge
+> - 1 directory argument or `--batch` flag present → Batch
 >
-> **Responsabilité unique : aligner la terminologie projet de l'ingénieur
-> sur les slots et types KB du sandbox, puis produire un fichier projet JSON valide.**
+> **Single responsibility: align the engineer's project terminology with the sandbox
+> KB slots and types, then produce a valid project JSON file.**
 >
-> Prérequis : `chorus-feed <sandbox-name>` exécuté au préalable (KB org présente).
+> Prerequisites: `chorus-feed <sandbox-name>` must have been run beforehand (org KB present).
 >
-> ⚠️ **Sources KB à utiliser — ordre strict :**
-> 1. `$SANDBOX/eca/agents/index.org` → types de Frames, pipeline, namespace
+> ⚠️ **KB sources to use — strict order:**
+> 1. `$SANDBOX/eca/agents/index.org` → Frame types, pipeline, namespace
 > 2. `$SANDBOX/eca/agents/<slug>.org` → sections `Ontologie`, `Dictionnaire des slots`,
->    `Catalogue des Frames` (slots obligatoires, domaines de valeurs)
-> 3. `$SANDBOX/eca/import-report-*.org` existants → décisions d'alignement précédentes
+>    `Catalogue des Frames` (mandatory slots, value domains)
+> 3. `$SANDBOX/eca/import-report-*.org` existing → previous alignment decisions
 >
-> ⛔ **Ne jamais lire** `Helpers.pm`, `Feed.pm`, `Agent/*.pm` pour déduire les slots.
-> ⛔ **Ne jamais inventer** une valeur absente du document source — signaler le gap.
+> ⛔ **Never read** `Helpers.pm`, `Feed.pm`, `Agent/*.pm` to infer slots.
+> ⛔ **Never invent** a value absent from the source document — report the gap.
 
 ---
 
-## Phase 0 — Acquisition des données sources
+## Phase 0 — Source Data Acquisition
 
-### Détection du mode et collecte des sources
+### Mode Detection and Source Collection
 
 ```
 # Mode Batch (répertoire)
@@ -68,22 +68,22 @@ Si N > 1 sources sans --batch :
 1 source non-répertoire, sans --batch → comportement historique (Phase 0A/0B ci-dessous)
 ```
 
-### Phase 0-BATCH — Traitement en lot
+### Phase 0-BATCH — Batch Processing
 
-Pour chaque fichier `f` dans `files` :
-1. Extraire le texte brut (Phase 0B ci-dessous)
-2. Exécuter les Phases 1–6 **de manière autonome** pour ce fichier
-3. Nommer les sorties : `projet-import-<NNN>.json` et `import-report-<NNN>.org`
-   (incrémenter NNN indépendamment pour chaque fichier)
-4. À la fin du lot → produire le **rapport de synthèse batch** (voir Phase 6-BATCH)
+For each file `f` in `files`:
+1. Extract plain text (Phase 0B below)
+2. Run Phases 1–6 **autonomously** for this file
+3. Name the outputs: `projet-import-<NNN>.json` and `import-report-<NNN>.org`
+   (increment NNN independently for each file)
+4. At the end of the batch → produce the **batch summary report** (see Phase 6-BATCH)
 
-> ⚠️ La Phase 1 (lecture KB) est exécutée **une seule fois** en début de batch
-> et réutilisée pour tous les fichiers — le référentiel terminologique est commun.
+> ⚠️ Phase 1 (KB reading) is run **once only** at the start of the batch
+> and reused for all files — the terminology reference is shared.
 
-### Phase 0-FUSION — Fusion multi-sources
+### Phase 0-FUSION — Multi-Source Merge
 
-Après extraction individuelle de chaque source :
-1. Concaténer les blocs texte en les étiquetant par fichier source :
+After individually extracting each source:
+1. Concatenate the text blocks, labelling each by source file:
    ```
    === SOURCE: structure.pdf ===
    <texte extrait>
@@ -91,21 +91,21 @@ Après extraction individuelle de chaque source :
    === SOURCE: isolation.xlsx ===
    <texte extrait>
    ```
-2. L'inventaire (Phase 2) traite l'ensemble comme une source unique
-3. Conserver l'attribut `_source_fichier` dans chaque élément JSON pour traçabilité
-4. **Gestion des conflits d'id** : si deux sources définissent un élément avec le même `id` :
-   - Inclure les deux avec suffixe `_a` / `_b` sur le doublon
-   - Ajouter `_conflit: 1` et `_conflit_source: ["fichier1", "fichier2"]`
-   - Signaler le conflit dans le rapport d'import
+2. The inventory (Phase 2) processes the whole as a single source
+3. Retain the `_source_fichier` attribute on each JSON element for traceability
+4. **Id conflict handling**: if two sources define an element with the same `id`:
+   - Include both with suffix `_a` / `_b` on the duplicate
+   - Add `_conflit: 1` and `_conflit_source: ["fichier1", "fichier2"]`
+   - Report the conflict in the import report
 
-### Cas A — Source inline (données collées dans le chat)
+### Case A — Inline source (data pasted in the chat)
 
-L'ingénieur colle directement un extrait de tableau, une liste d'éléments, ou un
-texte descriptif. Traiter le contenu tel quel — passer directement à la Phase 1.
+The engineer pastes a table excerpt, a list of elements, or a descriptive text directly.
+Process the content as-is — proceed directly to Phase 1.
 
-### Cas B — Source filesystem (fichiers sur disque)
+### Case B — Filesystem source (files on disk)
 
-Identifier le format et extraire le texte brut **avant** tout traitement sémantique.
+Identify the format and extract plain text **before** any semantic processing.
 
 #### PDF
 ```bash
@@ -145,31 +145,31 @@ for t in doc.tables:
 "
 ```
 
-> ⚠️ Si les outils d'extraction sont absents → demander à l'ingénieur de fournir
-> le contenu copié-collé depuis son application (Cas A).
-> Ne jamais bloquer le workflow pour un outil manquant — proposer l'alternative inline.
+> ⚠️ If extraction tools are absent → ask the engineer to provide copy-pasted content
+> from their application (Case A).
+> Never block the workflow over a missing tool — offer the inline alternative.
 
 ---
 
-## Phase 1 — Lire la KB (terminologie canonique)
+## Phase 1 — Read the KB (canonical terminology)
 
-### 1.1 Index du pipeline
+### 1.1 Pipeline Index
 
-Lire `$SANDBOX/eca/agents/index.org` :
-- Namespace + liste des agents (slug, pos)
-- Dictionnaire global des slots (si présent dans l'index)
+Read `$SANDBOX/eca/agents/index.org`:
+- Namespace + agent list (slug, pos)
+- Global slot dictionary (if present in the index)
 
-### 1.2 Terminologie par agent
+### 1.2 Per-agent terminology
 
-Pour chaque agent, lire `$SANDBOX/eca/agents/<slug>.org` et extraire :
+For each agent, read `$SANDBOX/eca/agents/<slug>.org` and extract:
 
-| Section KB | Ce qu'on en tire |
+| KB Section | What we extract |
 |---|---|
-| `Ontologie` | Concepts du domaine, synonymes, relations (ex. "entrait" = poutre horizontale de ferme) |
-| `Catalogue des Frames` | Types exacts (`type_element`), slots obligatoires par type |
-| `Dictionnaire des slots` | Noms canoniques, types de valeurs, unités, domaines admis |
+| `Ontologie` | Domain concepts, synonyms, relationships (e.g. "entrait" = horizontal truss beam) |
+| `Catalogue des Frames` | Exact types (`type_element`), mandatory slots per type |
+| `Dictionnaire des slots` | Canonical names, value types, units, allowed domains |
 
-Construire un **référentiel terminologique** interne :
+Build an internal **terminology reference**:
 ```
 concept_kb        → type_element / slot_kb       unité_kb    domaine
 ────────────────────────────────────────────────────────────────────
@@ -182,18 +182,18 @@ hauteur libre     → hauteur_libre_m             m           décimal
 section           → section_bois                —           "BxH" ex. "45x145"
 ```
 
-### 1.3 Décisions d'alignement précédentes
+### 1.3 Previous alignment decisions
 
-Si `$SANDBOX/eca/import-report-*.org` existe, lire le dernier rapport :
-- Récupérer les mappings déjà validés → les réappliquer sans redemander
-- Récupérer les questions en suspens → les reposer si les mêmes termes réapparaissent
+If `$SANDBOX/eca/import-report-*.org` exists, read the latest report:
+- Retrieve previously validated mappings → reapply them without asking again
+- Retrieve pending questions → re-raise them if the same terms reappear
 
 ---
 
-## Phase 2 — Inventaire brut des éléments projet
+## Phase 2 — Raw Inventory of Project Elements
 
-Parcourir les données sources et produire un **inventaire brut** :
-une liste non-interprétée de ce que l'ingénieur a fourni.
+Scan the source data and produce a **raw inventory**:
+an uninterpreted list of what the engineer has provided.
 
 ```
 Ligne / Cellule source          Terme identifié      Valeurs associées
@@ -204,15 +204,15 @@ Ligne / Cellule source          Terme identifié      Valeurs associées
 "panneau OSB 12mm, CE"         "panneau OSB"        ep=12mm, CE=oui
 ```
 
-> **Règle :** ne pas mapper à ce stade — inventorier d'abord, aligner ensuite.
-> Préserver le texte source original dans l'inventaire pour traçabilité.
+> **Rule:** do not map at this stage — inventory first, align later.
+> Preserve the original source text in the inventory for traceability.
 
 ---
 
-## Phase 3 — Alignement terminologique
+## Phase 3 — Terminology Alignment
 
-C'est la phase centrale. Pour chaque terme de l'inventaire brut, croiser avec
-le référentiel KB (Phase 1.2) et produire un tableau d'alignement :
+This is the core phase. For each term from the raw inventory, cross-reference against
+the KB reference (Phase 1.2) and produce an alignment table:
 
 ```
 Terme projet                  Slot KB / type_element    Valeur KB        Confiance
@@ -231,25 +231,25 @@ Terme projet                  Slot KB / type_element    Valeur KB        Confian
 "traitement cl. 2"            traitement_applique ?     ?                ❓ à préciser
 ```
 
-### Niveaux de confiance
+### Confidence Levels
 
-| Symbole | Signification | Action |
+| Symbol | Meaning | Action |
 |---|---|---|
-| ✅ sûr | Correspondance directe ou quasi-directe avec la KB | Mapper sans demander |
-| ⚠️ probable | Correspondance logique mais terme non exact | Proposer + demander confirmation |
-| ❓ ambigu | Plusieurs mappings possibles ou terme inconnu KB | Bloquer + demander clarification |
-| ⛔ gap | Slot obligatoire absent du document source | Signaler — ne pas inventer |
-| ⬜ hors-périmètre | `type_element` absent de la KB de ce sandbox | Exclure du JSON — flag `_hors_perimetre: 1` + signaler dans le rapport |
+| ✅ sûr | Direct or near-direct match with the KB | Map without asking |
+| ⚠️ probable | Logical match but term is not exact | Propose + ask for confirmation |
+| ❓ ambigu | Multiple possible mappings or unknown KB term | Block + ask for clarification |
+| ⛔ gap | Mandatory slot absent from the source document | Report — do not invent |
+| ⬜ hors-périmètre | `type_element` absent from this sandbox's KB | Exclude from JSON — flag `_hors_perimetre: 1` + report |
 
-> **Règle hors-périmètre :** un élément reçoit `⬜` si son `type_element` n'est
-> reconnu par **aucun** `Catalogue des Frames` du sandbox cible. Il n'est pas
-> bloquant — l'import continue. L'élément est exclu du JSON de sortie et listé
-> dans la section `Éléments hors-périmètre` du rapport d'import.
+> **Out-of-scope rule:** an element receives `⬜` if its `type_element` is not recognised
+> by **any** `Catalogue des Frames` in the target sandbox. This is non-blocking — the import
+> continues. The element is excluded from the output JSON and listed in the
+> `Out-of-scope elements` section of the import report.
 >
-> **Conséquence architecturale :** un projet multi-domaines (ex. structurel +
-> thermique) doit être importé **une fois par sandbox cible** — chaque import
-> ne retient que les types que ce sandbox connaît. `chorus-import-project` est
-> l'outil de partition ; `run.pl` ne voit que les éléments qui le concernent.
+> **Architectural consequence:** a multi-domain project (e.g. structural + thermal) must
+> be imported **once per target sandbox** — each import retains only the types that sandbox
+> knows. `chorus-import-project` is the partitioning tool; `run.pl` only sees the elements
+> that concern it.
 >
 > ```bash
 > # Projet mixte → deux imports ciblés
@@ -262,11 +262,11 @@ Terme projet                  Slot KB / type_element    Valeur KB        Confian
 >     # → éléments montant_porteur, lisse_basse → ⬜ exclus + rapport
 > ```
 
-### Transformations d'unités
+### Unit Transformations
 
-Documenter explicitement toute conversion :
+Explicitly document every conversion:
 
-| Pattern source | Transformation | Slot KB |
+| Source pattern | Transformation | KB Slot |
 |---|---|---|
 | `2,5m` / `2.5m` / `250cm` | → `2.5` | `hauteur_libre_m` |
 | `40cm` / `400mm` / `0,4m` | → `400` | `entraxe_mm` |
@@ -275,9 +275,9 @@ Documenter explicitement toute conversion :
 | `45/145` / `45×145` / `45x145` | → `"45x145"` | `section_bois` |
 | `C 24` / `classe C24` / `C24 EN338` | → `"C24"` | `classe_bois` |
 
-### Résolution des ambiguïtés
+### Resolving Ambiguities
 
-Pour chaque terme ❓, présenter à l'ingénieur :
+For each ❓ term, present the following to the engineer:
 ```
 ❓ "panneau contreventement" — plusieurs interprétations possibles :
    1. panneau_osb     (panneau OSB structurel §3.1)
@@ -285,14 +285,14 @@ Pour chaque terme ❓, présenter à l'ingénieur :
    Quel type correspond à votre document ?
 ```
 
-**Ne pas continuer avant résolution des ❓ bloquants** (slots `type_element` ambigus).
-Les ⚠️ peuvent être provisoirement acceptés avec un flag `_a_confirmer: 1`.
+**Do not proceed until blocking ❓ items are resolved** (ambiguous `type_element` slots).
+⚠️ items may be provisionally accepted with a `_a_confirmer: 1` flag.
 
 ---
 
-## Phase 4 — Identifier les gaps
+## Phase 4 — Identify Gaps
 
-Pour chaque élément, croiser les slots présents avec le `Catalogue des Frames` KB :
+For each element, cross-reference the present slots against the KB `Catalogue des Frames`:
 
 ```
 Type            Slot obligatoire    Présent ?   Source
@@ -302,22 +302,22 @@ montant_porteur humidite_pct        ⛔ ABSENT   non mentionné
 montant_porteur hauteur_libre_m     ✅          "h=2.5m"
 ```
 
-### Traitement des gaps
+### Gap Handling
 
-| Type de gap | Action |
+| Gap type | Action |
 |---|---|
-| Slot obligatoire absent | Demander à l'ingénieur — ne pas supposer |
-| Slot optionnel absent | Omettre du JSON — le pipeline s'en passe |
-| Valeur hors domaine (ex. `classe_bois: "C12"`) | Signaler — laisser l'ingénieur corriger |
-| Élément entier non-mappable | Inclure avec `_incomplet: 1` — sera rejeté proprement par Feed |
+| Mandatory slot absent | Ask the engineer — do not assume |
+| Optional slot absent | Omit from JSON — the pipeline handles it |
+| Out-of-domain value (e.g. `classe_bois: "C12"`) | Report — let the engineer correct it |
+| Entire element unmappable | Include with `_incomplet: 1` — will be cleanly rejected by Feed |
 
 ---
 
-## Phase 5 — Produire le JSON
+## Phase 5 — Produce the JSON
 
-### Mode Unitaire / Fusion — un seul JSON
+### Single / Merge Mode — one JSON
 
-Une fois tous les ❓ résolus et les gaps critiques comblés :
+Once all ❓ items are resolved and critical gaps are filled:
 
 ```json
 {
@@ -346,22 +346,22 @@ Une fois tous les ❓ résolus et les gaps critiques comblés :
 }
 ```
 
-> **Convention `id`** : conserver l'identifiant du document source si disponible
-> (ex. "Poteau P1", "IPE-01"), sinon générer `<TYPE_ABREV>-<NN>`.
-> Traçabilité document ↔ JSON = priorité.
-> En mode fusion, `_source_fichier` est toujours renseigné sur chaque élément.
+> **`id` convention**: keep the source document identifier if available
+> (e.g. "Poteau P1", "IPE-01"), otherwise generate `<TYPE_ABREV>-<NN>`.
+> Document ↔ JSON traceability is the priority.
+> In merge mode, `_source_fichier` is always set on each element.
 
-### Mode Batch — un JSON par fichier
+### Batch Mode — one JSON per file
 
-Chaque fichier produit son propre JSON nommé `projet-import-<NNN>.json`.
-Le champ `_import.mode` vaut `"batch"`.
-Pas de fusion inter-fichiers — chaque JSON est autonome et pipelinable indépendamment.
+Each file produces its own JSON named `projet-import-<NNN>.json`.
+The `_import.mode` field is `"batch"`.
+No cross-file merging — each JSON is self-contained and can be piped independently.
 
 ---
 
-## Phase 6 — Produire le rapport d'import
+## Phase 6 — Produce the Import Report
 
-Créer `$SANDBOX/eca/import-report-<NNN>.org` :
+Create `$SANDBOX/eca/import-report-<NNN>.org`:
 
 ```org
 #+TITLE: Rapport d'import — <source> — <date>
@@ -402,12 +402,12 @@ Créer `$SANDBOX/eca/import-report-<NNN>.org` :
   N éléments retenus / N complets / N avec gaps / N à confirmer / N hors-périmètre (exclus)
 ```
 
-> Ce rapport est la **mémoire des décisions d'alignement** pour ce sandbox.
-> Il est relu automatiquement lors du prochain `chorus-import-project` sur le même sandbox.
+> This report is the **alignment decision memory** for this sandbox.
+> It is automatically re-read during the next `chorus-import-project` run on the same sandbox.
 
-### Phase 6-BATCH — Rapport de synthèse (mode batch uniquement)
+### Phase 6-BATCH — Summary Report (batch mode only)
 
-En plus des rapports individuels, créer `$SANDBOX/eca/import-batch-<NNN>.org` :
+In addition to the individual reports, create `$SANDBOX/eca/import-batch-<NNN>.org`:
 
 ```org
 #+TITLE: Rapport de synthèse batch — <répertoire ou glob> — <date>
@@ -449,47 +449,46 @@ En plus des rapports individuels, créer `$SANDBOX/eca/import-batch-<NNN>.org` :
   (lancer le pipeline sur chaque JSON produit)
 ```
 
-> **Termes nouveaux** : si un terme source n'était pas dans les rapports précédents
-> ET qu'il a reçu un alignement ✅ sûr, il est candidat à être intégré dans la
-> section `Dictionnaire` de la KB agent correspondant (via `chorus-feed` ou édition
-> manuelle de l'org file).
+> **New terms**: if a source term was not present in previous reports AND received a
+> ✅ safe alignment, it is a candidate for integration into the `Dictionnaire` section
+> of the corresponding agent KB (via `chorus-feed` or manual editing of the org file).
 
 ---
 
-## Phase 7 — Lancer le pipeline (optionnel)
+## Phase 7 — Run the Pipeline (optional)
 
-Si l'ingénieur le demande explicitement, enchaîner avec `chorus-check` :
+If the engineer explicitly requests it, follow up with `chorus-check`:
 
 ```bash
 perl $SANDBOX/run.pl $SANDBOX/<projet-import-NNN.json>
 ```
 
-Si `run.pl` n'existe pas encore → indiquer de lancer `chorus-check` d'abord.
+If `run.pl` does not yet exist → indicate that `chorus-check` should be run first.
 
 ---
 
-## Séparation des responsabilités
+## Separation of Responsibilities
 
 | | `chorus-feed` | `chorus-import-project` | `chorus-create-project` | `chorus-check` |
 |---|---|---|---|---|
-| **Lit** | corpus normatif | docs projet ingénieur + KB org | KB org | KB org + YAML |
-| **Produit** | KB org, YAML, Helpers.pm | `projet-import-*.json` + rapport `.org` | `projet-*.json` | Feed.pm, shells, Expert.pm, run.pl |
-| **Source des seuils** | corpus | KB org uniquement | KB org uniquement | KB org |
-| **Gaps** | n/a | signalés, jamais inventés | calculés depuis KB | n/a |
-| **Ne lit jamais** | — | Helpers.pm, Feed.pm | Helpers.pm, Feed.pm | — |
+| **Reads** | normative corpus | engineer project docs + org KB | org KB | org KB + YAML |
+| **Produces** | KB org, YAML, Helpers.pm | `projet-import-*.json` + `.org` report | `projet-*.json` | Feed.pm, shells, Expert.pm, run.pl |
+| **Threshold source** | corpus | org KB only | org KB only | org KB |
+| **Gaps** | n/a | reported, never invented | computed from KB | n/a |
+| **Never reads** | — | Helpers.pm, Feed.pm | Helpers.pm, Feed.pm | — |
 
 ---
 
-## Principe architectural — granularité sandbox = granularité JSON
+## Architectural Principle — sandbox granularity = JSON granularity
 
-> **La granularité d'un sandbox définit la granularité du JSON projet qui lui est destiné.**
+> **The granularity of a sandbox defines the granularity of the project JSON intended for it.**
 
-Un sandbox couvre un domaine normatif cohérent (ex. structurel, thermique, hygrométrie).
-Un projet multi-domaines produit autant de JSONs d'import que de sandboxes cibles.
-**`chorus-import-project` est l'outil de partition — pas `run.pl`.**
+A sandbox covers a coherent normative domain (e.g. structural, thermal, hygrometry).
+A multi-domain project produces as many import JSONs as there are target sandboxes.
+**`chorus-import-project` is the partitioning tool — not `run.pl`.**
 
-Les éléments hors-périmètre (⬜) sont exclus proprement à l'import ; `run.pl` et
-`Feed.pm` ne reçoivent que les types qu'ils connaissent.
+Out-of-scope elements (⬜) are cleanly excluded at import time; `run.pl` and
+`Feed.pm` only receive the types they know.
 
 ```
 dossier-projet/                      ← source unique (tous domaines mélangés)
@@ -510,7 +509,7 @@ perl sandbox-structurel/run.pl projet-structurel-001.json → rapport_struct.txt
 perl sandbox-thermique/run.pl  projet-thermique-001.json  → rapport_thermo.txt
 ```
 
-**Conséquence pour `Feed.pm`** (généré par `chorus-check`) :
-Le template utilise `warn + next` au lieu de `die` sur un type inconnu,
-comme filet de sécurité si un JSON mixte atteignait `run.pl` malgré tout.
-La partition reste la responsabilité de `chorus-import-project`.
+**Consequence for `Feed.pm`** (generated by `chorus-check`):
+The template uses `warn + next` instead of `die` on an unknown type, as a safety net
+in case a mixed JSON somehow reached `run.pl`. Partitioning remains the responsibility
+of `chorus-import-project`.

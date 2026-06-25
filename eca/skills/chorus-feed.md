@@ -1,54 +1,54 @@
 # Skill — chorus-feed
 
-> Déclencheur : `chorus-feed <sandbox-name> <corpus> [--enrich]`
-> Agent : `architect`
+> Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich]`
+> Agent: `architect`
 >
-> `<sandbox-name>` : nom du répertoire sandbox sous `$CHORUS/sandboxes/`
-> `<corpus>` : fichier texte/PDF ou contenu inline fourni par l'utilisateur
-> `--enrich` : active le Mode B (enrichissement incrémental) — absent par défaut
+> `<sandbox-name>`: name of the sandbox directory under `$CHORUS/sandboxes/`
+> `<corpus>`: text/PDF file or inline content provided by the user
+> `--enrich`: activates Mode B (incremental enrichment) — absent by default
 >
-> **Responsabilité unique : enrichir la connaissance.**
-> Ce skill ne génère jamais de code d'infrastructure (Feed, Agent shell, Expert, run.pl).
-> Il produit :
->   - Les fichiers KB org-mode par agent (`eca/agents/<slug>.org`)
->   - Les fichiers YAML de règles (`rules/<slug>/R<NN>-xxx.yml`)
->   - Les helpers Perl de connaissance métier (`lib/<Namespace>/Agent/<Slug>/Helpers.pm`)
->   - L'index du pipeline (`eca/agents/index.org`)
+> **Single responsibility: enrich knowledge.**
+> This skill never generates infrastructure code (Feed, shell Agent, Expert, run.pl).
+> It produces:
+>   - KB org-mode files per agent (`eca/agents/<slug>.org`)
+>   - YAML rule files (`rules/<slug>/R<NN>-xxx.yml`)
+>   - Business knowledge Perl helpers (`lib/<Namespace>/Agent/<Slug>/Helpers.pm`)
+>   - Pipeline index (`eca/agents/index.org`)
 >
-> Pour valider un projet sur la base de cette connaissance → utiliser `chorus-check`.
+> To validate a project based on this knowledge → use `chorus-check`.
 
 ---
 
-## 0. Chargements préalables
+## 0. Prerequisites
 
-Charger : `chorus-engine.md` — référence moteur (Frame, Engine, fmatch, YAML DSL)
+Load: `chorus-engine.md` — engine reference (Frame, Engine, fmatch, YAML DSL)
 
 ---
 
-## Sélection du mode
+## Mode Selection
 
-**Par défaut : Mode A — toujours, quelle que soit l'état du sandbox.**
+**Default: Mode A — always, regardless of the sandbox state.**
 
-Le flag `--enrich` est obligatoire pour activer le Mode B.
+The `--enrich` flag is required to activate Mode B.
 
 | Condition | Mode |
 |---|---|
-| Aucun flag `--enrich` | **Mode A** — ignorer toute KB existante dans le sandbox |
-| Flag `--enrich` présent | **Mode B** — lire la KB existante et enrichir |
+| No `--enrich` flag | **Mode A** — ignore any existing KB in the sandbox |
+| `--enrich` flag present | **Mode B** — read existing KB and enrich |
 
-> ⚠ Sans `--enrich`, ne **jamais** lire `eca/agents/`, les YAML existants ou
-> tout autre artefact KB du sandbox — même si le répertoire `<sandbox-name>` existe déjà.
-> Le corpus fourni est traité comme une source fraîche, indépendamment du contexte existant.
+> ⚠ Without `--enrich`, **never** read `eca/agents/`, existing YAMLs, or
+> any other KB artifact from the sandbox — even if the `<sandbox-name>` directory already exists.
+> The provided corpus is treated as a fresh source, independent of any existing context.
 
 ---
 
-## Mode A — Initialisation (nouveau corpus, base fraîche)
+## Mode A — Initialization (new corpus, fresh base)
 
-Utilisé quand `<sandbox-name>` n'existe pas encore ou ne contient pas de KB.
+Used when `<sandbox-name>` does not yet exist or does not contain a KB.
 
-### Phase 0 — Initialisation du sandbox
+### Phase 0 — Sandbox Initialization
 
-Créer l'arborescence :
+Create the directory structure:
 
 ```bash
 SANDBOX="$CHORUS/sandboxes/<sandbox-name>"
@@ -58,10 +58,10 @@ mkdir -p "$SANDBOX/rules"
 mkdir -p "$SANDBOX/lib"
 ```
 
-Sauvegarder le corpus dans `corpus/001-<slug-source>.txt`
-(convention : numéroté pour permettre l'enrichissement incrémental).
+Save the corpus in `corpus/001-<slug-source>.txt`
+(convention: numbered to allow incremental enrichment).
 
-Créer `README.org` :
+Create `README.org`:
 
 ```org
 #+TITLE: Sandbox <sandbox-name>
@@ -83,119 +83,119 @@ Créer `README.org` :
 * Notes de session
 ```
 
-### Phase 1 — Analyse du corpus
+### Phase 1 — Corpus Analysis
 
-**1.1 Identifier les spécialités**
+**1.1 Identify specialties**
 
-Lire le corpus intégralement. Regrouper les règles par thématique cohérente.
-Chaque groupe = un agent. Critères :
-- règles portant sur les mêmes types de Frames
-- même slots entrants/sortants
-- ordonnables séquentiellement sans dépendance cyclique
+Read the corpus in full. Group rules by coherent theme.
+Each group = one agent. Criteria:
+- rules concerning the same types of Frames
+- same incoming/outgoing slots
+- orderable sequentially without cyclic dependencies
 
-Résultat : liste ordonnée d'agents (slug + intention + pos pipeline).
+Result: ordered list of agents (slug + intent + pipeline position).
 
-**1.2 Identifier les Frames du domaine**
+**1.2 Identify domain Frames**
 
-Pour chaque concept persistant du corpus (≥ 2 slots, identité stable) → Frame.
-Les calculs intermédiaires restent des slots, pas des Frames.
+For each persistent concept in the corpus (≥ 2 slots, stable identity) → Frame.
+Intermediate calculations remain as slots, not Frames.
 
-**1.3 Identifier le pipeline**
+**1.3 Identify the pipeline**
 
-Ordre des agents par dépendance de données :
-agent N pose le slot X → agent N+1 consomme X → N+1 après N.
+Order agents by data dependency:
+agent N sets slot X → agent N+1 consumes X → N+1 after N.
 
-### Phase 2 — Stratégie de ciblage (_SCOPE)
+### Phase 2 — Targeting Strategy (_SCOPE)
 
-**Ne pas sauter cette phase.**
+**Do not skip this phase.**
 
-**2.1 Rappel**
+**2.1 Reminder**
 
-`_SCOPE` → produit cartésien. `fmatch(slot => 'X')` retourne tous les Frames
-portant X. Le `filtre` réduit **avant** la boucle combinatoire.
-Un Frame est invisible pour un agent s'il ne porte pas le slot ciblé.
+`_SCOPE` → Cartesian product. `fmatch(slot => 'X')` returns all Frames
+carrying X. The `filtre` reduces **before** the combinatorial loop.
+A Frame is invisible to an agent if it does not carry the targeted slot.
 
-**2.2 Règle A vs B**
-
-```
-Volume Frames < 50  ET  slots discriminants bien distribués → Stratégie A
-Sinon                                                        → Stratégie B
-```
-Doute → préférer B (toujours plus efficace).
-
-> ⚠️ **Scalabilité — règle volume :** si le nombre de Frames attendus dépasse 100,
-> **forcer systématiquement la stratégie B** (slot de présence + `EXCEPTION` sur chaque règle).
-> La stratégie A sans `filtre` sur un scope de > 100 Frames expose au risque O(N²)
-> dès que `CHERCHER` a plusieurs variables (produit cartésien non réduit).
-
-**2.3 Dimensionnement `_MAX_CYCLES`**
-
-Documenter dans la section `Contraintes & Pitfalls` de chaque KB agent :
+**2.2 Rule A vs B**
 
 ```
-_MAX_CYCLES recommandé : N_frames × N_règles_agent × N_agents × 10
+Volume Frames < 50  AND  discriminating slots well distributed → Strategy A
+Otherwise                                                       → Strategy B
+```
+When in doubt → prefer B (always more efficient).
+
+> ⚠️ **Scalability — volume rule:** if the expected number of Frames exceeds 100,
+> **always force Strategy B** (presence slot + `EXCEPTION` on each rule).
+> Strategy A without `filtre` on a scope of > 100 Frames risks O(N²)
+> as soon as `CHERCHER` has multiple variables (unreduced Cartesian product).
+
+**2.3 `_MAX_CYCLES` sizing**
+
+Document in the `Constraints & Pitfalls` section of each agent KB:
+
+```
+_MAX_CYCLES recommended: N_frames × N_rules_agent × N_agents × 10
 ```
 
-Exemple pour un pipeline construction réel (300 éléments, 5 agents, 8 règles/agent) :
+Example for a real construction pipeline (300 elements, 5 agents, 8 rules/agent):
 
 ```perl
 _MAX_CYCLES => 300 * 8 * 5 * 10,   # = 120 000
 ```
 
-La valeur par défaut du moteur (`10 000`) est un garde-fou contre les boucles
-infinies — elle doit être calibrée au volume attendu, pas utilisée telle quelle.
+The engine's default value (`10 000`) is a safeguard against infinite loops
+— it must be calibrated to the expected volume, not used as-is.
 
-**2.3 Stratégie B — slot de présence**
-- Nommer : `besoin_<slug_underscore>` (convention)
-- Posé par : feed initial (agent 1) ou agent N-1 dans son EFFET (agents suivants)
+**2.3 Strategy B — presence slot**
+- Name: `besoin_<slug_underscore>` (convention)
+- Set by: initial feed (agent 1) or agent N-1 in its EFFET (subsequent agents)
 
-**2.4 Stratégie A — slot discriminant**
-- Identifier le slot commun + valeur de filtre
-- Si `fmatch` retourne > 100 Frames avant `grep` → reconsidérer B
+**2.4 Strategy A — discriminating slot**
+- Identify the common slot + filter value
+- If `fmatch` returns > 100 Frames before `grep` → reconsider B
 
-### Phase 3 — Remplir la KB par agent
+### Phase 3 — Fill the KB per agent
 
-Créer `$SANDBOX/eca/agents/<slug>.org` depuis `_template.org`.
-Ordre de remplissage obligatoire :
+Create `$SANDBOX/eca/agents/<slug>.org` from `_template.org`.
+Mandatory fill order:
 
-1. En-tête (`#+AGENT`, `#+PIPELINE_POS`, `#+RULES_DIR`)
-2. Domaine
-3. **Slots de ciblage** — stratégie + tableau + contrat pré-population
-4. Pipeline E/S (slots entrants / sortants)
-5. Ontologie
-6. Catalogue des Frames
-7. Dictionnaire des slots
-8. Catalogue des règles
-9. **Helpers Perl** — signatures + corps complet du code métier
-10. Contraintes & Pitfalls
+1. Header (`#+AGENT`, `#+PIPELINE_POS`, `#+RULES_DIR`)
+2. Domain
+3. **Targeting slots** — strategy + table + pre-population contract
+4. Pipeline I/O (incoming / outgoing slots)
+5. Ontology
+6. Frame catalog
+7. Slot dictionary
+8. Rule catalog
+9. **Perl Helpers** — signatures + complete business logic code
+10. Constraints & Pitfalls
 
-> **Règle helpers :** un helper appartient à `chorus-feed` (et donc à la KB)
-> s'il encode de la **connaissance extraite du corpus** : table de valeurs,
-> calcul normalisé, seuil réglementaire. Il n'appartient PAS à `chorus-feed`
-> s'il relève de l'infrastructure (accès fichier, parsing, réseau).
+> **Helpers rule:** a helper belongs to `chorus-feed` (and therefore to the KB)
+> if it encodes **knowledge extracted from the corpus**: value tables,
+> normalized calculations, regulatory thresholds. It does NOT belong to `chorus-feed`
+> if it relates to infrastructure (file access, parsing, networking).
 
-> ⚠️ **Tables normatives — externaliser dans des Helpers, pas inline dans les YAML.**
-> Pour les domaines à corpus denses (normes, DTU, EC5, NF EN…), les valeurs
-> normatives (résistances, classes d'exposition, seuils réglementaires…) doivent
-> être centralisées dans `Helpers.pm` plutôt que codées en scalaires dans les `EFFET` YAML.
-> Avantages : mise à jour lors d'une révision normative sans toucher les YAML ;
-> traçabilité vers la source (commentaire `Source corpus : §<N> — <titre>`) ;
-> tests unitaires indépendants des règles.
+> ⚠️ **Normative tables — externalize into Helpers, not inline in YAMLs.**
+> For domains with dense corpora (standards, DTU, EC5, NF EN…), normative
+> values (resistances, exposure classes, regulatory thresholds…) must
+> be centralized in `Helpers.pm` rather than coded as scalars in YAML `EFFET`s.
+> Advantages: updates during a normative revision without touching the YAMLs;
+> traceability to the source (comment `Source corpus: §<N> — <title>`);
+> unit tests independent of the rules.
 >
-> **Règle de traçabilité :** chaque seuil ou table normative dans `Helpers.pm`
-> doit être annoté avec sa source corpus :
+> **Traceability rule:** each threshold or normative table in `Helpers.pm`
+> must be annotated with its corpus source:
 > ```perl
 > # Source corpus : §5.3 tab. 1 — NF EN 338:2016 — Résistance en flexion par classe
 > my %FM_PAR_CLASSE = (C14 => 14, C16 => 16, C18 => 18, C24 => 24, C30 => 30);
 > ```
-> Si la source n'est pas identifiable → documenter l'incertitude dans un commentaire `# TODO`.
+> If the source is not identifiable → document the uncertainty in a `# TODO` comment.
 
-Points de vigilance :
-- Idempotence : `EXCEPTION: defined $var->{<slot_pose>}` sur toute règle qui pose un slot
-- Terminaison : documenter dans quelle règle et sous quelle condition `solved()` est appelé
-- Nommage : `R<NN>-<slug>.yml` — ordre alpha = ordre de chargement
+Points to watch:
+- Idempotence: `EXCEPTION: defined $var->{<slot_pose>}` on every rule that sets a slot
+- Termination: document in which rule and under what condition `solved()` is called
+- Naming: `R<NN>-<slug>.yml` — alphabetical order = load order
 
-### Phase 4 — Créer `eca/agents/index.org`
+### Phase 4 — Create `eca/agents/index.org`
 
 ```org
 #+TITLE: Pipeline — <sandbox-name>
@@ -216,9 +216,9 @@ Points de vigilance :
   | 001 | corpus/001-xxx.txt   | tous (initialisation)|
 ```
 
-### Phase 5 — Générer les fichiers YAML
+### Phase 5 — Generate YAML files
 
-Pour chaque règle du `Catalogue des règles` de chaque KB :
+For each rule in the `Rule catalog` of each KB:
 
 ```yaml
 REGLE: <nom-kebab-case>         # obligatoire — devient _ID (déduplication)
@@ -252,16 +252,16 @@ EFFET: |
   1
 ```
 
-**Quand utiliser `TERMINAL` vs `$SELF->solved()` dans EFFET :**
-- `TERMINAL: solved` — la règle se déclenche sur UN Frame et cela suffit à terminer
-- `$SELF->solved()` dans EFFET — quand la règle doit vérifier une condition avant de conclure.
-  ⚠️ `$agent` n'est **pas** disponible dans un EFFET YAML (erreur `Global symbol "$agent"`) —
-  utiliser **exclusivement `$SELF`** pour les contrôles de flux dans les EFFETs.
+**When to use `TERMINAL` vs `$SELF->solved()` in EFFET:**
+- `TERMINAL: solved` — the rule fires on ONE Frame and that alone is sufficient to terminate
+- `$SELF->solved()` in EFFET — when the rule must check a condition before concluding.
+  ⚠️ `$agent` is **not** available in a YAML EFFET (error `Global symbol "$agent"`) —
+  use **exclusively `$SELF`** for flow control in EFFETs.
 
-> ⚠️ **Antipattern critique — terminaison YAML + fmatch global = boucle infinie :**
-> Une règle YAML avec `fmatch` global dans l'EFFET (sans `EXCEPTION` couvrant le slot final)
-> ne converge jamais : elle se déclenche sur chaque Frame, retourne 0 indéfiniment, et
-> `applyrules()` ne peut jamais conclure. `_MAX_CYCLES` sera atteint à chaque run.
+> ⚠️ **Critical antipattern — YAML termination + global fmatch = infinite loop:**
+> A YAML rule with a global `fmatch` in the EFFET (without an `EXCEPTION` covering the final slot)
+> never converges: it fires on every Frame, returns 0 indefinitely, and
+> `applyrules()` can never conclude. `_MAX_CYCLES` will be reached on every run.
 >
 > ```yaml
 > # ⛔ ANTIPATTERN — boucle infinie garantie
@@ -276,24 +276,24 @@ EFFET: |
 >   0
 > ```
 >
-> **Solution** : règle de terminaison globale → **`addrule()` Perl pur** dans le shell Agent,
-> avec `$agent` capturé en closure (voir `chorus-check.md`, Phase 3, règle de terminaison).
-> Ne jamais coder une terminaison par `fmatch` global dans un YAML.
+> **Solution**: global termination rule → **pure Perl `addrule()`** in the shell Agent,
+> with `$agent` captured in a closure (see `chorus-check.md`, Phase 3, termination rule).
+> Never code a termination via global `fmatch` in a YAML.
 
-**Quand documenter `PREMISSES` :**
-Toujours documenter si l'agent est susceptible d'utiliser `reorder()` pour
-optimiser l'ordre des règles en cours d'exécution. Les PREMISSES déclarent
-les slots dont la règle a besoin — le code de tri les consulte via `$rule->_PREMISSES`.
+**When to document `PREMISSES`:**
+Always document if the agent is likely to use `reorder()` to
+optimize rule order at runtime. PREMISSES declare
+the slots the rule needs — the sorting code consults them via `$rule->_PREMISSES`.
 
-Checklist YAML :
-- [ ] Noms de slots = Dictionnaire des slots de la KB
-- [ ] Chaque règle qui pose un slot a son `EXCEPTION` idempotence
-- [ ] `EFFET` termine par `1` ou expression truthy
-- [ ] ⛔ **Pitfall critique `$f->{slot} = val` dans EFFET** : l'affectation directe bypass
-      `_setSlot` → `_registerSlot` → `%REPOSITORY` n'est pas mis à jour → `fmatch(slot => 'slot')`
-      retourne **0 Frames** dans les agents suivants. Bug **silencieux** : pas d'erreur, le slot
-      existe sur le Frame mais est invisible à tout ciblage.
-      **Dans un EFFET YAML, toujours utiliser `$f->set('slot', val)`.**
+YAML Checklist:
+- [ ] Slot names = Slot dictionary from the KB
+- [ ] Every rule that sets a slot has its idempotence `EXCEPTION`
+- [ ] `EFFET` ends with `1` or a truthy expression
+- [ ] ⛔ **Critical pitfall `$f->{slot} = val` in EFFET**: direct assignment bypasses
+      `_setSlot` → `_registerSlot` → `%REPOSITORY` is not updated → `fmatch(slot => 'slot')`
+      returns **0 Frames** in downstream agents. **Silent** bug: no error, the slot
+      exists on the Frame but is invisible to any targeting.
+      **In a YAML EFFET, always use `$f->set('slot', val)`.**
 
       ```yaml
       # ⛔ FAUX — slot invisible à fmatch → agents aval aveugles (pipeline cassé sans erreur)
@@ -306,12 +306,12 @@ Checklist YAML :
         $f->set('besoin_conformite', 1);
         1
       ```
-- [ ] ⛔ **Pitfall CONDITION trop restrictive sur `type_element`** : une CONDITION du type
-      `$p->{type_element} eq "X"` exclut **silencieusement** tout Frame d'un autre type, même
-      si la règle devrait s'appliquer à plusieurs types.
-      Pas d'erreur, pas de crash — le pipeline SOLVED, mais certains Frames ne sont jamais contrôlés.
-      **Détection impossible à petit volume** (les Frames exclus passent quand même à la règle suivante
-      qui pose le slot OK de façon défensive).
+- [ ] ⛔ **Pitfall CONDITION too restrictive on `type_element`**: a CONDITION of the form
+      `$p->{type_element} eq "X"` **silently** excludes every Frame of a different type, even
+      if the rule should apply to multiple types.
+      No error, no crash — the pipeline SOLVEs, but some Frames are never checked.
+      **Detection impossible at small volume** (the excluded Frames still pass to the next rule
+      which defensively sets the OK slot).
 
       ```yaml
       # ⛔ FAUX — ne cible qu'un seul type, exclut les autres porteurs du slot
@@ -324,14 +324,14 @@ Checklist YAML :
       CONDITION: '$p->{type_element} =~ /^(type_A|type_B|type_C)$/ && defined $p->{slot_mesure}'
       ```
 
-      **Règle :** dans la CONDITION d'une règle qui contrôle un slot sémantique (ex. slot de mesure,
-      slot de classification), préférer tester **la présence du slot** plutôt que
-      le `type_element`, sauf si l'exclusion de certains types est **intentionnelle et documentée**
-      dans le `Catalogue des règles` de la KB agent.
+      **Rule:** in the CONDITION of a rule that checks a semantic slot (e.g. measurement slot,
+      classification slot), prefer testing **the presence of the slot** rather than
+      the `type_element`, unless excluding certain types is **intentional and documented**
+      in the agent KB `Rule catalog`.
 
-- [ ] **Pitfall EFFET conditionnel** : si un `if` ne modifie rien, retourner `0` — jamais `1` inconditionnellement.
-      Le moteur interprète `1` comme "la règle a travaillé" → `applyrules()` retourne vrai → boucle infinie
-      jusqu'à `_MAX_CYCLES`. À l'échelle (100+ Frames), ce pitfall est invisible en sandbox et critique en production.
+- [ ] **EFFET conditional pitfall**: if an `if` modifies nothing, return `0` — never unconditionally `1`.
+      The engine interprets `1` as "the rule did work" → `applyrules()` returns true → infinite loop
+      until `_MAX_CYCLES`. At scale (100+ Frames), this pitfall is invisible in sandbox and critical in production.
 
       ```yaml
       # DANGEREUX — retourne 1 même si rien n'est modifié
@@ -344,28 +344,28 @@ Checklist YAML :
         if ($p->{humidite_pct} > 18) { $p->set('alerte_humidite', 'KO'); return 1 }
         0
       ```
-- [ ] Utiliser `|` (block scalar) pour les `EFFET` multi-lignes — jamais `>`
-- [ ] Fichiers nommés `R<NN>-<slug>.yml` (ordre alpha = ordre de chargement)
-- [ ] Règle de terminaison : `TERMINAL: solved` ou `$SELF->solved()` dans EFFET — une seule voie par agent.
-      ⛔ **Jamais `$agent->solved()` dans un EFFET YAML** — `$agent` hors scope → crash.
-      ⛔ **Jamais `fmatch` global dans un EFFET YAML pour la terminaison** → boucle infinie.
-      Si terminaison globale (vérifier tous les Frames) → `addrule()` Perl pur (voir `chorus-check.md`).
-- [ ] Si `PREMISSES` présent : cohérent avec le `Dictionnaire des slots` de la KB
+- [ ] Use `|` (block scalar) for multi-line `EFFET`s — never `>`
+- [ ] Files named `R<NN>-<slug>.yml` (alphabetical order = load order)
+- [ ] Termination rule: `TERMINAL: solved` or `$SELF->solved()` in EFFET — one path per agent.
+      ⛔ **Never `$agent->solved()` in a YAML EFFET** — `$agent` out of scope → crash.
+      ⛔ **Never global `fmatch` in a YAML EFFET for termination** → infinite loop.
+      If global termination (check all Frames) → pure Perl `addrule()` (see `chorus-check.md`).
+- [ ] If `PREMISSES` present: consistent with the KB `Slot dictionary`
 
-### Phase 5.5 — Générer les Helpers Perl
+### Phase 5.5 — Generate Perl Helpers
 
-Pour chaque agent dont la KB contient une section `Helpers Perl` non vide,
-créer `$SANDBOX/lib/<Namespace>/Agent/<Slug>/Helpers.pm`.
+For each agent whose KB contains a non-empty `Perl Helpers` section,
+create `$SANDBOX/lib/<Namespace>/Agent/<Slug>/Helpers.pm`.
 
-**Critère d'inclusion d'un helper ici :**
-Le code encode de la connaissance extraite du corpus :
-- table de valeurs normatives (ex. résistances par classe NF EN 338)
-- calcul réglementaire (ex. formule EC5 §6.3)
-- seuil ou plage issue d'un article de norme
+**Criteria for including a helper here:**
+The code encodes knowledge extracted from the corpus:
+- normative value tables (e.g. resistances by class NF EN 338)
+- regulatory calculations (e.g. EC5 §6.3 formula)
+- threshold or range from a standard article
 
-**Ce qui n'est PAS un helper de connaissance** (→ reste dans `chorus-check`) :
-- parsing de fichier, accès base de données, appel réseau
-- logique d'orchestration (boucles sur agents, gestion d'erreurs)
+**What is NOT a knowledge helper** (→ stays in `chorus-check`):
+- file parsing, database access, network calls
+- orchestration logic (loops over agents, error handling)
 
 #### Template `Helpers.pm`
 
@@ -405,125 +405,125 @@ sub <helper2> {
 1;
 ```
 
-#### Règles de génération
+#### Generation rules
 
-- **Un fichier `Helpers.pm` par agent** — même s'il n'y a qu'un seul helper.
-- **`@EXPORT_OK` exhaustif** — tous les helpers listés, aucun oublié.
-  `chorus-check` fait un `use ... qw(...)` complet pour les rendre disponibles
-  dans le namespace avant `loadRules()`.
-- **Commentaire `Source corpus`** sur chaque helper — traçabilité vers la norme.
-- Si un helper est **partagé entre plusieurs agents** → le placer dans
-  `lib/<Namespace>/Helpers/Shared.pm` et le documenter dans les KB des
-  deux agents concernés.
-- **Pas d'effet de bord** dans un helper : pas d'écriture de slots, pas d'appel
-  à `$SELF`, pas de `fmatch`. Les helpers calculent et retournent une valeur —
-  c'est le YAML qui appelle `$frame->set()`.
-- **Pitfall `$SELF`** : dans un `_AFTER` hook ou une closure qui appelle `set()`
-  sur un autre Frame, capturer `$SELF` **avant** tout appel à `set()` :
+- **One `Helpers.pm` file per agent** — even if there is only one helper.
+- **Exhaustive `@EXPORT_OK`** — all helpers listed, none missing.
+  `chorus-check` does a full `use ... qw(...)` to make them available
+  in the namespace before `loadRules()`.
+- **`Source corpus` comment** on each helper — traceability to the standard.
+- If a helper is **shared between multiple agents** → place it in
+  `lib/<Namespace>/Helpers/Shared.pm` and document it in the KB of
+  both agents involved.
+- **No side effects** in a helper: no slot writes, no call to
+  `$SELF`, no `fmatch`. Helpers compute and return a value —
+  the YAML calls `$frame->set()`.
+- **`$SELF` pitfall**: in an `_AFTER` hook or a closure that calls `set()`
+  on another Frame, capture `$SELF` **before** any call to `set()`:
   ```perl
   # FAUX — $SELF sera écrasé par le set() interne
   _AFTER => sub { $other->set('x', $SELF->val) }
   # CORRECT
   _AFTER => sub { my $ctx = $SELF; $other->set('x', $ctx->val) }
   ```
-  Ce pitfall concerne les helpers appelés depuis un `_AFTER` ou un slot procédural —
-  pas les helpers purs (calcul → retour valeur).
+  This pitfall concerns helpers called from an `_AFTER` or a procedural slot —
+  not pure helpers (compute → return value).
 
-#### Checklist Helpers
+#### Helpers Checklist
 
-- [ ] Chaque helper référencé dans un EFFET YAML a son implémentation dans `Helpers.pm`
-- [ ] `@EXPORT_OK` couvre tous les helpers du fichier
-- [ ] Chaque helper a son commentaire `Source corpus`
-- [ ] Aucun effet de bord (pas de `set`, pas de `fmatch`, pas d'I/O)
-- [ ] Les helpers partagés sont dans `Shared.pm` et documentés dans les deux KB
-- [ ] Tout helper appelé depuis un `_AFTER` ou slot procédural : capturer `$SELF`
-      avant tout `set()` sur un autre Frame (`my $ctx = $SELF; ...`)
+- [ ] Every helper referenced in a YAML EFFET has its implementation in `Helpers.pm`
+- [ ] `@EXPORT_OK` covers all helpers in the file
+- [ ] Every helper has its `Source corpus` comment
+- [ ] No side effects (no `set`, no `fmatch`, no I/O)
+- [ ] Shared helpers are in `Shared.pm` and documented in both KBs
+- [ ] Any helper called from an `_AFTER` or procedural slot: capture `$SELF`
+      before any `set()` on another Frame (`my $ctx = $SELF; ...`)
 
-### Phase 6 — Clôture
+### Phase 6 — Closing
 
-Mettre à jour `README.org` :
-- Section `Statut des agents` : KB ✓, YAML ✓, Helpers ✓ (ou `-` si aucun)
-- Section `Pipeline identifié` : tableau complet
+Update `README.org`:
+- `Agent status` section: KB ✓, YAML ✓, Helpers ✓ (or `-` if none)
+- `Identified pipeline` section: complete table
 
 ---
 
-## Mode B — Enrichissement incrémental (`--enrich` requis)
+## Mode B — Incremental Enrichment (`--enrich` required)
 
-Utilisé **uniquement** quand `--enrich` est présent dans la commande.
-`<sandbox-name>` doit exister et contenir une KB.
+Used **only** when `--enrich` is present in the command.
+`<sandbox-name>` must exist and contain a KB.
 
-### Phase B0 — Lire la KB existante
+### Phase B0 — Read existing KB
 
-1. Lire `eca/agents/index.org` → pipeline actuel, agents connus
-2. Lire chaque `eca/agents/<slug>.org` → Dictionnaire des slots, Catalogue des règles
-3. Lire les fichiers YAML existants → règles déjà codifiées
+1. Read `eca/agents/index.org` → current pipeline, known agents
+2. Read each `eca/agents/<slug>.org` → Slot dictionary, Rule catalog
+3. Read existing YAML files → already codified rules
 
-### Phase B1 — Analyser le nouveau corpus
+### Phase B1 — Analyze the new corpus
 
-Classifier chaque règle/prescription du nouveau corpus en **3 catégories** :
+Classify each rule/prescription from the new corpus into **3 categories**:
 
-| Catégorie | Critère | Action |
+| Category | Criterion | Action |
 |---|---|---|
-| **Affinement** | Porte sur un Frame et des slots déjà connus | Ajouter règle à un agent existant |
-| **Extension** | Porte sur de nouveaux slots d'un Frame connu | Étendre KB agent existant + nouvelles règles YAML |
-| **Nouveau domaine** | Porte sur des Frames ou concepts absents de la KB | Créer un nouvel agent |
+| **Refinement** | Concerns a Frame and slots already known | Add rule to an existing agent |
+| **Extension** | Concerns new slots of a known Frame | Extend existing agent KB + new YAML rules |
+| **New domain** | Concerns Frames or concepts absent from the KB | Create a new agent |
 
-### Phase B2 — Sauvegarder le nouveau corpus
+### Phase B2 — Save the new corpus
 
-Numéroter en incrémentant : `corpus/002-<slug-source>.txt`, `003-...`
-Mettre à jour la table `Corpus intégré` dans `index.org`.
+Number incrementally: `corpus/002-<slug-source>.txt`, `003-...`
+Update the `Integrated corpus` table in `index.org`.
 
-### Phase B3 — Appliquer les modifications
+### Phase B3 — Apply changes
 
-**Cas Affinement :**
-- Ouvrir `eca/agents/<slug>.org`
-- Ajouter la règle dans `Catalogue des règles`
-- Mettre à jour `Dictionnaire des slots` si nouveaux slots
-- Générer le fichier YAML correspondant dans `rules/<slug>/`
-- Si la règle nécessite un helper : ajouter le helper dans `Helpers.pm`
-  et mettre à jour `@EXPORT_OK`
-- Vérifier l'idempotence et l'ordre des fichiers R<NN>
+**Refinement case:**
+- Open `eca/agents/<slug>.org`
+- Add the rule to `Rule catalog`
+- Update `Slot dictionary` if new slots
+- Generate the corresponding YAML file in `rules/<slug>/`
+- If the rule requires a helper: add the helper to `Helpers.pm`
+  and update `@EXPORT_OK`
+- Verify idempotence and order of R<NN> files
 
-**Cas Extension :**
-- Mettre à jour `Catalogue des Frames` (nouveaux slots)
-- Mettre à jour `Dictionnaire des slots`
-- Ajouter les règles dans `Catalogue des règles`
-- Générer les nouveaux fichiers YAML
-- Ajouter les helpers nécessaires dans `Helpers.pm`
-- Vérifier que les nouveaux slots n'entrent pas en conflit avec ceux
-  des autres agents (Dictionnaire des slots de l'index)
+**Extension case:**
+- Update `Frame catalog` (new slots)
+- Update `Slot dictionary`
+- Add rules to `Rule catalog`
+- Generate the new YAML files
+- Add required helpers to `Helpers.pm`
+- Verify that new slots do not conflict with those
+  of other agents (Slot dictionary of the index)
 
-**Cas Nouveau domaine :**
-- Appliquer le Mode A (Phases 1 à 5.5) sur le fragment uniquement
-- Déterminer la position du nouvel agent dans le pipeline :
-  - Lit-il un slot posé par un agent existant ? → après lui
-  - Pose-t-il un slot consommé par un agent existant ? → avant lui
-- Mettre à jour `index.org` : insérer le nouvel agent à la bonne position
-- ⚠ Vérifier que l'insertion ne rompt pas la chaîne des slots de ciblage
+**New domain case:**
+- Apply Mode A (Phases 1 to 5.5) on the fragment only
+- Determine the position of the new agent in the pipeline:
+  - Does it read a slot set by an existing agent? → after it
+  - Does it set a slot consumed by an existing agent? → before it
+- Update `index.org`: insert the new agent at the correct position
+- ⚠ Verify that the insertion does not break the chain of targeting slots
 
-### Phase B4 — Clôture enrichissement
+### Phase B4 — Enrichment closing
 
-Mettre à jour `README.org` :
-- Ajouter la ligne dans `Corpus` (numéro + fichier + source + date)
-- Mettre à jour `Statut des agents` (KB, YAML, Helpers — nouveaux ou enrichis)
-- Incrémenter le compteur d'enrichissements de chaque agent modifié
+Update `README.org`:
+- Add the row in `Corpus` (number + file + source + date)
+- Update `Agent status` (KB, YAML, Helpers — new or enriched)
+- Increment the enrichment counter of each modified agent
 
 ---
 
-## Référence rapide — conventions de nommage
+## Quick Reference — Naming Conventions
 
-| Artefact          | Convention                              | Exemple                           |
+| Artifact          | Convention                              | Example                           |
 |-------------------|-----------------------------------------|-----------------------------------|
-| Sandbox           | `test-<NNN>` ou `test-<slug>`           | `test-01`, `test-norme-ec5`       |
-| Slug agent        | kebab-case                              | `conformite-fiscale`              |
-| Fichier KB        | `<slug>.org`                            | `conformite-fiscale.org`          |
-| Répertoire YAML   | `rules/<slug>/`                         | `rules/conformite-fiscale/`       |
-| Fichiers YAML     | `R<NN>-<slug-regle>.yml`                | `R01-verif-montant.yml`           |
-| Helpers agent     | `lib/<Namespace>/Agent/<Slug>/Helpers.pm` | `lib/CB/Agent/Ossature/Helpers.pm` |
-| Helpers partagés  | `lib/<Namespace>/Helpers/Shared.pm`     | `lib/CB/Helpers/Shared.pm`        |
-| Corpus initial    | `corpus/001-<slug-source>.txt`          | `corpus/001-dtu-31-2.txt`         |
-| Corpus enrichiss. | `corpus/<NNN>-<slug>.txt`               | `corpus/002-ec5-sect3.txt`        |
-| Namespace projet  | CamelCase, défini au démarrage          | `MonProjet`                       |
+| Sandbox           | `test-<NNN>` or `test-<slug>`           | `test-01`, `test-norme-ec5`       |
+| Agent slug        | kebab-case                              | `conformite-fiscale`              |
+| KB file           | `<slug>.org`                            | `conformite-fiscale.org`          |
+| YAML directory    | `rules/<slug>/`                         | `rules/conformite-fiscale/`       |
+| YAML files        | `R<NN>-<slug-rule>.yml`                 | `R01-verif-montant.yml`           |
+| Agent helpers     | `lib/<Namespace>/Agent/<Slug>/Helpers.pm` | `lib/CB/Agent/Ossature/Helpers.pm` |
+| Shared helpers    | `lib/<Namespace>/Helpers/Shared.pm`     | `lib/CB/Helpers/Shared.pm`        |
+| Initial corpus    | `corpus/001-<slug-source>.txt`          | `corpus/001-dtu-31-2.txt`         |
+| Enrichment corpus | `corpus/<NNN>-<slug>.txt`               | `corpus/002-ec5-sect3.txt`        |
+| Project namespace | CamelCase, defined at startup           | `MonProjet`                       |
 
-> ⚠ `chorus-feed` ne génère jamais : `Feed.pm`, module Agent shell (`build()`),
-> `Expert.pm`, `run.pl`. Ces artefacts sont de la responsabilité exclusive de `chorus-check`.
+> ⚠ `chorus-feed` never generates: `Feed.pm`, shell Agent module (`build()`),
+> `Expert.pm`, `run.pl`. These artifacts are the exclusive responsibility of `chorus-check`.

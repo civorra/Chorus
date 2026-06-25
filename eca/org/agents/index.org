@@ -1,18 +1,18 @@
-#+TITLE: Index des agents Chorus
-#+DESCRIPTION: Registre de tous les agents générés pour ce projet
+#+TITLE: Chorus Agent Index
+#+DESCRIPTION: Registry of all agents generated for this project
 
-* Pipeline global
-  | Pos | Agent (module Perl)                 | Slug         | KB                         | Statut  |
+* Global Pipeline
+  | Pos | Agent (Perl module)                 | Slug         | KB                         | Status  |
   |-----+-------------------------------------+--------------+----------------------------+---------|
   |     |                                     |              |                            |         |
 
-  Légende statut : ~draft~ | ~ready~ | ~generated~ | ~tested~
+  Status legend: ~draft~ | ~ready~ | ~generated~ | ~tested~
 
-* Notes de pipeline
-  - L'ordre dans le tableau correspond à l'ordre de ~register()~ dans Expert.pm
-  - Chaque agent doit poser le slot de ciblage du suivant avant que celui-ci soit actif
-  - L'agent de terminaison (Ctrl) est toujours en dernière position
+* Pipeline Notes
+  - The order in the table corresponds to the ~register()~ order in Expert.pm
+  - Each agent must set the targeting slot of the next one before it becomes active
+  - The termination agent (Ctrl) is always in the last position
 
-* Fichiers KB
-  Un fichier par agent dans ce répertoire : ~<slug>.org~
-  Template de référence : ~_template.org~
+* KB Files
+  One file per agent in this directory: ~<slug>.org~
+  Reference template: ~_template.org~
