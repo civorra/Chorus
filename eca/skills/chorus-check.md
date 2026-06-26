@@ -1,11 +1,13 @@
 # Skill — chorus-check
 
-> Trigger: `chorus-check <sandbox-name> <fichier-projet>`
+> Trigger: `chorus-check <sandbox-name> <fichier-projet> [--all]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing the KB and YAML rules (produced by `chorus-feed`)
 > `<fichier-projet>`: JSON file describing the project elements to validate,
 >                      or data provided inline by the user
+>                      (ignored when `--all` is present — all `projet-*.json` are used)
+> `--all`: run all `projet-*.json` files found in `$SANDBOX/` and produce a synthesis report
 >
 > **Single responsibility: validate a project against the knowledge base.**
 > The project file is **runtime input data** — it does not influence
@@ -41,7 +43,8 @@ sha256sum $SANDBOX/eca/agents/*.org > /tmp/kb-hash-current
 - `$SANDBOX/eca/.kb-hash` **absent** → the infrastructure predates hash tracking
   → treat as stale → **FULL PATH** (forced regeneration)
 - `$SANDBOX/eca/.kb-hash` **present**, content **identical** to current hash
-  → **FAST PATH**: go directly to Phase 6. Do not load `chorus-engine.md`.
+  → **FAST PATH**: go directly to Phase 6 (single project) or Phase 6-all (`--all`).
+  Do not load `chorus-engine.md`.
   Do not read `index.org`. Do not read agent KBs. Do not generate anything.
 - `$SANDBOX/eca/.kb-hash` **present**, content **differs** → KB was enriched
   since last generation → **FULL PATH** (forced regeneration, no user prompt needed)
@@ -210,6 +213,99 @@ After the verbatim output, note briefly (optional):
 - `NON_CONFORME` elements with their reason if `ref_corpus` is absent
 - `(unprocessed)` elements → targeting slot probably missing from the Feed
 - Discrepancies with `_resultats_attendus` in the project file (if present)
+
+---
+
+## Phase 6-all — `--all` mode (batch run)
+
+> This phase is used **instead of Phase 6** when `--all` is present.
+> Infrastructure detection (Step 0) is shared — the hash check runs once,
+> then Phase 6-all loops over all project files without regenerating anything.
+
+### 6-all.1 Discover project files
+
+```bash
+ls $SANDBOX/projet-*.json
+```
+
+If no `projet-*.json` file is found → stop and report:
+```
+⛔ No projet-*.json file found in $SANDBOX/.
+   Run chorus-create-project <sandbox-name> --batch first.
+```
+
+### 6-all.2 Run each project
+
+For each file discovered, execute:
+
+```bash
+perl $SANDBOX/run.pl $SANDBOX/<projet-file>.json 2>&1
+```
+
+Collect the full output of each run. Do **not** display verbatim output
+per file at this stage — aggregate into the synthesis table below.
+
+### 6-all.3 Synthesis table
+
+After all runs, display:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  chorus-check --all  <sandbox-name>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Project file         │ Status      │ CONFORME │ NON_CONF │ Unproc │ Disc
+  ─────────────────────┼─────────────┼──────────┼──────────┼────────┼─────
+  projet-rules-iso     │ SOLVED ✅   │    N     │    N     │   0    │  0
+  projet-edges         │ SOLVED ✅   │    N     │    N     │   0    │  0
+  projet-cross         │ SOLVED ✅   │    N     │    N     │   0    │  0
+  projet-scale         │ SOLVED ✅   │    N     │    N     │   0    │  0
+  <other-projet>       │ FAILED ❌   │    N     │    N     │   N    │  N
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Overall: SOLVED ✅ / FAILED ❌     Discordances: N / N_total
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Column definitions:
+- **Status**: `SOLVED ✅` if `Pipeline : SOLVED ✅` in output, `FAILED ❌` otherwise
+- **CONFORME** / **NON_CONF**: count from the pipeline output
+- **Unproc**: count of `(unprocessed)` elements
+- **Disc**: discordances — elements whose actual result differs from `_resultats_attendus`
+  in the JSON (if present), or from the expected result implied by the ID naming
+  (`-OK-` → expected CONFORME, `-KO-` → expected NON_CONFORME)
+
+### 6-all.4 Discordance detail
+
+For each file with `Disc > 0`, list the discordant elements:
+
+```
+  projet-edges — 2 discordances:
+    E-MUR-OK-SLEND-01  expected CONFORME   → got NON_CONFORME  (R03-slenderness)
+    E-POT-KO-THICK-02  expected NON_CONF   → got CONFORME      (no rule fired)
+```
+
+For each file with `Unproc > 0`, list the unprocessed elements:
+
+```
+  projet-scale — 3 unprocessed:
+    S-OSS-OK-C24-11    → targeting slot 'besoin_ossature' probably missing from Feed
+```
+
+### 6-all.5 Convergence verdict
+
+```
+CONVERGED ✅   — all projects SOLVED, 0 discordances, 0 unprocessed
+NOT CONVERGED ❌ — N discordances and/or N unprocessed across M project files
+```
+
+If **NOT CONVERGED** → recommend:
+```
+Next step: chorus-strengthen <sandbox-name>
+```
+
+> **Fast path guarantee:** `--all` never regenerates the infrastructure.
+> The `.kb-hash` check runs once at Step 0; each subsequent `perl run.pl` call
+> is a pure runtime execution with no Perl file generation.
+> Running 4 projects costs exactly 4 × `perl run.pl` — no overhead.
 
 ---
 

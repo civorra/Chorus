@@ -1,10 +1,12 @@
 # Skill — chorus-create-project
 
-> Trigger: `chorus-create-project <sandbox-name> <output-file.json>`
+> Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing a KB produced by `chorus-feed`
 > `<output-file.json>`: name of the JSON file to create in `$SANDBOX/`
+>                       (ignored in `--batch` mode — filenames are fixed, see Phase 6)
+> `--batch`: generate the full coverage suite (4 files) instead of a single project
 >
 > **Single responsibility: create a valid project JSON file.**
 > This skill reads the sandbox KB to infer types, slots, and thresholds,
@@ -76,6 +78,25 @@ For each agent, apply this two-step sequence:
 If a `projet-*.json` file exists in `$SANDBOX/`, read its first 30 lines
 to confirm the JSON format (keys `projet`, `description`, `elements`, fields `id`, `type_element`).
 Do not read individual elements — types and slots are in the KB.
+
+---
+
+## Coverage strategies
+
+When generating one or more project files, use the following four angles to
+maximise the chance of exposing gaps in the YAML rules:
+
+| Project file | Goal | Typical content |
+|---|---|---|
+| `projet-rules-iso.json` | Test each rule in isolation | 1 OK + 1 KO per rule R01, R02 … — one rule exercised per element |
+| `projet-edges.json` | Stress boundary values | value = threshold (OK) and threshold − ε / threshold + ε (KO) for every continuous slot |
+| `projet-cross.json` | Expose inter-rule interactions | elements that trigger R01 AND R02 simultaneously; conflict cases |
+| `projet-scale.json` | Calibrate `_MAX_CYCLES` | ≥ 100 elements, all types, all classes — stress test for the termination agent |
+
+> **ID stability rule:** IDs must be stable across regenerations of the same project file.
+> Use deterministic conventions (`<TYPE>-<VARIANTE>-<NN>`) so that successive
+> `chorus-check --all` runs can be compared diff-style.
+> Never use random suffixes or timestamps in project IDs.
 
 ---
 
@@ -211,6 +232,69 @@ If an expected KO element is CONFORME → investigate:
 1. Does the CONDITION of the targeted rule exclude this type? ← most common pitfall
 2. Does the EXCEPTION short-circuit the rule? (slot already set by a preceding rule)
 3. Does the provided value actually cross the threshold? (recompute)
+
+---
+
+## Phase 6 — Batch mode (`--batch` only)
+
+> This phase replaces the single-file workflow when `--batch` is present.
+> Instead of one project JSON, generate the full coverage suite in one pass.
+
+### 6.1 Route by strategy
+
+Using the coverage analysis from Phase 1 (coverage table already built),
+generate four project files that each target a different angle:
+
+| File | Strategy | Volume |
+|---|---|---|
+| `projet-rules-iso.json` | One element per rule: 1 OK + 1 KO | 2 × N_rules |
+| `projet-edges.json` | Boundary values for every continuous slot | 2 × N_thresholds |
+| `projet-cross.json` | Elements triggering multiple rules simultaneously | 1–3 per rule pair |
+| `projet-scale.json` | All types × all classes/zones — full volume stress test | ≥ 100 elements |
+
+### 6.2 ID prefix convention
+
+To keep each file self-contained and diff-friendly, prefix element IDs with
+a one-letter code reflecting the strategy:
+
+| File | ID prefix |
+|---|---|
+| `projet-rules-iso.json` | `I-` (isolated) |
+| `projet-edges.json` | `E-` (edge) |
+| `projet-cross.json` | `X-` (cross) |
+| `projet-scale.json` | `S-` (scale) |
+
+Example: `I-MUR-KO-R03-01`, `E-POT-OK-SLEND-01`, `X-MUR-KO-R01R04-01`, `S-OSS-OK-C24-01`
+
+### 6.3 Validation and execution
+
+For each generated file, run the validation checklist from Phase 4 then execute:
+
+```bash
+python3 -c "import json; json.load(open('$SANDBOX/<file>.json')); print('JSON valide')"
+perl $SANDBOX/run.pl $SANDBOX/<file>.json
+```
+
+Report a summary table after all four runs:
+
+```
+projet-rules-iso  │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+projet-edges      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+projet-cross      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+projet-scale      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+```
+
+If any file fails → apply the same diagnosis as Phase 5 before proceeding to the next.
+
+### 6.4 Convergence criterion
+
+The batch is considered **converged** when all four files satisfy:
+- `Pipeline : SOLVED ✅`
+- `Unprocessed: 0`
+- No unexpected discordances (all expected OK are CONFORME, all expected KO are NON_CONFORME)
+
+If the batch does not converge → run `chorus-strengthen <sandbox-name>` to identify
+the rules to fix and the enrichment corpus to feed back to `chorus-feed --enrich`.
 
 ---
 
