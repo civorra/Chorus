@@ -342,6 +342,45 @@ elements.sort(key=lambda e: e[0], reverse=True)   # top-to-bottom reading order
 
 ---
 
+## Phase 1.5 — nohup gate (hybrid mode only)
+
+After the layout analysis (`analyse_pages`), the script knows the **exact number of
+`LTFigure` elements** to send to Claude. Each figure = 1 API call ≈ 30 s average.
+The IDE has a hard timeout of ~10 minutes.
+
+**Decision rule — applied inside the generated script:**
+
+| Figures detected (`n_figs`) | Estimated time | Action |
+|----------------------------:|---------------:|--------|
+| ≤ 15 | ≤ 7.5 min | proceed directly |
+| 16–19 | 8–9.5 min | borderline — script still exits with a warning |
+| ≥ 16 | > 8 min | **exit(2)** + print `nohup` command |
+
+The script prints the exact `nohup` command to copy-paste, then exits with code **2**
+(not an error — "nohup required"). Exit code 0 is reserved for successful completion.
+
+```
+[chorus-pdf]   → 31 pages, 12 with figures, 18 figure(s) total
+[chorus-pdf] ⚠️  18 figures detected — estimated time ~9–13 min (threshold: 15).
+[chorus-pdf]    Run with nohup to avoid a 10-min IDE timeout:
+[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup python3 /path/to/eca/extract-pdf-<slug>.py > corpus/<NNN>-<slug>-vision.md.log 2>&1 &
+```
+
+The threshold constant `NOHUP_THRESHOLD = 15` is defined at the top of the script
+and can be adjusted if the API is consistently faster (lower latency environment).
+
+**Bypass `CHORUS_PDF_FORCE=1`:** when the script is launched via `nohup` (detached from
+the IDE), set `CHORUS_PDF_FORCE=1` to skip the gate and proceed unconditionally.
+Without this flag, the gate fires even under `nohup` because the script cannot detect
+whether it is running inside the IDE or not.
+
+> ⚠️ **ECA instruction:** when ECA executes the script directly via `eca__shell_command`
+> and receives exit code 2, it must **not** retry automatically. Instead, it must
+> set `CHORUS_PDF_FORCE=1` and relaunch with `nohup` — **ECA launches the nohup command itself**
+> (pre-approved, no confirmation required).
+
+---
+
 ## Phase 2 — Generate the extraction script
 
 ECA writes `$SANDBOX/eca/extract-pdf-<slug>.py` via `eca__write_file`, then executes it.
@@ -739,6 +778,30 @@ def main():
     n_figs     = sum(len(p['figures']) for p in pages.values())
     print(f"[chorus-pdf]   → {total} pages, {n_with_fig} with figures, {n_figs} figure(s) total",
           file=sys.stderr)
+
+    # --- nohup gate -----------------------------------------------------------
+    # At ~30s per Claude call and a 10-min IDE timeout, the safe limit is 15
+    # figures.  If the layout analysis reveals more, print a warning and abort
+    # so the user can relaunch with nohup + CHORUS_PDF_FORCE=1.
+    NOHUP_THRESHOLD = 15
+    force = os.environ.get("CHORUS_PDF_FORCE", "") == "1"
+    if n_figs > NOHUP_THRESHOLD and not force:
+        print(
+            f"[chorus-pdf] ⚠️  {n_figs} figures detected — estimated time "
+            f"~{n_figs * 30 // 60}–{n_figs * 45 // 60} min "
+            f"(threshold: {NOHUP_THRESHOLD}).\n"
+            f"[chorus-pdf]    Run with nohup to avoid a 10-min IDE timeout:\n"
+            f"[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup python3 {os.path.abspath(__file__)} "
+            f"> {OUTPUT_PATH}.log 2>&1 &",
+            file=sys.stderr
+        )
+        sys.exit(2)   # exit code 2 = "nohup required" (not an error)
+    elif n_figs > NOHUP_THRESHOLD and force:
+        print(
+            f"[chorus-pdf] ⚠️  {n_figs} figures — CHORUS_PDF_FORCE=1 → proceeding without gate.",
+            file=sys.stderr
+        )
+    # --------------------------------------------------------------------------
 
     parts = []
     with tempfile.TemporaryDirectory(prefix="chorus-pdf-") as tmpdir:
@@ -1363,6 +1426,16 @@ The `pdftotext` output can be kept for diff/audit purposes.
 **"Too slow — 54-page PDF with --auto takes a long time"**
 → Only the vision pages hit the API. If 16/54 pages have figures: 4 chunks × ~30s = ~2 min.
   The text pages (pdfminer) complete in seconds. Total: ~2–3 minutes for a 54-page standard.
+
+**"Script exited with code 2 — nohup required"**
+→ The layout analysis detected ≥ 16 figures. The script aborted before any API call.
+  Copy the `nohup` command printed to stderr and run it in a terminal:
+  ```bash
+  nohup python3 $SANDBOX/eca/extract-pdf-<slug>.py > $SANDBOX/corpus/<NNN>-<slug>-vision.md.log 2>&1 &
+  tail -f $SANDBOX/corpus/<NNN>-<slug>-vision.md.log
+  ```
+  The threshold `NOHUP_THRESHOLD = 15` can be raised in the script header if your
+  API responses are consistently faster (< 20s/call on average).
 
 **"I want higher quality on specific diagram pages"**
 → Increase `DPI = 200` in the script header. Keep `CHUNK_SIZE = 3` at 200 DPI
