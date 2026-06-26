@@ -1,6 +1,6 @@
 # Les commandes `chorus-*` — Référence du workflow ECA
 
-Les cinq commandes `chorus-*` forment un pipeline complet pour transformer un
+Les six commandes `chorus-*` forment un pipeline complet pour transformer un
 corpus normatif (PDF, texte, Word, Excel) en un moteur d'inférence Perl
 opérationnel qui valide des projets réels.
 
@@ -63,7 +63,9 @@ est aussi nécessaire lorsque le corpus normatif change.
 
 Le fichier projet peut être écrit à la main, généré depuis la KB avec
 `chorus-create-project`, ou aligné depuis des documents d'ingénieur avec
-`chorus-import-project`.
+`chorus-import-project`. Une fois un fichier projet disponible, `chorus-strengthen`
+peut identifier les lacunes dans les règles YAML et recommander les corpus
+d'enrichissement à fournir.
 
 ---
 
@@ -199,11 +201,15 @@ eca/agents/<slug>.org
 ## `chorus-check` — Générer l'infrastructure et exécuter
 
 ```
-chorus-check <sandbox-name> <fichier-projet.json>
+chorus-check <sandbox-name> <fichier-projet.json> [--all]
 ```
 
 **Responsabilité unique :** lire la KB, générer l'infrastructure Perl, exécuter
 le pipeline contre le fichier projet et produire un rapport de conformité.
+
+`--all` exécute tous les fichiers `projet-*.json` du sandbox en un seul passage
+et produit un tableau de synthèse (voir ci-dessous). Le chemin rapide s'applique :
+l'infrastructure est vérifiée une seule fois et réutilisée pour chaque fichier projet.
 
 ### Régénération intelligente
 
@@ -249,22 +255,50 @@ Un rapport de conformité structuré, par élément et par agent :
 # Relancer avec un autre projet (pas de régénération) :
 perl run.pl autre-projet.json
 
+# Exécuter tous les projet-*.json d'un coup :
+chorus-check <sandbox-name> --all
+
 # Mettre à jour le corpus et régénérer :
 chorus-feed <sandbox-name> nouvel-addendum.txt --enrich
 chorus-check <sandbox-name> projet.json
 ```
+
+### Tableau de synthèse `--all`
+
+Lorsque `--all` est utilisé, `chorus-check` produit un tableau de synthèse
+à la place des rapports verbatim individuels :
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  chorus-check --all  <sandbox-name>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Fichier projet     │ Statut    │ OK │ KO │ Non-traités │ Disc
+  projet-rules-iso   │ SOLVED ✅ │  N │  N │      0      │  0
+  projet-edges       │ SOLVED ✅ │  N │  N │      0      │  0
+  projet-cross       │ SOLVED ✅ │  N │  N │      0      │  0
+  projet-scale       │ SOLVED ✅ │  N │  N │      0      │  0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Résultat global : CONVERGÉ ✅   Discordances : 0 / N_total
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Si des discordances sont trouvées → lancer `chorus-strengthen <sandbox-name>`
+pour identifier les lacunes et obtenir un plan d'enrichissement.
 
 ---
 
 ## `chorus-create-project` — Générer un JSON projet depuis la KB
 
 ```
-chorus-create-project <sandbox-name> <fichier-sortie.json>
+chorus-create-project <sandbox-name> <fichier-sortie.json> [--batch]
 ```
 
 **Responsabilité unique :** lire la KB du sandbox et générer un fichier JSON
 projet valide, peuplé d'éléments conformes ET non-conformes qui explorent la
 variété du domaine.
+
+`--batch` génère la suite de couverture complète en quatre fichiers (voir
+ci-dessous) au lieu d'un fichier projet unique.
 
 Utile pour :
 - **Tester** le pipeline de bout en bout avant qu'un vrai projet soit disponible
@@ -280,7 +314,7 @@ Utile pour :
 > ⚠️ `chorus-create-project` ne lit jamais `Helpers.pm`, `Feed.pm` ni aucun
 > fichier Perl généré. Les fichiers org KB sont toujours la source canonique.
 
-### Sortie
+### Sortie (mode unitaire)
 
 Un fichier JSON avec :
 - Un ensemble représentatif d'éléments projet (un par type de Frame, avec variations)
@@ -288,10 +322,91 @@ Un fichier JSON avec :
 - Des cas non-conformes explicites (une violation de règle par élément défaillant)
 - Des commentaires indiquant quelle règle chaque cas défaillant est conçu à déclencher
 
+### Suite de couverture (mode `--batch`)
+
+`--batch` produit quatre fichiers projet ciblant des angles de test différents :
+
+| Fichier | Objectif |
+|---|---|
+| `projet-rules-iso.json` | Tester chaque règle isolément (1 OK + 1 KO par règle) |
+| `projet-edges.json` | Tester les valeurs seuils (valeur = seuil et seuil ± ε) |
+| `projet-cross.json` | Exposer les interactions entre règles (éléments déclenchant plusieurs règles) |
+| `projet-scale.json` | Test de volume pour le calibrage de `_MAX_CYCLES` (≥ 100 éléments) |
+
+Les IDs sont stables d'une régénération à l'autre (préfixes `I-`, `E-`, `X-`, `S-`)
+pour permettre des comparaisons diff entre les runs `chorus-check --all`.
+
 ### Étape suivante
 
 ```
+# Mode unitaire :
 chorus-check <sandbox-name> <fichier-sortie.json>
+
+# Mode batch — exécuter toute la suite :
+chorus-check <sandbox-name> --all
+
+# Si la suite révèle des lacunes :
+chorus-strengthen <sandbox-name>
+```
+
+---
+
+## `chorus-strengthen` — Identifier les lacunes et recommander un enrichissement
+
+```
+chorus-strengthen <sandbox-name>
+```
+
+**Responsabilité unique :** exécuter la suite complète de projets, classifier
+chaque discordance et élément non-traité en un type de lacune, produire un
+rapport d'écarts structuré et recommander le corpus d'enrichissement à passer
+à `chorus-feed --enrich`.
+
+`chorus-strengthen` ne modifie jamais aucun fichier KB, YAML ou Perl — il
+lit et rapporte uniquement.
+
+### Prérequis
+
+- `chorus-check` a été exécuté au moins une fois (infrastructure présente)
+- Au moins un fichier `projet-*.json` existe dans `$SANDBOX/`
+  (idéalement la suite de quatre fichiers de `chorus-create-project --batch`)
+
+### Classification des lacunes
+
+Chaque élément discordant ou non-traité est classifié en l'un des trois types :
+
+| Type de lacune | Motif | Cause probable |
+|---|---|---|
+| **Règle trop stricte** | Attendu CONFORME → obtenu NON_CONFORME | Seuil erroné, CONDITION trop étroite ou cas limite non couvert |
+| **Règle trop permissive** | Attendu NON_CONFORME → obtenu CONFORME | Règle manquante, seuil trop élevé ou CONDITION excluant ce type |
+| **Lacune Feed** | Élément `(non-traité)` | Slot de ciblage non positionné par Feed pour ce type d'élément |
+
+### Sortie
+
+Un rapport d'écarts structuré par élément (id, type, attendu, obtenu, règle
+déclenchée, hypothèse, référence corpus, correctif suggéré) suivi d'un plan
+d'enrichissement :
+
+- **Bucket A** — clarification corpus nécessaire (source normative ambiguë)
+- **Bucket B** — ajustement YAML direct (pas besoin de `chorus-feed`)
+- **Bucket C** — couverture manquante → rédaction d'un `corpus-correctif.txt`
+  pour `chorus-feed <sandbox-name> corpus-correctif.txt --enrich`
+
+### Boucle de renforcement
+
+```
+chorus-create-project <sb> --batch     ← construire la suite de couverture (une fois)
+        ↓
+chorus-strengthen <sb>                 ← identifier les lacunes
+        ↓
+[éditer les YAML directement]          ← corrections bucket B
+chorus-feed <sb> corpus-fix.txt --enrich  ← nouvelles règles bucket C
+        ↓
+chorus-check <sb> --all                ← vérifier
+        ↓
+chorus-strengthen <sb>                 ← vérifier la convergence
+        ↓
+✅ CONVERGÉ — tous les projets passent, 0 discordance
 ```
 
 ---
@@ -378,6 +493,27 @@ chorus-import-project mon-sandbox notes-ingenieur.pdf # aligner depuis le docume
 chorus-check mon-sandbox projet-demo.json
 ```
 
+### Valider et renforcer la base de règles
+
+```bash
+# Générer la suite de couverture
+chorus-create-project mon-sandbox --batch
+#   → projet-rules-iso.json, projet-edges.json, projet-cross.json, projet-scale.json
+
+# Exécuter tous les projets en un seul passage
+chorus-check mon-sandbox --all
+#   → tableau de synthèse avec CONFORME / NON_CONFORME / non-traités / discordances
+
+# En cas de discordances → identifier les lacunes et obtenir un plan d'enrichissement
+chorus-strengthen mon-sandbox
+#   → rapport d'écarts + recommandation corpus-correctif.txt
+
+# Appliquer les corrections et relancer
+chorus-feed mon-sandbox corpus-correctif.txt --enrich
+chorus-check mon-sandbox --all
+#   → tous les projets CONVERGÉS ✅
+```
+
 ### Mettre à jour quand la norme change
 
 ```bash
@@ -442,9 +578,10 @@ adapter un nouveau projet, ECA est requis.
 |---|---|---|---|
 | `chorus-pdf` | Fichier PDF | `corpus/<NNN>-<slug>-text.txt` ou `-vision.md` | `pdfminer.six` ; clé API pour `--auto`/`--images` |
 | `chorus-feed` | Corpus `.txt` ou `.md` | `eca/agents/*.org`, règles YAML, `Helpers.pm` | — |
-| `chorus-check` | JSON projet | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + rapport | `chorus-feed` exécuté au préalable |
-| `chorus-create-project` | *(KB uniquement)* | JSON projet (éléments conformes + non-conformes) | `chorus-feed` exécuté au préalable |
+| `chorus-check` | JSON projet (ou `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + rapport | `chorus-feed` exécuté au préalable |
+| `chorus-create-project` | *(KB uniquement)* | JSON projet ou suite de 4 fichiers (`--batch`) | `chorus-feed` exécuté au préalable |
 | `chorus-import-project` | Document d'ingénieur | JSON projet aligné + rapport d'import | `chorus-feed` exécuté au préalable |
+| `chorus-strengthen` | *(suite de projets)* | rapport d'écarts + plan d'enrichissement | `chorus-check` exécuté au préalable |
 
 ---
 
@@ -458,3 +595,4 @@ adapter un nouveau projet, ECA est requis.
 - `eca/skills/chorus-check.md` — référence complète du skill `chorus-check`
 - `eca/skills/chorus-create-project.md` — référence complète du skill `chorus-create-project`
 - `eca/skills/chorus-import-project.md` — référence complète du skill `chorus-import-project`
+- `eca/skills/chorus-strengthen.md` — référence complète du skill `chorus-strengthen`

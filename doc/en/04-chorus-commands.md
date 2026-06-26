@@ -1,6 +1,6 @@
 # The `chorus-*` Commands — ECA Workflow Reference
 
-The five `chorus-*` commands form a complete pipeline for turning a normative
+The six `chorus-*` commands form a complete pipeline for turning a normative
 corpus (PDF, plain text, Word, Excel) into a running Perl inference engine that
 validates real projects.
 
@@ -61,7 +61,8 @@ generically. ECA is also needed when the normative corpus changes.
 
 The project file can be written by hand, generated from the KB with
 `chorus-create-project`, or aligned from engineer documents with
-`chorus-import-project`.
+`chorus-import-project`. Once a project file exists, `chorus-strengthen`
+can identify gaps in the YAML rules and recommend enrichment corpora.
 
 ---
 
@@ -193,11 +194,15 @@ eca/agents/<slug>.org
 ## `chorus-check` — Generate infrastructure and run
 
 ```
-chorus-check <sandbox-name> <project-file.json>
+chorus-check <sandbox-name> <project-file.json> [--all]
 ```
 
 **Single responsibility:** read the KB, generate the Perl infrastructure,
 run the pipeline against the project file, and produce a conformity report.
+
+`--all` runs every `projet-*.json` file found in the sandbox in one pass
+and produces a synthesis table (see below). The fast path applies: the
+infrastructure is checked once and reused for every project file.
 
 ### Smart regeneration
 
@@ -243,22 +248,50 @@ A structured conformity report, per element and per agent:
 # Re-run with a different project (no regeneration):
 perl run.pl other-project.json
 
+# Run all projet-*.json files at once:
+chorus-check <sandbox-name> --all
+
 # Update the corpus and regenerate:
 chorus-feed <sandbox-name> new-addendum.txt --enrich
 chorus-check <sandbox-name> project.json
 ```
+
+### `--all` synthesis table
+
+When `--all` is used, `chorus-check` outputs a synthesis table instead of
+individual verbatim reports:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  chorus-check --all  <sandbox-name>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Project file       │ Status    │ OK │ KO │ Unproc │ Disc
+  projet-rules-iso   │ SOLVED ✅ │  N │  N │   0    │  0
+  projet-edges       │ SOLVED ✅ │  N │  N │   0    │  0
+  projet-cross       │ SOLVED ✅ │  N │  N │   0    │  0
+  projet-scale       │ SOLVED ✅ │  N │  N │   0    │  0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Overall: CONVERGED ✅   Discordances: 0 / N_total
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+If discordances are found → run `chorus-strengthen <sandbox-name>` to identify
+the gaps and get an enrichment roadmap.
 
 ---
 
 ## `chorus-create-project` — Generate a project JSON from the KB
 
 ```
-chorus-create-project <sandbox-name> <output-file.json>
+chorus-create-project <sandbox-name> <output-file.json> [--batch]
 ```
 
 **Single responsibility:** read the sandbox KB and generate a valid project
 JSON file populated with both conforming and non-conforming elements that
 explore the variety of the domain.
+
+`--batch` generates the full four-file coverage suite at once (see below)
+instead of a single project file.
 
 This is useful for:
 - **Testing** the pipeline end-to-end before a real project is available
@@ -274,7 +307,7 @@ This is useful for:
 > ⚠️ `chorus-create-project` never reads `Helpers.pm`, `Feed.pm`, or any
 > generated Perl file. The org KB files are always the canonical source.
 
-### Output
+### Output (single mode)
 
 A JSON file with:
 - A representative set of project elements (one per Frame type, with variations)
@@ -282,10 +315,90 @@ A JSON file with:
 - Explicit non-conforming cases (one rule violation per failing element)
 - Comments indicating which rule each failing case is designed to trigger
 
+### Coverage suite (`--batch` mode)
+
+`--batch` produces four project files targeting different testing angles:
+
+| File | Goal |
+|---|---|
+| `projet-rules-iso.json` | Test each rule in isolation (1 OK + 1 KO per rule) |
+| `projet-edges.json` | Stress boundary values (value = threshold and threshold ± ε) |
+| `projet-cross.json` | Expose inter-rule interactions (elements triggering multiple rules) |
+| `projet-scale.json` | Volume stress test for `_MAX_CYCLES` calibration (≥ 100 elements) |
+
+IDs are stable across regenerations (`I-`, `E-`, `X-`, `S-` prefixes) to allow
+diff-style comparison across `chorus-check --all` runs.
+
 ### Next step
 
 ```
+# Single mode:
 chorus-check <sandbox-name> <output-file.json>
+
+# Batch mode — run the full suite:
+chorus-check <sandbox-name> --all
+
+# If the suite reveals gaps:
+chorus-strengthen <sandbox-name>
+```
+
+---
+
+## `chorus-strengthen` — Identify rule gaps and recommend enrichment
+
+```
+chorus-strengthen <sandbox-name>
+```
+
+**Single responsibility:** run the full project suite, classify every
+discordance and unprocessed element into a gap type, produce a structured
+gap report, and recommend the enrichment corpus to pass to
+`chorus-feed --enrich`.
+
+`chorus-strengthen` never modifies any KB, YAML, or Perl file — it only reads
+and reports.
+
+### Prerequisites
+
+- `chorus-check` has been run at least once (infrastructure present)
+- At least one `projet-*.json` file exists in `$SANDBOX/`
+  (ideally the four-file suite from `chorus-create-project --batch`)
+
+### Gap classification
+
+Every discordant or unprocessed element is classified into one of three types:
+
+| Gap type | Pattern | Root cause |
+|---|---|---|
+| **Rule too strict** | Expected CONFORME → got NON_CONFORME | Threshold wrong, CONDITION too narrow, or edge case not covered |
+| **Rule too permissive** | Expected NON_CONFORME → got CONFORME | Missing rule, threshold too high, or CONDITION excludes this type |
+| **Feed gap** | Element is `(unprocessed)` | Targeting slot not set by Feed for this element type |
+
+### Output
+
+A structured gap report per element (id, type, expected, got, rule fired,
+hypothesis, corpus reference, suggested fix) followed by an enrichment roadmap:
+
+- **Bucket A** — corpus clarification needed (normative source ambiguous)
+- **Bucket B** — direct YAML adjustment (no `chorus-feed` needed)
+- **Bucket C** — missing coverage → draft `corpus-correctif.txt` for
+  `chorus-feed <sandbox-name> corpus-correctif.txt --enrich`
+
+### Reinforcement loop
+
+```
+chorus-create-project <sb> --batch     ← build the coverage suite (once)
+        ↓
+chorus-strengthen <sb>                 ← identify gaps
+        ↓
+[edit YAML directly]                   ← bucket B fixes
+chorus-feed <sb> corpus-fix.txt --enrich  ← bucket C new rules
+        ↓
+chorus-check <sb> --all                ← verify
+        ↓
+chorus-strengthen <sb>                 ← check convergence
+        ↓
+✅ CONVERGED — all projects pass, 0 discordances
 ```
 
 ---
@@ -370,6 +483,27 @@ chorus-import-project my-sandbox engineer-notes.pdf  # align from document
 chorus-check my-sandbox project-demo.json
 ```
 
+### Validating and strengthening the rule base
+
+```bash
+# Generate the coverage suite
+chorus-create-project my-sandbox --batch
+#   → projet-rules-iso.json, projet-edges.json, projet-cross.json, projet-scale.json
+
+# Run all projects in one pass
+chorus-check my-sandbox --all
+#   → synthesis table with CONFORME / NON_CONFORME / unprocessed / discordances
+
+# If discordances found → identify gaps and get enrichment roadmap
+chorus-strengthen my-sandbox
+#   → gap report + corpus-correctif.txt recommendation
+
+# Apply fixes and re-run
+chorus-feed my-sandbox corpus-correctif.txt --enrich
+chorus-check my-sandbox --all
+#   → all projects CONVERGED ✅
+```
+
 ### Updating when the standard changes
 
 ```bash
@@ -434,9 +568,10 @@ project, ECA is required.
 |---|---|---|---|
 | `chorus-pdf` | PDF file | `corpus/<NNN>-<slug>-text.txt` or `-vision.md` | `pdfminer.six`; API key for `--auto`/`--images` |
 | `chorus-feed` | `.txt` or `.md` corpus | `eca/agents/*.org`, YAML rules, `Helpers.pm` | — |
-| `chorus-check` | project JSON | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + report | `chorus-feed` run first |
-| `chorus-create-project` | *(KB only)* | project JSON (conforming + non-conforming elements) | `chorus-feed` run first |
+| `chorus-check` | project JSON (or `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + report | `chorus-feed` run first |
+| `chorus-create-project` | *(KB only)* | project JSON or 4-file coverage suite (`--batch`) | `chorus-feed` run first |
 | `chorus-import-project` | engineer document | aligned project JSON + import report | `chorus-feed` run first |
+| `chorus-strengthen` | *(project suite)* | gap report + enrichment roadmap | `chorus-check` run first |
 
 ---
 
@@ -450,3 +585,4 @@ project, ECA is required.
 - `eca/skills/chorus-check.md` — full skill reference for `chorus-check`
 - `eca/skills/chorus-create-project.md` — full skill reference for `chorus-create-project`
 - `eca/skills/chorus-import-project.md` — full skill reference for `chorus-import-project`
+- `eca/skills/chorus-strengthen.md` — full skill reference for `chorus-strengthen`
