@@ -1,9 +1,0 @@
-REGLE: pose-ossature-na-charpente
-CHERCHER:
-  p:
-    attribut: besoin_ossature
-EXCEPTION: defined $p->{ossature_ok}
-CONDITION: type_est_charpente($p->{type_element})
-EFFET: |
-  $p->set('ossature_ok', 'NA');
-  1

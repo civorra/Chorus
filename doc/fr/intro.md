@@ -2,22 +2,64 @@
 
 ## Qu'est-ce que Chorus ?
 
-**Chorus** est un framework d'inférence léger écrit en Perl pur.
-Il permet de modéliser un problème sous forme de **connaissances** (des objets)
-et de **règles** (des conditions + des actions), puis de laisser le moteur
-trouver automatiquement comment les appliquer pour résoudre le problème.
+**Chorus** est un moteur d'inférence écrit en Perl pur. Il repose sur trois
+concepts fondamentaux qui s'emboîtent : une **mémoire de travail** peuplée de
+frames, un **cycle d'inférence** qui applique des règles en boucle jusqu'au
+point fixe, et une **orchestration multi-agents** qui décompose les problèmes
+complexes en spécialités indépendantes.
 
-L'idée centrale : plutôt que d'écrire un algorithme qui dit *comment* résoudre
-un problème étape par étape, on déclare *ce qu'on sait* et *ce qu'on cherche*,
-et Chorus se charge du reste — de façon déterministe et traçable.
+**La mémoire de travail** est constituée de `Chorus::Frame` — des objets Perl
+dont les propriétés (les *slots*) représentent la connaissance du domaine. Tous
+les frames sont indexés dans un registre global ; la fonction `fmatch()` permet
+de les interroger en temps constant. C'est sur cette mémoire que portent toutes
+les règles.
 
-Le framework s'organise en trois couches emboîtées :
+**Le cycle d'inférence** est assuré par `Chorus::Engine`. Un agent contient un
+ensemble de règles ; chaque règle déclare les frames sur lesquels elle s'applique
+(`_SCOPE`) et l'effet qu'elle produit (`_APPLY`). Le moteur déclenche les règles
+en boucle tant qu'au moins l'une d'elles a produit un effet — il s'arrête au
+point fixe, quand rien ne change plus, ou dès qu'un but est atteint. Les règles
+peuvent être écrites en Perl ou chargées depuis des fichiers YAML.
+
+**L'orchestration** est assurée par `Chorus::Expert`. Plusieurs agents
+spécialisés sont enregistrés et partagent un tableau de bord commun (`BOARD`).
+L'Expert les fait coopérer en boucle jusqu'à ce que l'un d'eux déclare le
+problème résolu. Chaque agent ignore les autres et ne traite que son périmètre ;
+c'est leur enchaînement qui produit le résultat global.
 
 ```
 Chorus::Expert      coordonne les agents, détecte la fin
-  └─ Chorus::Engine   un agent = un ensemble de règles
-       └─ Chorus::Frame   la connaissance = des objets avec des slots
+  └─ Chorus::Engine   un agent = un ensemble de règles + boucle d'inférence
+       └─ Chorus::Frame   la mémoire de travail = objets avec slots indexés
 ```
+
+L'idée centrale : plutôt que d'écrire un algorithme qui dit *comment* résoudre
+un problème étape par étape, on déclare *ce qu'on sait* (les frames) et *ce
+qu'on sait faire* (les règles), et Chorus se charge du reste — de façon
+déterministe et traçable.
+
+---
+
+## Niveaux d'utilisation
+
+Chorus se découvre et s'adopte par étapes. On n'est pas obligé d'utiliser
+l'ensemble de la chaîne dès le départ.
+
+| Niveau | Ce qu'on utilise | Prérequis | Pour qui |
+|---|---|---|---|
+| **1 — Perl direct** | `addrule()`, `loop()` en Perl | Perl 5 | Découverte, prototypage, petits projets |
+| **2 — YAML** | Règles DSL YAML, `loadRules()` | Perl 5 | Projets maintenables, logique métier riche |
+| **3 — ECA** | Pipeline généré depuis un corpus | Perl 5 + ECA | Domaines normatifs, corpus volumineux |
+
+Les niveaux 1 et 2 sont **100 % autonomes** : Perl pur, aucune dépendance
+externe, aucun outil tiers. Le niveau 3 ajoute ECA comme outil de
+*développement* — pas comme dépendance d'*exécution*. Un pipeline généré au
+niveau 3 tourne exactement comme un pipeline écrit à la main au niveau 1.
+
+> **Point de départ :** les exemples dans `examples/sandboxes/cob-compliance_fr`
+> (ou `_en`) sont entièrement fonctionnels sans ECA. Ils montrent la structure
+> complète d'un projet Chorus — corpus, KB, règles YAML, infrastructure Perl —
+> et se lancent avec `perl run.pl project-demo.json`.
 
 ---
 
@@ -138,6 +180,54 @@ EFFET: |
   1
 ```
 
+## Chorus est un moteur d'inférence
+
+Chorus implémente le cycle classique *recognize–act* : à chaque itération, le
+moteur cherche dans la mémoire de travail les règles dont les conditions sont
+satisfaites, les déclenche, et recommence — jusqu'au **point fixe** (aucune règle
+ne peut plus s'activer) ou jusqu'à ce qu'un but explicite soit atteint.
+
+Ce mécanisme s'exprime à chaque couche de l'architecture.
+
+### La mémoire de travail
+
+Les registres `%FMAP`, `%REPOSITORY` et `%INSTANCES` de `Chorus::Frame`
+constituent la mémoire de travail. La fonction `fmatch()` l'interroge en temps
+constant pour retrouver tous les frames qui possèdent un slot donné, avec
+filtrage optionnel.
+
+### Le cycle recognize–act
+
+`applyrules()` évalue le `_SCOPE` de chaque règle pour identifier les frames
+candidats (phase *recognize*), puis appelle `_APPLY` pour chaque combinaison
+(phase *act*). Elle suit `$stillworking` — vrai si au moins une règle a produit
+un effet. `loop()` répète ce cycle jusqu'au point fixe.
+
+### Le chaînage avant
+
+À deux niveaux :
+- **Au niveau des frames** : le slot `_AFTER` déclenche des effets dès qu'une
+  valeur change, propageant immédiatement les conséquences au sein de la
+  structure de connaissance.
+- **Au niveau du moteur** : les règles enrichissent les frames en leur ajoutant
+  de nouveaux slots, ce qui rend d'autres règles éligibles au prochain cycle.
+
+### Le chaînage arrière
+
+Quand `get()` ne peut pas résoudre un slot, il invoque le coderef `_NEEDED`
+pour *produire* la valeur à la demande. Le slot est calculé uniquement quand
+quelque chose en a besoin — c'est du chaînage arrière au niveau de la
+représentation des connaissances.
+
+### La termination par but
+
+`solved()` / `failed()`, `_TERMINAL`, `_MAX_CYCLES` : le moteur raisonne
+jusqu'à atteindre un état terminal explicite ou épuiser les possibilités.
+L'appel à `replay_all()` permet de relancer l'intégralité du pipeline d'agents,
+pour raisonner sur des états qui évoluent en cours de traitement.
+
+---
+
 ## Pourquoi ce modèle ?
 
 L'avantage d'un système à règles explicites est la **traçabilité** :
@@ -194,72 +284,108 @@ concurrencer.
 
 ### Couplage avec un outil LLM — l'architecture ECA
 
-Un assistant IA comme **[ECA](https://eca.dev/)** peut s'intégrer directement
-dans la boucle de développement Chorus, en jouant le rôle de *générateur de
-connaissance* là où le moteur joue le rôle d'*exécuteur certifiable*.
+Imaginez la scène : vous avez un PDF de 150 pages — une norme de construction,
+un DTU, un cahier des charges technique. D'ici la fin de la session, vous voulez
+un pipeline d'inférence Chorus opérationnel qui valide des projets réels contre
+cette norme. Pas un prototype : un moteur avec des agents spécialisés, des règles
+YAML idempotentes, des tables normatives extraites du document, une infrastructure
+Perl correctement câblée, et un rapport de conformité structuré.
 
-L'architecture repose sur trois couches qui communiquent via des fichiers texte lisibles par l'humain
-**et** par le LLM :
+Sans assistance : plusieurs jours de travail Perl expert. Avec ECA et ses skills
+Chorus, c'est l'affaire d'une session.
+
+> **ECA est un outil de développement, pas une dépendance d'exécution.** Le
+> pipeline qu'il génère est du Perl pur — `Feed.pm`, `Agent/*.pm`, `Expert.pm`,
+> `run.pl`. Il tourne sur n'importe quelle machine avec Perl installé, sans ECA,
+> sans connexion réseau. Une fois généré, le pipeline est entièrement autonome.
+
+> **Les fichiers KB (`.org`)** sont du texte structuré lisible avec n'importe
+> quel éditeur — vim, VSCode, nano. Emacs offre le meilleur rendu des tableaux
+> et du balisage, mais il n'est pas requis pour lire, modifier ou versionner ces
+> fichiers.
+
+**Ce que la chaîne fait concrètement :**
 
 ```
-Corpus brut (PDF, DTU, normes…)
-        │
-        ▼  ECA lit, extrait, structure
-┌───────────────────────────────────┐
-│  Base de connaissance  (org-mode) │  ← lue et maintenue par ECA
-│  eca/agents/qualification.org     │    • domaine, ontologie
-│  eca/agents/ossature.org          │    • dictionnaire des slots
-│  eca/agents/thermique.org  …      │    • catalogue de règles
-└───────────────────────────────────┘
-        │
-        ▼  ECA génère / affine
-┌──────────────────────┐   ┌──────────────────────────┐
-│  Règles YAML         │   │  Helpers Perl             │
-│  rules/qualification │   │  lib/COB/Agent/           │
-│  rules/ossature  …   │   │  Qualification/Helpers.pm │
-└──────────────────────┘   └──────────────────────────┘
-        │                           │
-        └──────────┬────────────────┘
-                   ▼  Chorus exécute (règles + Frames)
-        ┌──────────────────────────────────┐
-        │  Chorus::Expert                  │
-        │    Agent::Qualification          │
-        │    Agent::Ossature               │
-        │    Agent::Thermique  …           │
-        │    Agent::Controle (terminaison) │
-        └──────────────────────────────────┘
-                   │
-                   ▼
-        Résultat certifiable + traçable
+chorus-pdf  norme.pdf --auto
+    → extrait le texte page par page (pdfminer pour le texte,
+      vision LLM pour les figures et tableaux)
+    → corpus/001-norme-vision.md
+
+chorus-feed mon-sandbox corpus/001-norme-vision.md
+    → identifie les spécialités → agents
+    → conçoit l'ontologie de slots
+    → écrit eca/agents/<specialite>.org (KB par agent)
+    → génère rules/<specialite>/R01-xxx.yml … (règles YAML)
+    → génère lib/MonApp/Agent/<Specialite>/Helpers.pm (tables normatives)
+
+chorus-check mon-sandbox projet.json
+    → lit la KB, génère Feed.pm + Agent/*.pm + Expert.pm + run.pl
+    → lance perl run.pl projet.json
+    → affiche le rapport de conformité
 ```
 
-**Le rôle de chaque couche :**
+Trois commandes. Le reste est géré.
 
-- **Le corpus** (PDF de norme, DTU, document technique) est la source de vérité
-  du domaine. ECA le lit et en extrait la connaissance structurée.
+**Ce qui rend ça possible :**
 
-- **Les fichiers org-mode** (`eca/agents/*.org`) sont la base de connaissance
-  locale : un fichier par agent, avec son domaine, son ontologie, le dictionnaire
-  de ses slots, le catalogue de ses règles et ses contraintes. C'est l'interface
-  de collaboration entre l'humain, le LLM et le moteur.
+L'astuce centrale est la **base de connaissance locale** — des fichiers org-mode
+produits par ECA, un par agent, qui contiennent tout ce que le moteur a besoin de
+savoir : l'ontologie du domaine, le dictionnaire des slots, le catalogue des règles
+avec leur code, les helpers Perl avec leur source normative (`# §4.2 DTU 31.2`).
 
-- **ECA** lit ces fichiers org via ses skills et génère ou affine les règles YAML
-  et les helpers Perl en s'appuyant dessus — sans halluciner, car la connaissance
-  est explicitement posée dans la KB locale.
+Ces fichiers sont lisibles par un ingénieur du domaine sans qu'il sache lire du
+Perl. Il peut corriger une table, contester une règle, affiner une contrainte.
+ECA relit la KB corrigée et régénère les artefacts en aval. Chorus exécute le
+résultat sans jamais impliquer le LLM — de façon déterministe, à l'identique,
+autant de fois qu'on veut.
 
-- **Chorus** exécute le résultat de façon déterministe, sans LLM, sur le jeu
-  de Frames issu du projet réel.
+```
+norme.pdf
+    │ chorus-pdf
+    ▼
+corpus/
+    │ chorus-feed
+    ▼
+eca/agents/*.org  ←──── l'expert du domaine lit, corrige, affine
+rules/**/*.yml
+lib/**/Helpers.pm
+    │ chorus-check
+    ▼
+Feed.pm · Agent/*.pm · Expert.pm · run.pl
+    │ perl run.pl projet.json
+    ▼
+✅ CONFORME / ❌ NON_CONFORME  — avec motif, par élément, par agent
+```
 
-**Cycle de mise à jour quand une norme change :**
+**Quand la norme change :**
 
-1. ECA lit le nouveau corpus et met à jour les fichiers org ;
-2. ECA génère les règles YAML et helpers Perl correspondants ;
-3. Chorus exécute le pipeline mis à jour — résultat garanti conforme aux règles
-   telles qu'elles ont été définies, sans dérive stochastique.
+```
+chorus-feed mon-sandbox nouveau-corpus.txt --enrich
+chorus-check mon-sandbox projet.json
+```
 
-La connaissance reste lisible et auditable à chaque étape. L'humain garde la
-maîtrise : il peut modifier les fichiers org directement, relire les règles YAML,
-et valider le code Perl généré avant de l'intégrer.
+La KB est mise à jour de façon incrémentale. L'infrastructure Perl est régénérée.
+Le pipeline tourne à nouveau — résultat garanti conforme aux règles telles qu'elles
+ont été définies, sans dérive.
+
+**En pratique, sur un vrai domaine :**
+
+Un sandbox de test COB (Construction Ossature Bois, DTU 31.2) a été construit
+avec cette chaîne : 7 agents spécialisés, 37 règles YAML, 7 modules de helpers
+avec tables EC5 et NF EN 338, un pipeline validant 210 éléments de bâtiment en
+une passe. L'intégralité du code Perl et YAML — environ 2 000 lignes — a été
+générée par ECA depuis le corpus. Aucune ligne écrite à la main.
+
+> Les skills ECA pour Chorus (`chorus-pdf`, `chorus-feed`, `chorus-check`,
+> `chorus-create-project`, `chorus-import-project`) sont versionnés dans
+> `$ENGINE/eca/skills/` et documentés dans le dépôt.
+
+> **Explorer sans ECA :** les sandboxes `examples/sandboxes/cob-compliance_fr`
+> et `cob-compliance_en` contiennent l'intégralité des artefacts produits par la
+> chaîne (corpus, KB org, règles YAML, infrastructure Perl). Ils permettent de
+> comprendre ce qu'ECA génère avant même de l'installer — et de lancer
+> `perl run.pl project-demo.json` pour voir le résultat en direct.
 
 ### En résumé
 
