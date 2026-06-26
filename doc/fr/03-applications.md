@@ -161,7 +161,9 @@ perl run.pl projet.json       → rapport de conformité
 ```
 
 Une fois le pipeline généré, **ECA n'intervient plus à l'exécution**. Le pipeline
-tourne en Perl pur, de façon déterministe, sur n'importe quelle machine.
+tourne en Perl pur, de façon déterministe, sur n'importe quelle machine. ECA n'est
+à nouveau nécessaire que si le corpus normatif évolue — pour relancer
+`chorus-feed --enrich` puis `chorus-check`.
 
 Quand la norme est révisée :
 

@@ -158,7 +158,8 @@ perl run.pl project.json      → compliance report
 ```
 
 Once the pipeline is generated, **ECA is no longer involved at runtime**. The pipeline
-runs in pure Perl, deterministically, on any machine.
+runs in pure Perl, deterministically, on any machine. ECA is only needed again
+when the normative corpus changes — to re-run `chorus-feed --enrich` and `chorus-check`.
 
 When the standard is revised:
 

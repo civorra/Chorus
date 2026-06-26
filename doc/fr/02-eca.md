@@ -60,10 +60,18 @@ Perl correctement câblée, et un rapport de conformité structuré.
 Sans assistance : plusieurs jours de travail Perl expert. Avec ECA et ses skills
 Chorus, c'est l'affaire d'une session.
 
-> **ECA est un outil de développement, pas une dépendance d'exécution.** Le
-> pipeline qu'il génère est du Perl pur — `Feed.pm`, `Agent/*.pm`, `Expert.pm`,
-> `run.pl`. Il tourne sur n'importe quelle machine avec Perl installé, sans ECA,
-> sans connexion réseau. Une fois généré, le pipeline est entièrement autonome.
+> **ECA n'est pas une dépendance d'exécution.** Le pipeline qu'il génère est
+> du Perl pur — `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl`. Il tourne sur
+> n'importe quelle machine avec Perl installé, sans ECA, sans connexion réseau.
+> Une fois généré, le pipeline est entièrement autonome pour l'exécution.
+>
+> **ECA est une dépendance de projet.** Adapter un sandbox à un nouveau projet
+> — aligner les documents d'ingénieur avec les slots de la KB et produire un
+> fichier JSON projet valide — requiert `chorus-create-project` ou
+> `chorus-import-project`, deux skills ECA. La dépendance est réelle et assumée :
+> le LLM lit la KB et gère l'écart de terminologie qu'aucun script statique ne
+> peut couvrir de façon générique. ECA est aussi nécessaire lorsque le corpus
+> normatif évolue — pour relancer `chorus-feed --enrich` puis `chorus-check`.
 
 > **Les fichiers KB (`.org`)** sont du texte structuré lisible avec n'importe
 > quel éditeur — vim, VSCode, nano. Emacs offre le meilleur rendu des tableaux
@@ -147,11 +155,12 @@ générée par ECA depuis le corpus. Aucune ligne écrite à la main.
 > `chorus-create-project`, `chorus-import-project`) sont versionnés dans
 > `$ENGINE/eca/skills/` et documentés dans le dépôt.
 
-> **Explorer sans ECA :** les sandboxes `examples/sandboxes/cob-compliance_fr`
+> **Explorer le sandbox sans ECA :** les sandboxes `examples/sandboxes/cob-compliance_fr`
 > et `cob-compliance_en` contiennent l'intégralité des artefacts produits par la
 > chaîne (corpus, KB org, règles YAML, infrastructure Perl). Ils permettent de
-> comprendre ce qu'ECA génère avant même de l'installer — et de lancer
-> `perl run.pl project-demo.json` pour voir le résultat en direct.
+> comprendre ce qu'ECA génère et de lancer `perl run.pl project-demo.json` en
+> direct — mais avec un JSON projet pré-construit. Adapter un nouveau projet
+> requiert ECA.
 
 ---
 
@@ -164,6 +173,15 @@ Pour un développeur ou un expert qui a besoin de *maîtriser* la connaissance
 qu'il modélise — et pas seulement de l'utiliser — Chorus reste un outil
 irremplaçable, précisément parce qu'il répond à un problème que les LLMs
 ne peuvent pas résoudre par construction.
+
+---
+
+## Les commandes `chorus-*`
+
+> Voir [`04-chorus-commands.md`](04-chorus-commands.md) — référence complète de
+> `chorus-pdf`, `chorus-feed`, `chorus-check`, `chorus-create-project`,
+> `chorus-import-project` : syntaxe, modes, prérequis, sorties, workflow de bout
+> en bout et tableau de référence rapide.
 
 ---
 

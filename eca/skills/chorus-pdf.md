@@ -48,8 +48,13 @@ capability:
 **Choosing a mode:**
 
 ```
+No flag provided
+  → Phase 0.0 auto-detects ANTHROPIC_API_KEY and probes Claude
+  → if key valid   : --auto activated automatically
+  → if key absent or invalid : text mode (fallback)
+
 No API key available, quick extraction needed
-  → (default text mode)
+  → (default text mode — forced)
 
 API key available, mixed document (mostly text + some diagrams)
   → --auto   ← recommended for most technical standards
@@ -62,6 +67,82 @@ API key available, document is mostly diagrams or scanned
 > (Approved Document A, DTU, EC5, NF EN…) when an API key is available.
 > It combines pdfminer precision on text with vision accuracy on figures,
 > and minimises API calls to pages that actually need them.
+
+---
+
+## Phase 0.0 — Auto-detect mode (no explicit flag)
+
+This phase runs **only when neither `--auto` nor `--images` was provided**.
+Its goal: activate `--auto` automatically if Claude is available.
+
+### 0.0.1 Check API key presence
+
+```python
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+if not API_KEY:
+    # No key → stay in text mode, skip probe
+    mode = "text"
+    print("[chorus-pdf] No ANTHROPIC_API_KEY — text mode.", file=sys.stderr)
+```
+
+If a key is present → proceed to 0.0.2.
+
+### 0.0.2 Probe Claude availability
+
+Send a minimal request to verify the key is valid and the API reachable.
+Use `claude-haiku-4-5` (cheapest model, ~1 token, <1s, cost negligible).
+
+```python
+def probe_claude(api_key):
+    """Probe Claude availability with a minimal 1-token request.
+    Returns True  if the key is valid and the API is reachable.
+    Returns False if the key is invalid (401/403) or network unreachable.
+    Returns True  on rate-limit (429/529) — key is valid, just throttled.
+    """
+    import json, urllib.request, urllib.error
+
+    payload = {
+        "model": "claude-haiku-4-5",
+        "max_tokens": 1,
+        "messages": [{"role": "user", "content": "ping"}]
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    try:
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code in (429, 529):
+            return True   # throttled but key is valid
+        return False      # 401 Unauthorized / 403 Forbidden
+    except Exception:
+        return False      # network error, timeout
+```
+
+### 0.0.3 Decision table
+
+| `ANTHROPIC_API_KEY` | Probe result | Mode activated | Message |
+|---|---|---|---|
+| absent | — | text | `No ANTHROPIC_API_KEY — text mode.` |
+| present | ✅ valid | **auto** | `ANTHROPIC_API_KEY detected — Claude available ✅ — auto mode activated.` |
+| present | ❌ invalid (401/403) | text | `ANTHROPIC_API_KEY set but key is invalid (HTTP 4xx) — falling back to text mode.` |
+| present | ❌ unreachable | text | `Claude unreachable (network error) — falling back to text mode.` |
+| present | ⚠️ throttled (429/529) | **auto** | `ANTHROPIC_API_KEY detected — Claude available (throttled) ✅ — auto mode activated.` |
+
+Print the selected mode to stderr before proceeding to Phase 0.1.
+
+> ⚠️ **Explicit flags always take precedence.**
+> `--auto` and `--images` bypass Phase 0.0 entirely — no probe, no key check.
+> Phase 0.0 is only entered when the user provides no mode flag.
 
 ---
 
@@ -242,7 +323,7 @@ OUTPUT FORMAT
 
 ---
 
-### Script template — Text mode (default, no flag)
+### Script template — Text mode (no flag + Claude unavailable, or forced text mode)
 
 Uses `pdfminer.six` only. No API key, no network. Figures produce a placeholder.
 Output: `<NNN>-<slug>-text.txt`

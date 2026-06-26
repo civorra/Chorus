@@ -1,0 +1,102 @@
+# Chorus::Engine
+
+> A pure-Perl inference engine. No runtime dependencies beyond standard CPAN.
+> Runs on Perl 5.006+.
+
+Chorus implements the classical **recognize–act** cycle from the expert-system
+tradition (CLIPS, OPS5, OPS83): at each iteration, the engine identifies which
+rules apply to the current working memory, fires them, and restarts — until
+nothing changes or a goal is reached.
+
+The working memory is made up of `Chorus::Frame` objects — Perl objects whose
+properties (slots) carry domain knowledge, drawing from the
+slot / default / procedural-attachment model introduced by Minsky (1974).
+
+---
+
+## Ten lines, running output
+
+```perl
+use Chorus::Engine;
+use Chorus::Frame;
+
+my $agent = Chorus::Engine->new();
+
+Chorus::Frame->new(color => 'blue', label => 'sky');
+Chorus::Frame->new(color => 'red',  label => 'fire');
+
+$agent->addrule(
+    _SCOPE => { f => sub { [ fmatch(color => 'blue') ] } },
+    _APPLY => sub {
+        my %o = @_;
+        return if $o{f}->{tagged};
+        $o{f}->set('tagged', 'yes');
+        print "Tagged: ", $o{f}->label, "\n";   # → Tagged: sky
+        return 1;
+    },
+);
+
+$agent->loop();
+```
+
+---
+
+## Key properties
+
+- **Zero runtime dependency** — only standard CPAN (`YAML`, `Scalar::Util`, `Digest::MD5`)
+- **Pure Perl 5.006+** — runs anywhere, readable, auditable
+- **Frames with slots** — inheritance, procedural attachments (`_NEEDED`, `_AFTER`),
+  backward and forward chaining
+- **YAML rules** — business logic without Perl boilerplate
+- **Multi-agent orchestration** — `Chorus::Expert` chains specialized engines over
+  a shared working memory
+- **ECA integration** — generate a full pipeline from a plain-text corpus
+  (`chorus-feed` → `chorus-check`)
+
+---
+
+## Full working example
+
+`examples/sandboxes/cob-compliance_en` — timber-frame construction compliance
+against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501.
+
+Run it in one line:
+
+```sh
+perl examples/sandboxes/cob-compliance_en/run.pl \
+     examples/sandboxes/cob-compliance_en/project-demo.json
+```
+
+A French-language version is available in `examples/sandboxes/cob-compliance_fr`.
+
+---
+
+## Installation
+
+```sh
+cpanm Chorus::Engine
+```
+
+Or from source:
+
+```sh
+perl Makefile.PL && make && make test && make install
+```
+
+---
+
+## Documentation
+
+- [`doc/en/01-intro.md`](doc/en/01-intro.md) — concepts, architecture, YAML DSL
+- [`doc/en/02-eca.md`](doc/en/02-eca.md) — LLM + Chorus pipeline (ECA integration)
+- `perldoc Chorus::Engine` — rules, inference loop, YAML DSL, flow control
+- `perldoc Chorus::Frame` — slots, inheritance, `fmatch`, `get`, `set`, `delete`
+- `perldoc Chorus::Expert` — multi-agent orchestration, shared BOARD
+- `perldoc Chorus::Collection::List` — ordered frame sequences
+- `perldoc Chorus::Collection::Filter` — pattern matching on sequences
+
+---
+
+## Repository
+
+<https://github.com/maelink/Chorus-Engine>

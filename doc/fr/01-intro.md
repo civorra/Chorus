@@ -9,10 +9,11 @@ point fixe, et une **orchestration multi-agents** qui décompose les problèmes
 complexes en spécialités indépendantes.
 
 **La mémoire de travail** est constituée de `Chorus::Frame` — des objets Perl
-dont les propriétés (les *slots*) représentent la connaissance du domaine. Tous
-les frames sont indexés dans un registre global ; la fonction `fmatch()` permet
-de les interroger en temps constant. C'est sur cette mémoire que portent toutes
-les règles.
+dont les propriétés (les *slots*) représentent la connaissance du domaine, dans
+la lignée du modèle slots / défauts / attachements procéduraux introduit par
+Minsky (1974). Tous les frames sont indexés dans un registre global ; la fonction
+`fmatch()` permet de les interroger en temps constant. C'est sur cette mémoire que
+portent toutes les règles.
 
 **Le cycle d'inférence** est assuré par `Chorus::Engine`. Un agent contient un
 ensemble de règles ; chaque règle déclare les frames sur lesquels elle s'applique
@@ -162,6 +163,161 @@ my @felins   = fmatch(type => 'félin');         # par valeur de slot
 > — jamais `$f->{slot} = $val` ni `delete $f->{slot}`, qui court-circuitent
 > l'index et rendent les frames invisibles à `fmatch()`.
 
+### Sélection de frame avec `fselect()`
+
+`fmatch()` répond à la question *"quels frames possèdent ce slot ?"* — le moteur
+plonge dans la mémoire de travail et en extrait des frames.
+
+`fselect()` inverse la direction, fidèle à l'intention originale de Minsky :
+étant donné un ensemble de propriétés observées, *quel prototype correspond le
+mieux à cette situation ?*  Chaque frame candidat reçoit un point par paire
+slot/valeur correspondante ; le frame avec le meilleur score est retourné.
+
+```perl
+# Trois prototypes en mémoire de travail
+my $oiseau = Chorus::Frame->new(type => 'animal', vole => 1,  pattes => 2);
+my $poisson = Chorus::Frame->new(type => 'animal', vole => 0, pattes => 0);
+my $chauve_souris = Chorus::Frame->new(type => 'animal', vole => 1, pattes => 2, nocturne => 1);
+
+# Situation observée : quelque chose qui vole et a deux pattes
+my $proto = fselect(vole => 1, pattes => 2);
+# → $oiseau et $chauve_souris marquent 2 points chacun ; l'un d'eux est retourné
+
+# Tous les candidats classés du meilleur au moins bon
+my @classes = fselect(vole => 1, pattes => 2, _all => 1);
+
+# Restreindre la recherche à un sous-ensemble connu
+my $meilleur = fselect(vole => 1, _from => [$oiseau, $poisson]);
+
+# Instancier depuis le prototype sélectionné
+my $instance = Chorus::Frame->new(_ISA => $proto, %observations);
+```
+
+**Options :**
+
+| Option | Défaut | Effet |
+|---|---|---|
+| `_all` | — | Retourner tous les candidats classés par score (liste ou arrayref) |
+| `_from` | tous les frames | Restreindre le pool de candidats |
+| `_min` | `1` | Score minimum pour être inclus ; `0` pour accepter les candidats sans correspondance |
+
+> **Relation avec `fmatch` :** les deux fonctions sont complémentaires.
+> `fmatch` est l'outil principal du moteur — il pilote les règles d'inférence.
+> `fselect` est une primitive de plus haut niveau pour la reconnaissance de
+> situation : choisir un *type* de frame depuis le contexte, puis utiliser
+> `fmatch` pour opérer sur les instances de ce type.
+
+### La triade Minsky complète — `_NEEDED` / `_AFTER` / `_ON_DELETE`
+
+Minsky définissait trois *démons procéduraux* déclenchés lors de l'accès à un
+slot. `Chorus::Frame` implémente désormais les trois :
+
+| Démon | Slot | Déclencheur | Direction |
+|---|---|---|---|
+| if-needed | `_NEEDED` | `get()` ne peut pas résoudre le slot | Chaînage arrière |
+| if-added | `_AFTER` | une valeur est écrite via `set()` | Chaînage avant |
+| if-removed | `_ON_DELETE` | un slot est effacé via `delete()` | Effet de bord |
+
+```perl
+my $f = Chorus::Frame->new(
+    budget     => 1000,
+    _AFTER     => sub { print "budget changé : $_[0]\n" },
+    _ON_DELETE => sub { print "slot '$_[0]' supprimé\n" },
+    _NEEDED    => sub { 0 },   # arrière : produit une valeur par défaut
+);
+
+$f->set('budget', 500);    # → "budget changé : 500"
+$f->delete('budget');      # → "slot 'budget' supprimé"
+```
+
+`_ON_DELETE` reçoit le nom du slot supprimé en argument. `$SELF` est positionné
+sur le frame au moment de l'appel, ce qui permet au hook d'inspecter l'état
+restant du frame.
+
+### Slots terminaux et `complete()`
+
+Minsky distinguait les *nœuds terminaux* — slots devant être remplis par des
+données réelles observées — des slots non-terminaux qui peuvent rester
+procéduraux. Le slot `_TERMINAL_SLOTS` et la méthode `complete()` implémentent
+cette distinction.
+
+```perl
+my $Vehicule = Chorus::Frame->new(
+    _TERMINAL_SLOTS => ['couleur', 'nb_roues'],
+    nb_roues        => sub { 4 },   # non-terminal : possède une valeur par défaut
+);
+
+my $voiture = Chorus::Frame->new(_ISA => $Vehicule, couleur => 'rouge', nb_roues => 4);
+my $velo    = Chorus::Frame->new(_ISA => $Vehicule, couleur => 'bleu');
+
+$voiture->complete;   # 1    — tous les slots terminaux sont remplis
+$velo->complete;      # undef — nb_roues non explicitement défini sur $velo
+                      #         (le défaut procédural du prototype compte quand même)
+```
+
+`_TERMINAL_SLOTS` est hérité : un frame enfant qui ne le redéclare pas utilise
+la liste de son parent. Chaque slot est résolu via `get()`, donc les valeurs
+`_DEFAULT` et les slots procéduraux comptent comme remplis.
+
+> **Usage pratique :** appeler `complete()` dans la règle d'un agent de contrôle
+> pour vérifier que tous les objets du domaine ont été traités avant d'appeler
+> `solved()`.
+
+### Réseaux de frames et `_ALTERNATIVES`
+
+Les frames de Minsky étaient organisées en *réseaux de frames alternatives* :
+quand un prototype ne correspond pas à une situation, le système essaie ses
+homologues déclarés. Le slot `_ALTERNATIVES` et l'option `_alternatives` de
+`fselect()` implémentent ce mécanisme.
+
+```perl
+my $Chauve_souris = Chorus::Frame->new(vole => 1, pattes => 2, nocturne => 1);
+my $Insecte       = Chorus::Frame->new(vole => 1, pattes => 6);
+my $Oiseau        = Chorus::Frame->new(vole => 1, pattes => 2,
+                                       _ALTERNATIVES => [$Chauve_souris, $Insecte]);
+
+# Observé : quelque chose qui vole et a 6 pattes → Insecte gagne
+my $match = fselect(vole => 1, pattes => 6, _alternatives => $Oiseau);
+# → $Insecte (score 2) devant $Oiseau et $Chauve_souris (score 1 chacun)
+```
+
+`_alternatives` restreint le pool de candidats au frame seed et aux frames de
+sa liste `_ALTERNATIVES`, localisant la recherche à un voisinage déclaré plutôt
+que de parcourir tous les frames enregistrés.
+
+### Chorus et le modèle de Minsky — synthèse de compatibilité
+
+`Chorus::Frame` implémente le cœur du modèle de frames de Minsky (1974) :
+
+| Concept | Chorus | Notes |
+|---|---|---|
+| Slots nommés + valeurs par défaut | ✅ `_DEFAULT` | Direct |
+| Slots procéduraux | ✅ `sub {}` | Évalués lazily via `get()` |
+| Héritage simple et multiple | ✅ `_ISA` | Direct |
+| Démon *if-needed* | ✅ `_NEEDED` | Chaînage arrière |
+| Démon *if-added* | ✅ `_AFTER` | Chaînage avant |
+| Démon *if-removed* | ✅ `_ON_DELETE` | Effet de bord sur `delete()` |
+| Nœuds terminaux | ✅ `_TERMINAL_SLOTS` + `complete()` | Sans questionnement actif |
+| Sélection de frame | ✅ `fselect()` | Appel explicite, non perceptif |
+| Réseaux de frames | ✅ `_ALTERNATIVES` | Voisinage déclaratif |
+| Sélection automatique par perception | ⚠️ | Structurellement absent — voir ci-dessous |
+| Propagation par marqueurs | ❌ | Non implémenté |
+
+**La principale divergence restante :** dans le modèle original de Minsky, la
+sélection de frame est déclenchée *automatiquement* par l'entrée perceptuelle —
+le système choisit le meilleur prototype sans appel explicite. Dans Chorus,
+`fselect()` doit être appelée explicitement depuis une règle ou du code Perl.
+C'est un choix architectural délibéré : Chorus est un moteur d'inférence piloté
+par des règles, pas un système perceptuel. Le mécanisme de sélection est
+disponible et correct ; son activation est sous le contrôle du développeur.
+
+**Sur la propagation par marqueurs :** Minsky envisageait une propagation de
+marqueurs à travers le réseau de frames pour pré-activer en parallèle les frames
+candidates avant la sélection explicite. `fselect()` score les candidats de façon
+linéaire — correct séquentiellement, mais non propagatif. C'est suffisant pour
+les domaines pilotés par des règles et n'introduit aucune limitation pratique dans
+les contextes où Chorus est utilisé.
+
 ---
 
 ## Les règles en YAML
@@ -181,6 +337,12 @@ EFFET: |
 ```
 
 ## Chorus est un moteur d'inférence
+
+Ce modèle s'inscrit directement dans la lignée des systèmes experts des années
+1980–90. CLIPS, OPS5 et leurs prédécesseurs partagent tous le même cycle
+recognize–act, la même mémoire de travail et le même mécanisme de chaînage avant.
+Chorus est une implémentation Perl moderne et minimale de cette tradition — sans
+le poids d'un runtime dédié.
 
 Chorus implémente le cycle classique *recognize–act* : à chaque itération, le
 moteur cherche dans la mémoire de travail les règles dont les conditions sont
@@ -254,3 +416,5 @@ on décrit le **quoi**, pas le **comment**.
 - `perldoc Chorus::Frame` — slots, héritage, `fmatch`, `get`, `set`, `delete`
 - `perldoc Chorus::Collection::List` — séquences ordonnées de frames
 - `perldoc Chorus::Collection::Filter` — correspondance de motifs sur séquences
+- [CLIPS](https://www.clipsrules.net/), [OPS5](https://en.wikipedia.org/wiki/OPS5) — la tradition des systèmes experts dont Chorus s'inspire
+- Minsky, M. (1974). *A Framework for Representing Knowledge* — le modèle de frames à l'origine de `Chorus::Frame`

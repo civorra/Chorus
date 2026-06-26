@@ -37,6 +37,26 @@ Version 1.05
   my @colored = fmatch(slot => 'color');
   my @both    = fmatch(slot => ['color', 'score']);
 
+  # Select the best-matching prototype frame given observed properties
+  my $proto = fselect(color => 'blue', can_fly => 1);   # highest-scoring prototype
+  my @all   = fselect(color => 'blue', _all => 1);      # all candidates, ranked
+
+  # Frame networks: restrict fselect to a prototype and its declared alternatives
+  my $Bird  = Chorus::Frame->new(can_fly => 1, legs => 2, _ALTERNATIVES => [$Bat]);
+  my $match = fselect(can_fly => 1, _alternatives => $Bird);
+
+  # Terminal slots: declare which slots must hold real data for a frame to be complete
+  my $proto = Chorus::Frame->new(_TERMINAL_SLOTS => ['color', 'size']);
+  my $inst  = Chorus::Frame->new(_ISA => $proto, color => 'blue', size => 'large');
+  $inst->complete;   # 1
+
+  # _ON_DELETE hook (if-removed demon, completes the Minsky triad)
+  my $f = Chorus::Frame->new(
+      tag       => 'active',
+      _ON_DELETE => sub { print "Slot '${\$_[0]}' removed from frame\n" },
+  );
+  $f->delete('tag');   # → prints "Slot 'tag' removed from frame"
+
 =head1 DESCRIPTION
 
 A B<frame> is a Perl hash blessed into C<Chorus::Frame>.  Its entries are called B<slots>.
@@ -73,11 +93,17 @@ The following names are reserved.  Never use them as application slot names
   _DEFAULT      Fallback when _VALUE is absent.
   _NEEDED       Last-resort coderef called when both _VALUE and _DEFAULT are absent
                 (backward chaining).
-  _BEFORE       Hook called before a slot value changes.
-  _AFTER        Hook called after a slot value changes (forward propagation).
-  _REQUIRE      Validation hook: return REQUIRE_FAILED to block the write.
-  _NOFRAME      Prevents automatic promotion of a nested hash to a frame.
-  _SERIALIZE    Key used for serialisation round-trips (FREEZE/THAW).
+  _BEFORE           Hook called before a slot value changes.
+  _AFTER            Hook called after a slot value changes (forward propagation).
+  _ON_DELETE        Hook called after a slot is deleted; receives the slot name
+                    (if-removed demon, completing the Minsky triad).
+  _REQUIRE          Validation hook: return REQUIRE_FAILED to block the write.
+  _NOFRAME          Prevents automatic promotion of a nested hash to a frame.
+  _SERIALIZE        Key used for serialisation round-trips (FREEZE/THAW).
+  _TERMINAL_SLOTS   Arrayref of slot names that must hold a real (_VALUE) value
+                    for the frame to be considered complete (see complete()).
+  _ALTERNATIVES     Arrayref of sibling prototype frames used by fselect()
+                    as an alternative candidate pool (Minsky frame network).
 
 =head2 Inheritance modes N and Z
 
@@ -104,6 +130,7 @@ C<Chorus::Frame> exports by default:
 
   $SELF          Current frame context, updated by get() and set().
   &fmatch        Slot-based frame selection function.
+  &fselect       Prototype selection by scored slot/value matching (Minsky-style).
   &setMode       Switches the inheritance mode (N or Z).
   REQUIRE_FAILED Constant (-1) returned by _REQUIRE to abort a write.
 
@@ -114,7 +141,7 @@ BEGIN {
   use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
   @ISA         = qw(Exporter);
-  @EXPORT      = qw($SELF &fmatch &setMode REQUIRE_FAILED );
+  @EXPORT      = qw($SELF &fmatch &fselect &setMode REQUIRE_FAILED );
   @EXPORT_OK   = qw();
 
   # %EXPORT_TAGS = ( );		# eg: TAG => [ qw!name1 name2! ];
@@ -633,6 +660,10 @@ Removes a slot and unregisters it from the global repository.
 Always use this method instead of C<delete $frame->{slot}>.  Direct hash deletion
 bypasses the registry, causing C<fmatch()> to return stale results for that slot.
 
+After the slot is removed, the C<_ON_DELETE> hook is invoked (if present),
+receiving the deleted slot name as its argument.  This is the I<if-removed> demon
+that completes the Minsky triad (C<_NEEDED> / C<_AFTER> / C<_ON_DELETE>).
+
 =cut
 
 sub _unregisterSlot {
@@ -645,6 +676,7 @@ sub _deleteSlot {
   my ($this, $slot) = @_;
   _unregisterSlot($this, $slot);
   delete($this->{$slot}) if exists $this->{$slot};
+  _getN($this, '_ON_DELETE', $slot);   # if-removed demon (Minsky triad)
 }
 
 sub _deleteN {
@@ -813,6 +845,49 @@ known subset.
 
 =cut
 
+=head2 complete
+
+Returns C<1> if every slot listed in C<_TERMINAL_SLOTS> (on this frame or
+inherited) holds a defined value via C<get()>, C<undef> otherwise.
+
+  my $proto = Chorus::Frame->new(_TERMINAL_SLOTS => ['color', 'size']);
+  my $inst  = Chorus::Frame->new(_ISA => $proto, color => 'blue', size => 'large');
+
+  $inst->complete;   # 1
+
+  my $partial = Chorus::Frame->new(_ISA => $proto, color => 'red');
+  $partial->complete;   # undef  (size not filled)
+
+C<_TERMINAL_SLOTS> is inherited: a child frame that does not redeclare it will
+use its parent's list.  Each slot is resolved with C<get()>, so procedural slots
+(C<sub {}>) and C<_DEFAULT> values count as filled.
+
+B<Relationship to Minsky's model>: terminal slots correspond to Minsky's
+I<terminal nodes> -- positions in the frame that must be grounded in actual
+observed data for the frame to describe a real situation rather than a generic
+prototype.
+
+=cut
+
+sub complete {
+  my ($this) = @_;
+  pushself($this);
+  my $terminals = _inherited($SELF, '_TERMINAL_SLOTS');
+  unless ($terminals && ref($terminals) eq 'ARRAY' && @$terminals) {
+    popself();
+    return undef;
+  }
+  for my $slot (@$terminals) {
+    my $val = eval { $SELF->get($slot) };
+    unless (defined $val) {
+      popself();
+      return undef;
+    }
+  }
+  popself();
+  return 1;
+}
+
 # firstInheriting() : returns frames inheriting DIRECTLY from $this (via %INSTANCES)
 sub _firstInheriting {
   my ($this) = @_;
@@ -865,6 +940,111 @@ sub fmatch {
   return map { $FMAP{$_} || () } keys(%filter);
 
 } # fmatch
+
+=head2 fselect
+
+Selects the best-matching frame(s) from the global registry given a set of
+observed slot/value pairs.  This implements the frame-selection mechanism
+described by Minsky (1974): given a situation described by a set of properties,
+find the prototype that fits it best.
+
+  # Best single match (highest score)
+  my $proto = fselect(color => 'blue', can_fly => 1);
+
+  # All candidates with a positive score, ranked best-first
+  my @ranked = fselect(color => 'blue', can_fly => 1, _all => 1);
+
+  # Restrict the search space
+  my $proto = fselect(color => 'blue', _from => \@candidates);
+
+  # Frame network: search seed + its declared _ALTERNATIVES
+  my $Bird = Chorus::Frame->new(can_fly => 1, _ALTERNATIVES => [$Bat, $Insect]);
+  my $best = fselect(can_fly => 1, legs => 6, _alternatives => $Bird);
+
+  # Accept candidates with zero matching slots (score >= 0)
+  my @all = fselect(color => 'blue', _all => 1, _min => 0);
+
+B<Scoring> -- for each candidate frame, one point is awarded for each
+C<< slot => value >> pair where the frame provides the slot B<and> its resolved
+value (via C<get()>) matches the observed value.  Frames with a score strictly
+below C<_min> (default: 1) are excluded.
+
+B<Options> (prefixed with C<_> to avoid collision with slot names):
+
+  _all          If true, return all matching frames ranked by descending score
+                instead of just the best one.  In list context, the return value
+                is a list of frames.  In scalar context, it is an arrayref.
+
+  _from         Arrayref -- restrict the candidate pool to this list of frames.
+                If absent, all registered frames are considered.
+
+  _alternatives Seed frame -- restrict the candidate pool to the seed frame plus
+                all frames listed in its C<_ALTERNATIVES> slot.  This implements
+                Minsky's frame network: when a prototype does not fit, try its
+                declared siblings.  Cannot be combined with C<_from>.
+
+  _min          Minimum score to be included in the result (default: 1).
+                Pass C<_min =E<gt> 0> to include frames that match none of the
+                observed slots.
+
+Returns C<undef> (scalar) or C<()> (list) when no candidate meets the
+minimum score.
+
+=cut
+
+sub fselect {
+  my %obs = @_;
+
+  # Extract control options
+  my $want_all     = delete $obs{_all};
+  my $from         = delete $obs{_from};
+  my $alternatives = delete $obs{_alternatives};
+  my $min          = exists $obs{_min} ? delete $obs{_min} : 1;
+
+  return wantarray ? () : undef unless %obs;
+
+  # Build candidate pool
+  my @candidates;
+  if ($alternatives) {
+    # Frame network: seed + its _ALTERNATIVES
+    my $alts = _inherited($alternatives, '_ALTERNATIVES');
+    @candidates = ($alternatives,
+                   ($alts && ref($alts) eq 'ARRAY' ? @$alts : ()));
+  } elsif ($from) {
+    @candidates = @$from;
+  } else {
+    # All registered frames (skip destroyed/GC'd weak refs)
+    @candidates = grep { defined } values %FMAP;
+  }
+
+  # Score each candidate
+  my @scored;
+  for my $frame (@candidates) {
+    next unless ref($frame) eq 'Chorus::Frame';
+    my $score = 0;
+    for my $slot (keys %obs) {
+      # Award one point when the frame provides the slot AND the value matches
+      if (exists $REPOSITORY{$slot} && exists $REPOSITORY{$slot}->{$frame->{_KEY}}) {
+        my $val = do {
+          local $SELF = $frame;
+          eval { $frame->get($slot) };
+        };
+        $score++ if defined $val && defined $obs{$slot} && $val eq $obs{$slot};
+      }
+    }
+    push @scored, { frame => $frame, score => $score } if $score >= $min;
+  }
+
+  return wantarray ? () : undef unless @scored;
+
+  # Sort by descending score
+  my @ranked = map  { $_->{frame} }
+               sort { $b->{score} <=> $a->{score} }
+               @scored;
+
+  return $want_all ? (wantarray ? @ranked : \@ranked) : $ranked[0];
+
+} # fselect
 
 =head1 AUTHOR
 
