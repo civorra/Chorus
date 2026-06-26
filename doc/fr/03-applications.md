@@ -183,7 +183,7 @@ Perl. Lancer `perl run.pl project-demo.json` pour voir le rapport en direct.
 
 **Comprendre la chaîne ECA :**
 Voir la section *« Couplage avec un outil LLM — l'architecture ECA »* dans
-`intro.md`.
+[`01-intro.md`](01-intro.md).
 
 **Démarrer sur un nouveau domaine :**
 Commencer par `chorus-pdf` sur le corpus, puis `chorus-feed` pour extraire

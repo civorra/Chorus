@@ -180,7 +180,7 @@ Run `perl run.pl project-demo.json` to see the report live.
 
 **Understand the ECA chain:**
 See the section *"Coupling with an LLM tool — the ECA architecture"* in
-`intro.md`.
+[`01-intro.md`](01-intro.md).
 
 **Start on a new domain:**
 Begin with `chorus-pdf` on the corpus, then `chorus-feed` to extract knowledge.
