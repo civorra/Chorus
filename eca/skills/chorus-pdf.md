@@ -1,12 +1,13 @@
 # Skill — chorus-pdf
 
-> Trigger: `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--images] [--batch]`
+> Trigger: `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: name of the sandbox directory under `$CHORUS/sandboxes/`
 > `<file.pdf>`: path to the PDF — absolute, or relative to `$SANDBOX/corpus/`
 > `--out <slug>`: override the output filename stem (default: derived from input filename)
 > `--auto`: smart mode — pdfminer on text-only pages, vision LLM on pages with figures
+> `--hybrid`: best-quality mode — pdfminer for text on ALL pages + Claude vision on cropped figures only
 > `--images`: full vision mode — all pages processed by vision LLM via `pdftoppm` + Anthropic
 > `--batch`: process all `*.pdf` files found in `$SANDBOX/corpus/`
 >
@@ -15,7 +16,8 @@
 > and similar tools silently discard.
 >
 > Output format depends on mode:
-> - Text mode (default): `corpus/<NNN>-<slug>-text.txt` — plain text, pdfminer only
+> - Hybrid mode (default when API key available): `corpus/<NNN>-<slug>-vision.md` — pdfminer text + cropped figure vision
+> - Text mode (fallback — no API key): `corpus/<NNN>-<slug>-text.txt` — plain text, pdfminer only
 > - Auto / Images mode: `corpus/<NNN>-<slug>-vision.md` — Markdown with tables and figure blocks
 >
 > This skill must be run **before** `chorus-feed` when the corpus contains PDFs.
@@ -37,11 +39,12 @@ They silently drop structural diagrams, normative tables rendered as images, mul
 layouts, and figure annotations. This skill provides three extraction modes of increasing
 capability:
 
-### Three extraction modes
+### Four extraction modes
 
 | Mode | Flag | Engine | API key | Figures | Output |
 |------|------|--------|---------|---------|--------|
-| **Text** (default) | *(none)* | `pdfminer.six` | ❌ not required | `[FIGURE — not extracted]` placeholder | `<slug>-text.txt` |
+| **Hybrid** (**default**) | *(none — auto-detected)* | `pdfminer` for text on ALL pages + Claude vision on cropped figures only | ✅ `ANTHROPIC_API_KEY` | ✅ described (precise crop) | `<slug>-vision.md` |
+| **Text** (fallback) | *(none — no API key)* | `pdfminer.six` | ❌ not required | `[FIGURE — not extracted]` placeholder | `<slug>-text.txt` |
 | **Auto** | `--auto` | `pdfminer` on text pages + vision LLM on figure pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (targeted) | `<slug>-vision.md` |
 | **Images** | `--images` | `pdftoppm` 150 DPI + vision LLM on all pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (exhaustive) | `<slug>-vision.md` |
 
@@ -50,30 +53,35 @@ capability:
 ```
 No flag provided
   → Phase 0.0 auto-detects ANTHROPIC_API_KEY and probes Claude
-  → if key valid   : --auto activated automatically
+  → if key valid   : --hybrid activated automatically  ← DEFAULT
   → if key absent or invalid : text mode (fallback)
 
-No API key available, quick extraction needed
-  → (default text mode — forced)
+API key available, document has mixed pages (text + embedded figures)
+  → (default — hybrid activated automatically)
 
-API key available, mixed document (mostly text + some diagrams)
-  → --auto   ← recommended for most technical standards
+API key available, document is text-only or text-dominant (no embedded figures)
+  → --auto   ← faster, fewer API calls
 
 API key available, document is mostly diagrams or scanned
   → --images
+
+No API key available
+  → (default text mode — forced fallback)
 ```
 
-> **`--auto` is the recommended mode** for building/structural standards
+> **`--hybrid` is the recommended mode** for building/structural standards
 > (Approved Document A, DTU, EC5, NF EN…) when an API key is available.
-> It combines pdfminer precision on text with vision accuracy on figures,
-> and minimises API calls to pages that actually need them.
+> It combines pdfminer precision on text (exact characters, no OCR risk) with
+> Claude vision on cropped figures only (smaller payload, lower cost, no text
+> re-interpretation). On pages with both text and figures, text fidelity is
+> maximised and API calls are minimised to the figure bounding boxes.
 
 ---
 
 ## Phase 0.0 — Auto-detect mode (no explicit flag)
 
-This phase runs **only when neither `--auto` nor `--images` was provided**.
-Its goal: activate `--auto` automatically if Claude is available.
+This phase runs **only when neither `--auto`, `--hybrid` nor `--images` was provided**.
+Its goal: activate `--hybrid` automatically if Claude is available.
 
 ### 0.0.1 Check API key presence
 
@@ -133,15 +141,15 @@ def probe_claude(api_key):
 | `ANTHROPIC_API_KEY` | Probe result | Mode activated | Message |
 |---|---|---|---|
 | absent | — | text | `No ANTHROPIC_API_KEY — text mode.` |
-| present | ✅ valid | **auto** | `ANTHROPIC_API_KEY detected — Claude available ✅ — auto mode activated.` |
+| present | ✅ valid | **hybrid** | `ANTHROPIC_API_KEY detected — Claude available ✅ — hybrid mode activated.` |
 | present | ❌ invalid (401/403) | text | `ANTHROPIC_API_KEY set but key is invalid (HTTP 4xx) — falling back to text mode.` |
 | present | ❌ unreachable | text | `Claude unreachable (network error) — falling back to text mode.` |
-| present | ⚠️ throttled (429/529) | **auto** | `ANTHROPIC_API_KEY detected — Claude available (throttled) ✅ — auto mode activated.` |
+| present | ⚠️ throttled (429/529) | **hybrid** | `ANTHROPIC_API_KEY detected — Claude available (throttled) ✅ — hybrid mode activated.` |
 
 Print the selected mode to stderr before proceeding to Phase 0.1.
 
 > ⚠️ **Explicit flags always take precedence.**
-> `--auto` and `--images` bypass Phase 0.0 entirely — no probe, no key check.
+> `--auto`, `--hybrid` and `--images` bypass Phase 0.0 entirely — no probe, no key check.
 > Phase 0.0 is only entered when the user provides no mode flag.
 
 ---
@@ -185,7 +193,8 @@ Derive the slug and extension based on mode:
 
 | Mode | Suffix | Extension | Rationale |
 |------|--------|-----------|-----------|
-| Text (default) | `-text` | `.txt` | Plain text only — no Markdown syntax produced |
+| Hybrid (default) | `-vision` | `.md` | pdfminer text + cropped figure vision — default when API key present |
+| Text (fallback) | `-text` | `.txt` | Plain text only — no Markdown syntax produced |
 | Auto (`--auto`) | `-vision` | `.md` | Contains Markdown tables and `[FIGURE]` blocks |
 | Images (`--images`) | `-vision` | `.md` | Contains Markdown tables and `[FIGURE]` blocks |
 
@@ -260,7 +269,76 @@ Report the classification to the user before generating the script:
 |------|-----------|-----------|
 | Text (default) | N/A — single pass | pdfminer processes the whole file at once |
 | Auto (`--auto`) | 5 vision pages per call | only figure pages are chunked |
+| Hybrid (`--hybrid`) | 1 figure crop per call | each `LTFigure` bbox sent individually |
 | Images (`--images`) | 5 pages per call | all pages, one PNG each (~500 KB) |
+
+### 1.4 Figure detection for `--hybrid` mode
+
+For `--hybrid`, figure bounding boxes are detected via `pdfminer` layout analysis.
+Each `LTFigure` element exposes its `(x0, y0, x1, y1)` coordinates in PDF space.
+
+```python
+from pdfminer.high_level import extract_pages
+from pdfminer.layout import LAParams, LTTextBox, LTFigure
+
+laparams = LAParams(boxes_flow=0.5, char_margin=2.0)
+page_figures = {}   # {page_num: [(x0, y0, x1, y1), ...]}
+page_texts   = {}   # {page_num: [(text_block, y_center), ...]}
+
+for page_num, layout in enumerate(extract_pages(pdf_path, laparams=laparams), 1):
+    figures = []
+    texts   = []
+    page_height = layout.height
+    for el in layout:
+        if isinstance(el, LTFigure):
+            figures.append((el.x0, el.y0, el.x1, el.y1))
+        elif isinstance(el, LTTextBox):
+            t = el.get_text().strip()
+            if t:
+                y_center = (el.y0 + el.y1) / 2
+                texts.append((t, y_center))
+    page_figures[page_num] = figures
+    page_texts[page_num]   = texts
+```
+
+**Coordinate conversion — PDF space → PNG pixels:**
+
+PDF coordinates have their origin at the **bottom-left**; PNG pixels have theirs at
+the **top-left**. Convert with:
+
+```python
+def pdf_bbox_to_png_crop(x0, y0, x1, y1, page_height, dpi=150):
+    """Convert a PDF LTFigure bbox to PIL crop coordinates (left, upper, right, lower)."""
+    scale  = dpi / 72.0
+    left   = int(x0 * scale)
+    upper  = int((page_height - y1) * scale)   # flip vertical axis
+    right  = int(x1 * scale)
+    lower  = int((page_height - y0) * scale)
+    # Add a small margin to capture borders
+    margin = int(4 * scale)
+    return (
+        max(0, left  - margin),
+        max(0, upper - margin),
+        right  + margin,
+        lower  + margin,
+    )
+```
+
+**Reading order reconstruction:**
+
+After mixing text blocks and `[FIGURE N]` placeholders, sort all elements by their
+`y_center` in **descending** order (top of page = highest PDF y-coordinate):
+
+```python
+elements = []
+for text, y_center in page_texts[page_num]:
+    elements.append((y_center, 'text', text))
+for fig_idx, (x0, y0, x1, y1) in enumerate(page_figures[page_num], 1):
+    y_center_fig = (y0 + y1) / 2
+    elements.append((y_center_fig, 'figure', fig_idx))
+
+elements.sort(key=lambda e: e[0], reverse=True)   # top-to-bottom reading order
+```
 
 ---
 
@@ -346,7 +424,7 @@ OUTPUT_PATH = "<output-txt-path>"
 
 FIGURE_PLACEHOLDER = (
     "[FIGURE — not extracted]\n"
-    "[Run chorus-pdf with --auto or --images to extract figures via LLM vision]"
+    "[Run chorus-pdf with --hybrid, --auto or --images to extract figures via LLM vision]"
 )
 
 
@@ -406,7 +484,7 @@ def main():
     fig_pages = sum(1 for _, t in pages if "FIGURE — not extracted" in t)
     print(f"[chorus-pdf] ✅ {len(pages)} pages extracted", file=sys.stderr)
     if fig_pages:
-        print(f"[chorus-pdf]    {fig_pages} page(s) contain figures — use --auto to extract them",
+        print(f"[chorus-pdf]    {fig_pages} page(s) contain figures — use --hybrid or --auto to extract them",
               file=sys.stderr)
     print(f"[chorus-pdf] Written to {OUTPUT_PATH}", file=sys.stderr)
 
@@ -416,6 +494,290 @@ if __name__ == "__main__":
 ```
 
 > ⚠️ **Dependency**: `pip install pdfminer.six`
+
+---
+
+### Script template — Hybrid mode (`--hybrid`)
+
+Best-quality mode for documents with mixed pages (text + embedded figures).
+`pdfminer` extracts text on **every** page with full precision. For each `LTFigure`
+found, `pdftoppm` renders the page and `Pillow` crops the figure bounding box;
+Claude describes the cropped image only. Text and figure descriptions are merged
+in reading order (sorted by Y-coordinate).
+
+Output: `<NNN>-<slug>-vision.md`
+
+```python
+#!/usr/bin/env python3
+"""
+chorus-pdf extraction script — hybrid mode (--hybrid)
+Generated by ECA chorus-pdf skill
+Sandbox : <sandbox-name>
+Source  : <input-pdf-path>
+Output  : <output-md-path>    (e.g. corpus/003-uk-approved-doc-a-2013-vision.md)
+Pages   : <total-pages>
+"""
+
+import sys
+import base64
+import json
+import re
+import time
+import tempfile
+import subprocess
+import urllib.request
+import urllib.error
+import os
+import io
+
+PDF_PATH    = "<input-pdf-path>"
+OUTPUT_PATH = "<output-md-path>"
+DPI         = 150
+MAX_RETRIES = 4
+API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
+API_URL     = "https://api.anthropic.com/v1/messages"
+
+FIGURE_PROMPT = """You are a technical document extraction engine.
+Describe this figure extracted from a normative PDF document.
+
+Apply the following rules strictly:
+
+FIGURES AND DIAGRAMS
+- Output a block of the form:
+    [FIGURE <N> — <title or caption if visible>]
+    <Structured description of all visual content:>
+    - Labeled dimensions, dimensions with units
+    - Named components and their spatial relationships
+    - Numerical values visible in or next to the figure
+    - Arrows, load paths, connection points, hinge symbols, support symbols
+    - Hatching patterns and what material or condition they represent
+    - Scale bar if present
+    [END FIGURE <N>]
+- If there is no caption visible, assign [FIGURE ?] and describe anyway.
+- Do not add text outside the [FIGURE] ... [END FIGURE] block.
+- Use UTF-8. Preserve all special characters (±, ≤, ≥, ×, °, ², ³, …).
+"""
+
+
+# ---------------------------------------------------------------------------
+# pdfminer layout analysis — extract text blocks AND figure bboxes per page
+# ---------------------------------------------------------------------------
+
+def analyse_pages(pdf_path):
+    """Return {page_num: {'texts': [(text, y_center)], 'figures': [(x0,y0,x1,y1)],
+                          'height': float}}"""
+    try:
+        from pdfminer.high_level import extract_pages
+        from pdfminer.layout import LAParams, LTTextBox, LTFigure
+    except ImportError:
+        print("⛔ pdfminer.six not installed. Run: pip install pdfminer.six", file=sys.stderr)
+        sys.exit(1)
+
+    laparams = LAParams(boxes_flow=0.5, char_margin=2.0)
+    result = {}
+    for page_num, layout in enumerate(extract_pages(pdf_path, laparams=laparams), 1):
+        texts   = []
+        figures = []
+        for el in layout:
+            if isinstance(el, LTTextBox):
+                t = el.get_text().strip()
+                if t:
+                    y_center = (el.y0 + el.y1) / 2
+                    texts.append((t, y_center))
+            elif isinstance(el, LTFigure):
+                figures.append((el.x0, el.y0, el.x1, el.y1))
+        result[page_num] = {
+            'texts':   texts,
+            'figures': figures,
+            'height':  layout.height,
+        }
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Coordinate conversion: PDF space → PIL crop box
+# ---------------------------------------------------------------------------
+
+def pdf_bbox_to_png_crop(x0, y0, x1, y1, page_height, dpi=DPI):
+    """Convert a PDF LTFigure bbox to PIL crop coordinates (left, upper, right, lower)."""
+    scale  = dpi / 72.0
+    left   = int(x0 * scale)
+    upper  = int((page_height - y1) * scale)
+    right  = int(x1 * scale)
+    lower  = int((page_height - y0) * scale)
+    margin = int(4 * scale)
+    return (
+        max(0, left  - margin),
+        max(0, upper - margin),
+        right  + margin,
+        lower  + margin,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Render a single page to PNG via pdftoppm, crop to figure bbox via Pillow
+# ---------------------------------------------------------------------------
+
+def render_and_crop(pdf_path, page_num, bbox, page_height, tmpdir):
+    """Render page to PNG, crop the figure bbox, return PNG bytes."""
+    try:
+        from PIL import Image
+    except ImportError:
+        print("⛔ Pillow not installed. Run: pip install Pillow", file=sys.stderr)
+        sys.exit(1)
+
+    prefix = os.path.join(tmpdir, f"p{page_num:04d}")
+    result = subprocess.run(
+        ["pdftoppm", "-r", str(DPI), "-png",
+         "-f", str(page_num), "-l", str(page_num),
+         pdf_path, prefix],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"pdftoppm failed on page {page_num}:\n{result.stderr.decode()}")
+
+    import glob
+    files = sorted(glob.glob(prefix + "*.png"))
+    if not files:
+        raise RuntimeError(f"No PNG produced for page {page_num}")
+
+    img  = Image.open(files[0])
+    crop = pdf_bbox_to_png_crop(*bbox, page_height, DPI)
+    # Clamp to image size
+    w, h = img.size
+    crop = (
+        min(crop[0], w), min(crop[1], h),
+        min(crop[2], w), min(crop[3], h),
+    )
+    cropped = img.crop(crop)
+    buf = io.BytesIO()
+    cropped.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Claude vision — describe a single figure crop
+# ---------------------------------------------------------------------------
+
+def call_claude_figure(png_bytes, page_num, fig_idx):
+    """Send a single figure crop to Claude and return the [FIGURE] block."""
+    b64 = base64.standard_b64encode(png_bytes).decode("utf-8")
+    content = [
+        {"type": "text",  "text": f"[Page {page_num}, Figure {fig_idx}]\n\n{FIGURE_PROMPT}"},
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
+    ]
+    payload = {
+        "model": "claude-opus-4-5",
+        "max_tokens": 2048,
+        "messages": [{"role": "user", "content": content}]
+    }
+    headers = {
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    for attempt in range(MAX_RETRIES):
+        req = urllib.request.Request(
+            API_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                return json.loads(resp.read().decode("utf-8"))["content"][0]["text"].strip()
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            if e.code in (429, 529) and attempt < MAX_RETRIES - 1:
+                wait = 10 * (2 ** attempt)
+                print(f"  HTTP {e.code} — retrying in {wait}s ...", file=sys.stderr)
+                time.sleep(wait)
+            else:
+                raise RuntimeError(f"HTTP {e.code} p{page_num} fig{fig_idx}: {body[:300]}")
+
+
+# ---------------------------------------------------------------------------
+# Assemble one page: merge text blocks and figure descriptions in reading order
+# ---------------------------------------------------------------------------
+
+def assemble_page(page_num, page_data, figure_descriptions):
+    """
+    Merge text blocks and [FIGURE] descriptions sorted by Y (top-to-bottom).
+    figure_descriptions: {fig_idx: description_text}
+    """
+    elements = []
+
+    for text, y_center in page_data['texts']:
+        elements.append((y_center, 'text', text))
+
+    for fig_idx, (x0, y0, x1, y1) in enumerate(page_data['figures'], 1):
+        y_center_fig = (y0 + y1) / 2
+        desc = figure_descriptions.get(fig_idx, f"[FIGURE {fig_idx} — description unavailable]")
+        elements.append((y_center_fig, 'figure', desc))
+
+    # Sort top-to-bottom (highest Y first in PDF space)
+    elements.sort(key=lambda e: e[0], reverse=True)
+
+    blocks = [content for (_, _, content) in elements]
+    body   = "\n\n".join(blocks)
+    return f"=== PAGE {page_num} ===\n{body}\n=== END PAGE {page_num} ==="
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    if not API_KEY:
+        print("⛔ ANTHROPIC_API_KEY not set", file=sys.stderr)
+        sys.exit(1)
+
+    print("[chorus-pdf] Hybrid mode — analysing layout ...", file=sys.stderr)
+    pages = analyse_pages(PDF_PATH)
+    total      = len(pages)
+    n_with_fig = sum(1 for p in pages.values() if p['figures'])
+    n_figs     = sum(len(p['figures']) for p in pages.values())
+    print(f"[chorus-pdf]   → {total} pages, {n_with_fig} with figures, {n_figs} figure(s) total",
+          file=sys.stderr)
+
+    parts = []
+    with tempfile.TemporaryDirectory(prefix="chorus-pdf-") as tmpdir:
+        for page_num in sorted(pages):
+            page_data = pages[page_num]
+            figure_descriptions = {}
+
+            if page_data['figures']:
+                print(f"[chorus-pdf] Page {page_num} — {len(page_data['figures'])} figure(s) ...",
+                      file=sys.stderr)
+                for fig_idx, bbox in enumerate(page_data['figures'], 1):
+                    png_bytes = render_and_crop(PDF_PATH, page_num, bbox,
+                                               page_data['height'], tmpdir)
+                    desc = call_claude_figure(png_bytes, page_num, fig_idx)
+                    figure_descriptions[fig_idx] = desc
+                    print(f"[chorus-pdf]   fig {fig_idx} → {len(desc)} chars", file=sys.stderr)
+            else:
+                print(f"[chorus-pdf] Page {page_num} — text only (pdfminer)", file=sys.stderr)
+
+            page_block = assemble_page(page_num, page_data, figure_descriptions)
+            parts.append(page_block)
+
+    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+        f.write("\n\n".join(parts))
+    print(f"[chorus-pdf] ✅ Written to {OUTPUT_PATH}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+> ⚠️ **Dependencies**: `pip install pdfminer.six pypdf Pillow`
+>
+> ⚠️ **`pdftoppm` required**: `sudo apt install poppler-utils`
+>
+> ⚠️ **API key**: `export ANTHROPIC_API_KEY="sk-ant-..."`
+>
+> ℹ️ **API calls**: 1 call per `LTFigure` element (not per page) — maximally targeted.
+> A 30-page document with 8 figures = 8 API calls, regardless of page count.
 
 ---
 
@@ -881,6 +1243,7 @@ Report the sanity check results to the user before proceeding.
 |---------|-------------|--------|
 | `pdfminer.six` ImportError | Missing dependency | `pip install pdfminer.six` |
 | `pypdf` ImportError | Missing dependency | `pip install pypdf` |
+| `Pillow` ImportError | Missing dependency (`--hybrid`) | `pip install Pillow` |
 | `pdftoppm` not found | `poppler-utils` absent | `sudo apt install poppler-utils` |
 | `ANTHROPIC_API_KEY not set` | Missing env var | `export ANTHROPIC_API_KEY="sk-ant-..."` |
 | HTTP 400 | PDF chunk too large | Reduce `CHUNK_SIZE` to 3 |
@@ -900,9 +1263,10 @@ Report the sanity check results to the user before proceeding.
 Add a row for the new file in the `Corpus` table:
 
 ```org
-| <NNN> | corpus/<NNN>-<slug>-text.txt   | pdfminer from <source-pdf>          | <date> |
-| <NNN> | corpus/<NNN>-<slug>-vision.md  | auto(pdfminer+vision) from <source> | <date> |
-| <NNN> | corpus/<NNN>-<slug>-vision.md  | vision(LLM) from <source-pdf>       | <date> |
+| <NNN> | corpus/<NNN>-<slug>-text.txt   | pdfminer from <source-pdf>                    | <date> |
+| <NNN> | corpus/<NNN>-<slug>-vision.md  | hybrid(pdfminer+cropped vision) from <source> | <date> |
+| <NNN> | corpus/<NNN>-<slug>-vision.md  | auto(pdfminer+vision) from <source>           | <date> |
+| <NNN> | corpus/<NNN>-<slug>-vision.md  | vision(LLM) from <source-pdf>                 | <date> |
 ```
 
 (use the row matching the mode used)
@@ -918,7 +1282,7 @@ kept for traceability.
    Source   : corpus/<source.pdf>  (<N> pages)
    Output   : corpus/<NNN>-<slug>-text.txt   (or: -vision.md)
    Pages    : <N>
-   Figures  : <N> blocks extracted  (or: <N> placeholders — use --auto to extract)
+   Figures  : <N> blocks extracted  (or: <N> placeholders — use --hybrid or --auto to extract)
    Table rows: <N>
    Size     : <N> chars
 
@@ -934,11 +1298,15 @@ kept for traceability.
 Typical workflow:
 
 ```
-# No API key — extract text only (figures get placeholders)
+# No flag — hybrid activated automatically if API key present (DEFAULT)
+chorus-pdf  <sandbox> corpus/002-uk-approved-doc-a-2013.pdf
+→ corpus/003-uk-approved-doc-a-2013-vision.md   (hybrid mode)
+
+# No API key — text mode fallback
 chorus-pdf  <sandbox> corpus/002-uk-approved-doc-a-2013.pdf
 → corpus/003-uk-approved-doc-a-2013-text.txt
 
-# API key available — recommended for technical standards
+# API key available — text-dominant document, faster
 chorus-pdf  <sandbox> corpus/002-uk-approved-doc-a-2013.pdf --auto
 → corpus/003-uk-approved-doc-a-2013-vision.md
 
@@ -952,7 +1320,7 @@ chorus-feed <sandbox> corpus/003-uk-approved-doc-a-2013-text.txt
 ```
 
 If a `.txt` from `pdftotext` already exists alongside the PDF, prefer the `-text.txt`
-(text mode) or `-vision.md` (auto/images) for `chorus-feed`.
+(text mode) or `-vision.md` (hybrid/auto/images) for `chorus-feed`.
 The `pdftotext` output can be kept for diff/audit purposes.
 
 ---
@@ -963,7 +1331,7 @@ The `pdftotext` output can be kept for diff/audit purposes.
 |----------|-----------|---------|
 | Extraction script | `eca/extract-pdf-<slug>.py` | `eca/extract-pdf-uk-approved-doc-a.py` |
 | Text mode output | `corpus/<NNN>-<slug>-text.txt` | `corpus/003-uk-approved-doc-a-2013-text.txt` |
-| Auto/Images output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-uk-approved-doc-a-2013-vision.md` |
+| Auto/Hybrid/Images output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-uk-approved-doc-a-2013-vision.md` |
 | Original PDF | kept as-is in `corpus/` | `corpus/002-uk-approved-doc-a-2013.pdf` |
 
 ---
