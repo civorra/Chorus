@@ -1,11 +1,16 @@
+AGENTS.md
 Changes
 eca/org/agents/_template.org
 eca/org/agents/index.org
 eca/skills/chorus-check.md
 eca/skills/chorus-create-project.md
 eca/skills/chorus-engine.md
+eca/skills/chorus-engine-infra.md
+eca/skills/chorus-engine-yaml.md
 eca/skills/chorus-feed.md
 eca/skills/chorus-import-project.md
+eca/skills/chorus-pdf.md
+eca/skills/chorus-templates.md
 examples/cursors.pl
 examples/rules/cursors/R01-increase-below-5.yml
 examples/rules/cursors/R02-decrease-above-5.yml

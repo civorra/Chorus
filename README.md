@@ -47,11 +47,28 @@ $agent->loop();
 - **Pure Perl 5.006+** — runs anywhere, readable, auditable
 - **Frames with slots** — inheritance, procedural attachments (`_NEEDED`, `_AFTER`),
   backward and forward chaining
-- **YAML rules** — business logic without Perl boilerplate
+- **YAML rules** — business logic without Perl boilerplate; supports declarative
+  pipeline termination via the `TERMINAL` field (`solved`/`failed` callable from pure YAML)
+- **Infinite-loop guard** — `_MAX_CYCLES` (default 10 000) prevents runaway inference loops
 - **Multi-agent orchestration** — `Chorus::Expert` chains specialized engines over
   a shared working memory
 - **ECA integration** — generate a full pipeline from a plain-text corpus
   (`chorus-feed` → `chorus-check`)
+
+---
+
+## What's new in 2.01
+
+- **`TERMINAL` field in the YAML DSL** — declare `TERMINAL: solved` or
+  `TERMINAL: failed` directly in a rule, without any Perl glue code
+- **Engine scope/filter helpers promoted** — `setFilter`, `setScope`,
+  `setCondition`, `setException`, `setEffect` are now proper engine instance
+  methods (previously implicit package-level functions relying on `$SELF`)
+- **`_MAX_CYCLES` guard** — `Chorus::Engine::loop()` aborts after 10 000
+  cycles by default; configurable per engine instance
+- **`Chorus::Frame::_reset()`** — clears the entire frame registry
+  (`%FMAP`, `%REPOSITORY`, `%INSTANCES`, `%SERIAL`, `@Heap`…); designed
+  for test isolation between test cases
 
 ---
 
@@ -89,6 +106,12 @@ perl Makefile.PL && make && make test && make install
 
 - [`doc/en/01-intro.md`](doc/en/01-intro.md) — concepts, architecture, YAML DSL
 - [`doc/en/02-eca.md`](doc/en/02-eca.md) — LLM + Chorus pipeline (ECA integration)
+- [`doc/en/03-applications.md`](doc/en/03-applications.md) — application domains (construction, CSRD, MDR, DO-178C…)
+- [`doc/en/04-chorus-commands.md`](doc/en/04-chorus-commands.md) — `chorus-*` commands reference (ECA workflow)
+- [`doc/fr/01-intro.md`](doc/fr/01-intro.md) — concepts, architecture, DSL YAML (fr)
+- [`doc/fr/02-eca.md`](doc/fr/02-eca.md) — pipeline LLM + Chorus, intégration ECA (fr)
+- [`doc/fr/03-applications.md`](doc/fr/03-applications.md) — domaines d'application (fr)
+- [`doc/fr/04-chorus-commands.md`](doc/fr/04-chorus-commands.md) — référence des commandes `chorus-*` (fr)
 - `perldoc Chorus::Engine` — rules, inference loop, YAML DSL, flow control
 - `perldoc Chorus::Frame` — slots, inheritance, `fmatch`, `get`, `set`, `delete`
 - `perldoc Chorus::Expert` — multi-agent orchestration, shared BOARD
