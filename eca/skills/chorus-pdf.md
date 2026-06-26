@@ -3,7 +3,7 @@
 > Trigger: `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch]`
 > Agent: `architect`
 >
-> `<sandbox-name>`: name of the sandbox directory under `$CHORUS/sandboxes/`
+> `<sandbox-name>`: name of the sandbox directory under `$SANDBOXES/`
 > `<file.pdf>`: path to the PDF — absolute, or relative to `$SANDBOX/corpus/`
 > `--out <slug>`: override the output filename stem (default: derived from input filename)
 > `--auto`: smart mode — pdfminer on text-only pages, vision LLM on pages with figures
@@ -159,7 +159,7 @@ Print the selected mode to stderr before proceeding to Phase 0.1.
 ### 0.1 Resolve the sandbox path
 
 ```
-SANDBOX = $CHORUS/sandboxes/<sandbox-name>
+SANDBOX = $SANDBOXES/<sandbox-name>
 ```
 
 Verify that `$SANDBOX/corpus/` exists. If not, abort with:

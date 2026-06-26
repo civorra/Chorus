@@ -13,3 +13,6 @@ Build
 .kb-hash
 *.saved
 mcp
+# User sandboxes — local working area, not committed
+sandboxes/*
+!sandboxes/README.md

@@ -3,7 +3,7 @@
 > Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich]`
 > Agent: `architect`
 >
-> `<sandbox-name>`: name of the sandbox directory under `$CHORUS/sandboxes/`
+> `<sandbox-name>`: name of the sandbox directory under `$SANDBOXES/`
 > `<corpus>`: plain-text file (`.txt`), Markdown file (`.md`), or inline content — **never a PDF**
 > `--enrich`: activates Mode B (incremental enrichment) — absent by default
 >
@@ -86,7 +86,7 @@ Used when `<sandbox-name>` does not yet exist or does not contain a KB.
 Create the directory structure:
 
 ```bash
-SANDBOX="$CHORUS/sandboxes/<sandbox-name>"
+SANDBOX="$SANDBOXES/<sandbox-name>"
 mkdir -p "$SANDBOX/eca/agents"
 mkdir -p "$SANDBOX/corpus"
 mkdir -p "$SANDBOX/rules"

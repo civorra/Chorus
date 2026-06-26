@@ -10,6 +10,11 @@
 | `$ENGINE` | `.` — repository root |
 | `$SKILLS` | `./eca/skills/` — versioned ECA skills |
 | `KB` | `./eca/org/` — Chorus Knowledge Base (versioned) |
+| `$SANDBOXES` | `./sandboxes/` — user sandbox working area (not committed) |
+
+> **Override:** if `$SANDBOXES` is redefined in a parent `AGENTS.md` (e.g. `$CHORUS/AGENTS.md`),
+> that definition takes precedence over this default. All skills use `$SANDBOXES` as the
+> canonical sandbox root — never hardcode a parent directory path in a skill.
 
 ## Project
 
