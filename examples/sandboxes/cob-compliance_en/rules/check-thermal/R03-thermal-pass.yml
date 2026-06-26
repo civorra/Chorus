@@ -1,0 +1,14 @@
+# Agent: TimberFrame::Agent::CheckThermal
+# Catch-all: approves every element not rejected by R01/R02.
+# Ensures needs_fire=1 for routing to Agent 4.
+
+RULE: R03-thermal-pass
+FIND:
+  e:
+    attribut: needs_thermal
+EXCEPTION: 'defined $e->{thermal_ok}'
+ACTION: |
+  $e->set('thermal_ok', 'YES');
+  $e->delete('needs_thermal');
+  $e->set('needs_fire', 1) unless defined $e->get('needs_fire');
+  1

@@ -1,0 +1,8 @@
+REGLE: pose-feu-ok
+CHERCHER:
+  p:
+    attribut: besoin_securite
+EXCEPTION: defined $p->{feu_ok}
+EFFET: |
+  $p->set('feu_ok', 'OUI');
+  1

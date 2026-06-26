@@ -1,0 +1,110 @@
+#+AGENT: thermique
+#+PIPELINE_POS: 3
+#+RULES_DIR: rules/thermique
+
+* Domaine
+  Vérification des exigences thermiques et pare-vapeur (§4) :
+  calcul de la résistance thermique R et comparaison au R_min zonal (§4.1),
+  vérification de la valeur Sd du pare-vapeur selon la classe de service (§4.2).
+  S'applique aux isolants (laine, rigide) et aux membranes (pare-vapeur).
+  Pose le slot de présence pour l'agent securite-feu.
+
+* Slots de ciblage
+  Stratégie B — slot de présence.
+  Slot ciblé : =besoin_thermique=
+  Posé par : agent ossature (R07) pour les éléments structuraux,
+             agent qualification (R05) pour les isolants/membranes.
+
+  | Slot             | Posé par               | Valeur attendue |
+  |------------------+------------------------+-----------------|
+  | besoin_thermique | ossature ou qualification | 1             |
+
+  Contrat pré-population supplémentaire (feed) :
+    - =zone_climatique= : 'H1', 'H2' ou 'H3'
+    - =classe_service=  : 1, 2 ou 3
+    - =epaisseur_mm=    : épaisseur isolant en mm
+    - =lambda_w_mk=     : conductivité thermique W/(m·K) (isolants uniquement)
+    - =sd_m=            : valeur Sd pare-vapeur en m (membranes uniquement)
+
+* Pipeline E/S
+  Entrants : =besoin_thermique=, =type_element=, =zone_climatique=,
+             =classe_service=, =epaisseur_mm=, =lambda_w_mk=, =sd_m=
+  Sortants : =thermique_ok= ('OUI'/'NON' ou 'NA'),
+             =r_thermique= (valeur calculée — isolants seulement),
+             =raison_thermique_ko= (texte si NON),
+             =besoin_securite= (1)
+
+* Ontologie
+  - R = epaisseur_mm / (1000 × lambda_w_mk) en m²·K/W (§4.1)
+  - R_min par zone : H1 = 6,0 ; H2 = 5,0 ; H3 = 4,0 m²·K/W (§4.1)
+  - Classes conductivité courantes (§4.1) :
+      035 → λ = 0,035 W/(m·K)
+      040 → λ = 0,040 W/(m·K)
+      031 → λ = 0,031 W/(m·K)
+  - Sd_min par classe de service (§4.2) :
+      Classe 1 → 5 m, Classe 2 → 18 m, Classe 3 → 50 m
+  - Éléments structuraux (montants, lisses, entraits, chevrons) :
+    pas de vérification thermique propre → thermique_ok='NA'
+
+* Catalogue des Frames
+  | Frame prototype  | Slots supplémentaires attendus                    |
+  |------------------+---------------------------------------------------|
+  | isolant_laine    | zone_climatique, classe_service, epaisseur_mm,   |
+  |                  | lambda_w_mk                                       |
+  | isolant_rigide   | idem                                              |
+  | membrane_etanche | classe_service, sd_m                              |
+  | (structuraux)    | (reçoivent thermique_ok='NA' — pass-through)      |
+
+* Dictionnaire des slots
+  | Slot               | Type   | Propriétaire  | Description                         |
+  |--------------------+--------+---------------+-------------------------------------|
+  | besoin_thermique   | int    | ossature/qualif| Marqueur présence (=1)             |
+  | zone_climatique    | string | feed          | 'H1', 'H2', 'H3'                   |
+  | classe_service     | int    | feed          | 1, 2 ou 3                          |
+  | epaisseur_mm       | float  | feed          | Épaisseur isolant en mm            |
+  | lambda_w_mk        | float  | feed          | Conductivité W/(m·K)               |
+  | sd_m               | float  | feed          | Valeur Sd pare-vapeur en m         |
+  | r_thermique        | float  | thermique     | R calculé en m²·K/W               |
+  | thermique_ok       | string | thermique     | 'OUI', 'NON' ou 'NA'              |
+  | raison_thermique_ko| string | thermique     | Texte raison KO thermique          |
+  | besoin_securite    | int    | thermique     | =1 pour agent securite-feu        |
+
+* Catalogue des règles
+  R01-resistance-thermique — calcule r_thermique et vérifie ≥ r_min(zone) (§4.1) [isolants]
+  R02-sd-pare-vapeur       — vérifie sd_m ≥ sd_min(classe_service) (§4.2) [membranes]
+  R03-thermique-na         — pose thermique_ok='NA' pour éléments structuraux (pas de vérif thermique)
+  R04-pose-besoin-securite — pose besoin_securite=1 sur tous les éléments traités
+
+* Helpers Perl
+  ** r_min_zone($zone_climatique) → float
+     Source corpus : §4.1 — Résistance thermique minimale par zone climatique
+     Retourne 6.0, 5.0 ou 4.0 selon H1/H2/H3.
+
+  ** calcul_r($epaisseur_mm, $lambda_w_mk) → float
+     Source corpus : §4.1 — R = épaisseur (mm) / (1000 × λ)
+     Retourne la résistance thermique calculée en m²·K/W.
+
+  ** sd_min_m($classe_service) → float
+     Source corpus : §4.2 — Sd minimum par classe de service
+     Retourne 5.0, 18.0 ou 50.0 selon classe 1/2/3.
+
+  ** type_est_isolant($type_element) → bool
+     Source corpus : §1.1 + §4.1 — types isolants
+     Retourne 1 si isolant_laine ou isolant_rigide.
+
+  ** type_est_membrane($type_element) → bool
+     Source corpus : §1.1 + §4.2 — type membrane
+     Retourne 1 si membrane_etanche.
+
+  ** type_est_structurel_thermique($type_element) → bool
+     Source corpus : §1.1 — types structuraux (pass-through thermique)
+     Retourne 1 si montant_porteur, montant_non_porteur, lisse_basse,
+     lisse_haute, entrait, chevron.
+
+* Contraintes & Pitfalls
+  - R01 : CONDITION type_est_isolant() — ne pas appliquer aux membranes/structuraux
+  - R02 : CONDITION type_est_membrane() — ne pas appliquer aux isolants/structuraux
+  - R03 : CONDITION type_est_structurel_thermique() — pass-through
+  - R04 : pose besoin_securite=1 sur TOUS — cut() après pose (idempotence)
+  - Pitfall : R01–R03 retournent 0 si CONDITION non remplie
+  - R_thermique arrondi à 2 décimales pour lisibilité dans le rapport

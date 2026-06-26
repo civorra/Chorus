@@ -1,0 +1,149 @@
+DTU 31.2 — Construction Ossature Bois (COB)
+Corpus introductif condensé — 5 domaines essentiels
+Sources : DTU 31.2 (2011), NF EN 338, NF EN 1995-1-1 (EC5), NF EN 13162
+
+=============================================================================
+§1 — GÉNÉRALITÉS
+=============================================================================
+
+§1.1 — Domaine d'application
+Ce DTU s'applique aux bâtiments à ossature bois de hauteur ≤ R+1 (plain-pied
+ou un étage), en zones de vent 1 à 4 et zones climatiques H1, H2, H3.
+Types d'éléments principaux : montants porteurs, montants non porteurs,
+lisses basse et haute, entraits, chevrons, isolants, pare-vapeur.
+
+§1.2 — Qualifications entreprise
+L'entreprise doit être titulaire de la qualification professionnelle QUALIBAT
+2112 (charpente ossature bois) ou équivalente.
+
+=============================================================================
+§2 — MATÉRIAUX BOIS — QUALIFICATION
+=============================================================================
+
+§2.1 — Classes de résistance (NF EN 338)
+Les bois massifs sont classés par résistance croissante : C14, C16, C18, C24,
+C30, C35, C40.
+Classes minimales requises par usage :
+  - Montant porteur, lisse basse, lisse haute : C24 minimum
+  - Montant non porteur                       : C18 minimum
+  - Entrait (charpente)                       : C24 minimum
+  - Chevron (charpente)                       : C18 minimum
+Tout élément dont la classe est inférieure à la classe minimale requise
+est REFUSÉ à la qualification.
+
+§2.2 — Taux d'humidité (DTU 31.2 §4.3)
+Le taux d'humidité du bois doit être compris entre 12 % et 18 % au moment
+de la mise en œuvre. Au-delà de 18 %, risque de retrait différentiel et
+de développement fongique. En dessous de 12 %, risque de reprise d'humidité
+excessive après mise en œuvre.
+Tout élément dont le taux d'humidité est hors plage [12 %, 18 %] est REFUSÉ.
+
+§2.3 — Flèche admissible (DTU 31.2 §4.4 — EC5 §7.2)
+La flèche instantanée mesurée sous charge doit respecter :
+  - Flèche admissible = L / 300  (L = portée en mm)
+  - Valeur plancher minimale : 5 mm sur 2 m de portée
+Tout élément dont la flèche mesurée dépasse L/300 est REFUSÉ à la qualification.
+
+=============================================================================
+§3 — OSSATURE — GÉOMÉTRIE ET SECTIONS
+=============================================================================
+
+§3.1 — Entraxe des montants (DTU 31.2 §5.1)
+L'entraxe des montants doit être compris entre 300 mm et 625 mm.
+Les valeurs courantes sont 400, 500 ou 600 mm (± 5 mm de tolérance).
+Un entraxe supérieur à 625 mm n'est pas conforme.
+
+§3.2 — Sections minimales des montants porteurs (DTU 31.2 §5.2 + Annexe A.2)
+Pour les montants porteurs, la section minimale dépend de la hauteur libre
+et de l'entraxe :
+  - Hauteur ≤ 2 700 mm, entraxe ≤ 400 mm : section min 45 × 120 mm
+  - Hauteur ≤ 2 700 mm, entraxe ≤ 600 mm : section min 45 × 145 mm
+  - Hauteur ≤ 3 000 mm, entraxe ≤ 400 mm : section min 45 × 145 mm
+  - Hauteur ≤ 3 000 mm, entraxe ≤ 600 mm : section min 45 × 170 mm
+  - Hauteur > 3 000 mm, tout entraxe      : section min 60 × 200 mm
+La section est conforme si b ≥ b_min ET h ≥ h_min.
+
+§3.3 — Sections minimales des montants non porteurs (DTU 31.2 §5.2)
+Pour les montants non porteurs, la section minimale est 45 × 70 mm,
+quelle que soit la hauteur libre.
+
+§3.4 — Continuité des montants porteurs (DTU 31.2 §5.4)
+Un montant porteur ne doit pas comporter de joint longitudinal (raccord en
+bout dans la hauteur). La présence d'un joint longitudinal sur un montant
+porteur est une non-conformité structurelle.
+
+=============================================================================
+§4 — THERMIQUE ET PARE-VAPEUR
+=============================================================================
+
+§4.1 — Résistance thermique minimale des isolants (DTU 31.2 §6.2 + Annexe A.3)
+La résistance thermique R de l'isolant est calculée par :
+  R = épaisseur (mm) / (1000 × λ)  [unité : m²·K/W]
+  λ = conductivité thermique en W/(m·K)
+
+Résistance minimale selon la zone climatique :
+  - Zone H1 (altitude > 400 m ou grand froid)  : R_min = 6,0 m²·K/W
+  - Zone H2 (zone tempérée)                    : R_min = 5,0 m²·K/W
+  - Zone H3 (zone douce — littoral Méditerranée): R_min = 4,0 m²·K/W
+
+Conductivités courantes :
+  - Laine minérale 035 : λ = 0,035 W/(m·K)
+  - Laine minérale 040 : λ = 0,040 W/(m·K)
+  - Isolant rigide 031  : λ = 0,031 W/(m·K)
+
+§4.2 — Pare-vapeur : valeur Sd minimale (DTU 31.2 §7.2 + Annexe A.4)
+Le pare-vapeur doit présenter une résistance à la diffusion de vapeur
+d'eau (Sd) suffisante selon la classe de service :
+  - Classe de service 1 (intérieur sec)   : Sd ≥ 5 m
+  - Classe de service 2 (intérieur humide): Sd ≥ 18 m
+  - Classe de service 3 (très humide)     : Sd ≥ 50 m
+Tout pare-vapeur dont Sd est inférieur au minimum requis est NON CONFORME.
+
+=============================================================================
+§5 — SÉCURITÉ INCENDIE
+=============================================================================
+
+§5.1 — Performance au feu requise (DTU 31.2 §10 — NF EN 13501-2)
+Les parois doivent atteindre un degré coupe-feu minimal selon le type
+de bâtiment :
+  - Maison individuelle (non collectif) : REI 30 minimum
+  - Bâtiment collectif (collectif=1)   : REI 60 minimum
+Le parement intérieur en plaque de plâtre doit contribuer à cette résistance.
+
+§5.2 — Réaction au feu du parement intérieur (DTU 31.2 §10.2)
+Le parement intérieur (plaque de plâtre ou équivalent) doit satisfaire :
+  - Classe de réaction au feu : A1 ou A2-s1,d0 minimum (Euroclasses)
+  - Masse surfacique ≥ 8 kg/m² (plaque standard BA 13)
+Tout parement dont la classe de réaction est inférieure à A2 ou dont la
+masse est insuffisante est NON CONFORME en sécurité incendie.
+
+§5.3 — Épaisseur de plaque de plâtre (DTU 31.2 §10.3)
+Pour atteindre REI 30 : une plaque BA13 (13 mm) est suffisante.
+Pour atteindre REI 60 : deux plaques BA13 (2 × 13 = 26 mm min) sont requises.
+L'épaisseur totale de plaque de plâtre doit satisfaire :
+  - Non collectif : e_ba ≥ 13 mm
+  - Collectif      : e_ba ≥ 26 mm
+
+=============================================================================
+§6 — CONFORMITÉ GLOBALE
+=============================================================================
+
+§6.1 — Conditions de conformité par type d'élément (DTU 31.2 §14.1)
+Un élément est déclaré CONFORME si et seulement si toutes les conditions
+applicables à son type sont satisfaites :
+
+  Pour tout élément : qualifie = 'OUI'
+  Pour éléments structuraux (montants porteurs, lisses) :
+    + ossature_ok = 'OUI'
+  Pour éléments de charpente (entraits, chevrons) :
+    aucune vérification ossature (agents séparés — non implémenté dans ce corpus)
+  Pour isolants et pare-vapeur :
+    + thermique_ok = 'OUI'
+  Pour tout élément si collectif :
+    + feu_ok = 'OUI'
+  Pour tout élément hors périmètre (type non géré) :
+    → ignoré (hors scope — pas de verdict)
+
+§6.2 — Terminaison du pipeline
+Le pipeline se termine (solved) lorsque tous les éléments ayant le slot
+besoin_conformite défini ont reçu leur statut_conformite.

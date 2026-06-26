@@ -1,0 +1,18 @@
+REGLE: reaction-feu
+CHERCHER:
+  p:
+    attribut: besoin_securite
+EXCEPTION: defined $p->{feu_ok}
+CONDITION: defined $p->{classe_reaction}
+EFFET: |
+  my $cl = $p->{classe_reaction};
+  my $masse = $p->{masse_surfacique_kgm2} // 0;
+  unless (classe_reaction_ok($cl) && $masse >= 8) {
+    my $r = !classe_reaction_ok($cl) ? "Classe reaction ${cl} < A2 requis"
+                                     : "Masse ${masse}kg/m2 < 8kg/m2 requis";
+    $r .= " (art.5.2)";
+    $p->set('feu_ok',        'NON');
+    $p->set('raison_feu_ko', $r);
+    return 1;
+  }
+  0

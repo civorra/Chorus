@@ -1,0 +1,20 @@
+# Agent: TimberFrame::Agent::CheckThermal
+# Source corpus: §4.1 — Part L + BS EN ISO 6946 — Thermal resistance R = thickness/(1000*lambda) ≥ R_min
+# Rejects insulation elements whose calculated R falls below the climate-zone minimum.
+
+RULE: R01-check-thermal-resistance
+FIND:
+  e:
+    attribut: needs_thermal
+EXCEPTION: 'defined $e->{thermal_ok}'
+ACTION: |
+  return 0 unless ($e->get('element_type') // '') eq 'insulation';
+  my $t      = $e->get('insulation_thickness_mm');
+  my $lambda = $e->get('insulation_lambda');
+  return 0 unless defined $t && defined $lambda && $lambda > 0;
+  my $r     = $t / (1000 * $lambda);
+  my $r_min = _r_min_for_zone($e->get('climate_zone'));
+  return 0 unless $r < $r_min;
+  $e->set('thermal_ok', 'NO');
+  $e->delete('needs_thermal');
+  1

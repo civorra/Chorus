@@ -1,0 +1,59 @@
+#+TITLE: Pipeline — demo-cob-intro
+
+* Pipeline global
+  | Pos | Agent (module Perl)           | Slug          | KB                          | Statut |
+  |-----+-------------------------------+---------------+-----------------------------+--------|
+  |   1 | COB::Agent::Qualification     | qualification | eca/agents/qualification.org | draft  |
+  |   2 | COB::Agent::Ossature          | ossature      | eca/agents/ossature.org      | draft  |
+  |   3 | COB::Agent::Thermique         | thermique     | eca/agents/thermique.org     | draft  |
+  |   4 | COB::Agent::SecuriteFeu       | securite-feu  | eca/agents/securite-feu.org  | draft  |
+  |   5 | COB::Agent::Conformite        | conformite    | eca/agents/conformite.org    | draft  |
+
+* Cohérence du pipeline
+  - Slot ciblage agent 1 (qualification)  : =besoin_qualification= — posé par feed initial
+  - Slot ciblage agent 2 (ossature)       : =besoin_ossature= — posé par qualification R04
+  - Slot ciblage agent 3 (thermique)      : =besoin_thermique= — posé par ossature R07
+                                            ET par qualification R05 (isolants/membranes)
+  - Slot ciblage agent 4 (securite-feu)   : =besoin_securite= — posé par thermique R04
+  - Slot ciblage agent 5 (conformite)     : =besoin_conformite= — posé par securite-feu R05
+  - Agent terminaison    : conformite pos 5 → règle R03 (Perl pur addrule) → solved()
+
+  Note : les isolants et membranes (non structuraux) entrent dans le pipeline
+  à l'agent thermique (pos 3) via besoin_thermique posé directement par qualification (R05).
+  Ils reçoivent ossature_ok absent (pas de vérification ossature pour ces types).
+
+* Normalisations
+  (aucune normalisation de slot — les slots fournis dans le JSON sont utilisés tels quels)
+
+* Dictionnaire des slots globaux
+  | Slot                  | Posé par              | Consommé par       |
+  |-----------------------+-----------------------+--------------------|
+  | besoin_qualification  | feed                  | qualification      |
+  | besoin_ossature       | qualification R04     | ossature           |
+  | besoin_thermique      | ossature R07 / qualif R05 | thermique      |
+  | besoin_securite       | thermique R04         | securite-feu       |
+  | besoin_conformite     | securite-feu R05      | conformite         |
+  | qualifie              | qualification R01-R03 | conformite         |
+  | motif_refus           | qualification R01-R03 | rapport final      |
+  | ossature_ok           | ossature R05/R06      | conformite         |
+  | raison_ossature_ko    | ossature R01-R04      | rapport final      |
+  | r_thermique           | thermique R01         | rapport final      |
+  | thermique_ok          | thermique R01-R03     | conformite         |
+  | raison_thermique_ko   | thermique R01-R02     | rapport final      |
+  | feu_ok                | securite-feu R01-R04  | conformite         |
+  | raison_feu_ko         | securite-feu R01-R03  | rapport final      |
+  | statut_conformite     | conformite R01-R02    | rapport final      |
+  | raison_non_conformite | conformite R02        | rapport final      |
+
+* Paramètres moteur recommandés
+  Namespace : COB
+  _MAX_CYCLES (par agent) : N_frames × N_règles_agent × 10 (calibré dynamiquement dans run.pl)
+  _MAX_ITER (Expert global) : N_frames × 25 × 10 (heuristique : 25 règles max pipeline)
+  Pattern obligatoire (bug Chorus::Expert->new() ignore ses args) :
+    my $xprt = Chorus::Expert->new();
+    $xprt->{_MAX_ITER} = $max_iter;
+
+* Corpus intégré
+  | Num | Fichier                       | Agents impactés |
+  |-----+-------------------------------+-----------------|
+  | 001 | corpus/dtu-intro-simul.txt    | tous            |

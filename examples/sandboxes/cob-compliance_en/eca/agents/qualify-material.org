@@ -1,0 +1,344 @@
+#+TITLE: Agent QualifyMaterial
+#+AGENT: TimberFrame::Agent::QualifyMaterial
+#+PIPELINE_POS: 1
+#+RULES_DIR: rules/qualify-material/
+
+* Domain
+
+  Agent 1 of the TimberFrame pipeline.  Receives raw ~TimberElement~ frames
+  freshly populated by ~chorus-feed~ and checks that each element's timber
+  grade, moisture content and measured deflection satisfy the mandatory minima
+  established by BS EN 338 (strength classes §2.1), BS EN 1995-1-1 §2.3
+  (moisture content §2.2) and EC5 §7.2 (instantaneous deflection §2.3).
+
+  On pass, the agent sets ~qualified = 'YES'~ and routes each element to the
+  appropriate downstream agent(s) by setting the presence slots
+  ~needs_geometry~, ~needs_thermal~ and ~needs_fire~.  On failure it immediately
+  sets ~qualified = 'NO'~ and clears ~needs_qualify~ so the element is not
+  inspected further by this agent.  First-failure semantics apply: only the
+  first detected non-conformity per element is recorded in this demo.
+
+* Targeting Slots  :SCOPE:
+
+** Chosen Strategy
+   *Strategy B — presence slot.*
+   The incoming presence slot is ~needs_qualify = 1~, set by ~chorus-feed~ on
+   every ~TimberElement~ frame at pipeline initialisation.
+   Strategy B is preferred over Strategy A (class-name scan) because frame
+   volume may exceed 50 in production use; a class scan would generate O(n²)
+   fmatch iterations at every inference cycle.
+
+** Targeting Slots Table
+   | Slot           | Value    | Set by                    | Consumed by          |
+   |----------------+----------+---------------------------+----------------------|
+   | needs_qualify  | 1        | chorus-feed (init)        | This agent (R01–R03) |
+   | qualified      | YES / NO | This agent (R03 / R01,R02)| Agent 5              |
+   | needs_geometry | 1        | This agent (R03)          | Agent 2              |
+   | needs_thermal  | 1        | This agent (R03)          | Agent 3              |
+   | needs_fire     | 1        | This agent (R03)          | Agent 4              |
+
+** Pre-Population Contract
+   ~chorus-feed~ MUST set ~needs_qualify = 1~ on every ~TimberElement~ frame
+   before activating the engine.  The following slots must also be pre-populated
+   for the rules to produce meaningful results:
+   - ~element_type~ — mandatory for all frames.
+   - ~strength_class~ — mandatory for all sawn-timber elements; must be absent
+     or ~undef~ for insulation and vapour_control.
+   - ~moisture_pct~ — mandatory for all sawn-timber elements.
+   - ~span_mm~ and ~measured_deflection_mm~ — mandatory for structural elements
+     subject to deflection limits (load_bearing_stud, sole_plate, top_plate,
+     rafter, joist).
+
+* Pipeline — I/O Contract
+
+** Incoming Slots
+   | Slot                   | Type    | Required | Notes                                              |
+   |------------------------+---------+----------+----------------------------------------------------|
+   | needs_qualify          | flag(1) | YES      | Presence slot — triggers this agent                |
+   | element_type           | string  | YES      | See Ontology for allowed values                    |
+   | strength_class         | string  | COND     | Required for structural timber; absent for insulation/vapour|
+   | moisture_pct           | numeric | COND     | Required for all timber elements                   |
+   | span_mm                | numeric | COND     | Required when deflection check applies             |
+   | measured_deflection_mm | numeric | COND     | Required when deflection check applies             |
+
+** Outgoing Slots
+   | Slot           | Type    | Values     | Set when                                             |
+   |----------------+---------+------------+------------------------------------------------------|
+   | qualified      | string  | YES / NO   | Always — every element exits with a verdict          |
+   | needs_geometry | flag(1) | 1          | R03 on load_bearing_stud, sole_plate, top_plate      |
+   | needs_thermal  | flag(1) | 1          | R03 on insulation, vapour_control                    |
+   | needs_fire     | flag(1) | 1          | R03 on ALL elements regardless of type               |
+
+* Ontology
+
+  Element types recognised by this agent (source: corpus §1.1):
+  - ~load_bearing_stud~
+  - ~non_load_bearing_stud~
+  - ~sole_plate~
+  - ~top_plate~
+  - ~rafter~
+  - ~joist~
+  - ~insulation~
+  - ~vapour_control~
+
+  Strength class enumeration (ascending, source: corpus §2.1 — BS EN 338):
+  : C14 < C16 < C18 < C24 < C30 < C35 < C40
+
+  Minimum strength class required per structural element type (§2.1):
+  | Element type           | Minimum class | Internal rank |
+  |------------------------+---------------+---------------|
+  | load_bearing_stud      | C24           |             4 |
+  | sole_plate             | C24           |             4 |
+  | top_plate              | C24           |             4 |
+  | non_load_bearing_stud  | C16           |             2 |
+  | rafter                 | C18           |             3 |
+  | joist                  | C24           |             4 |
+  | insulation             | —             |             0 |
+  | vapour_control         | —             |             0 |
+
+  Deflection limit (§2.3 — EC5 §7.2): L / 300 mm, minimum 5 mm over a 2 m span.
+
+* Frame Catalogue
+
+** Frame: TimberElement
+   | Slot                   | Type    | Agent-1 FIND | Agent-1 writes |
+   |------------------------+---------+--------------+----------------|
+   | element_type           | string  | read         | —              |
+   | strength_class         | string  | read (R01)   | —              |
+   | moisture_pct           | numeric | read (R02)   | —              |
+   | span_mm                | numeric | read (R02)   | —              |
+   | measured_deflection_mm | numeric | read (R02)   | —              |
+   | needs_qualify          | flag    | MATCH (=1)   | delete         |
+   | qualified              | string  | —            | write          |
+   | needs_geometry         | flag    | —            | write (cond.)  |
+   | needs_thermal          | flag    | —            | write (cond.)  |
+   | needs_fire             | flag    | —            | write (all)    |
+
+* Slot Dictionary
+
+  | Slot                   | Type    | fmatch target  | Normative source                        |
+  |------------------------+---------+----------------+-----------------------------------------|
+  | element_type           | string  | YES (R01,R02)  | corpus §1.1                             |
+  | strength_class         | string  | YES (R01)      | corpus §2.1 — BS EN 338                 |
+  | moisture_pct           | numeric | YES (R02)      | corpus §2.2 — BS EN 1995-1-1 §2.3       |
+  | span_mm                | numeric | YES (R02)      | corpus §2.3 — EC5 §7.2                  |
+  | measured_deflection_mm | numeric | YES (R02)      | corpus §2.3 — EC5 §7.2                  |
+  | needs_qualify          | flag    | YES (R01–R03)  | pipeline — chorus-feed initialisation   |
+  | qualified              | string  | NO (written)   | this agent — R01/R02 (NO), R03 (YES)    |
+  | needs_geometry         | flag    | NO (written)   | this agent → Agent 2                    |
+  | needs_thermal          | flag    | NO (written)   | this agent → Agent 3                    |
+  | needs_fire             | flag    | NO (written)   | this agent → Agent 4                    |
+
+* Rule Catalogue
+
+** Rule: R01-check-strength-class
+
+   *Intent*: Reject any sawn-timber element whose declared strength class is
+   below the minimum required for its structural role (corpus §2.1 — BS EN 338).
+   Non-timber elements (~insulation~, ~vapour_control~) carry no ~strength_class~
+   and are therefore not matched by this rule.
+
+   #+BEGIN_SRC yaml
+   RULE: R01-check-strength-class
+   FIND:
+     - FRAME: TimberElement
+       WHERE:
+         needs_qualify: 1
+   PREMISES:
+     - "defined $frame->get('strength_class')"
+     - "_strength_class_rank($frame->get('strength_class')) < _min_class_rank_for_type($frame->get('element_type'))"
+   ACTION: |
+     $frame->set('qualified', 'NO');
+     $frame->delete('needs_qualify');
+     $self->log->warn(sprintf
+         "R01: %s REJECTED — strength class %s below minimum for element_type %s",
+         $frame->id,
+         $frame->get('strength_class'),
+         $frame->get('element_type'));
+   #+END_SRC
+
+   *EXCEPTION*: If ~strength_class~ is absent (undef) the PREMISE short-circuits
+   and the rule does not fire — the element proceeds to R02/R03.
+   If ~element_type~ is not in the known mapping, ~_min_class_rank_for_type~
+   returns 0, the check passes silently and a caller warning is emitted.
+
+** Rule: R02-check-moisture-deflection
+
+   *Intent*: Reject any sawn-timber element whose moisture content is outside
+   the permissible range [10 %, 18 %] (corpus §2.2 — BS EN 1995-1-1 §2.3),
+   OR whose instantaneous deflection exceeds L/300 (corpus §2.3 — EC5 §7.2).
+   The two sub-checks are combined in one rule; first-failure semantics apply
+   within the same rule.  Insulation and vapour_control elements are excluded
+   via PREMISES.
+
+   #+BEGIN_SRC yaml
+   RULE: R02-check-moisture-deflection
+   FIND:
+     - FRAME: TimberElement
+       WHERE:
+         needs_qualify: 1
+   PREMISES:
+     - "$frame->get('element_type') ne 'insulation' && $frame->get('element_type') ne 'vapour_control'"
+     - "(defined $frame->get('moisture_pct') && ($frame->get('moisture_pct') < 10 || $frame->get('moisture_pct') > 18))
+        || (defined $frame->get('measured_deflection_mm') && defined $frame->get('span_mm')
+            && $frame->get('span_mm') > 0
+            && $frame->get('measured_deflection_mm') > $frame->get('span_mm') / 300)"
+   ACTION: |
+     my $reason = '';
+     if (defined $frame->get('moisture_pct') &&
+         ($frame->get('moisture_pct') < 10 || $frame->get('moisture_pct') > 18)) {
+         $reason = sprintf "moisture %.1f%% outside [10, 18]", $frame->get('moisture_pct');
+     } else {
+         $reason = sprintf "deflection %.2f mm > L/300 = %.2f mm",
+             $frame->get('measured_deflection_mm'),
+             $frame->get('span_mm') / 300;
+     }
+     $frame->set('qualified', 'NO');
+     $frame->delete('needs_qualify');
+     $self->log->warn(sprintf "R02: %s REJECTED — %s", $frame->id, $reason);
+   #+END_SRC
+
+   *EXCEPTION*: If neither ~moisture_pct~ nor ~measured_deflection_mm~ is
+   defined, the PREMISE evaluates to false and the rule does not fire.
+   The deflection branch is skipped if ~span_mm~ is 0 or undef (guard against
+   division-by-zero).
+
+** Rule: R03-qualify-pass
+
+   *Intent*: Qualify every element that has not been rejected by R01 or R02
+   (i.e. ~needs_qualify = 1~ still present after earlier rules have run), then
+   set downstream routing presence slots according to element type.
+   All elements receive ~needs_fire = 1~ unconditionally (corpus §5 applies to
+   every element type).
+
+   #+BEGIN_SRC yaml
+   RULE: R03-qualify-pass
+   FIND:
+     - FRAME: TimberElement
+       WHERE:
+         needs_qualify: 1
+   ACTION: |
+     my $type = $frame->get('element_type') // '';
+     $frame->set('qualified', 'YES');
+     $frame->delete('needs_qualify');
+
+     # Route structural elements to Agent 2 (geometry)
+     if ($type eq 'load_bearing_stud'
+         || $type eq 'sole_plate'
+         || $type eq 'top_plate') {
+         $frame->set('needs_geometry', 1);
+     }
+
+     # Route thermal elements to Agent 3 (thermal)
+     if ($type eq 'insulation' || $type eq 'vapour_control') {
+         $frame->set('needs_thermal', 1);
+     }
+
+     # All elements require fire check (Agent 4)
+     $frame->set('needs_fire', 1);
+
+     $self->log->info(sprintf "R03: %s QUALIFIED — type=%s routing: geom=%s thermal=%s fire=1",
+         $frame->id, $type,
+         ($frame->get('needs_geometry') ? 1 : 0),
+         ($frame->get('needs_thermal')  ? 1 : 0));
+   #+END_SRC
+
+   *EXCEPTION*: This rule acts as the final catch-all in the qualification
+   phase.  It MUST be declared after R01 and R02 in the YAML rule file so that
+   rejected elements (which have had ~needs_qualify~ cleared) are never caught
+   here.  If rule ordering is wrong, an element might be double-qualified.
+
+* Perl Helpers
+
+** _strength_class_rank
+
+   *Signature*: ~_strength_class_rank($class_str) → Int~
+
+   *Description*: Returns the numeric rank (1–7) of a BS EN 338 strength class
+   string.  Rank 1 = weakest (C14), rank 7 = strongest (C40).  Returns 0 for
+   any unrecognised or undef input, which causes R01's PREMISE to evaluate as
+   "below minimum" and triggers a caller-side warning.
+
+   *Source*: corpus §2.1 — BS EN 338 — Strength classes.
+
+   *Called by*: R01-check-strength-class.
+
+   *@EXPORT_OK*: YES.
+
+   #+BEGIN_SRC perl
+   my %_SC_RANK = (
+       C14 => 1, C16 => 2, C18 => 3,
+       C24 => 4, C30 => 5, C35 => 6, C40 => 7,
+   );
+
+   sub _strength_class_rank {
+       my ($class) = @_;
+       return 0 unless defined $class;
+       return $_SC_RANK{ uc $class } // 0;
+   }
+   #+END_SRC
+
+** _min_class_rank_for_type
+
+   *Signature*: ~_min_class_rank_for_type($element_type) → Int~
+
+   *Description*: Returns the minimum required strength class rank for a given
+   element type.  Returns 0 for types that carry no structural timber grade
+   requirement (insulation, vapour_control) and for unknown types (with a
+   ~warn~ to STDERR).
+
+   *Source*: corpus §2.1 — BS EN 338 / BS EN 1995-1-1.
+
+   *Called by*: R01-check-strength-class.
+
+   *@EXPORT_OK*: YES.
+
+   #+BEGIN_SRC perl
+   my %_MIN_RANK = (
+       load_bearing_stud     => 4,   # C24 minimum
+       sole_plate            => 4,   # C24 minimum
+       top_plate             => 4,   # C24 minimum
+       non_load_bearing_stud => 2,   # C16 minimum
+       rafter                => 3,   # C18 minimum
+       joist                 => 4,   # C24 minimum
+       insulation            => 0,   # no strength class requirement
+       vapour_control        => 0,   # no strength class requirement
+   );
+
+   sub _min_class_rank_for_type {
+       my ($type) = @_;
+       unless (defined $type && exists $_MIN_RANK{$type}) {
+           warn "QualifyMaterial: unknown element_type '${\($type//\"undef\")}' — defaulting min rank to 0\n";
+           return 0;
+       }
+       return $_MIN_RANK{$type};
+   }
+   #+END_SRC
+
+* Constraints & Pitfalls
+
+  - *First-failure semantics*: R01 and R02 each clear ~needs_qualify~ on
+    failure.  If an element fails both strength class and moisture content, only
+    the first matching rule's rejection is recorded.  Multi-failure accumulation
+    would require a dedicated diagnostic slot — not implemented in this demo.
+
+  - *Rule ordering*: R01 and R02 must appear before R03 in the YAML rule file.
+    R03 is a catch-all that fires on any frame still carrying ~needs_qualify = 1~;
+    if ordering is reversed, rejected elements could be incorrectly qualified.
+
+  - *Unknown element types*: ~_min_class_rank_for_type~ returns 0 for unknown
+    types, causing them to pass R01 silently.  Always validate ~element_type~
+    values at the ~chorus-feed~ layer before loading frames into the WM.
+
+  - *Deflection guard*: ~span_mm = 0~ would cause division-by-zero in the R02
+    PREMISE.  The guard ~$frame->get('span_mm') > 0~ prevents this; however the
+    deflection check is then silently skipped.  Always provide a valid positive
+    ~span_mm~ for structural elements.
+
+  - *Insulation/vapour_control exclusion in R02*: These elements carry no
+    moisture or deflection slots and are excluded via the PREMISES type check.
+    They proceed directly to R03 which routes them to Agent 3
+    (~needs_thermal = 1~) and Agent 4 (~needs_fire = 1~).
+
+  - *_MAX_CYCLES recommendation*: 100 elements × 6 slots × 5 agents × 10
+    safety factor = *30 000*.  Set ~_MAX_CYCLES = 30_000~ in ~chorus-check~.

@@ -1,0 +1,14 @@
+# Agent: TimberFrame::Agent::CheckFire
+# Catch-all: approves every element not rejected by R01.
+# Sets needs_compliance=1 to route to Agent 5 (final compliance check).
+
+RULE: R02-fire-pass
+FIND:
+  e:
+    attribut: needs_fire
+EXCEPTION: 'defined $e->{fire_ok}'
+ACTION: |
+  $e->set('fire_ok', 'YES');
+  $e->delete('needs_fire');
+  $e->set('needs_compliance', 1);
+  1

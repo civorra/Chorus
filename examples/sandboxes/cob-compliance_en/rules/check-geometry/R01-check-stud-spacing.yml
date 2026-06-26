@@ -1,0 +1,16 @@
+# Agent: TimberFrame::Agent::CheckGeometry
+# Source corpus: §3.1 — BS EN 1995-1-1 §5.1 — Stud spacing [300mm, 600mm]
+# Rejects any stud-type element whose centre-to-centre spacing is outside [300, 600] mm.
+
+RULE: R01-check-stud-spacing
+FIND:
+  e:
+    attribut: needs_geometry
+EXCEPTION: 'defined $e->{frame_ok}'
+ACTION: |
+  my $sp = $e->get('stud_spacing_mm');
+  return 0 unless defined $sp;
+  return 0 unless $sp < 300 || $sp > 600;
+  $e->set('frame_ok', 'NO');
+  $e->delete('needs_geometry');
+  1

@@ -1,0 +1,15 @@
+REGLE: epaisseur-ba
+CHERCHER:
+  p:
+    attribut: besoin_securite
+EXCEPTION: defined $p->{feu_ok}
+CONDITION: defined $p->{e_ba_mm}
+EFFET: |
+  my $e_min = epaisseur_ba_min_mm($p->{collectif} // 0);
+  my $e = $p->{e_ba_mm};
+  if ($e < $e_min) {
+    $p->set('feu_ok',        'NON');
+    $p->set('raison_feu_ko', "e_ba=${e}mm < ${e_min}mm requis (art.5.3)");
+    return 1;
+  }
+  0

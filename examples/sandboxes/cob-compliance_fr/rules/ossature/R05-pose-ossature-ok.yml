@@ -1,0 +1,8 @@
+REGLE: pose-ossature-ok
+CHERCHER:
+  p:
+    attribut: besoin_ossature
+EXCEPTION: defined $p->{ossature_ok}
+EFFET: |
+  $p->set('ossature_ok', 'OUI');
+  1

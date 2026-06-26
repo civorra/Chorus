@@ -1,0 +1,106 @@
+#+AGENT: ossature
+#+PIPELINE_POS: 2
+#+RULES_DIR: rules/ossature
+
+* Domaine
+  Vérification des prescriptions géométriques de l'ossature (§3) :
+  entraxe des montants (§3.1), sections minimales selon hauteur libre
+  et entraxe (§3.2 pour porteurs, §3.3 pour non porteurs), continuité
+  des montants porteurs — interdiction du joint longitudinal (§3.4).
+  S'applique aux types structuraux ayant passé la qualification.
+
+* Slots de ciblage
+  Stratégie B — slot de présence.
+  Slot ciblé : =besoin_ossature=
+  Posé par : agent qualification (R04).
+
+  | Slot            | Posé par      | Valeur attendue |
+  |-----------------+---------------+-----------------|
+  | besoin_ossature | qualification | 1               |
+
+  Contrat pré-population supplémentaire (feed) :
+    - =entraxe_mm=            : entraxe des montants en mm
+    - =hauteur_libre_mm=      : hauteur libre de l'élément
+    - =section_b_mm=          : largeur section en mm
+    - =section_h_mm=          : hauteur section en mm
+    - =a_joint_longitudinal=  : 0 ou 1 (montants porteurs)
+
+* Pipeline E/S
+  Entrants : =besoin_ossature=, =type_element=, =entraxe_mm=,
+             =hauteur_libre_mm=, =section_b_mm=, =section_h_mm=,
+             =a_joint_longitudinal=
+  Sortants : =ossature_ok= ('OUI'/'NON'),
+             =raison_ossature_ko= (texte si NON),
+             =besoin_thermique= (1 — tous types traités)
+
+* Ontologie
+  - Entraxe admissible : 300 ≤ entraxe_mm ≤ 625 mm (§3.1)
+  - Sections minimales montants porteurs (§3.2) :
+      h ≤ 2700 mm, e ≤ 400 mm → 45 × 120 mm
+      h ≤ 2700 mm, e ≤ 600 mm → 45 × 145 mm
+      h ≤ 3000 mm, e ≤ 400 mm → 45 × 145 mm
+      h ≤ 3000 mm, e ≤ 600 mm → 45 × 170 mm
+      h > 3000 mm, tout e      → 60 × 200 mm
+  - Section minimale montant non porteur : 45 × 70 mm (§3.3)
+  - Section lisse basse/haute : même règle que montant porteur (§3.2)
+  - Joint longitudinal interdit sur montants porteurs (§3.4)
+  - Pour entrait/chevron (charpente) : pas de vérification ossature
+    (ils reçoivent ossature_ok='NA' et bénéficient de besoin_thermique directement)
+
+* Catalogue des Frames
+  | Frame prototype     | Slots supplémentaires attendus              |
+  |---------------------+---------------------------------------------|
+  | montant_porteur     | entraxe_mm, hauteur_libre_mm, section_b_mm, |
+  |                     | section_h_mm, a_joint_longitudinal          |
+  | montant_non_porteur | section_b_mm, section_h_mm                  |
+  | lisse_basse         | entraxe_mm, hauteur_libre_mm, section_b_mm, |
+  |                     | section_h_mm                                |
+  | lisse_haute         | idem lisse_basse                            |
+  | entrait             | (skip ossature — charpente) → ossature_ok=NA|
+  | chevron             | (skip ossature — charpente) → ossature_ok=NA|
+
+* Dictionnaire des slots
+  | Slot                 | Type   | Propriétaire | Description                            |
+  |----------------------+--------+--------------+----------------------------------------|
+  | besoin_ossature      | int    | qualification| Marqueur présence (=1)                 |
+  | entraxe_mm           | float  | feed         | Entraxe montants en mm                 |
+  | hauteur_libre_mm     | float  | feed         | Hauteur libre élément mm               |
+  | section_b_mm         | float  | feed         | Largeur section en mm                  |
+  | section_h_mm         | float  | feed         | Hauteur section en mm                  |
+  | a_joint_longitudinal | int    | feed         | 1 si joint longitudinal présent        |
+  | ossature_ok          | string | ossature     | 'OUI', 'NON' ou 'NA'                   |
+  | raison_ossature_ko   | string | ossature     | Texte raison KO ossature               |
+  | besoin_thermique     | int    | ossature     | =1 pour agent thermique                |
+
+* Catalogue des règles
+  R01-entraxe             — vérifie 300 ≤ entraxe_mm ≤ 625 (§3.1) [porteurs + lisses]
+  R02-section-porteur     — vérifie section min selon hauteur×entraxe (§3.2) [montant_porteur, lisses]
+  R03-section-non-porteur — vérifie section ≥ 45×70 (§3.3) [montant_non_porteur]
+  R04-joint-longitudinal  — vérifie a_joint_longitudinal = 0 (§3.4) [montant_porteur]
+  R05-pose-ossature-ok    — pose ossature_ok='OUI' si aucun KO détecté
+  R06-pose-ossature-na    — pose ossature_ok='NA' pour entrait/chevron (hors périmètre ossature)
+  R07-pose-besoin-thermique — pose besoin_thermique=1 sur tous les éléments traités
+
+* Helpers Perl
+  ** section_min_porteur($hauteur_libre_mm, $entraxe_mm) → [b_min, h_min]
+     Source corpus : §3.2 — Section minimale montants porteurs / lisses
+     Retourne [largeur_min, hauteur_min] en mm selon matrice hauteur×entraxe.
+
+  ** type_est_porteur_ossature($type_element) → bool
+     Source corpus : §3.2 — types soumis à section porteur
+     Retourne 1 si montant_porteur, lisse_basse, lisse_haute.
+
+  ** type_est_charpente($type_element) → bool
+     Source corpus : §1.1 — types charpente
+     Retourne 1 si entrait ou chevron.
+
+* Contraintes & Pitfalls
+  - Stratégie B : EXCEPTION obligatoire sur toutes les règles
+  - R01/R02 : ne s'appliquent qu'aux montants porteurs et lisses (CONDITION type)
+  - R03 : ne s'applique qu'à montant_non_porteur (CONDITION type)
+  - R04 : ne s'applique qu'à montant_porteur (CONDITION type)
+  - R05 : poser ossature_ok='OUI' seulement si ni ossature_ok ni raison_ossature_ko
+    n'est posé (EXCEPTION sur les deux)
+  - R06 : poser ossature_ok='NA' pour entrait/chevron — couverture complète du pipeline
+  - R07 : pose besoin_thermique=1 sur tous — cut() après pose
+  - Pitfall EFFET conditionnel : R01–R04 retournent 0 si CONDITION non remplie

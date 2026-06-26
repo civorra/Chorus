@@ -1,0 +1,16 @@
+REGLE: sd-pare-vapeur
+CHERCHER:
+  p:
+    attribut: besoin_thermique
+EXCEPTION: defined $p->{thermique_ok}
+CONDITION: type_est_membrane($p->{type_element})
+EFFET: |
+  my $sd_min = sd_min_m($p->{classe_service});
+  my $sd = $p->{sd_m};
+  if ($sd < $sd_min) {
+    $p->set('thermique_ok',        'NON');
+    $p->set('raison_thermique_ko', "Sd=${sd}m < Sd_min=${sd_min}m classe_service=$p->{classe_service} (art.4.2)");
+    return 1;
+  }
+  $p->set('thermique_ok', 'OUI');
+  1

@@ -1,0 +1,307 @@
+#+TITLE: Agent CheckThermal
+#+AGENT: TimberFrame::Agent::CheckThermal
+#+PIPELINE_POS: 3
+#+RULES_DIR: rules/check-thermal/
+
+* Domain
+
+  Agent 3 of the TimberFrame pipeline.  Receives ~TimberElement~ frames of type
+  ~insulation~ and ~vapour_control~ routed from Agent 1 with the presence slot
+  ~needs_thermal = 1~.
+
+  The agent verifies two thermal performance criteria:
+
+  1. *Thermal resistance check* (§4.1 — Part L + BS EN ISO 6946): the
+     calculated R value ~thickness/(1000·lambda)~ must meet or exceed the
+     climate-zone minimum R_min.  Standard conductivity values are provided as
+     guidance; the actual ~insulation_lambda~ slot value is used in the
+     calculation.
+
+  2. *Vapour control layer Sd check* (§4.2 — BS 5250 / BS EN ISO 13788): the
+     Sd value must meet or exceed the service-class minimum.
+
+  On full pass, the agent sets ~thermal_ok = 'YES'~.  On failure it sets
+  ~thermal_ok = 'NO'~ and clears ~needs_thermal~.
+
+* Targeting Slots  :SCOPE:
+
+** Chosen Strategy
+   *Strategy B — presence slot.*
+   The incoming presence slot is ~needs_thermal = 1~, set by Agent 1 (R03) on
+   frames of type ~insulation~ and ~vapour_control~ exclusively.
+   Strategy B is preferred for volume scalability; a class scan would revisit
+   every frame at every cycle.
+
+** Targeting Slots Table
+   | Slot          | Value    | Set by              | Consumed by          |
+   |---------------+----------+---------------------+----------------------|
+   | needs_thermal | 1        | Agent 1 (R03)       | This agent (R01–R03) |
+   | thermal_ok    | YES / NO | This agent          | Agent 5              |
+   | needs_fire    | 1        | Agent 1 (R03) / R03 | Agent 4              |
+
+** Pre-Population Contract
+   Agent 1 MUST have cleared ~needs_qualify~ and set ~needs_thermal = 1~ before
+   Agent 3 activates.  Required slots per element type:
+
+   For ~insulation~:
+   - ~insulation_thickness_mm~ — required.
+   - ~insulation_lambda~ — required (W/(m·K)).
+   - ~climate_zone~ — required; must be 'A', 'B' or 'C'.
+
+   For ~vapour_control~:
+   - ~vapour_sd_m~ — required (metres).
+   - ~service_class~ — required; must be 1, 2 or 3.
+
+* Pipeline — I/O Contract
+
+** Incoming Slots
+   | Slot                    | Type    | Required | Notes                                           |
+   |-------------------------+---------+----------+-------------------------------------------------|
+   | needs_thermal           | flag(1) | YES      | Presence slot — triggers this agent             |
+   | element_type            | string  | YES      | insulation or vapour_control                    |
+   | insulation_thickness_mm | numeric | COND     | Required for insulation elements                |
+   | insulation_lambda       | numeric | COND     | Required for insulation elements (W/(m·K))      |
+   | climate_zone            | string  | COND     | Required for insulation elements; A, B or C     |
+   | vapour_sd_m             | numeric | COND     | Required for vapour_control elements (metres)   |
+   | service_class           | int     | COND     | Required for vapour_control elements; 1, 2 or 3 |
+
+** Outgoing Slots
+   | Slot       | Type   | Values   | Set when                                             |
+   |------------+--------+----------+------------------------------------------------------|
+   | thermal_ok | string | YES / NO | Always — every element exits with a verdict          |
+   | needs_fire | flag   | 1        | R03 (ensures routing to Agent 4 is always present)  |
+
+* Ontology
+
+  Element types handled by this agent:
+  - ~insulation~      — R value check (§4.1)
+  - ~vapour_control~  — Sd value check (§4.2)
+
+  Climate zone R_min mapping (§4.1 — Part L + BS EN ISO 6946):
+  | Climate zone | Description        | R_min (m²·K/W) |
+  |--------------+--------------------+----------------|
+  | A            | Highland/severe    | 6.5            |
+  | B            | Temperate          | 4.5            |
+  | C            | Mild/coastal south | 3.5            |
+
+  Typical insulation conductivity guidance (§4.1 — informative):
+  | Material         | lambda W/(m·K) |
+  |------------------+----------------|
+  | Mineral wool 035 | 0.035          |
+  | Mineral wool 040 | 0.040          |
+  | Rigid PIR 022    | 0.022          |
+
+  Sd minimum by service class (§4.2 — BS 5250 / BS EN ISO 13788):
+  | Service class | Interior description | Sd_min (m) |
+  |---------------+----------------------+------------|
+  | 1             | Dry interior         | 5          |
+  | 2             | Humid interior       | 18         |
+  | 3             | Very humid           | 50         |
+
+* Frame Catalogue
+
+** Frame: TimberElement
+   | Slot                    | Type    | Agent-3 FIND  | Agent-3 writes |
+   |-------------------------+---------+---------------+----------------|
+   | element_type            | string  | read (R01,R02)| —              |
+   | insulation_thickness_mm | numeric | read (R01)    | —              |
+   | insulation_lambda       | numeric | read (R01)    | —              |
+   | climate_zone            | string  | read (R01)    | —              |
+   | vapour_sd_m             | numeric | read (R02)    | —              |
+   | service_class           | int     | read (R02)    | —              |
+   | needs_thermal           | flag    | MATCH (=1)    | delete         |
+   | thermal_ok              | string  | —             | write          |
+   | needs_fire              | flag    | —             | ensure (R03)   |
+
+* Slot Dictionary
+
+  | Slot                    | Type    | fmatch target  | Normative source                            |
+  |-------------------------+---------+----------------+---------------------------------------------|
+  | element_type            | string  | YES (R01,R02)  | corpus §1.1                                 |
+  | insulation_thickness_mm | numeric | YES (R01)      | corpus §4.1 — Part L + BS EN ISO 6946       |
+  | insulation_lambda       | numeric | YES (R01)      | corpus §4.1 — Part L + BS EN ISO 6946       |
+  | climate_zone            | string  | YES (R01)      | corpus §4.1 — Part L                        |
+  | vapour_sd_m             | numeric | YES (R02)      | corpus §4.2 — BS 5250 / BS EN ISO 13788     |
+  | service_class           | int     | YES (R02)      | corpus §4.2 — BS 5250 / BS EN ISO 13788     |
+  | needs_thermal           | flag    | YES (R01–R03)  | pipeline — Agent 1 routing                  |
+  | thermal_ok              | string  | NO (written)   | this agent — R01/R02 (NO), R03 (YES)        |
+  | needs_fire              | flag    | NO (written)   | this agent → Agent 4 (guard only)           |
+
+* Rule Catalogue
+
+** Rule: R01-check-thermal-resistance
+
+   *Intent*: Reject any insulation element whose thermal resistance R falls
+   below the minimum required for its declared climate zone (corpus §4.1 —
+   Part L + BS EN ISO 6946).  R is computed as
+   ~insulation_thickness_mm / (1000 * insulation_lambda)~.  The climate-zone
+   minimum is resolved via the helper ~_r_min_for_zone~.
+
+   #+BEGIN_SRC yaml
+   RULE: R01-check-thermal-resistance
+   FIND:
+     - FRAME: TimberElement
+       WHERE:
+         needs_thermal: 1
+   PREMISES:
+     - "$frame->get('element_type') eq 'insulation'"
+     - "defined $frame->get('insulation_thickness_mm') && defined $frame->get('insulation_lambda') && $frame->get('insulation_lambda') > 0"
+     - |
+       do {
+           my $r = $frame->get('insulation_thickness_mm') / (1000 * $frame->get('insulation_lambda'));
+           my $r_min = _r_min_for_zone($frame->get('climate_zone'));
+           $r < $r_min;
+       }
+   ACTION: |
+     my $r     = $frame->get('insulation_thickness_mm') / (1000 * $frame->get('insulation_lambda'));
+     my $r_min = _r_min_for_zone($frame->get('climate_zone'));
+     $frame->set('thermal_ok', 'NO');
+     $frame->delete('needs_thermal');
+     $self->log->warn(sprintf
+         "R01: %s REJECTED — R=%.3f m²·K/W < R_min=%.1f (zone %s) — §4.1",
+         $frame->id, $r, $r_min, $frame->get('climate_zone') // '?');
+   #+END_SRC
+
+   *EXCEPTION*: Rule only fires for ~element_type = 'insulation'~.
+   If ~insulation_lambda~ is 0 or undef the second PREMISE prevents the rule
+   from firing to avoid division-by-zero.  If ~climate_zone~ is unrecognised,
+   ~_r_min_for_zone~ returns the most conservative minimum (6.5 m²·K/W for
+   zone A) to err on the side of safety.
+
+** Rule: R02-check-vapour-sd
+
+   *Intent*: Reject any vapour control layer whose Sd value is below the
+   minimum required by its service class (corpus §4.2 — BS 5250 /
+   BS EN ISO 13788).  The minimum is resolved via the helper
+   ~_sd_min_for_service_class~.
+
+   #+BEGIN_SRC yaml
+   RULE: R02-check-vapour-sd
+   FIND:
+     - FRAME: TimberElement
+       WHERE:
+         needs_thermal: 1
+   PREMISES:
+     - "$frame->get('element_type') eq 'vapour_control'"
+     - "defined $frame->get('vapour_sd_m') && defined $frame->get('service_class')"
+     - "$frame->get('vapour_sd_m') < _sd_min_for_service_class($frame->get('service_class'))"
+   ACTION: |
+     my $sd_min = _sd_min_for_service_class($frame->get('service_class'));
+     $frame->set('thermal_ok', 'NO');
+     $frame->delete('needs_thermal');
+     $self->log->warn(sprintf
+         "R02: %s REJECTED — Sd=%.1f m < Sd_min=%.0f m (service class %d) — §4.2",
+         $frame->id,
+         $frame->get('vapour_sd_m'),
+         $sd_min,
+         $frame->get('service_class'));
+   #+END_SRC
+
+   *EXCEPTION*: Rule only fires for ~element_type = 'vapour_control'~.
+   If ~vapour_sd_m~ or ~service_class~ is undef the second PREMISE fails
+   silently and the element proceeds to R03.  An unknown ~service_class~ value
+   causes ~_sd_min_for_service_class~ to return 50 m (most conservative, class 3).
+
+** Rule: R03-thermal-pass
+
+   *Intent*: Approve every element still carrying ~needs_thermal = 1~ after
+   R01 and R02 have run.  Sets ~thermal_ok = 'YES'~ and ensures ~needs_fire = 1~
+   is present for routing to Agent 4.
+
+   #+BEGIN_SRC yaml
+   RULE: R03-thermal-pass
+   FIND:
+     - FRAME: TimberElement
+       WHERE:
+         needs_thermal: 1
+   ACTION: |
+     $frame->set('thermal_ok', 'YES');
+     $frame->delete('needs_thermal');
+     $frame->set('needs_fire', 1) unless defined $frame->get('needs_fire');
+     $self->log->info(sprintf "R03: %s THERMAL OK — §4.1/§4.2", $frame->id);
+   #+END_SRC
+
+   *EXCEPTION*: R03 is the catch-all and MUST appear last.  It fires for any
+   remaining frame regardless of its ~element_type~.  Insulation elements that
+   passed R01 and vapour_control elements that passed R02 both reach R03.
+
+* Perl Helpers
+
+** _r_min_for_zone
+
+   *Signature*: ~_r_min_for_zone($climate_zone) → Num~
+
+   *Description*: Returns the minimum required thermal resistance (m²·K/W) for
+   a given climate zone string ('A', 'B' or 'C').  Returns the most
+   conservative value (6.5) for any unrecognised or undef zone.
+
+   *Source*: corpus §4.1 — Part L + BS EN ISO 6946.
+
+   *Called by*: R01-check-thermal-resistance.
+
+   *@EXPORT_OK*: YES.
+
+   #+BEGIN_SRC perl
+   my %_R_MIN = (A => 6.5, B => 4.5, C => 3.5);
+
+   sub _r_min_for_zone {
+       my ($zone) = @_;
+       return $zone && exists $_R_MIN{uc $zone}
+           ? $_R_MIN{uc $zone}
+           : 6.5;  # conservative fallback — worst case zone A
+   }
+   #+END_SRC
+
+** _sd_min_for_service_class
+
+   *Signature*: ~_sd_min_for_service_class($service_class) → Num~
+
+   *Description*: Returns the minimum required vapour diffusion resistance (Sd
+   in metres) for a given service class integer (1, 2 or 3).  Returns 50 m for
+   any unrecognised or undef value (conservative fallback, class 3).
+
+   *Source*: corpus §4.2 — BS 5250 / BS EN ISO 13788.
+
+   *Called by*: R02-check-vapour-sd.
+
+   *@EXPORT_OK*: YES.
+
+   #+BEGIN_SRC perl
+   my %_SD_MIN = (1 => 5, 2 => 18, 3 => 50);
+
+   sub _sd_min_for_service_class {
+       my ($sc) = @_;
+       return defined $sc && exists $_SD_MIN{$sc}
+           ? $_SD_MIN{$sc}
+           : 50;   # conservative fallback — worst case class 3
+   }
+   #+END_SRC
+
+* Constraints & Pitfalls
+
+  - *Rule ordering*: R01 and R02 must precede R03.  R03 is a catch-all; any
+    frame still holding ~needs_thermal = 1~ after R01/R02 is approved.
+
+  - *Lambda = 0 guard*: If ~insulation_lambda~ is 0, the R01 second PREMISE
+    prevents division-by-zero and the rule is skipped.  The element then reaches
+    R03 and is approved by default.  Always validate ~insulation_lambda > 0~ in
+    ~chorus-feed~.
+
+  - *Mutual exclusion of R01 and R02*: R01 only fires on ~insulation~ and R02
+    only fires on ~vapour_control~.  Each rule is therefore exclusive of the
+    other; no cross-firing risk.
+
+  - *Unknown climate zone*: ~_r_min_for_zone~ returns 6.5 for any unknown zone.
+    This may over-reject valid elements if zone data is missing.  Document the
+    zone at the corpus feed level.
+
+  - *Unknown service class*: ~_sd_min_for_service_class~ returns 50 m for any
+    unknown service class.  Same caveat: validate at ~chorus-feed~ level.
+
+  - *needs_fire guard in R03*: Agent 1 already sets ~needs_fire = 1~ on all
+    elements in R03.  The guard in this agent's R03 is defensive; it ensures
+    correct routing even if Agent 1 is extended or modified without updating the
+    thermal routing path.
+
+  - *_MAX_CYCLES recommendation*: 100 elements × 6 slots × 5 agents × 10
+    safety factor = *30 000*.  Set ~_MAX_CYCLES = 30_000~ in ~chorus-check~.

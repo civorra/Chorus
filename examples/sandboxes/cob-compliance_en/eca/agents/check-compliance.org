@@ -1,0 +1,247 @@
+#+TITLE: Agent CheckCompliance
+#+AGENT: TimberFrame::Agent::CheckCompliance
+#+PIPELINE_POS: 5
+#+RULES_DIR: rules/check-compliance/
+
+* Domain
+
+  Agent 5 of the TimberFrame pipeline — the final compliance aggregator.
+  Receives ~TimberElement~ frames carrying the presence slot
+  ~needs_compliance = 1~, which is set exclusively by Agent 4 (R02-fire-pass)
+  on elements that have passed all previous phase checks.
+
+  The agent evaluates the global compliance conditions defined in corpus §6.1:
+  an element is ~COMPLIANT~ if and only if all applicable results from the
+  preceding agents are positive (~qualified='YES'~, and ~frame_ok='YES'~ for
+  structural elements, and ~thermal_ok='YES'~ for thermal elements, and
+  ~fire_ok='YES'~ for all elements in all occupancy types).
+
+  *Pipeline termination* is handled outside the YAML rule set — see
+  Constraints & Pitfalls for the mandatory ~addrule()~ pattern and the reason
+  why encoding termination as a YAML rule is unsafe in this agent.
+
+* Targeting Slots  :SCOPE:
+
+** Chosen Strategy
+   *Strategy B — presence slot.*
+   The incoming presence slot is ~needs_compliance = 1~, set by Agent 4 (R02).
+   Only frames that have passed the fire phase carry this slot.
+   Strategy B is preferred for volume scalability.
+
+** Targeting Slots Table
+   | Slot             | Value              | Set by          | Consumed by          |
+   |------------------+--------------------+-----------------+----------------------|
+   | needs_compliance | 1                  | Agent 4 (R02)   | This agent (R01)     |
+   | compliance_status| COMPLIANT / NON_COMPLIANT | This agent | Pipeline termination |
+
+** Pre-Population Contract
+   At the time Agent 5 fires, frames MUST already carry all phase results set
+   by preceding agents:
+   - ~qualified~ — set by Agent 1.
+   - ~frame_ok~ — set by Agent 2, if applicable (structural elements only).
+   - ~thermal_ok~ — set by Agent 3, if applicable (thermal elements only).
+   - ~fire_ok~ — set by Agent 4.
+   - ~element_type~ and ~collective~ — set by ~chorus-feed~.
+   These slots are read-only in this agent.
+
+* Pipeline — I/O Contract
+
+** Incoming Slots
+   | Slot             | Type    | Required | Notes                                              |
+   |------------------+---------+----------+----------------------------------------------------|
+   | needs_compliance | flag(1) | YES      | Presence slot — triggers this agent                |
+   | element_type     | string  | YES      | Determines which phase results are applicable      |
+   | qualified        | string  | YES      | Set by Agent 1 — must be YES or NO                 |
+   | frame_ok         | string  | COND     | Set by Agent 2 — required for structural elements  |
+   | thermal_ok       | string  | COND     | Set by Agent 3 — required for thermal elements     |
+   | fire_ok          | string  | YES      | Set by Agent 4 — required for all elements         |
+   | collective       | flag    | YES      | 0 or 1 — determines fire requirement scope         |
+
+** Outgoing Slots
+   | Slot              | Type   | Values                    | Set when            |
+   |-------------------+--------+---------------------------+---------------------|
+   | compliance_status | string | COMPLIANT / NON_COMPLIANT | R01 on all elements |
+
+* Ontology
+
+  Compliance conditions by element type (corpus §6.1):
+  | Element type              | qualified | frame_ok | thermal_ok | fire_ok |
+  |---------------------------+-----------+----------+------------+---------|
+  | load_bearing_stud         | YES       | YES      | —          | YES     |
+  | non_load_bearing_stud     | YES       | —        | —          | YES     |
+  | sole_plate                | YES       | YES      | —          | YES     |
+  | top_plate                 | YES       | YES      | —          | YES     |
+  | rafter                    | YES       | —        | —          | YES     |
+  | joist                     | YES       | —        | —          | YES     |
+  | insulation                | YES       | —        | YES        | YES     |
+  | vapour_control            | YES       | —        | YES        | YES     |
+
+  Note: ~fire_ok = 'YES'~ is required for ALL element types regardless of
+  ~collective~ value (§6.1 confirms REI 30 minimum applies even to non-collective
+  buildings, so fire_ok is universal).
+
+  Structural element types requiring ~frame_ok~ check:
+  : load_bearing_stud, sole_plate, top_plate
+
+  Thermal element types requiring ~thermal_ok~ check:
+  : insulation, vapour_control
+
+* Frame Catalogue
+
+** Frame: TimberElement
+   | Slot              | Type    | Agent-5 FIND  | Agent-5 writes   |
+   |-------------------+---------+---------------+------------------|
+   | element_type      | string  | read (R01)    | —                |
+   | qualified         | string  | read (R01)    | —                |
+   | frame_ok          | string  | read (R01)    | —                |
+   | thermal_ok        | string  | read (R01)    | —                |
+   | fire_ok           | string  | read (R01)    | —                |
+   | collective        | flag    | read (R01)    | —                |
+   | needs_compliance  | flag    | MATCH (=1)    | delete           |
+   | compliance_status | string  | —             | write            |
+
+* Slot Dictionary
+
+  | Slot              | Type    | fmatch target  | Normative source                         |
+  |-------------------+---------+----------------+------------------------------------------|
+  | element_type      | string  | YES (R01)      | corpus §1.1                              |
+  | qualified         | string  | YES (R01)      | corpus §6.1 — Agent 1 output             |
+  | frame_ok          | string  | YES (R01)      | corpus §6.1 — Agent 2 output             |
+  | thermal_ok        | string  | YES (R01)      | corpus §6.1 — Agent 3 output             |
+  | fire_ok           | string  | YES (R01)      | corpus §6.1 — Agent 4 output             |
+  | collective        | flag    | YES (R01)      | corpus §6.1 / §5.1                       |
+  | needs_compliance  | flag    | YES (R01)      | pipeline — Agent 4 routing               |
+  | compliance_status | string  | NO (written)   | this agent — R01                         |
+
+* Rule Catalogue
+
+** Rule: R01-check-compliance
+
+   *Intent*: Evaluate global compliance for a single ~TimberElement~ frame
+   according to the conditions in corpus §6.1.  An element is ~COMPLIANT~ if
+   and only if:
+   - ~qualified = 'YES'~ (all elements).
+   - ~frame_ok = 'YES'~ (structural elements only: load_bearing_stud,
+     sole_plate, top_plate).
+   - ~thermal_ok = 'YES'~ (thermal elements only: insulation, vapour_control).
+   - ~fire_ok = 'YES'~ (all elements — both occupancy types).
+
+   The rule processes one frame at a time and sets ~compliance_status~
+   accordingly.  Pipeline termination is NOT handled here — see Constraints.
+
+   #+BEGIN_SRC yaml
+   RULE: R01-check-compliance
+   FIND:
+     - FRAME: TimberElement
+       WHERE:
+         needs_compliance: 1
+   ACTION: |
+     my $type      = $frame->get('element_type') // '';
+     my $qualified = $frame->get('qualified')    // 'NO';
+     my $fire_ok   = $frame->get('fire_ok')      // 'NO';
+
+     # Structural elements also need frame_ok
+     my @structural = qw(load_bearing_stud sole_plate top_plate);
+     my $needs_frame = grep { $_ eq $type } @structural;
+     my $frame_ok  = $needs_frame ? ($frame->get('frame_ok') // 'NO') : 'YES';
+
+     # Thermal elements also need thermal_ok
+     my @thermal = qw(insulation vapour_control);
+     my $needs_thermal_result = grep { $_ eq $type } @thermal;
+     my $thermal_ok = $needs_thermal_result
+         ? ($frame->get('thermal_ok') // 'NO')
+         : 'YES';
+
+     my $compliant = ($qualified eq 'YES'
+                   && $frame_ok   eq 'YES'
+                   && $thermal_ok eq 'YES'
+                   && $fire_ok    eq 'YES');
+
+     my $status = $compliant ? 'COMPLIANT' : 'NON_COMPLIANT';
+     $frame->set('compliance_status', $status);
+     $frame->delete('needs_compliance');
+
+     if ($compliant) {
+         $self->log->info(sprintf "R01: %s → %s (type=%s)", $frame->id, $status, $type);
+     } else {
+         my @failures;
+         push @failures, "qualified=$qualified"    unless $qualified  eq 'YES';
+         push @failures, "frame_ok=$frame_ok"      unless $frame_ok   eq 'YES';
+         push @failures, "thermal_ok=$thermal_ok"  unless $thermal_ok eq 'YES';
+         push @failures, "fire_ok=$fire_ok"        unless $fire_ok    eq 'YES';
+         $self->log->warn(sprintf "R01: %s → %s — reasons: %s",
+             $frame->id, $status, join(', ', @failures));
+     }
+   #+END_SRC
+
+   *EXCEPTION*: If ~qualified~ is absent, the rule defaults it to 'NO' and the
+   element is declared ~NON_COMPLIANT~.  Same conservative defaulting for
+   ~frame_ok~, ~thermal_ok~ and ~fire_ok~.
+   The rule fires once per frame; there are no looping risks because
+   ~needs_compliance~ is cleared in the ACTION before the rule could re-fire.
+
+* Perl Helpers
+
+  None — no domain knowledge helpers for this agent.  All compliance logic is
+  self-contained within the R01 ACTION block.  The element-type membership
+  checks use inline arrays to avoid external dependency.
+
+* Constraints & Pitfalls
+
+  - *Pipeline termination MUST use addrule() — NOT a YAML rule*:
+
+    §6.2 states that the pipeline terminates when ALL elements carrying
+    ~needs_compliance~ have received their ~compliance_status~.  This is a
+    global condition over the entire working memory (WM), not a per-frame
+    condition.  Encoding it as a YAML rule would require a FIND block that
+    patterns-matches the *absence* of any frame with ~needs_compliance = 1~,
+    which is the global fmatch antipattern and MUST be avoided.
+
+    The correct implementation is a pure Perl ~addrule()~ call in ~chorus-check~:
+
+    #+BEGIN_SRC perl
+    # In chorus-check, after loading all YAML rules:
+    $engine->addrule(
+        name   => 'terminate-when-all-compliant',
+        find   => sub { 1 },   # fires at every cycle
+        action => sub {
+            my ($engine) = @_;
+            my @pending = $engine->wm->select(sub {
+                defined $_[0]->get('needs_compliance')
+            });
+            if (@pending == 0) {
+                $engine->solved;
+            }
+        },
+    );
+    #+END_SRC
+
+    This rule fires at every inference cycle and calls ~$engine->solved~ only
+    when no frame with ~needs_compliance = 1~ remains.  Because R01 clears
+    ~needs_compliance~ after setting ~compliance_status~, the termination rule
+    fires successfully once all elements have been processed.
+
+  - *Elements rejected by earlier agents*: Frames that received ~qualified='NO'~,
+    ~frame_ok='NO'~, ~thermal_ok='NO'~ or ~fire_ok='NO'~ from earlier agents do
+    NOT carry ~needs_compliance = 1~ (Agent 4's R02 only sets it on fire-OK
+    frames).  This means such frames never enter Agent 5 and their
+    ~compliance_status~ remains unset.  For reporting purposes, ~chorus-check~
+    should post-process the WM to assign ~NON_COMPLIANT~ to all frames lacking
+    ~compliance_status~.
+
+  - *fire_ok universality*: §6.1 requires ~fire_ok='YES'~ for all elements in
+    both collective and non-collective buildings.  The R01 ACTION does not branch
+    on ~collective~ for the ~fire_ok~ check — it is unconditional.
+
+  - *Type membership lists*: The inline ~@structural~ and ~@thermal~ arrays in
+    R01 must be kept in sync with the routing decisions in Agent 1 (R03).  If
+    Agent 1 is extended to route new element types to geometry or thermal,
+    update the membership arrays here accordingly.
+
+  - *Unknown compliance_status*: If this agent is skipped (e.g. due to an
+    upstream bug that never sets ~needs_compliance~), frames will lack
+    ~compliance_status~.  The ~chorus-check~ post-processing step described above
+    handles this case.
+
+  - *_MAX_CYCLES recommendation*: 100 elements × 6 slots × 5 agents × 10
+    safety factor = *30 000*.  Set ~_MAX_CYCLES = 30_000~ in ~chorus-check~.

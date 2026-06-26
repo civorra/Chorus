@@ -1,0 +1,9 @@
+REGLE: pose-besoin-conformite
+CHERCHER:
+  p:
+    attribut: feu_ok
+EXCEPTION: defined $p->{besoin_conformite}
+EFFET: |
+  $p->set('besoin_conformite', 1);
+  $SELF->cut();
+  1

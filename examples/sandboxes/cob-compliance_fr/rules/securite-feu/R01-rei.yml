@@ -1,0 +1,15 @@
+REGLE: rei
+CHERCHER:
+  p:
+    attribut: besoin_securite
+EXCEPTION: defined $p->{feu_ok}
+CONDITION: defined $p->{rei_atteint}
+EFFET: |
+  my $rei_min = rei_min($p->{collectif} // 0);
+  my $rei = $p->{rei_atteint};
+  if ($rei < $rei_min) {
+    $p->set('feu_ok',       'NON');
+    $p->set('raison_feu_ko', "REI=${rei} < REI_min=${rei_min} (art.5.1)");
+    return 1;
+  }
+  0
