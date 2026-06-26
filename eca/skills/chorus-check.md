@@ -206,13 +206,60 @@ Capture the output. If Perl errors occur:
 - `FAILED/TIMEOUT` pipeline → check the termination rule
 
 **Display the complete verbatim output** in a code block — always, without
-summarizing or rephrasing in its place. This is the main report; never replace it
-with a tabular summary.
+summarizing or rephrasing in its place. This is the primary report output.
 
-After the verbatim output, note briefly (optional):
-- `NON_CONFORME` elements with their reason if `ref_corpus` is absent
-- `(unprocessed)` elements → targeting slot probably missing from the Feed
-- Discrepancies with `_resultats_attendus` in the project file (if present)
+### 6.1 — Post-verbatim structured report (mandatory)
+
+After the verbatim output, always produce the following structured report:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  chorus-check  <sandbox-name>  <fichier-projet>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Status       : SOLVED ✅ / FAILED ❌
+  Éléments     : N total  (Bat:N  Voie:N  Fac:N  …)
+  CONFORME     : N
+  NON_CONFORME : N
+  Unprocessed  : N
+  Discordances : N / N_total
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Column definitions (identical to Phase 6-all):
+- **CONFORME / NON_CONFORME**: count from the verbatim output
+- **Unprocessed**: elements that produced no result slot at all (no `statut_conformite`,
+  no `voie_acces_ok`, no `famille` — depending on type); targeting slot probably missing from Feed
+- **Discordances**: elements whose actual result differs from the expected result implied
+  by the ID naming convention (`-OK-` → expected CONFORME or OK, `-KO-` → expected NON_CONFORME or KO)
+  or from `_resultats_attendus` in the JSON if present
+
+If **Discordances > 0**, list them:
+
+```
+  Discordances :
+    <id>  expected CONFORME   → got NON_CONFORME
+    <id>  expected NON_CONF   → got CONFORME
+    <id>  expected OK         → got KO
+```
+
+If **Unprocessed > 0**, list them:
+
+```
+  Unprocessed :
+    <id>  (<type>) → targeting slot probably missing from Feed
+```
+
+### 6.2 — Convergence verdict
+
+```
+  CONVERGED ✅   — SOLVED, 0 discordances, 0 unprocessed
+  NOT CONVERGED ❌ — N discordance(s) and/or N unprocessed
+```
+
+If **NOT CONVERGED** → recommend:
+```
+  Next step: chorus-strengthen <sandbox-name>
+```
 
 ---
 
