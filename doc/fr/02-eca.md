@@ -73,10 +73,15 @@ Chorus, c'est l'affaire d'une session.
 > peut couvrir de façon générique. ECA est aussi nécessaire lorsque le corpus
 > normatif évolue — pour relancer `chorus-feed --enrich` puis `chorus-check`.
 
+> **ECA fonctionne nativement sur Neovim, VS Code, IntelliJ et Emacs** — sans
+> dépendance à un éditeur particulier. Les fichiers `AGENTS.md` et skills sont
+> du Markdown plain ; ils fonctionnent de façon identique quel que soit l'éditeur.
+>
 > **Les fichiers KB (`.org`)** sont du texte structuré lisible avec n'importe
-> quel éditeur — vim, VSCode, nano. Emacs offre le meilleur rendu des tableaux
-> et du balisage, mais il n'est pas requis pour lire, modifier ou versionner ces
-> fichiers.
+> quel éditeur. Les tableaux et headings s'affichent correctement dans
+> `nvim-orgmode`, les extensions org de VS Code, et tout éditeur de texte.
+> Emacs offre l'expérience org la plus riche, mais il n'est pas requis pour
+> lire, modifier ou versionner ces fichiers.
 
 **Ce que la chaîne fait concrètement :**
 

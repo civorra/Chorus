@@ -53,7 +53,8 @@ $agent->loop();
 - **Multi-agent orchestration** — `Chorus::Expert` chains specialized engines over
   a shared working memory
 - **ECA integration** — generate a full pipeline from a plain-text corpus
-  (`chorus-feed` → `chorus-check`)
+  (`chorus-feed` → `chorus-check`). ECA runs natively on **Neovim, VS Code,
+  IntelliJ and Emacs** — no editor lock-in.
 
 ---
 

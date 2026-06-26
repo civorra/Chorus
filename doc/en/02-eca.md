@@ -71,9 +71,14 @@ skills, it is the work of one session.
 > needed when the normative corpus changes — to re-run `chorus-feed --enrich`
 > and `chorus-check`.
 
-> **KB files (`.org`)** are structured plain text, readable with any editor —
-> vim, VSCode, nano. Emacs gives the best rendering of tables and markup, but
-> it is not required to read, edit or version these files.
+> **ECA runs natively on Neovim, VS Code, IntelliJ and Emacs** — no editor
+> lock-in. The `AGENTS.md` and skill files are plain Markdown; they work
+> identically regardless of the editor.
+>
+> **KB files (`.org`)** are structured plain text, readable with any editor.
+> Tables and headings render well in `nvim-orgmode`, VS Code org extensions,
+> and any text editor. Emacs gives the richest org experience but is not
+> required to read, edit or version these files.
 
 **What the chain does in practice:**
 
