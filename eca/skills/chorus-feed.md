@@ -313,6 +313,20 @@ the slots the rule needs — the sorting code consults them via `$rule->_PREMISS
 
 YAML Checklist:
 - [ ] Slot names = Slot dictionary from the KB
+- [ ] **`CHERCHER`/`FIND` has a named scope variable** — the scope key must be a variable name (`f:`, `e:`, `p:` …), not directly `attribut:`. Without it the engine treats `attribut` itself as the variable name → runtime crash.
+      ```yaml
+      # ⛔ WRONG — no scope variable; engine crashes at rule compilation
+      CHERCHER:
+        attribut: type_element
+        filtre: "defined $_->{type_element}"
+      # ✅ CORRECT
+      CHERCHER:
+        f:
+          attribut: type_element
+          filtre: "defined $_->{type_element}"
+      ```
+- [ ] **`filtre` uses `$_`, not `$f`** — see `chorus-engine-yaml.md` checklist.
+- [ ] **`CONDITION` tests data presence, not conformance** — see `chorus-engine-yaml.md` checklist.
 - [ ] Every rule that sets a slot has its idempotence `EXCEPTION: defined $var->{slot_set}`
 - [ ] `ACTION` ends with `1` or a truthy expression
 - [ ] ⛔ **`$f->{slot} = val` in ACTION** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
@@ -389,6 +403,25 @@ sub <helper2> {
 - **No side effects** in a helper: no slot writes, no call to
   `$SELF`, no `fmatch`. Helpers compute and return a value —
   the YAML calls `$frame->set()`.
+- **Out-of-scope types — defensive fallback:** when a helper is a table lookup
+  (section minimums, resistances, thresholds…) and the `type_element` is outside
+  the perimeter of the rule (e.g. `chevron` passed to a helper designed for
+  `montant_porteur`), always return a neutral value that makes the downstream
+  `is_xxx_suffisante` check pass rather than fail:
+  ```perl
+  sub section_min_requise {
+    my (undef, $type, ...) = @_;
+    # types outside ossature perimeter → no constraint
+    unless ($type =~ /^(montant_porteur|montant_non_porteur|lisse_basse|lisse_haute)$/) {
+      return (0, 0);   # (0, 0) → any section satisfies b >= 0 && h >= 0
+    }
+    ...
+  }
+  ```
+  Returning the maximum sentinel (`(63, 220)`, `9999`…) as fallback causes false
+  negatives on out-of-scope elements — they fail a check that was never meant
+  for them, producing silently incorrect `NON` verdicts.
+  Document out-of-scope handling with a `# types outside perimeter → neutral value` comment.
 - **`$SELF` pitfall**: in an `_AFTER` hook or a closure that calls `set()`
   on another Frame, capture `$SELF` **before** any call to `set()`:
   ```perl

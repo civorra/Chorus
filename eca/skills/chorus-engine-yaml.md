@@ -150,7 +150,28 @@ FIND:
 ```
 
 - **`attribut`**: slot passed to `fmatch` — defines the search space.
-- **`filtre`**: Perl expression on `$_` — narrows the space **before** the combinatorial loop → critical optimization.
+- **`filtre`**: Perl expression on **`$_`** (the iterated Frame) — narrows the space **before** the combinatorial loop → critical optimization.
+
+> ⛔ **`$f` is not defined inside `filtre`** — `$f` (or any scope variable) only exists inside `ACTION`/`EFFET`, after `my $f = $opts{f}` is executed by `_APPLY`. Using `$f->` in a `filtre` expression causes `Global symbol "$f" requires explicit package name` at rule compilation time.
+> ```yaml
+> # ⛔ WRONG — $f not in scope here
+> FIND:
+>   f:
+>     attribut: type_element
+>     filtre: "defined $f->{type_element} && defined $f->{classe_bois}"
+>
+> # ✅ CORRECT — use $_ (the iterated Frame)
+> FIND:
+>   f:
+>     attribut: type_element
+>     filtre: "defined $_->{type_element} && defined $_->{classe_bois}"
+> ```
+> Multi-line block scalars (`|`) follow the same rule — every line uses `$_`:
+> ```yaml
+>     filtre: |
+>       defined $_->{type_element}
+>       && defined $_->{classe_bois}
+> ```
 
 ### CONDITION vs EXCEPTION
 
@@ -222,6 +243,16 @@ $agent->reorder(\&sort_by_interest);
 ### ✅ YAML Rules
 
 - [ ] **Always** end `ACTION` with a truthy value (`1` or truthy expression)
+- [ ] **`filtre` in `FIND`: always use `$_`, never `$f`** — `$f` (scope variable) is only defined inside `ACTION`/`EFFET`. Using `$f->` in `filtre` causes a compilation crash (`Global symbol "$f"`). Use `$_->{slot}` or `$_->get('slot')`.
+- [ ] **`CONDITION` must test data presence, not conformance** — a CONDITION that tests a business result (e.g. `$f->{result} eq 'OK'` or a Helper call returning a pass/fail value) silently blocks all non-conforming Frames: the rule never fires on them, so no slot is ever set → downstream agents never see those Frames → silent pipeline gap. Always restrict `CONDITION` to testing slot presence (`defined $f->{slot}`), type routing (`$f->{type} eq '...'`), or the existence of prerequisite computed slots. Move the conformance test into `ACTION`/`EFFET`, which sets the `_ok` slot to `'OUI'` or `'NON'`.
+      ```yaml
+      # ⛔ WRONG — non-conforming Frames silently skipped; slot never set
+      CONDITION: |
+        SomeHelper->is_valid($f->{val}, SomeHelper->min_required($f->{type}))
+      # ✅ CORRECT — always fires when data is present
+      CONDITION: "defined $f->{val} && defined $f->{type}"
+      # ACTION then computes and sets 'result_ok' to 'OUI' or 'NON'
+      ```
 - [ ] **Conditional ACTION without `else`**: if the `if` modifies nothing and returns `1` → infinite loop until `_MAX_CYCLES`.
       ```yaml
       # ⛔ WRONG — infinite loop if condition never true
