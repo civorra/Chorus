@@ -19,3 +19,7 @@ sandboxes/*
 
 # Local ECA skills — not distributed in the CPAN package
 eca/skills/cpan-release.md
+
+# Claude Code local configuration — not committed
+CLAUDE.md
+.claude/
