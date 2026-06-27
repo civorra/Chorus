@@ -119,6 +119,13 @@ Chorus, c'est l'affaire d'une session.
 > `nvim-orgmode`, les extensions org de VS Code, et tout éditeur de texte.
 > Emacs offre l'expérience org la plus riche, mais il n'est pas requis pour
 > lire, modifier ou versionner ces fichiers.
+>
+> **ECA sous Emacs** s'adapte le mieux aux sessions Chorus longues : les
+> fichiers org de la KB s'ouvrent comme buffers vivants, l'agent IA les
+> modifie directement, et les récapitulatifs de session permettent de reprendre
+> le contexte d'un jour à l'autre. Les autres éditeurs fonctionnent
+> correctement ; cette combinaison réduit le plus de friction pour les cycles
+> `chorus-feed` et d'enrichissement itératif.
 
 **Ce que la chaîne fait concrètement :**
 

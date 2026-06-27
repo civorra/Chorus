@@ -113,6 +113,12 @@ skills, it is the work of one session.
 > Tables and headings render well in `nvim-orgmode`, VS Code org extensions,
 > and any text editor. Emacs gives the richest org experience but is not
 > required to read, edit or version these files.
+>
+> **ECA in Emacs** is the most natural fit for multi-day Chorus sessions:
+> KB org files open as live buffers, the AI agent edits them directly, and
+> session summaries keep the working context resumable across days. Other
+> editors work correctly; this combination removes the most friction for long
+> `chorus-feed` and incremental enrichment cycles.
 
 **What the chain does in practice:**
 
