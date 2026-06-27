@@ -18,7 +18,7 @@ Chorus::Engine - A lightweight inference engine for rule-based reasoning over fr
 
 =head1 VERSION
 
-Version 1.05
+2.01
 
 =head1 DESCRIPTION
 

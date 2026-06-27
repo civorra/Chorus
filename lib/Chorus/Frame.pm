@@ -11,7 +11,7 @@ Chorus::Frame - Frame-based knowledge representation with inheritance and proced
 
 =head1 VERSION
 
-Version 1.05
+2.01
 
 =head1 SYNOPSIS
 

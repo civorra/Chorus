@@ -9,6 +9,7 @@ eca/skills/chorus-engine-yaml.md
 eca/skills/chorus-feed.md
 eca/skills/chorus-import-project.md
 eca/skills/chorus-pdf.md
+eca/skills/chorus-strengthen.md
 eca/skills/chorus-templates.md
 examples/cursors.pl
 examples/rules/cursors/R01-increase-below-5.yml
@@ -43,6 +44,10 @@ t/27-Engine-terminal.t
 t/28-Engine-addrule-dedup.t
 t/29-Engine-yaml-aliases.t
 t/30-Engine-logging.t
+t/31-Frame-fselect.t
+t/32-Frame-on-delete.t
+t/33-Frame-complete.t
+t/34-Frame-alternatives.t
 t/rules/Expert-construction/charges/R01-calculer-sigma_m.yml
 t/rules/Expert-construction/materiaux/R01-affecter-fm_d.yml
 t/rules/Expert-construction/verification/R01-verifier-EC5-6.1.6.yml

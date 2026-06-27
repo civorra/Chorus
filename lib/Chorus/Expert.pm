@@ -14,7 +14,7 @@ Chorus::Expert - Orchestrator for one or more Chorus::Engine agents working on a
 
 =head1 VERSION
 
-Version 1.05
+2.01
 
 =head1 DESCRIPTION
 
