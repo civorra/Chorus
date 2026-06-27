@@ -31,7 +31,7 @@ can transform a normative corpus into a validation pipeline within a few weeks.
 
 The following table presents domains for which the Chorus pattern has been
 analysed. *Estimated onboarding* refers to the time required to build a first
-operational pipeline from the raw corpus using ECA.
+operational pipeline from the raw corpus using an AI agent.
 
 ### 🏗️ Construction / Civil Engineering
 
@@ -146,7 +146,7 @@ complexity of the domain. A well-structured normative corpus (numbered requireme
 explicit reference tables, defined hierarchy levels) can be onboarded in 2 to 4 weeks.
 A dispersed, proprietary or very voluminous corpus may take 6 to 8 weeks.
 
-The ECA chain compresses most of the cost:
+The AI-assisted chain compresses most of the cost:
 
 ```
 raw corpus (PDF, text)
@@ -157,8 +157,8 @@ raw corpus (PDF, text)
 perl run.pl project.json      → compliance report
 ```
 
-Once the pipeline is generated, **ECA is no longer involved at runtime**. The pipeline
-runs in pure Perl, deterministically, on any machine. ECA is only needed again
+Once the pipeline is generated, **the AI agent is no longer involved at runtime**. The pipeline
+runs in pure Perl, deterministically, on any machine. An AI agent is only needed again
 when the normative corpus changes — to re-run `chorus-feed --enrich` and `chorus-check`.
 
 When the standard is revised:
@@ -179,11 +179,11 @@ The sandboxes `examples/sandboxes/cob-compliance_fr` and `cob-compliance_en`
 contain the complete chain — corpus, org KB, YAML rules, Perl infrastructure.
 Run `perl run.pl project-demo.json` to see the report live.
 
-**Understand the ECA chain:**
-See the section *"Coupling with an LLM tool — the ECA architecture"* in
-[`01-intro.md`](01-intro.md).
+**Understand the AI-assisted chain:**
+See the section *"Coupling with an AI agent — the AI-assisted architecture"* in
+[`02-ai-agent.md`](02-ai-agent.md).
 
 **Start on a new domain:**
 Begin with `chorus-pdf` on the corpus, then `chorus-feed` to extract knowledge.
 The org KB produced (`eca/agents/*.org`) is the checkpoint where a domain expert
-validates what ECA has understood before generating the code.
+validates what the AI agent has understood before generating the code.

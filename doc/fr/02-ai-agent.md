@@ -48,7 +48,7 @@ concurrencer.
 
 ---
 
-## Couplage avec un outil LLM — l'architecture ECA
+## Couplage avec un agent IA — l'architecture assistée par IA
 
 Imaginez la scène : vous avez un PDF de 150 pages — une norme de construction,
 un DTU, un cahier des charges technique. D'ici la fin de la session, vous voulez
@@ -57,23 +57,23 @@ cette norme. Pas un prototype : un moteur avec des agents spécialisés, des rè
 YAML idempotentes, des tables normatives extraites du document, une infrastructure
 Perl correctement câblée, et un rapport de conformité structuré.
 
-Sans assistance : plusieurs jours de travail Perl expert. Avec ECA et ses skills
+Sans assistance : plusieurs jours de travail Perl expert. Avec un agent IA et ses skills
 Chorus, c'est l'affaire d'une session.
 
-> **ECA n'est pas une dépendance d'exécution.** Le pipeline qu'il génère est
+> **L'agent IA n'est pas une dépendance d'exécution.** Le pipeline qu'il génère est
 > du Perl pur — `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl`. Il tourne sur
-> n'importe quelle machine avec Perl installé, sans ECA, sans connexion réseau.
+> n'importe quelle machine avec Perl installé, sans agent IA, sans connexion réseau.
 > Une fois généré, le pipeline est entièrement autonome pour l'exécution.
 >
-> **ECA est une dépendance de projet.** Adapter un sandbox à un nouveau projet
+> **L'agent IA est une dépendance de projet.** Adapter un sandbox à un nouveau projet
 > — aligner les documents d'ingénieur avec les slots de la KB et produire un
 > fichier JSON projet valide — requiert `chorus-create-project` ou
-> `chorus-import-project`, deux skills ECA. La dépendance est réelle et assumée :
+> `chorus-import-project`, deux skills de l'agent IA. La dépendance est réelle et assumée :
 > le LLM lit la KB et gère l'écart de terminologie qu'aucun script statique ne
-> peut couvrir de façon générique. ECA est aussi nécessaire lorsque le corpus
+> peut couvrir de façon générique. L'agent IA est aussi nécessaire lorsque le corpus
 > normatif évolue — pour relancer `chorus-feed --enrich` puis `chorus-check`.
 
-> **ECA fonctionne nativement sur Neovim, VS Code, IntelliJ et Emacs** — sans
+> **Les agents IA fonctionnent nativement sur Neovim, VS Code, IntelliJ et Emacs** — sans
 > dépendance à un éditeur particulier. Les fichiers `AGENTS.md` et skills sont
 > du Markdown plain ; ils fonctionnent de façon identique quel que soit l'éditeur.
 >
@@ -109,13 +109,13 @@ Trois commandes. Le reste est géré.
 **Ce qui rend ça possible :**
 
 L'astuce centrale est la **base de connaissance locale** — des fichiers org-mode
-produits par ECA, un par agent, qui contiennent tout ce que le moteur a besoin de
+produits par l'agent IA, un par agent, qui contiennent tout ce que le moteur a besoin de
 savoir : l'ontologie du domaine, le dictionnaire des slots, le catalogue des règles
 avec leur code, les helpers Perl avec leur source normative (`# §4.2 DTU 31.2`).
 
 Ces fichiers sont lisibles par un ingénieur du domaine sans qu'il sache lire du
 Perl. Il peut corriger une table, contester une règle, affiner une contrainte.
-ECA relit la KB corrigée et régénère les artefacts en aval. Chorus exécute le
+L'agent IA relit la KB corrigée et régénère les artefacts en aval. Chorus exécute le
 résultat sans jamais impliquer le LLM — de façon déterministe, à l'identique,
 autant de fois qu'on veut.
 
@@ -154,18 +154,18 @@ Un sandbox de test COB (Construction Ossature Bois, DTU 31.2) a été construit
 avec cette chaîne : 7 agents spécialisés, 37 règles YAML, 7 modules de helpers
 avec tables EC5 et NF EN 338, un pipeline validant 210 éléments de bâtiment en
 une passe. L'intégralité du code Perl et YAML — environ 2 000 lignes — a été
-générée par ECA depuis le corpus. Aucune ligne écrite à la main.
+générée par un agent IA depuis le corpus. Aucune ligne écrite à la main.
 
-> Les skills ECA pour Chorus (`chorus-pdf`, `chorus-feed`, `chorus-check`,
+> Les skills de l'agent IA pour Chorus (`chorus-pdf`, `chorus-feed`, `chorus-check`,
 > `chorus-create-project`, `chorus-import-project`) sont versionnés dans
 > `$ENGINE/eca/skills/` et documentés dans le dépôt.
 
-> **Explorer le sandbox sans ECA :** les sandboxes `examples/sandboxes/cob-compliance_fr`
+> **Explorer le sandbox sans agent IA :** les sandboxes `examples/sandboxes/cob-compliance_fr`
 > et `cob-compliance_en` contiennent l'intégralité des artefacts produits par la
 > chaîne (corpus, KB org, règles YAML, infrastructure Perl). Ils permettent de
-> comprendre ce qu'ECA génère et de lancer `perl run.pl project-demo.json` en
+> comprendre ce qu'un agent IA génère et de lancer `perl run.pl project-demo.json` en
 > direct — mais avec un JSON projet pré-construit. Adapter un nouveau projet
-> requiert ECA.
+> requiert un agent IA.
 
 ---
 

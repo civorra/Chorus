@@ -1,6 +1,6 @@
 # cob-compliance_en
 
-A complete end-to-end example of the Chorus + ECA chain.  
+A complete end-to-end example of the Chorus + AI agent chain.  
 Domain: **Timber-frame construction** — BS EN 338, EC5, Building Regs Part L/B, BS EN 13501.
 
 ## Run the example
@@ -12,7 +12,7 @@ perl run.pl project-demo.json
 ## Regenerate the infrastructure from the KB
 
 ```sh
-# From ECA, in Chorus context:
+# From an AI agent, in Chorus context:
 chorus-check cob-compliance_en project-demo.json
 ```
 
@@ -49,7 +49,7 @@ chorus-feed cob-compliance_en <new-corpus.txt> --enrich
 | `check-fire` | ✓ | ✓ | — |
 | `check-compliance` | ✓ | ✓ | — |
 
-## ECA artefacts
+## AI agent artefacts
 
 - `corpus/` — source corpus used by `chorus-feed`
 - `eca/agents/*.org` — per-agent knowledge base (read by `chorus-check`)

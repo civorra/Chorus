@@ -52,8 +52,8 @@ $agent->loop();
 - **Infinite-loop guard** — `_MAX_CYCLES` (default 10 000) prevents runaway inference loops
 - **Multi-agent orchestration** — `Chorus::Expert` chains specialized engines over
   a shared working memory
-- **ECA integration** — generate a full pipeline from a plain-text corpus
-  (`chorus-feed` → `chorus-check`). ECA runs natively on **Neovim, VS Code,
+- **AI agent integration** — generate a full pipeline from a plain-text corpus
+  (`chorus-feed` → `chorus-check`). Compatible with any AI agent (Claude, Copilot, ECA…) running natively on **Neovim, VS Code,
   IntelliJ and Emacs** — no editor lock-in.
 
 ---
@@ -106,11 +106,11 @@ perl Makefile.PL && make && make test && make install
 ## Documentation
 
 - [`doc/en/01-intro.md`](doc/en/01-intro.md) — concepts, architecture, YAML DSL
-- [`doc/en/02-eca.md`](doc/en/02-eca.md) — LLM + Chorus pipeline (ECA integration)
+- [`doc/en/02-ai-agent.md`](doc/en/02-ai-agent.md) — LLM + Chorus pipeline (AI agent integration)
 - [`doc/en/03-applications.md`](doc/en/03-applications.md) — application domains (construction, CSRD, MDR, DO-178C…)
-- [`doc/en/04-chorus-commands.md`](doc/en/04-chorus-commands.md) — `chorus-*` commands reference (ECA workflow)
+- [`doc/en/04-chorus-commands.md`](doc/en/04-chorus-commands.md) — `chorus-*` commands reference (AI-assisted workflow)
 - [`doc/fr/01-intro.md`](doc/fr/01-intro.md) — concepts, architecture, DSL YAML (fr)
-- [`doc/fr/02-eca.md`](doc/fr/02-eca.md) — pipeline LLM + Chorus, intégration ECA (fr)
+- [`doc/fr/02-ai-agent.md`](doc/fr/02-ai-agent.md) — pipeline LLM + Chorus, intégration agent IA (fr)
 - [`doc/fr/03-applications.md`](doc/fr/03-applications.md) — domaines d'application (fr)
 - [`doc/fr/04-chorus-commands.md`](doc/fr/04-chorus-commands.md) — référence des commandes `chorus-*` (fr)
 - `perldoc Chorus::Engine` — rules, inference loop, YAML DSL, flow control

@@ -1,22 +1,22 @@
-# Les commandes `chorus-*` — Référence du workflow ECA
+# Les commandes `chorus-*` — Référence du workflow assisté par agent IA
 
 Les six commandes `chorus-*` forment un pipeline complet pour transformer un
 corpus normatif (PDF, texte, Word, Excel) en un moteur d'inférence Perl
 opérationnel qui valide des projets réels.
 
-Ce sont des **commandes ECA** — pas des modules Perl ni des scripts shell. Chacune
-est un skill chargé par ECA et exécuté de façon interactive dans l'environnement
+Ce sont des **commandes de l'agent IA** — pas des modules Perl ni des scripts shell. Chacune
+est un skill chargé par un agent IA (Claude, Copilot, ECA…) et exécuté de façon interactive dans l'environnement
 de développement.
 
-**ECA n'est pas une dépendance d'exécution.** Le pipeline Perl généré par la
+**L'agent IA n'est pas une dépendance d'exécution.** Le pipeline Perl généré par la
 chaîne tourne entièrement de façon autonome, sur n'importe quelle machine avec
-Perl installé, sans ECA et sans connexion réseau.
+Perl installé, sans agent IA et sans connexion réseau.
 
-**ECA est une dépendance de projet.** Pour adapter un sandbox à un nouveau
+**L'agent IA est une dépendance de projet.** Pour adapter un sandbox à un nouveau
 projet — aligner les documents d'ingénieur avec les slots de la KB et produire
 un fichier JSON projet valide — il faut `chorus-create-project` ou
-`chorus-import-project`, deux skills ECA. Le LLM lit la KB et gère l'écart de
-terminologie qu'aucun script statique ne peut couvrir de façon générique. ECA
+`chorus-import-project`, deux skills de l'agent IA. Le LLM lit la KB et gère l'écart de
+terminologie qu'aucun script statique ne peut couvrir de façon générique. Un agent IA
 est aussi nécessaire lorsque le corpus normatif change.
 
 ---
@@ -151,7 +151,7 @@ Utilisé pour un nouveau sandbox ou un nouveau départ. Crée la structure compl
   README.org
 ```
 
-Ce qu'ECA produit par agent :
+Ce que l'agent IA produit par agent :
 - **Ontologie des slots** — les types de Frame et le dictionnaire des slots du domaine
 - **Règles YAML** — un fichier par règle, nommé `R<NN>-<slug>.yml` (chargé par ordre alphabétique)
 - **`Helpers.pm`** — tables de lookup normatives et calculs, annotés avec leur source
@@ -160,7 +160,7 @@ Ce qu'ECA produit par agent :
 **Mode B — Enrichissement incrémental** (`--enrich` requis)
 
 Utilisé quand le sandbox contient déjà une KB et qu'un nouveau corpus normatif
-est arrivé. ECA lit la KB existante, classifie chaque nouvelle règle en
+est arrivé. L'agent IA lit la KB existante, classifie chaque nouvelle règle en
 *raffinement*, *extension* ou *nouveau domaine*, et applique des modifications
 ciblées.
 
@@ -231,7 +231,7 @@ des fichiers projet différents ne coûte presque rien au deuxième appel.
 | `lib/<NS>/Expert.pm` | Câble tous les agents, fixe `_MAX_CYCLES`, enregistre auprès de l'Expert |
 | `run.pl` | Point d'entrée : `perl run.pl projet.json` |
 
-Le code généré est du **Perl pur** — pas de dépendance ECA, pas de LLM, pas de réseau.
+Le code généré est du **Perl pur** — pas de dépendance à un agent IA, pas de LLM, pas de réseau.
 Il tourne sur n'importe quelle machine avec Perl et les modules CPAN installés.
 
 ### Sortie
@@ -305,7 +305,7 @@ Utile pour :
 - **Démontrer** l'étendue des vérifications effectuées par le moteur
 - **Amorcer** un modèle de projet qu'un ingénieur pourra remplir
 
-### Ce qu'ECA lit
+### Ce que l'agent IA lit
 
 1. `eca/agents/index.org` — types de Frame, pipeline, namespace
 2. `eca/agents/<slug>.org` — slots obligatoires, seuils, domaines de valeurs valides
@@ -437,13 +437,13 @@ slots et domaines de valeurs exacts qu'attend le pipeline Chorus.
 **Le mode est détecté automatiquement** en fonction du nombre et du type des
 arguments sources.
 
-### Ce qu'ECA lit
+### Ce que l'agent IA lit
 
 1. `eca/agents/index.org` — types de Frame, pipeline, namespace
 2. `eca/agents/<slug>.org` — noms de slots, domaines de valeurs, obligatoires/optionnels
 3. Tout `eca/import-report-*.org` précédent — décisions d'alignement antérieures (pour la cohérence)
 
-### Ce qu'ECA produit
+### Ce que l'agent IA produit
 
 - `projet-import-<NNN>.json` — le JSON projet aligné
 - `eca/import-report-<NNN>.org` — rapport d'alignement : correspondances de termes, lacunes, ambiguïtés
@@ -523,10 +523,10 @@ chorus-check mon-sandbox projet.json     # régénère uniquement ce qui a chang
 
 ---
 
-## Ce qui tourne sans ECA
+## Ce qui tourne sans agent IA
 
 Une fois que `chorus-check` a généré l'infrastructure, **l'exécution est
-entièrement autonome** — sans ECA, sans LLM, sans réseau :
+entièrement autonome** — sans agent IA, sans LLM, sans réseau :
 
 ```bash
 # Sur n'importe quelle machine avec Perl et les modules CPAN requis :
@@ -536,11 +536,11 @@ perl run.pl projet.json
 perl run.pl autre-projet.json
 ```
 
-**Adapter un nouveau projet requiert ECA.** Un JSON projet peut en principe
+**Adapter un nouveau projet requiert un agent IA.** Un JSON projet peut en principe
 être écrit à la main, mais `chorus-create-project` et `chorus-import-project`
 sont le chemin pratique : ils lisent la KB et gèrent l'écart entre la
 terminologie de l'ingénieur et les noms de slots et domaines de valeurs exacts
-qu'attend le pipeline. ECA est aussi nécessaire lorsque le corpus normatif
+qu'attend le pipeline. Un agent IA est aussi nécessaire lorsque le corpus normatif
 change (`chorus-feed --enrich` suivi de `chorus-check`).
 
 ---
@@ -562,13 +562,13 @@ sudo apt install poppler-utils   # pdftoppm (modes --auto et --images)
 export ANTHROPIC_API_KEY="sk-ant-..."   # vision LLM (--auto et --images)
 ```
 
-### Explorer le sandbox sans ECA
+### Explorer le sandbox sans agent IA
 
 Les sandboxes `examples/sandboxes/cob-compliance_fr` et `cob-compliance_en`
 contiennent la sortie complète de la chaîne — corpus, KB org, règles YAML,
 infrastructure Perl. Lancer `perl run.pl project-demo.json` montre le résultat
 en direct avec le JSON projet pré-construit inclus dans le sandbox. Pour
-adapter un nouveau projet, ECA est requis.
+adapter un nouveau projet, un agent IA est requis.
 
 ---
 
@@ -588,7 +588,7 @@ adapter un nouveau projet, ECA est requis.
 ## Pour aller plus loin
 
 - [`01-intro.md`](01-intro.md) — concepts Chorus, modèle Frame, moteur d'inférence, DSL YAML
-- [`02-eca.md`](02-eca.md) — positionnement LLM vs Chorus, pourquoi la chaîne fonctionne
+- [`02-ai-agent.md`](02-ai-agent.md) — positionnement LLM vs Chorus, pourquoi la chaîne fonctionne
 - [`03-applications.md`](03-applications.md) — analyse par domaine, temps d'onboarding
 - `eca/skills/chorus-pdf.md` — référence complète du skill `chorus-pdf`
 - `eca/skills/chorus-feed.md` — référence complète du skill `chorus-feed`

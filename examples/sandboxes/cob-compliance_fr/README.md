@@ -1,6 +1,6 @@
 # cob-compliance_fr
 
-Exemple introductif complet de la chaîne Chorus + ECA.  
+Exemple introductif complet de la chaîne Chorus + agent IA.  
 Domaine : **Construction Ossature Bois (COB)** — DTU 31.2 / NF EN 338 / EC5 / NF EN 13162.
 
 ## Lancer l'exemple
@@ -12,7 +12,7 @@ perl run.pl project-demo.json
 ## Régénérer l'infrastructure depuis la KB
 
 ```sh
-# Depuis ECA, dans le contexte Chorus :
+# Depuis un agent IA, dans le contexte Chorus :
 chorus-check cob-compliance_fr project-demo.json
 ```
 
@@ -49,7 +49,7 @@ chorus-feed cob-compliance_fr <nouveau-corpus.txt> --enrich
 | `securite-feu` | ✓ | 5 | ✓ |
 | `conformite` | ✓ | 2+1P | ✓ |
 
-## Artefacts ECA
+## Artefacts de l'agent IA
 
 - `corpus/` — corpus source ayant servi à `chorus-feed`
 - `eca/agents/*.org` — base de connaissance par agent (lue par `chorus-check`)

@@ -33,7 +33,7 @@ peut transformer le corpus normatif en pipeline de validation en quelques semain
 
 Le tableau suivant présente les domaines pour lesquels le pattern Chorus a été
 analysé. *L'onboarding estimé* désigne le temps nécessaire pour construire un
-premier pipeline opérationnel depuis le corpus brut avec ECA.
+premier pipeline opérationnel depuis le corpus brut avec un agent IA.
 
 ### 🏗️ Construction / BTP
 
@@ -149,7 +149,7 @@ tableaux de référence explicites, niveaux hiérarchiques définis) s'onboarde 
 2 à 4 semaines. Un corpus dispersé, propriétaire ou très volumineux peut
 demander 6 à 8 semaines.
 
-La chaîne ECA comprime l'essentiel du coût :
+La chaîne assistée par IA comprime l'essentiel du coût :
 
 ```
 corpus brut (PDF, texte)
@@ -160,8 +160,8 @@ corpus brut (PDF, texte)
 perl run.pl projet.json       → rapport de conformité
 ```
 
-Une fois le pipeline généré, **ECA n'intervient plus à l'exécution**. Le pipeline
-tourne en Perl pur, de façon déterministe, sur n'importe quelle machine. ECA n'est
+Une fois le pipeline généré, **l'agent IA n'intervient plus à l'exécution**. Le pipeline
+tourne en Perl pur, de façon déterministe, sur n'importe quelle machine. Un agent IA n'est
 à nouveau nécessaire que si le corpus normatif évolue — pour relancer
 `chorus-feed --enrich` puis `chorus-check`.
 
@@ -183,12 +183,12 @@ Les sandboxes `examples/sandboxes/cob-compliance_fr` et `cob-compliance_en`
 contiennent la chaîne complète — corpus, KB org, règles YAML, infrastructure
 Perl. Lancer `perl run.pl project-demo.json` pour voir le rapport en direct.
 
-**Comprendre la chaîne ECA :**
-Voir la section *« Couplage avec un outil LLM — l'architecture ECA »* dans
-[`01-intro.md`](01-intro.md).
+**Comprendre la chaîne assistée par IA :**
+Voir la section *« Couplage avec un agent IA — l'architecture assistée par IA »* dans
+[`02-ai-agent.md`](02-ai-agent.md).
 
 **Démarrer sur un nouveau domaine :**
 Commencer par `chorus-pdf` sur le corpus, puis `chorus-feed` pour extraire
 la connaissance. La KB org produite (`eca/agents/*.org`) est le point de
-contrôle où un expert du domaine valide ce qu'ECA a compris avant de générer
+contrôle où un expert du domaine valide ce qu'un agent IA a compris avant de générer
 le code.

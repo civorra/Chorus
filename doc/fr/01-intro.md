@@ -50,15 +50,15 @@ l'ensemble de la chaîne dès le départ.
 |---|---|---|---|
 | **1 — Perl direct** | `addrule()`, `loop()` en Perl | Perl 5 | Découverte, prototypage, petits projets |
 | **2 — YAML** | Règles DSL YAML, `loadRules()` | Perl 5 | Projets maintenables, logique métier riche |
-| **3 — ECA** | Pipeline généré depuis un corpus | Perl 5 + ECA | Domaines normatifs, corpus volumineux |
+| **3 — Agent IA** | Pipeline généré depuis un corpus | Perl 5 + agent IA | Domaines normatifs, corpus volumineux |
 
 Les niveaux 1 et 2 sont **100 % autonomes** : Perl pur, aucune dépendance
-externe, aucun outil tiers. Le niveau 3 ajoute ECA comme outil de
+externe, aucun outil tiers. Le niveau 3 ajoute un agent IA comme outil de
 *développement* — pas comme dépendance d'*exécution*. Un pipeline généré au
 niveau 3 tourne exactement comme un pipeline écrit à la main au niveau 1.
 
 > **Point de départ :** les exemples dans `examples/sandboxes/cob-compliance_fr`
-> (ou `_en`) sont entièrement fonctionnels sans ECA. Ils montrent la structure
+> (ou `_en`) sont entièrement fonctionnels sans agent IA. Ils montrent la structure
 > complète d'un projet Chorus — corpus, KB, règles YAML, infrastructure Perl —
 > et se lancent avec `perl run.pl project-demo.json`.
 
@@ -404,7 +404,7 @@ on décrit le **quoi**, pas le **comment**.
 
 ## Chorus à l'ère des LLMs
 
-> Voir [`02-eca.md`](02-eca.md) — positionnement LLM vs Chorus, architecture ECA,
+> Voir [`02-ai-agent.md`](02-ai-agent.md) — positionnement LLM vs Chorus, architecture agent IA,
 > pipeline `chorus-pdf` → `chorus-feed` → `chorus-check`.
 
 ---
