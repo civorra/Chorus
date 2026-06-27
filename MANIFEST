@@ -17,7 +17,7 @@ examples/rules/cursors/R02-decrease-above-5.yml
 lib/Chorus/Collection/Filter.pm
 lib/Chorus/Collection/List.pm
 lib/Chorus/Engine.pm
-lib/Chorus/Engine/ECA.pod
+lib/Chorus/Engine/AIAgent.pod
 lib/Chorus/Expert.pm
 lib/Chorus/Frame.pm
 Makefile.PL
