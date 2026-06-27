@@ -107,12 +107,200 @@ Process the content as-is — proceed directly to Phase 1.
 
 Identify the format and extract plain text **before** any semantic processing.
 
-#### PDF
-```bash
-pdftotext -layout "<fichier.pdf>" -
-# Si pdftotext absent :
-python3 -c "import pdfplumber; p=pdfplumber.open('<f>'); [print(pg.extract_text()) for pg in p.pages]"
+#### PDF — hybrid extraction (same pipeline as `chorus-pdf --hybrid`)
+
+PDF extraction uses the **same 4-mode pipeline as `chorus-pdf`**:
+figures, diagrams, and normative tables are recovered via Claude vision — not just raw text.
+
+> **Why it matters:** project documents (DCE, CCTP, BET notes) often embed structural
+> diagrams, specification tables as images, or mixed layouts that `pdftotext` silently drops.
+> Hybrid mode preserves this information for the terminology alignment phases.
+
+##### Step 0 — Auto-detect mode (no explicit flag)
+
+```python
+import os, json, urllib.request, urllib.error
+
+def probe_claude(api_key):
+    payload = {"model": "claude-haiku-4-5", "max_tokens": 1,
+               "messages": [{"role": "user", "content": "ping"}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    try:
+        req = urllib.request.Request("https://api.anthropic.com/v1/messages",
+            data=json.dumps(payload).encode(), headers=headers, method="POST")
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except urllib.error.HTTPError as e:
+        return e.code in (429, 529)   # throttled but valid
+    except Exception:
+        return False
+
+api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+if api_key and probe_claude(api_key):
+    pdf_mode = "hybrid"    # default — pdfminer text + Claude vision on figures
+    print("[import] ANTHROPIC_API_KEY detected — hybrid mode activated.", flush=True)
+else:
+    pdf_mode = "text"      # fallback — pdfminer only
+    print("[import] No API key or Claude unreachable — text mode (fallback).", flush=True)
 ```
+
+| `ANTHROPIC_API_KEY` | Probe | Mode |
+|---|---|---|
+| absent | — | **text** (pdfminer only) |
+| present, valid | ✅ | **hybrid** (pdfminer + Claude vision on figures) |
+| present, invalid | ❌ 401/403 | **text** |
+| present, throttled | ⚠️ 429/529 | **hybrid** |
+
+##### Step 1 — Layout analysis (pdfminer)
+
+```python
+from pdfminer.high_level import extract_pages
+from pdfminer.layout import LAParams, LTTextBox, LTFigure
+
+laparams = LAParams(boxes_flow=0.5, char_margin=2.0)
+page_data = {}   # {page_num: {'texts': [(text, y_center)], 'figures': [(x0,y0,x1,y1)], 'height': float}}
+
+for page_num, layout in enumerate(extract_pages(pdf_path, laparams=laparams), 1):
+    texts, figures = [], []
+    for el in layout:
+        if isinstance(el, LTTextBox):
+            t = el.get_text().strip()
+            if t:
+                texts.append((t, (el.y0 + el.y1) / 2))
+        elif isinstance(el, LTFigure):
+            figures.append((el.x0, el.y0, el.x1, el.y1))
+    page_data[page_num] = {'texts': texts, 'figures': figures, 'height': layout.height}
+```
+
+##### Step 2 — Hybrid mode: crop figures and call Claude
+
+Only if `pdf_mode == "hybrid"` **and** figures were detected.
+
+```python
+import base64, io, subprocess, tempfile
+from PIL import Image
+
+DPI = 150
+
+def pdf_bbox_to_png_crop(x0, y0, x1, y1, page_height, dpi=DPI):
+    scale = dpi / 72.0
+    margin = int(4 * scale)
+    return (
+        max(0, int(x0 * scale) - margin),
+        max(0, int((page_height - y1) * scale) - margin),
+        int(x1 * scale) + margin,
+        int((page_height - y0) * scale) + margin,
+    )
+
+FIGURE_PROMPT = """You are a technical document extraction engine.
+Describe this figure extracted from an engineering project document.
+Output a block of the form:
+  [FIGURE <N> — <title or caption if visible>]
+  <Structured description: labeled dimensions, named components, numerical values,
+   spatial relationships, units, arrows, hatching, scale bar if present>
+  [END FIGURE <N>]
+If no caption is visible, assign [FIGURE ?]. Do not add text outside the block.
+Use UTF-8. Preserve special characters (±, ≤, ≥, ×, °, ², ³…)."""
+
+def call_claude_figure(png_bytes, page_num, fig_idx, api_key):
+    import json as _json, urllib.request as _req, urllib.error as _err, time
+    b64 = base64.standard_b64encode(png_bytes).decode()
+    payload = {
+        "model": "claude-opus-4-5", "max_tokens": 2048,
+        "messages": [{"role": "user", "content": [
+            {"type": "text",  "text": f"[Page {page_num}, Figure {fig_idx}]\n\n{FIGURE_PROMPT}"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
+        ]}]
+    }
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    for attempt in range(4):
+        r = _req.Request("https://api.anthropic.com/v1/messages",
+            data=_json.dumps(payload).encode(), headers=headers, method="POST")
+        try:
+            with _req.urlopen(r, timeout=120) as resp:
+                return _json.loads(resp.read())["content"][0]["text"].strip()
+        except _err.HTTPError as e:
+            if e.code in (429, 529) and attempt < 3:
+                time.sleep(10 * (2 ** attempt)); continue
+            raise
+
+with tempfile.TemporaryDirectory(prefix="chorus-import-pdf-") as tmpdir:
+    for page_num, pdata in sorted(page_data.items()):
+        figure_descriptions = {}
+        if pdf_mode == "hybrid" and pdata['figures']:
+            prefix = os.path.join(tmpdir, f"p{page_num:04d}")
+            subprocess.run(
+                ["pdftoppm", "-r", str(DPI), "-png",
+                 "-f", str(page_num), "-l", str(page_num), pdf_path, prefix],
+                check=True, capture_output=True)
+            import glob as _glob
+            png_files = sorted(_glob.glob(prefix + "*.png"))
+            img = Image.open(png_files[0])
+            for fig_idx, bbox in enumerate(pdata['figures'], 1):
+                crop_box = pdf_bbox_to_png_crop(*bbox, pdata['height'])
+                w, h = img.size
+                crop_box = (min(crop_box[0],w), min(crop_box[1],h),
+                            min(crop_box[2],w), min(crop_box[3],h))
+                buf = io.BytesIO()
+                img.crop(crop_box).save(buf, format="PNG")
+                figure_descriptions[fig_idx] = call_claude_figure(
+                    buf.getvalue(), page_num, fig_idx, api_key)
+        # ... assemble page (Step 3)
+```
+
+##### Step 3 — Assemble page in reading order (top→bottom)
+
+```python
+def assemble_page(page_num, pdata, figure_descriptions):
+    elements = []
+    for text, y in pdata['texts']:
+        elements.append((y, 'text', text))
+    for fig_idx, (x0, y0, x1, y1) in enumerate(pdata['figures'], 1):
+        desc = figure_descriptions.get(fig_idx,
+               f"[FIGURE {fig_idx} — not extracted (text mode)]")
+        elements.append(((y0+y1)/2, 'figure', desc))
+    elements.sort(key=lambda e: e[0], reverse=True)   # highest Y first
+    body = "\n\n".join(content for (_, _, content) in elements)
+    return f"=== PAGE {page_num} ===\n{body}\n=== END PAGE {page_num} ==="
+```
+
+##### Step 4 — nohup gate (hybrid only)
+
+If the layout analysis detects **> 15 figures** (≈ > 7.5 min at ~30 s/call):
+- Print a `nohup` command and **stop** (do not proceed)
+- When relaunched with `CHORUS_PDF_FORCE=1 nohup python3 <script>` → proceed unconditionally
+
+```
+[import-pdf] ⚠️  18 figures detected — estimated time ~9–13 min (threshold: 15).
+[import-pdf]    Run with nohup to avoid a 10-min IDE timeout:
+[import-pdf]    CHORUS_PDF_FORCE=1 nohup python3 <script.py> > <output.md>.log 2>&1 &
+```
+
+> ⚠️ **If the extraction script exits with code 2** (nohup required):
+> ECA must **not** retry automatically. It must set `CHORUS_PDF_FORCE=1`
+> and relaunch with `nohup` — pre-approved, no confirmation required.
+
+##### Dependencies
+
+| Package | Install |
+|---------|---------|
+| `pdfminer.six` | `pip install pdfminer.six` |
+| `Pillow` | `pip install Pillow` (hybrid mode only) |
+| `pdftoppm` | `sudo apt install poppler-utils` (hybrid mode only) |
+| `ANTHROPIC_API_KEY` | `export ANTHROPIC_API_KEY="sk-ant-..."` (hybrid mode only) |
+
+##### Text-mode fallback (no API key)
+
+When `pdf_mode == "text"`, figures produce a placeholder instead of a Claude description:
+
+```
+[FIGURE — not extracted]
+[Run chorus-import-project with ANTHROPIC_API_KEY set to extract figures via hybrid mode]
+```
+
+The rest of the extraction (text blocks, reading order) is identical.
 
 #### Excel / CSV
 ```bash
