@@ -5,13 +5,32 @@ Revision history for Chorus::Expert
           (solved/failed callable from pure YAML rules)
         - Engine.pm : promote setFilter/setScope/setCondition/setException/setEffect
           to engine methods (was package-level functions relying on implicit $SELF)
-        - Frame.pm  : fmatch() fix — dead code 'Y' || () replaced with conditional
-          to avoid undef key in %filter
         - Engine.pm : apply_rec converted from named sub to proper closure
         - Engine.pm : loop() guard against infinite loops (_MAX_CYCLES, default 10_000)
+        - Engine.pm : addrule() duplicate _ID detection and warning
+        - Engine.pm : YAML English aliases (RULE/FIND/ACTION/PREMISES) accepted
+          alongside French forms (REGLE/CHERCHER/EFFET/PREMISSES)
+        - Engine.pm : logging support (_LOG, _TRACE, _CYCLE fields in YAML rules)
+        - Frame.pm  : fmatch() fix — dead code 'Y' || () replaced with conditional
+          to avoid undef key in %filter
+        - Frame.pm  : fselect() added — selects the best-matching prototype frame
+          given observed slot/value pairs; options: _all, _from, _min
+        - Frame.pm  : _ON_DELETE demon added — fires when a slot is erased via delete()
+        - Frame.pm  : complete() method added — checks that all _TERMINAL_SLOTS are filled
+        - Frame.pm  : _ALTERNATIVES slot added — declares a neighbourhood of sibling
+          frames for use with fselect(_alternatives => ...)
         - Frame.pm  : _reset() added — clears %FMAP, %REPOSITORY, %INSTANCES, %SERIAL,
           $SELF, @Heap, $getMode (test isolation)
-        - Tests: t/26-Frame-reset.t, t/27-Engine-terminal.t added
+        - doc/       : full bilingual documentation added (doc/en/, doc/fr/) covering
+          concepts, AI agent integration, application domains, chorus-* commands
+        - eca/skills/: chorus-pdf, chorus-feed, chorus-check, chorus-create-project,
+          chorus-import-project, chorus-strengthen skills added
+        - lib/Chorus/Engine/AIAgent.pod : AI agent integration reference added
+          (replaces ECA.pod; tool-neutral, covers all six chorus-* commands)
+        - Tests: t/28-Engine-addrule-dedup.t, t/29-Engine-yaml-aliases.t,
+          t/30-Engine-logging.t, t/31-Frame-fselect.t, t/32-Frame-on-delete.t,
+          t/33-Frame-complete.t, t/34-Frame-alternatives.t added
+          (total: 25 test files, 170 assertions)
 
 1.03    2015-12-14
 		- Some tests added (Chorus::Frame : get - set - delete - getZ - getN - fmatch - weaken
