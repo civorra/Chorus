@@ -16,3 +16,6 @@ mcp
 # User sandboxes — local working area, not committed
 sandboxes/*
 !sandboxes/README.md
+
+# Local ECA skills — not distributed in the CPAN package
+eca/skills/cpan-release.md
