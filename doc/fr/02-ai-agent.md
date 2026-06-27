@@ -1,5 +1,42 @@
 # Chorus à l'ère des LLMs
 
+## Pourquoi les systèmes experts ont échoué — et ce qui a changé
+
+Les systèmes à base de règles des années 80–90 (CLIPS, OPS5, systèmes experts
+commerciaux) reposaient sur des fondements théoriques solides : connaissance
+explicite, raisonnement traçable, résultat déterministe. Ils ont échoué en
+pratique pour trois raisons structurelles :
+
+1. **L'acquisition des connaissances** — remplir une base de règles demandait
+   des *knowledge engineers* dédiés et ne passait pas à l'échelle. Chaque nouveau
+   domaine était un chantier long et coûteux.
+2. **Le langage naturel** — le monde réel s'exprime en prose, en tableaux, en PDF
+   et en notes informelles. Les parseurs symboliques cassaient à la première exception.
+3. **La maintenance** — à mesure que la base de règles grossissait, les règles
+   s'entrechoquaient, les exceptions s'accumulaient, et la base devenait ingérable.
+
+Chorus-2.0 répond à ces trois problèmes, non pas en abandonnant l'approche
+symbolique, mais en confiant exactement ces trois difficultés à un modèle de langage :
+
+| Échec historique | Réponse Chorus-2.0 |
+|---|---|
+| Acquisition des connaissances | `chorus-feed` lit des documents bruts et alimente la KB automatiquement |
+| Langage naturel en entrée | Le LLM extrait et structure ; le moteur ne parse jamais du texte libre |
+| Maintenance des règles | Les règles YAML sont courtes, lisibles, versionnables, auditables à la main |
+
+Le LLM fait ce qu'il fait bien — lire du texte ambigu à grande échelle. Le moteur
+d'inférence fait ce qu'il fait bien — appliquer des règles de façon déterministe.
+Aucun des deux n'empiète sur le domaine de l'autre.
+
+> **Sur la terminologie.** L'étiquette *neuro-symbolique* est parfois appliquée
+> à des systèmes comme Chorus. Elle est inexacte ici. Dans les systèmes
+> neuro-symboliques, un modèle neuronal apprend à *simuler* des règles logiques.
+> Dans Chorus, le moteur symbolique est réel — frames, slots, chaîne d'inférence
+> explicite — et le LLM est un outil de prétraitement. *Symbolique augmenté* est
+> une description plus précise.
+
+---
+
 Les grands modèles de langage (GPT, Claude, Gemini…) atteignent aujourd'hui
 des performances remarquables sur des tâches de compréhension, de génération
 et de raisonnement général. Cela pose une question légitime : à quoi sert

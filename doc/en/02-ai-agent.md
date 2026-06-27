@@ -1,5 +1,39 @@
 # Chorus in the age of LLMs
 
+## Why expert systems failed — and what changed
+
+Rule-based systems from the 1980s–90s (CLIPS, OPS5, commercial expert systems)
+shared a solid theoretical foundation: explicit knowledge, traceable reasoning,
+deterministic output. They failed in practice for three structural reasons:
+
+1. **Knowledge acquisition** — filling a rule base required dedicated knowledge
+   engineers and didn't scale. Every new domain was a fresh, expensive undertaking.
+2. **Natural language** — the real world communicates in prose, tables, PDFs,
+   and informal notes. Symbolic parsers broke on the first exception.
+3. **Maintenance** — as rule bases grew, rules conflicted, exceptions multiplied,
+   and the knowledge base became unmanageable.
+
+Chorus-2.0 addresses all three, not by abandoning the symbolic approach, but by
+delegating exactly these three problems to a language model:
+
+| Historical failure | Chorus-2.0 response |
+|---|---|
+| Knowledge acquisition | `chorus-feed` reads raw documents and populates the KB automatically |
+| Natural language input | The LLM extracts and structures; the engine never parses free text |
+| Rule maintenance | YAML rules are short, readable, versionable, and auditable by hand |
+
+The LLM handles what it does well — reading ambiguous text at scale. The inference
+engine handles what it does well — applying rules deterministically. Neither
+encroaches on the other's domain.
+
+> **On terminology.** The label *neuro-symbolic* is sometimes applied to systems
+> like Chorus. It is not accurate. In neuro-symbolic systems, a neural model learns
+> to simulate logical rules. In Chorus, the symbolic engine is real — frames, slots,
+> an explicit inference chain — and the LLM is a preprocessing tool. *Augmented
+> symbolic* is a more precise description.
+
+---
+
 Large language models (GPT, Claude, Gemini…) now achieve remarkable performance
 on comprehension, generation, and general reasoning tasks. This raises a
 legitimate question: what is a rule engine like Chorus still good for?

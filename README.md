@@ -58,6 +58,27 @@ $agent->loop();
 
 ---
 
+## Design note
+
+Chorus occupies a specific position in the current AI landscape.
+Most hybrid systems use a language model as the decision layer and rules as
+guardrails. Chorus inverts this: the LLM is an extraction tool that reads
+documents and populates structured frames; the rule engine handles all reasoning.
+The LLM never draws a conclusion.
+
+This means every result is reproducible. Running `chorus-check` twice on the
+same project file, on any machine, always produces the same output — no
+sampling, no temperature, no randomness in the decision layer. This is not a
+claim about AI architecture; it is a description of how the pipeline is wired.
+
+> The term *neuro-symbolic* is sometimes applied to systems like Chorus.
+> It is not accurate here. In neuro-symbolic systems, a neural model learns to
+> simulate logical rules. In Chorus, the symbolic engine is real — frames, slots,
+> inference chain — and the LLM is a preprocessing step. *Augmented symbolic*
+> is a more precise label.
+
+---
+
 ## What's new in 2.01
 
 - **`TERMINAL` field in the YAML DSL** — declare `TERMINAL: solved` or
