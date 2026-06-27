@@ -22,7 +22,7 @@
 
 ## Phase 0 — Sandbox inventory
 
-Call `eca__directory_tree $SANDBOX/` (max_depth=3) to confirm:
+Read the directory tree $SANDBOX/ (max_depth=3) to confirm:
 
 - `$SANDBOX/run.pl` — infrastructure present
 - `$SANDBOX/eca/.kb-hash` — hash present (infra is up to date)

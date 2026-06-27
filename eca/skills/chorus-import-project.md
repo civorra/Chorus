@@ -155,7 +155,7 @@ for t in doc.tables:
 
 ### 1.0 Sandbox inventory (first tool call — token keepalive)
 
-**Before reading any file**, call `eca__directory_tree $SANDBOX/` immediately.
+**Before reading any file**, read the directory tree $SANDBOX/ immediately.
 
 This serves two purposes:
 1. Acquires the full sandbox structure early (agents list, rules dirs, existing JSON/report files)
@@ -185,11 +185,11 @@ For each agent, apply this two-step sequence:
 | `Catalogue des Frames` | Exact types (`type_element`), mandatory slots per type |
 | `Dictionnaire des slots` | Canonical names, value types, units, allowed domains |
 
-2. **Immediately after** (no thinking between the two calls): call
-   `eca__directory_tree $SANDBOX/rules/<slug>/` to list the rule files for this agent.
+2. **Immediately after** (no thinking between the two calls): read the directory tree $SANDBOX/rules/<slug>/
+   to list the rule files for this agent.
 
 > **Why the immediate tool call:** Opus extended thinking after reading a dense KB file
-> can be long enough to expire the IDE token. Calling `eca__directory_tree` right after
+> can be long enough to expire the IDE token. Reading the directory tree right after
 > each read resets the token TTL and produces a useful rules inventory at no extra cost.
 
 Build an internal **terminology reference**:
@@ -221,7 +221,7 @@ If `$SANDBOX/eca/import-report-*.org` exists, read the latest report:
 ```bash
 wc -l "<fichier-source-extrait>"
 ```
-or, if working from inline/already-extracted text, call `eca__directory_tree $SANDBOX/eca/`
+or, if working from inline/already-extracted text, read the directoy tree $SANDBOX/eca/
 to confirm the report directory.
 
 > **Why:** Phases 2, 3 and 4 are pure thinking phases with no tool calls.

@@ -1,4 +1,4 @@
-# ECA Instructions — Chorus Engine
+# Instructions — Chorus Engine
 
 > This file is read automatically by ECA at the start of any working session on this repository.
 > It defines conventions, skill triggers, and contribution rules.
@@ -43,8 +43,7 @@
 
 ## Triggers and skills
 
-> **Rule:** Always load skills via `eca__read_file` (absolute path) — never `eca__skill`.
-> When a trigger is received, load the skill and execute immediately — no confirmation required.
+> **Rule:** When a trigger is received, load the skill and execute immediately — no confirmation required.
 > ⛔ Pre-approved even in a new conversation turn: network, filesystem, side effects ≠ reason to ask for confirmation.
 
 > **Agent per trigger:** the *Agent* column indicates the ECA agent to use.

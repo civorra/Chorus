@@ -23,7 +23,7 @@
 
 **This is the first action to execute, without exception.**
 
-Call `eca__directory_tree` on `$SANDBOX` (max_depth=3) and verify:
+Read the directory tree `$SANDBOX` (max_depth=3) and verify:
 
 ```
 $SANDBOX/run.pl
