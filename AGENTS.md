@@ -8,8 +8,8 @@
 | Alias | Path |
 |---|---|
 | `$ENGINE` | `.` — repository root |
-| `$SKILLS` | `./eca/skills/` — versioned ECA skills |
-| `KB` | `./eca/org/` — Chorus Knowledge Base (versioned) |
+| `$SKILLS` | `./agent/skills/` — versioned ECA skills |
+| `KB` | `./agent/org/` — Chorus Knowledge Base (versioned) |
 | `$SANDBOXES` | `./sandboxes/` — user sandbox working area (not committed) |
 
 > **Override:** if `$SANDBOXES` is redefined in a parent `AGENTS.md` (e.g. `$CHORUS/AGENTS.md`),
@@ -23,12 +23,12 @@
 - **Tracker:** `rt.cpan.org`, queues `Chorus-Expert` / `Chorus-Frame`
 - **Commits:** conventional format (`type: message`) — no `eca.dev` footer, no `Co-Authored-By`
 
-## ⛔ `eca/` — commit rules
+## ⛔ `agent/` — commit rules
 
-- `eca/skills/` — **must be committed**: versioned skills, integral to the engine
-- `eca/org/` — **must be committed**: KB templates and agent index, versioned
-- `eca/sessions/` — **never commit**: local session summaries
-- Never run `git add eca/` as a bulk command — always use `git add eca/skills/` and `git add eca/org/` explicitly.
+- `agent/skills/` — **must be committed**: versioned skills, integral to the engine
+- `agent/org/` — **must be committed**: KB templates and agent index, versioned
+- `agent/sessions/` — **never commit**: local session summaries
+- Never run `git add agent/` as a bulk command — always use `git add agent/skills/` and `git add agent/org/` explicitly.
 - `git add -A` or `git add .` are forbidden without prior verification of staged content.
 
 ## Language & conventions
@@ -52,16 +52,16 @@
 
 | Trigger / Context | Type | Skill | Agent |
 |---|---|---|---|
-| Perl code created or modified in this repository | auto | `perl-coding.md` + `./eca/skills/chorus-engine.md` | `architect` |
-| `engine-ctx` | command | `./eca/skills/chorus-engine.md` — full Chorus engine reference (Frame/Engine/Expert/Collection/YAML) | `fast` |
-| `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch]` | command | `./eca/skills/chorus-pdf.md` — extracts PDFs → enriched corpus. **4 modes: default (auto-detect → `--hybrid` if API key present, otherwise pdfminer without API → `-text.txt`) · `--hybrid` (pdfminer + cropped vision → `-vision.md`, default when key present) · `--auto` (pdfminer + targeted LLM vision → `-vision.md`) · `--images` (LLM vision all pages → `-vision.md`).** Prerequisite for `chorus-feed` when the corpus contains PDFs. | `architect` |
-| `chorus-feed <sandbox-name> <corpus>` | command | `./eca/skills/chorus-feed.md` — enriches sandbox knowledge: KB org per agent + YAML (Mode A init / Mode B incremental enrichment) | `architect` |
-| `chorus-check <sandbox-name> <project-file> [--all]` | command | `./eca/skills/chorus-check.md` — generates Feed+Agent+Expert+run.pl from the KB, runs the pipeline, produces the compliance report. `--all`: runs all `projet-*.json` in the sandbox and produces a synthesis table | `architect` |
-| `chorus-create-project <sandbox-name> <file.json> [--batch]` | command | `./eca/skills/chorus-create-project.md` — creates a JSON project file from the org KB (slots, thresholds, conforming/KO variants) — ⛔ never reads Helpers.pm or Feed.pm. `--batch`: generates the full 4-file coverage suite (`projet-rules-iso`, `projet-edges`, `projet-cross`, `projet-scale`) | `architect` |
-| `chorus-strengthen <sandbox-name>` | command | `./eca/skills/chorus-strengthen.md` — runs the full project suite, classifies discordances (rule too strict / too permissive / Feed gap), produces a structured gap report and an enrichment roadmap for `chorus-feed --enrich` | `architect` |
-| `chorus-import-project <sandbox-name> <source…> [--out <f.json>] [--batch]` | command | `./eca/skills/chorus-import-project.md` — aligns the terminology of a project document (PDF/Word/Excel/inline) with KB slots. **3 modes:** unit (1 file), fusion (N files → 1 JSON), batch (directory/glob → 1 JSON per file + synthesis report) | `architect` |
-| Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./eca/skills/chorus-engine-yaml.md`)* | `code` |
-| `cpan-release` | command | `./eca/skills/cpan-release.md` *(local — not distributed in the CPAN package)* | `code` |
+| Perl code created or modified in this repository | auto | `perl-coding.md` + `./agent/skills/chorus-engine.md` | `architect` |
+| `engine-ctx` | command | `./agent/skills/chorus-engine.md` — full Chorus engine reference (Frame/Engine/Expert/Collection/YAML) | `fast` |
+| `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch]` | command | `./agent/skills/chorus-pdf.md` — extracts PDFs → enriched corpus. **4 modes: default (auto-detect → `--hybrid` if API key present, otherwise pdfminer without API → `-text.txt`) · `--hybrid` (pdfminer + cropped vision → `-vision.md`, default when key present) · `--auto` (pdfminer + targeted LLM vision → `-vision.md`) · `--images` (LLM vision all pages → `-vision.md`).** Prerequisite for `chorus-feed` when the corpus contains PDFs. | `architect` |
+| `chorus-feed <sandbox-name> <corpus>` | command | `./agent/skills/chorus-feed.md` — enriches sandbox knowledge: KB org per agent + YAML (Mode A init / Mode B incremental enrichment) | `architect` |
+| `chorus-check <sandbox-name> <project-file> [--all]` | command | `./agent/skills/chorus-check.md` — generates Feed+Agent+Expert+run.pl from the KB, runs the pipeline, produces the compliance report. `--all`: runs all `projet-*.json` in the sandbox and produces a synthesis table | `architect` |
+| `chorus-create-project <sandbox-name> <file.json> [--batch]` | command | `./agent/skills/chorus-create-project.md` — creates a JSON project file from the org KB (slots, thresholds, conforming/KO variants) — ⛔ never reads Helpers.pm or Feed.pm. `--batch`: generates the full 4-file coverage suite (`projet-rules-iso`, `projet-edges`, `projet-cross`, `projet-scale`) | `architect` |
+| `chorus-strengthen <sandbox-name>` | command | `./agent/skills/chorus-strengthen.md` — runs the full project suite, classifies discordances (rule too strict / too permissive / Feed gap), produces a structured gap report and an enrichment roadmap for `chorus-feed --enrich` | `architect` |
+| `chorus-import-project <sandbox-name> <source…> [--out <f.json>] [--batch]` | command | `./agent/skills/chorus-import-project.md` — aligns the terminology of a project document (PDF/Word/Excel/inline) with KB slots. **3 modes:** unit (1 file), fusion (N files → 1 JSON), batch (directory/glob → 1 JSON per file + synthesis report) | `architect` |
+| Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./agent/skills/chorus-engine-yaml.md`)* | `code` |
+| `cpan-release` | command | `./agent/skills/cpan-release.md` *(local — not distributed in the CPAN package)* | `code` |
 | `git-ctx` | command | *(no skill — call `git__git_branch` + `git__git_status` + `git__git_log` on this repository)* | `fast` |
-| `skills` | meta | `eca__directory_tree ./eca/skills/` → name + status `✅` loaded / `○` available | `fast` |
+| `skills` | meta | `eca__directory_tree ./agent/skills/` → name + status `✅` loaded / `○` available | `fast` |
 | `skills details` | meta | same + description and trigger per skill | `fast` |

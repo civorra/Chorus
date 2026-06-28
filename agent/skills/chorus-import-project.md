@@ -31,10 +31,10 @@
 > Prerequisites: `chorus-feed <sandbox-name>` must have been run beforehand (org KB present).
 >
 > ⚠️ **KB sources to use — strict order:**
-> 1. `$SANDBOX/eca/agents/index.org` → Frame types, pipeline, namespace
-> 2. `$SANDBOX/eca/agents/<slug>.org` → sections `Ontologie`, `Dictionnaire des slots`,
+> 1. `$SANDBOX/agent/agents/index.org` → Frame types, pipeline, namespace
+> 2. `$SANDBOX/agent/agents/<slug>.org` → sections `Ontologie`, `Dictionnaire des slots`,
 >    `Catalogue des Frames` (mandatory slots, value domains)
-> 3. `$SANDBOX/eca/import-report-*.org` existing → previous alignment decisions
+> 3. `$SANDBOX/agent/import-report-*.org` existing → previous alignment decisions
 >
 > ⛔ **Never read** `Helpers.pm`, `Feed.pm`, `Agent/*.pm` to infer slots.
 > ⛔ **Never invent** a value absent from the source document — report the gap.
@@ -357,7 +357,7 @@ Use this inventory to:
 
 ### 1.1 Pipeline Index
 
-Read `$SANDBOX/eca/agents/index.org`:
+Read `$SANDBOX/agent/agents/index.org`:
 - Namespace + agent list (slug, pos)
 - Global slot dictionary (if present in the index)
 
@@ -365,7 +365,7 @@ Read `$SANDBOX/eca/agents/index.org`:
 
 For each agent, apply this two-step sequence:
 
-1. **Read** `$SANDBOX/eca/agents/<slug>.org` and extract:
+1. **Read** `$SANDBOX/agent/agents/<slug>.org` and extract:
 
 | KB Section | What we extract |
 |---|---|
@@ -395,7 +395,7 @@ section           → section_bois                —           "BxH" ex. "45x14
 
 ### 1.3 Previous alignment decisions
 
-If `$SANDBOX/eca/import-report-*.org` exists, read the latest report:
+If `$SANDBOX/agent/import-report-*.org` exists, read the latest report:
 - Retrieve previously validated mappings → reapply them without asking again
 - Retrieve pending questions → re-raise them if the same terms reappear
 
@@ -409,7 +409,7 @@ If `$SANDBOX/eca/import-report-*.org` exists, read the latest report:
 ```bash
 wc -l "<fichier-source-extrait>"
 ```
-or, if working from inline/already-extracted text, read the directoy tree $SANDBOX/eca/
+or, if working from inline/already-extracted text, read the directoy tree $SANDBOX/agent/
 to confirm the report directory.
 
 > **Why:** Phases 2, 3 and 4 are pure thinking phases with no tool calls.
@@ -587,7 +587,7 @@ No cross-file merging — each JSON is self-contained and can be piped independe
 
 ## Phase 6 — Produce the Import Report
 
-Create `$SANDBOX/eca/import-report-<NNN>.org`:
+Create `$SANDBOX/agent/import-report-<NNN>.org`:
 
 ```org
 #+TITLE: Import report — <source> — <date>
@@ -633,7 +633,7 @@ Create `$SANDBOX/eca/import-report-<NNN>.org`:
 
 ### Phase 6-BATCH — Summary Report (batch mode only)
 
-In addition to the individual reports, create `$SANDBOX/eca/import-batch-<NNN>.org`:
+In addition to the individual reports, create `$SANDBOX/agent/import-batch-<NNN>.org`:
 
 ```org
 #+TITLE: Batch summary report — <directory or glob> — <date>

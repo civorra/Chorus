@@ -38,7 +38,7 @@ generically. An AI agent is also needed when the normative corpus changes.
                                      │
                                      ▼
                       ┌─────────────────────────────────┐
-                      │  eca/agents/<slug>.org  (KB)    │
+                      │  agent/agents/<slug>.org  (KB)  │
                       │  rules/<slug>/R<NN>-xxx.yml     │
                       │  lib/…/Agent/<Slug>/Helpers.pm  │
                       └──────────────┬──────────────────┘
@@ -138,8 +138,8 @@ Used for a new sandbox or a fresh start. Creates the full sandbox structure:
 ```
 <sandbox-name>/
   corpus/001-<slug>.txt        ← the corpus
-  eca/agents/<slug>.org        ← KB per agent (ontology, slots, rules, helpers)
-  eca/agents/index.org         ← pipeline index
+  agent/agents/<slug>.org      ← KB per agent (ontology, slots, rules, helpers)
+  agent/agents/index.org       ← pipeline index
   rules/<slug>/R<NN>-xxx.yml   ← YAML inference rules
   lib/…/Agent/<Slug>/Helpers.pm ← normative tables (extracted from corpus)
   README.org
@@ -186,7 +186,7 @@ chorus-check <sandbox-name> project.json
 Or, to review what was generated before running:
 ```
 # Open the KB in your editor
-eca/agents/<slug>.org
+agent/agents/<slug>.org
 ```
 
 ---
@@ -206,7 +206,7 @@ infrastructure is checked once and reused for every project file.
 
 ### Smart regeneration
 
-`chorus-check` keeps a hash of the KB files (`eca/.kb-hash`). On each call:
+`chorus-check` keeps a hash of the KB files (`agent/.kb-hash`). On each call:
 
 - **KB unchanged** → skips all generation, runs `perl run.pl` directly (fast path)
 - **KB changed** (after a `chorus-feed --enrich`) → regenerates the infrastructure, then runs
@@ -300,8 +300,8 @@ This is useful for:
 
 ### What the AI agent reads
 
-1. `eca/agents/index.org` — Frame types, pipeline, namespace
-2. `eca/agents/<slug>.org` — mandatory slots, thresholds, valid value domains
+1. `agent/agents/index.org` — Frame types, pipeline, namespace
+2. `agent/agents/<slug>.org` — mandatory slots, thresholds, valid value domains
 3. Any existing `project-*.json` in the sandbox — reference format
 
 > ⚠️ `chorus-create-project` never reads `Helpers.pm`, `Feed.pm`, or any
@@ -429,14 +429,14 @@ domains the Chorus pipeline expects.
 
 ### What the AI agent reads
 
-1. `eca/agents/index.org` — Frame types, pipeline, namespace
-2. `eca/agents/<slug>.org` — slot names, value domains, mandatory/optional
-3. Previous `eca/import-report-*.org` — past alignment decisions (for consistency)
+1. `agent/agents/index.org` — Frame types, pipeline, namespace
+2. `agent/agents/<slug>.org` — slot names, value domains, mandatory/optional
+3. Previous `agent/import-report-*.org` — past alignment decisions (for consistency)
 
 ### What the AI agent produces
 
 - `project-import-<NNN>.json` — the aligned project JSON
-- `eca/import-report-<NNN>.org` — alignment report: term mappings, gaps, ambiguities
+- `agent/import-report-<NNN>.org` — alignment report: term mappings, gaps, ambiguities
 
 Gaps (values absent from the source document) are reported but never invented.
 
@@ -444,7 +444,7 @@ Gaps (values absent from the source document) are reported but never invented.
 
 ```
 # Review the import report before running:
-eca/import-report-<NNN>.org
+agent/import-report-<NNN>.org
 
 # Then validate:
 chorus-check <sandbox-name> project-import-<NNN>.json
@@ -463,8 +463,8 @@ chorus-pdf my-sandbox corpus/standard.pdf --auto
 
 # 2. Build the knowledge base
 chorus-feed my-sandbox corpus/001-standard-vision.md
-#   → eca/agents/*.org, rules/**/*.yml, lib/.../Helpers.pm
-#   ← domain expert reviews and corrects eca/agents/*.org
+#   → agent/agents/*.org, rules/**/*.yml, lib/.../Helpers.pm
+#   ← domain expert reviews and corrects agent/agents/*.org
 
 # 3. Generate infrastructure and run
 chorus-check my-sandbox project.json
@@ -567,7 +567,7 @@ project, an AI agent is required.
 | Command | Input | Output | Prerequisites |
 |---|---|---|---|
 | `chorus-pdf` | PDF file | `corpus/<NNN>-<slug>-text.txt` or `-vision.md` | `pdfminer.six`; API key for `--auto`/`--images` |
-| `chorus-feed` | `.txt` or `.md` corpus | `eca/agents/*.org`, YAML rules, `Helpers.pm` | — |
+| `chorus-feed` | `.txt` or `.md` corpus | `agent/agents/*.org`, YAML rules, `Helpers.pm` | — |
 | `chorus-check` | project JSON (or `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + report | `chorus-feed` run first |
 | `chorus-create-project` | *(KB only)* | project JSON or 4-file coverage suite (`--batch`) | `chorus-feed` run first |
 | `chorus-import-project` | engineer document | aligned project JSON + import report | `chorus-feed` run first |
@@ -580,9 +580,9 @@ project, an AI agent is required.
 - [`01-intro.md`](01-intro.md) — Chorus concepts, Frame model, inference engine, YAML DSL
 - [`02-ai-agent.md`](02-ai-agent.md) — LLM vs Chorus positioning, why the chain works
 - [`03-applications.md`](03-applications.md) — domain-by-domain analysis, onboarding times
-- `eca/skills/chorus-pdf.md` — full skill reference for `chorus-pdf`
-- `eca/skills/chorus-feed.md` — full skill reference for `chorus-feed`
-- `eca/skills/chorus-check.md` — full skill reference for `chorus-check`
-- `eca/skills/chorus-create-project.md` — full skill reference for `chorus-create-project`
-- `eca/skills/chorus-import-project.md` — full skill reference for `chorus-import-project`
-- `eca/skills/chorus-strengthen.md` — full skill reference for `chorus-strengthen`
+- `agent/skills/chorus-pdf.md` — full skill reference for `chorus-pdf`
+- `agent/skills/chorus-feed.md` — full skill reference for `chorus-feed`
+- `agent/skills/chorus-check.md` — full skill reference for `chorus-check`
+- `agent/skills/chorus-create-project.md` — full skill reference for `chorus-create-project`
+- `agent/skills/chorus-import-project.md` — full skill reference for `chorus-import-project`
+- `agent/skills/chorus-strengthen.md` — full skill reference for `chorus-strengthen`

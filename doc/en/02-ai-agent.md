@@ -131,7 +131,7 @@ chorus-pdf  standard.pdf --auto
 chorus-feed my-sandbox corpus/001-standard-vision.md
     → identifies specialities → agents
     → designs the slot ontology
-    → writes eca/agents/<speciality>.org (KB per agent)
+    → writes agent/agents/<speciality>.org (KB per agent)
     → generates rules/<speciality>/R01-xxx.yml … (YAML rules)
     → generates lib/MyApp/Agent/<Speciality>/Helpers.pm (normative tables)
 
@@ -162,7 +162,7 @@ standard.pdf
 corpus/
     │ chorus-feed
     ▼
-eca/agents/*.org  ←──── domain expert reads, corrects, refines
+agent/agents/*.org  ←──── domain expert reads, corrects, refines
 rules/**/*.yml
 lib/**/Helpers.pm
     │ chorus-check
@@ -194,7 +194,7 @@ from the corpus. Not a single line written by hand.
 
 > The AI agent skills for Chorus (`chorus-pdf`, `chorus-feed`, `chorus-check`,
 > `chorus-create-project`, `chorus-import-project`) are versioned in
-> `$ENGINE/eca/skills/` and documented in the repository.
+> `$ENGINE/agent/skills/` and documented in the repository.
 
 > **Explore the sandbox without an AI agent:** the sandboxes `examples/sandboxes/cob-compliance_en`
 > and `cob-compliance_fr` contain the full set of artefacts produced by the

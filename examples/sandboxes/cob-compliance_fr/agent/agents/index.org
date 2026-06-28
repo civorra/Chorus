@@ -3,11 +3,11 @@
 * Pipeline global
   | Pos | Agent (module Perl)           | Slug          | KB                          | Statut |
   |-----+-------------------------------+---------------+-----------------------------+--------|
-  |   1 | COB::Agent::Qualification     | qualification | eca/agents/qualification.org | draft  |
-  |   2 | COB::Agent::Ossature          | ossature      | eca/agents/ossature.org      | draft  |
-  |   3 | COB::Agent::Thermique         | thermique     | eca/agents/thermique.org     | draft  |
-  |   4 | COB::Agent::SecuriteFeu       | securite-feu  | eca/agents/securite-feu.org  | draft  |
-  |   5 | COB::Agent::Conformite        | conformite    | eca/agents/conformite.org    | draft  |
+  |   1 | COB::Agent::Qualification     | qualification | agent/agents/qualification.org | draft  |
+  |   2 | COB::Agent::Ossature          | ossature      | agent/agents/ossature.org      | draft  |
+  |   3 | COB::Agent::Thermique         | thermique     | agent/agents/thermique.org     | draft  |
+  |   4 | COB::Agent::SecuriteFeu       | securite-feu  | agent/agents/securite-feu.org  | draft  |
+  |   5 | COB::Agent::Conformite        | conformite    | agent/agents/conformite.org    | draft  |
 
 * Cohérence du pipeline
   - Slot ciblage agent 1 (qualification)  : =besoin_qualification= — posé par feed initial

@@ -40,7 +40,7 @@ est aussi nécessaire lorsque le corpus normatif change.
                                      │
                                      ▼
                       ┌─────────────────────────────────┐
-                      │  eca/agents/<slug>.org  (KB)    │
+                      │  agent/agents/<slug>.org  (KB)  │
                       │  rules/<slug>/R<NN>-xxx.yml     │
                       │  lib/…/Agent/<Slug>/Helpers.pm  │
                       └──────────────┬──────────────────┘
@@ -144,8 +144,8 @@ Utilisé pour un nouveau sandbox ou un nouveau départ. Crée la structure compl
 ```
 <sandbox-name>/
   corpus/001-<slug>.txt          ← le corpus
-  eca/agents/<slug>.org          ← KB par agent (ontologie, slots, règles, helpers)
-  eca/agents/index.org           ← index du pipeline
+  agent/agents/<slug>.org        ← KB par agent (ontologie, slots, règles, helpers)
+  agent/agents/index.org         ← index du pipeline
   rules/<slug>/R<NN>-xxx.yml     ← règles d'inférence YAML
   lib/…/Agent/<Slug>/Helpers.pm  ← tables normatives (extraites du corpus)
   README.org
@@ -193,7 +193,7 @@ chorus-check <sandbox-name> projet.json
 Ou, pour relire ce qui a été généré avant d'exécuter :
 ```
 # Ouvrir la KB dans l'éditeur
-eca/agents/<slug>.org
+agent/agents/<slug>.org
 ```
 
 ---
@@ -213,7 +213,7 @@ l'infrastructure est vérifiée une seule fois et réutilisée pour chaque fichi
 
 ### Régénération intelligente
 
-`chorus-check` conserve un hash des fichiers KB (`eca/.kb-hash`). À chaque appel :
+`chorus-check` conserve un hash des fichiers KB (`agent/.kb-hash`). À chaque appel :
 
 - **KB inchangée** → saute toute la génération, exécute `perl run.pl` directement (chemin rapide)
 - **KB modifiée** (après un `chorus-feed --enrich`) → régénère l'infrastructure, puis exécute
@@ -307,8 +307,8 @@ Utile pour :
 
 ### Ce que l'agent IA lit
 
-1. `eca/agents/index.org` — types de Frame, pipeline, namespace
-2. `eca/agents/<slug>.org` — slots obligatoires, seuils, domaines de valeurs valides
+1. `agent/agents/index.org` — types de Frame, pipeline, namespace
+2. `agent/agents/<slug>.org` — slots obligatoires, seuils, domaines de valeurs valides
 3. Tout `projet-*.json` existant dans le sandbox — format de référence
 
 > ⚠️ `chorus-create-project` ne lit jamais `Helpers.pm`, `Feed.pm` ni aucun
@@ -439,14 +439,14 @@ arguments sources.
 
 ### Ce que l'agent IA lit
 
-1. `eca/agents/index.org` — types de Frame, pipeline, namespace
-2. `eca/agents/<slug>.org` — noms de slots, domaines de valeurs, obligatoires/optionnels
-3. Tout `eca/import-report-*.org` précédent — décisions d'alignement antérieures (pour la cohérence)
+1. `agent/agents/index.org` — types de Frame, pipeline, namespace
+2. `agent/agents/<slug>.org` — noms de slots, domaines de valeurs, obligatoires/optionnels
+3. Tout `agent/import-report-*.org` précédent — décisions d'alignement antérieures (pour la cohérence)
 
 ### Ce que l'agent IA produit
 
 - `projet-import-<NNN>.json` — le JSON projet aligné
-- `eca/import-report-<NNN>.org` — rapport d'alignement : correspondances de termes, lacunes, ambiguïtés
+- `agent/import-report-<NNN>.org` — rapport d'alignement : correspondances de termes, lacunes, ambiguïtés
 
 Les lacunes (valeurs absentes du document source) sont signalées mais jamais inventées.
 
@@ -454,7 +454,7 @@ Les lacunes (valeurs absentes du document source) sont signalées mais jamais in
 
 ```
 # Relire le rapport d'import avant d'exécuter :
-eca/import-report-<NNN>.org
+agent/import-report-<NNN>.org
 
 # Puis valider :
 chorus-check <sandbox-name> projet-import-<NNN>.json
@@ -473,8 +473,8 @@ chorus-pdf mon-sandbox corpus/norme.pdf --auto
 
 # 2. Construire la base de connaissance
 chorus-feed mon-sandbox corpus/001-norme-vision.md
-#   → eca/agents/*.org, rules/**/*.yml, lib/.../Helpers.pm
-#   ← l'expert du domaine relit et corrige eca/agents/*.org
+#   → agent/agents/*.org, rules/**/*.yml, lib/.../Helpers.pm
+#   ← l'expert du domaine relit et corrige agent/agents/*.org
 
 # 3. Générer l'infrastructure et exécuter
 chorus-check mon-sandbox projet.json
@@ -577,7 +577,7 @@ adapter un nouveau projet, un agent IA est requis.
 | Commande | Entrée | Sortie | Prérequis |
 |---|---|---|---|
 | `chorus-pdf` | Fichier PDF | `corpus/<NNN>-<slug>-text.txt` ou `-vision.md` | `pdfminer.six` ; clé API pour `--auto`/`--images` |
-| `chorus-feed` | Corpus `.txt` ou `.md` | `eca/agents/*.org`, règles YAML, `Helpers.pm` | — |
+| `chorus-feed` | Corpus `.txt` ou `.md` | `agent/agents/*.org`, règles YAML, `Helpers.pm` | — |
 | `chorus-check` | JSON projet (ou `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + rapport | `chorus-feed` exécuté au préalable |
 | `chorus-create-project` | *(KB uniquement)* | JSON projet ou suite de 4 fichiers (`--batch`) | `chorus-feed` exécuté au préalable |
 | `chorus-import-project` | Document d'ingénieur | JSON projet aligné + rapport d'import | `chorus-feed` exécuté au préalable |
@@ -590,9 +590,9 @@ adapter un nouveau projet, un agent IA est requis.
 - [`01-intro.md`](01-intro.md) — concepts Chorus, modèle Frame, moteur d'inférence, DSL YAML
 - [`02-ai-agent.md`](02-ai-agent.md) — positionnement LLM vs Chorus, pourquoi la chaîne fonctionne
 - [`03-applications.md`](03-applications.md) — analyse par domaine, temps d'onboarding
-- `eca/skills/chorus-pdf.md` — référence complète du skill `chorus-pdf`
-- `eca/skills/chorus-feed.md` — référence complète du skill `chorus-feed`
-- `eca/skills/chorus-check.md` — référence complète du skill `chorus-check`
-- `eca/skills/chorus-create-project.md` — référence complète du skill `chorus-create-project`
-- `eca/skills/chorus-import-project.md` — référence complète du skill `chorus-import-project`
-- `eca/skills/chorus-strengthen.md` — référence complète du skill `chorus-strengthen`
+- `agent/skills/chorus-pdf.md` — référence complète du skill `chorus-pdf`
+- `agent/skills/chorus-feed.md` — référence complète du skill `chorus-feed`
+- `agent/skills/chorus-check.md` — référence complète du skill `chorus-check`
+- `agent/skills/chorus-create-project.md` — référence complète du skill `chorus-create-project`
+- `agent/skills/chorus-import-project.md` — référence complète du skill `chorus-import-project`
+- `agent/skills/chorus-strengthen.md` — référence complète du skill `chorus-strengthen`

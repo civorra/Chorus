@@ -138,7 +138,7 @@ chorus-pdf  norme.pdf --auto
 chorus-feed mon-sandbox corpus/001-norme-vision.md
     → identifie les spécialités → agents
     → conçoit l'ontologie de slots
-    → écrit eca/agents/<specialite>.org (KB par agent)
+    → écrit agent/agents/<specialite>.org (KB par agent)
     → génère rules/<specialite>/R01-xxx.yml … (règles YAML)
     → génère lib/MonApp/Agent/<Specialite>/Helpers.pm (tables normatives)
 
@@ -170,7 +170,7 @@ norme.pdf
 corpus/
     │ chorus-feed
     ▼
-eca/agents/*.org  ←──── l'expert du domaine lit, corrige, affine
+agent/agents/*.org  ←──── l'expert du domaine lit, corrige, affine
 rules/**/*.yml
 lib/**/Helpers.pm
     │ chorus-check
@@ -202,7 +202,7 @@ générée par un agent IA depuis le corpus. Aucune ligne écrite à la main.
 
 > Les skills de l'agent IA pour Chorus (`chorus-pdf`, `chorus-feed`, `chorus-check`,
 > `chorus-create-project`, `chorus-import-project`) sont versionnés dans
-> `$ENGINE/eca/skills/` et documentés dans le dépôt.
+> `$ENGINE/agent/skills/` et documentés dans le dépôt.
 
 > **Explorer le sandbox sans agent IA :** les sandboxes `examples/sandboxes/cob-compliance_fr`
 > et `cob-compliance_en` contiennent l'intégralité des artefacts produits par la

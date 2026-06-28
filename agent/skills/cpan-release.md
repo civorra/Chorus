@@ -79,7 +79,7 @@ cd /home/civorra/Documents/Chorus/Engine && perl Makefile.PL && make manifest
 ```
 
 Verify that `lib/Chorus/Engine/ECA.pod` is present in `MANIFEST`.
-Verify that `eca/`, `doc/`, `MYMETA.*`, `Makefile` are absent (excluded by `MANIFEST.SKIP`).
+Verify that `agent/`, `doc/`, `MYMETA.*`, `Makefile` are absent (excluded by `MANIFEST.SKIP`).
 
 ### 2.2 Check MANIFEST Discrepancies
 
@@ -137,9 +137,9 @@ tar tzf /home/civorra/Documents/Chorus/Engine/Chorus-Engine-X.YY.tar.gz | sort
 
 Checkpoints:
 - [ ] `lib/Chorus/Engine/ECA.pod` present
-- [ ] `eca/skills/` present (except `cpan-release.md`)
-- [ ] `eca/org/` present
-- [ ] `eca/sessions/` absent
+- [ ] `agent/skills/` present (except `cpan-release.md`)
+- [ ] `agent/org/` present
+- [ ] `agent/sessions/` absent
 - [ ] `doc/` present
 - [ ] `MYMETA.*` absent
 - [ ] `Makefile` (generated) absent — `Makefile.PL` present ✓
@@ -205,7 +205,7 @@ Removes: `Makefile`, `MYMETA.*`, `pm_to_blib`, `blib/`, the `.tar.gz` tarball.
 - [ ] `$VERSION` bumped in `lib/Chorus/Engine.pm`
 - [ ] `Changes` updated with date and summary
 - [ ] Bump commit pushed to `devel`
-- [ ] `make manifest` — consistent MANIFEST, `ECA.pod` present, `eca/` absent
+- [ ] `make manifest` — consistent MANIFEST, `ECA.pod` present, `agent/` absent
 - [ ] `make distcheck` — zero discrepancies
 - [ ] `make test` — all green
 - [ ] POD checker — zero errors across all 6 files

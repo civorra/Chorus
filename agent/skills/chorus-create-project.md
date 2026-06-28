@@ -16,8 +16,8 @@
 > Prerequisites: `chorus-feed <sandbox-name>` must have been run beforehand.
 >
 > ⚠️ **Sources to use — strict order:**
-> 1. `$SANDBOX/eca/agents/index.org` → Frame types, pipeline, namespace
-> 2. `$SANDBOX/eca/agents/<slug>.org` → mandatory slots, thresholds, helpers
+> 1. `$SANDBOX/agent/agents/index.org` → Frame types, pipeline, namespace
+> 2. `$SANDBOX/agent/agents/<slug>.org` → mandatory slots, thresholds, helpers
 > 3. An existing `projet-*.json` file in `$SANDBOX/` → reference format
 >
 > ⛔ **Never read** `Helpers.pm`, `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl`
@@ -44,7 +44,7 @@ Use this inventory to:
 
 ### 0.1 Pipeline index
 
-Read `$SANDBOX/eca/agents/index.org`:
+Read `$SANDBOX/agent/agents/index.org`:
 - Perl namespace of the project
 - Ordered list of agents (slug, module, pos)
 - Global slot dictionary (if present)
@@ -53,7 +53,7 @@ Read `$SANDBOX/eca/agents/index.org`:
 
 For each agent, apply this two-step sequence:
 
-1. **Read** `$SANDBOX/eca/agents/<slug>.org` and extract:
+1. **Read** `$SANDBOX/agent/agents/<slug>.org` and extract:
 
 | KB Section | What to extract |
 |---|---|

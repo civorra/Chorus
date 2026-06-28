@@ -363,7 +363,7 @@ The script prints the exact `nohup` command to copy-paste, then exits with code 
 [chorus-pdf]   → 31 pages, 12 with figures, 18 figure(s) total
 [chorus-pdf] ⚠️  18 figures detected — estimated time ~9–13 min (threshold: 15).
 [chorus-pdf]    Run with nohup to avoid a 10-min IDE timeout:
-[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup python3 /path/to/eca/extract-pdf-<slug>.py > corpus/<NNN>-<slug>-vision.md.log 2>&1 &
+[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup python3 /path/to/agent/extract-pdf-<slug>.py > corpus/<NNN>-<slug>-vision.md.log 2>&1 &
 ```
 
 The threshold constant `NOHUP_THRESHOLD = 15` is defined at the top of the script
@@ -382,8 +382,8 @@ whether it is running inside the IDE or not.
 
 ## Phase 2 — Generate the extraction script
 
-Create `$SANDBOX/eca/` if it does not exist.
-writes `$SANDBOX/eca/extract-pdf-<slug>.py`, then executes it
+Create `$SANDBOX/agent/` if it does not exist.
+writes `$SANDBOX/agent/extract-pdf-<slug>.py`, then executes it
 
 ### Vision extraction prompt (used verbatim in `--auto` and `--images` scripts)
 
@@ -1265,7 +1265,7 @@ if __name__ == "__main__":
 ### 3.1 Execute the script
 
 ```bash
-python3 "$SANDBOX/eca/extract-pdf-<slug>.py"
+python3 "$SANDBOX/agent/extract-pdf-<slug>.py"
 ```
 
 Capture stderr for progress reporting. Exit code 0 = success.
@@ -1391,7 +1391,7 @@ The `pdftotext` output can be kept for diff/audit purposes.
 
 | Artifact | Convention | Example |
 |----------|-----------|---------|
-| Extraction script | `eca/extract-pdf-<slug>.py` | `eca/extract-pdf-uk-approved-doc-a.py` |
+| Extraction script | `agent/extract-pdf-<slug>.py` | `agent/extract-pdf-uk-approved-doc-a.py` |
 | Text mode output | `corpus/<NNN>-<slug>-text.txt` | `corpus/003-uk-approved-doc-a-2013-text.txt` |
 | Auto/Hybrid/Images output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-uk-approved-doc-a-2013-vision.md` |
 | Original PDF | kept as-is in `corpus/` | `corpus/002-uk-approved-doc-a-2013.pdf` |
@@ -1430,7 +1430,7 @@ The `pdftotext` output can be kept for diff/audit purposes.
 → The layout analysis detected ≥ 16 figures. The script aborted before any API call.
   Copy the `nohup` command printed to stderr and run it in a terminal:
   ```bash
-  nohup python3 $SANDBOX/eca/extract-pdf-<slug>.py > $SANDBOX/corpus/<NNN>-<slug>-vision.md.log 2>&1 &
+  nohup python3 $SANDBOX/agent/extract-pdf-<slug>.py > $SANDBOX/corpus/<NNN>-<slug>-vision.md.log 2>&1 &
   tail -f $SANDBOX/corpus/<NNN>-<slug>-vision.md.log
   ```
   The threshold `NOHUP_THRESHOLD = 15` can be raised in the script header if your

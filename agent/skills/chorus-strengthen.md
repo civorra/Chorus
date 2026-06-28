@@ -25,7 +25,7 @@
 Read the directory tree $SANDBOX/ (max_depth=3) to confirm:
 
 - `$SANDBOX/run.pl` — infrastructure present
-- `$SANDBOX/eca/.kb-hash` — hash present (infra is up to date)
+- `$SANDBOX/agent/.kb-hash` — hash present (infra is up to date)
 - `$SANDBOX/projet-*.json` — at least one project file
 
 If the infrastructure is absent or the hash is missing → stop:
@@ -90,7 +90,7 @@ agent KB that cover the implicated rule:
 - `Helpers Perl` section → normative tables for the implicated slot
 - `Contraintes & Pitfalls` section → known edge cases
 
-> **Strict isolation:** read only `$SANDBOX/eca/agents/<slug>.org`.
+> **Strict isolation:** read only `$SANDBOX/agent/agents/<slug>.org`.
 > Never read any file from another sandbox.
 
 ---

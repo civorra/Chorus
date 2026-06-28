@@ -11,7 +11,7 @@ Chorus::Engine::AIAgent - AI agent integration for compliance-validation applica
 =head1 DESCRIPTION
 
 Starting with version 2.01, C<Chorus::Engine> ships an optional companion
-directory, C<eca/>, that turns the inference engine into a B<normed-corpus
+directory, C<agent/>, that turns the inference engine into a B<normed-corpus
 compliance-validation platform> when used together with an B<AI agent>
 (Claude, Copilot, ECA…).
 
@@ -45,7 +45,7 @@ The architecture connects three layers:
                            │  chorus-feed
                            ▼
   ┌──────────────────────────────────────────────────────────┐
-  │  KB org-mode  (eca/agents/<slug>.org)                    │
+  │  KB org-mode  (agent/agents/<slug>.org)                  │
   │  · Frames catalogue    · Slot dictionary                 │
   │  · Rules catalogue     · Perl helpers (normative tables) │
   └────────────────────────┬─────────────────────────────────┘
@@ -54,15 +54,15 @@ The architecture connects three layers:
                  ▼                   ▼
   ┌──────────────────────┐   ┌──────────────────────────┐
   │ YAML rules           │   │ project.json             │
-  │ Perl helpers         │   │ (test data or real        │
-  │ Feed.pm / Expert.pm  │   │  engineering project)     │
+  │ Perl helpers         │   │ (test data or real       │
+  │ Feed.pm / Expert.pm  │   │  engineering project)    │
   │ run.pl               │   └──────────────────────────┘
   └────────────┬─────────┘
                │  perl run.pl project.json
                ▼
   ┌──────────────────────────────────────────────────────────┐
   │  Chorus::Expert pipeline                                 │
-  │  Agent1 → Agent2 → … → AgentN (termination)             │
+  │  Agent1 → Agent2 → … → AgentN (termination)              │
   └────────────────────────┬─────────────────────────────────┘
                            │
                            ▼
@@ -70,7 +70,7 @@ The architecture connects three layers:
 
 =head1 AI AGENT SKILLS
 
-The skills live in C<eca/skills/> and are loaded on demand by the AI agent.
+The skills live in C<agent/skills/> and are loaded on demand by the AI agent.
 They cover the entire lifecycle of a compliance-validation application.
 
 =head2 chorus-pdf
@@ -101,14 +101,14 @@ sandbox:
 
 =over 4
 
-=item * One C<eca/agents/E<lt>slugE<gt>.org> KB file per agent (domain, Frame
+=item * One C<agent/agents/E<lt>slugE<gt>.org> KB file per agent (domain, Frame
 catalogue, slot dictionary, rules catalogue, Perl helpers).
 
 =item * One YAML rules file per rule (C<rules/E<lt>slugE<gt>/RNN-name.yml>).
 
 =item * One C<Helpers.pm> per agent (normative tables, computed thresholds).
 
-=item * C<eca/agents/index.org> (pipeline registry).
+=item * C<agent/agents/index.org> (pipeline registry).
 
 =back
 
@@ -192,7 +192,7 @@ Never modifies any KB, YAML, or Perl file — read-only analysis.
 =head1 KB MODEL
 
 Each agent's knowledge is stored in a single org-mode file following the
-template C<eca/org/agents/_template.org>.  The template has ten sections:
+template C<agent/org/agents/_template.org>.  The template has ten sections:
 
   * Domain               — agent speciality and corpus scope
   * Targeting slots      — _SCOPE strategy + pre-population contract
@@ -204,7 +204,7 @@ template C<eca/org/agents/_template.org>.  The template has ten sections:
   * Perl helpers         — normative helper signatures + full bodies
   * Constraints          — domain-specific caveats and pitfalls
 
-The pipeline registry C<eca/agents/index.org> records all agents in pipeline
+The pipeline registry C<agent/agents/index.org> records all agents in pipeline
 order with their Perl module name, slug, KB file, and status.
 
 =head1 SANDBOX LAYOUT
@@ -216,7 +216,7 @@ generated infrastructure, and the project files for one application domain:
     README.org              pipeline overview, corpus list, agent status
     corpus/
       001-<source>.txt      normative corpus (numbered for incremental feed)
-    eca/
+    agent/
       agents/
         index.org           pipeline registry
         <slug>.org          per-agent KB file
@@ -296,43 +296,43 @@ derived from the current state of the KB.
 
 =over 4
 
-=item C<eca/skills/chorus-engine.md>
+=item C<agent/skills/chorus-engine.md>
 
 Full engine reference (Frame, Engine, Expert, Collection, YAML DSL,
 anti-pitfalls). Loaded automatically by the AI agent when Perl code is
 created or modified inside the repository.
 
-=item C<eca/skills/chorus-pdf.md>
+=item C<agent/skills/chorus-pdf.md>
 
 Detailed instructions for the C<chorus-pdf> skill (extraction modes, prerequisites).
 
-=item C<eca/skills/chorus-feed.md>
+=item C<agent/skills/chorus-feed.md>
 
 Detailed instructions for the C<chorus-feed> skill (Mode A + Mode B).
 
-=item C<eca/skills/chorus-check.md>
+=item C<agent/skills/chorus-check.md>
 
 Detailed instructions for the C<chorus-check> skill (fast path + full path).
 
-=item C<eca/skills/chorus-create-project.md>
+=item C<agent/skills/chorus-create-project.md>
 
 Detailed instructions for the C<chorus-create-project> skill.
 
-=item C<eca/skills/chorus-import-project.md>
+=item C<agent/skills/chorus-import-project.md>
 
 Detailed instructions for the C<chorus-import-project> skill (unit / fusion /
 batch modes).
 
-=item C<eca/skills/chorus-strengthen.md>
+=item C<agent/skills/chorus-strengthen.md>
 
 Detailed instructions for the C<chorus-strengthen> skill (gap classification,
 enrichment roadmap).
 
-=item C<eca/org/agents/_template.org>
+=item C<agent/org/agents/_template.org>
 
 Canonical KB template for a pipeline agent (all sections).
 
-=item C<eca/org/agents/index.org>
+=item C<agent/org/agents/index.org>
 
 Pipeline registry template (agent table, pipeline notes, corpus index).
 
