@@ -10,10 +10,10 @@
 > **Single responsibility: enrich knowledge.**
 > This skill never generates infrastructure code (Feed, shell Agent, Expert, run.pl).
 > It produces:
->   - KB org-mode files per agent (`agent/agents/<slug>.org`)
+>   - KB org-mode files per agent (`agent/chorus/<slug>.org`)
 >   - YAML rule files (`rules/<slug>/R<NN>-xxx.yml`)
 >   - Business knowledge Perl helpers (`lib/<Namespace>/Agent/<Slug>/Helpers.pm`)
->   - Pipeline index (`agent/agents/index.org`)
+>   - Pipeline index (`agent/chorus/index.org`)
 >
 > To validate a project based on this knowledge → use `chorus-check`.
 
@@ -71,7 +71,7 @@ The `--enrich` flag is required to activate Mode B.
 | No `--enrich` flag | **Mode A** — ignore any existing KB in the sandbox |
 | `--enrich` flag present | **Mode B** — read existing KB and enrich |
 
-> ⚠ Without `--enrich`, **never** read `agent/agents/`, existing YAMLs, or
+> ⚠ Without `--enrich`, **never** read `agent/chorus/`, existing YAMLs, or
 > any other KB artifact from the sandbox — even if the `<sandbox-name>` directory already exists.
 > The provided corpus is treated as a fresh source, independent of any existing context.
 
@@ -87,7 +87,7 @@ Create the directory structure:
 
 ```bash
 SANDBOX="$SANDBOXES/<sandbox-name>"
-mkdir -p "$SANDBOX/agent/agents"
+mkdir -p "$SANDBOX/agent/chorus"
 mkdir -p "$SANDBOX/corpus"
 mkdir -p "$SANDBOX/rules"
 mkdir -p "$SANDBOX/lib"
@@ -190,7 +190,7 @@ The engine's default value (`10 000`) is a safeguard against infinite loops
 
 ### Phase 3 — Fill the KB per agent
 
-Create `$SANDBOX/agent/agents/<slug>.org` from `_template.org`.
+Create `$SANDBOX/agent/chorus/<slug>.org` from `_template.org`.
 Mandatory fill order:
 
 1. Header (`#+AGENT`, `#+PIPELINE_POS`, `#+RULES_DIR`)
@@ -230,7 +230,7 @@ Points to watch:
 - Termination: document in which rule and under what condition `solved()` is called
 - Naming: `R<NN>-<slug>.yml` — alphabetical order = load order
 
-### Phase 4 — Create `agent/agents/index.org`
+### Phase 4 — Create `agent/chorus/index.org`
 
 ```org
 #+TITLE: Pipeline — <sandbox-name>
@@ -238,7 +238,7 @@ Points to watch:
 * Pipeline global
   | Pos | Agent (module Perl)     | Slug    | KB                 | Statut |
   |-----+-------------------------+---------+--------------------+--------|
-  |   1 | <Namespace>::Agent::Xxx | <slug>  | agent/agents/x.org   | draft  |
+  |   1 | <Namespace>::Agent::Xxx | <slug>  | agent/chorus/x.org   | draft  |
 
 * Pipeline consistency
   - Agent 1 targeting slot: set by → initial feed
@@ -465,8 +465,8 @@ Used **only** when `--enrich` is present in the command.
 
 ### Phase B0 — Read existing KB
 
-1. Read `agent/agents/index.org` → current pipeline, known agents
-2. Read each `agent/agents/<slug>.org` → Slot dictionary, Rule catalog
+1. Read `agent/chorus/index.org` → current pipeline, known agents
+2. Read each `agent/chorus/<slug>.org` → Slot dictionary, Rule catalog
 3. Read existing YAML files → already codified rules
 
 ### Phase B1 — Analyze the new corpus
@@ -487,7 +487,7 @@ Update the `Integrated corpus` table in `index.org`.
 ### Phase B3 — Apply changes
 
 **Refinement case:**
-- Open `agent/agents/<slug>.org`
+- Open `agent/chorus/<slug>.org`
 - Add the rule to `Rule catalog`
 - Update `Slot dictionary` if new slots
 - Generate the corresponding YAML file in `rules/<slug>/`

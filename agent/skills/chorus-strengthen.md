@@ -90,7 +90,7 @@ agent KB that cover the implicated rule:
 - `Helpers Perl` section → normative tables for the implicated slot
 - `Contraintes & Pitfalls` section → known edge cases
 
-> **Strict isolation:** read only `$SANDBOX/agent/agents/<slug>.org`.
+> **Strict isolation:** read only `$SANDBOX/agent/chorus/<slug>.org`.
 > Never read any file from another sandbox.
 
 ---

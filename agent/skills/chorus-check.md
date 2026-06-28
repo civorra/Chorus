@@ -56,7 +56,7 @@ $SANDBOX/lib/<Namespace>/Agent/<Nom>.pm  ← au moins un
 Compare the current KB hash against the stored one:
 
 ```bash
-sha256sum $SANDBOX/agent/agents/*.org > /tmp/kb-hash-current
+sha256sum $SANDBOX/agent/chorus/*.org > /tmp/kb-hash-current
 ```
 
 - `$SANDBOX/agent/.kb-hash` **absent** → the infrastructure predates hash tracking
@@ -78,7 +78,7 @@ sha256sum $SANDBOX/agent/agents/*.org > /tmp/kb-hash-current
 Load:
 - `chorus-engine-infra.md` — Perl infrastructure reference (Core Mechanisms, Multi-Specialty Pattern, checklists)
 - `chorus-templates.md` — Perl infrastructure templates (T1–T5)
-- `$SANDBOX/agent/agents/index.org` — pipeline, agents, namespace
+- `$SANDBOX/agent/chorus/index.org` — pipeline, agents, namespace
 
 > ⚠️ Do not read agent KBs (`<slug>.org`) or YAML files at this stage.
 > They are only needed during generation (infrastructure absent).
@@ -90,8 +90,8 @@ Then execute Phases 0, 1–5, 6, 7 in order.
 ## Phase 0 — KB prerequisite check *(full path only)*
 
 ```
-$SANDBOX/agent/agents/index.org     ← must exist
-$SANDBOX/agent/agents/<slug>.org    ← at least one agent
+$SANDBOX/agent/chorus/index.org     ← must exist
+$SANDBOX/agent/chorus/<slug>.org    ← at least one agent
 $SANDBOX/rules/<slug>/            ← at least one YAML file per agent
 ```
 
@@ -229,7 +229,7 @@ Once all infrastructure files have been generated successfully, record the
 current KB fingerprint so that the next `chorus-check` can detect staleness:
 
 ```bash
-sha256sum $SANDBOX/agent/agents/*.org > $SANDBOX/agent/.kb-hash
+sha256sum $SANDBOX/agent/chorus/*.org > $SANDBOX/agent/.kb-hash
 ```
 
 This file is **never committed** (local artefact, like `sessions/`).
@@ -480,7 +480,7 @@ Next step: chorus-strengthen <sandbox-name>
 > ⚠️ This checklist applies **only after generation** of Phases 1–5.
 > Do not run it on the fast path (infrastructure already present).
 
-- [ ] `agent/.kb-hash` written after generation — contains `sha256sum` of all `agent/agents/*.org`
+- [ ] `agent/.kb-hash` written after generation — contains `sha256sum` of all `agent/chorus/*.org`
 - [ ] `Feed.pm`: agent 1 targeting slot present in `%SLOTS_REQUIS`
 - [ ] `Feed.pm`: mandatory slot validation covers all element types in the project
 - [ ] `Feed.pm`: unknown types → `warn + next` (not `die`) — safety net for mixed-sandbox JSON

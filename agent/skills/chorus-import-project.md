@@ -31,8 +31,8 @@
 > Prerequisites: `chorus-feed <sandbox-name>` must have been run beforehand (org KB present).
 >
 > ⚠️ **KB sources to use — strict order:**
-> 1. `$SANDBOX/agent/agents/index.org` → Frame types, pipeline, namespace
-> 2. `$SANDBOX/agent/agents/<slug>.org` → sections `Ontologie`, `Dictionnaire des slots`,
+> 1. `$SANDBOX/agent/chorus/index.org` → Frame types, pipeline, namespace
+> 2. `$SANDBOX/agent/chorus/<slug>.org` → sections `Ontologie`, `Dictionnaire des slots`,
 >    `Catalogue des Frames` (mandatory slots, value domains)
 > 3. `$SANDBOX/agent/import-report-*.org` existing → previous alignment decisions
 >
@@ -357,7 +357,7 @@ Use this inventory to:
 
 ### 1.1 Pipeline Index
 
-Read `$SANDBOX/agent/agents/index.org`:
+Read `$SANDBOX/agent/chorus/index.org`:
 - Namespace + agent list (slug, pos)
 - Global slot dictionary (if present in the index)
 
@@ -365,7 +365,7 @@ Read `$SANDBOX/agent/agents/index.org`:
 
 For each agent, apply this two-step sequence:
 
-1. **Read** `$SANDBOX/agent/agents/<slug>.org` and extract:
+1. **Read** `$SANDBOX/agent/chorus/<slug>.org` and extract:
 
 | KB Section | What we extract |
 |---|---|
