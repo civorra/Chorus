@@ -7,11 +7,16 @@
 ^eca/skills/cpan-release\.md$
 ^\.eca/
 
+# Meta files (ECA / Claude — not part of the CPAN distribution)
+^AGENTS\.md$
+^CLAUDE\.md$
+^\.claude/
+
 # MCP server (not part of the CPAN distribution)
 ^mcp/
 
-# Documentation source (not shipped in distribution)
-^doc/
+# User sandboxes (not part of the CPAN distribution — examples/sandboxes/ is kept)
+^sandboxes/
 
 # Build artefacts
 ^blib/
@@ -22,6 +27,7 @@
 ^\.lwpcookies
 ^cover_db/
 ^nytprof/
+^MANIFEST\.bak$
 
 # Distribution tarballs
 \.tar\.gz$
