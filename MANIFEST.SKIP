@@ -7,6 +7,9 @@
 ^eca/skills/cpan-release\.md$
 ^\.eca/
 
+# MCP server (not part of the CPAN distribution)
+^mcp/
+
 # Documentation source (not shipped in distribution)
 ^doc/
 

@@ -19,6 +19,25 @@
 
 ---
 
+## 🔌 Preliminary — MCP mode detection
+
+**Execute before Step 0, once per `chorus-check` invocation.**
+
+Probe the MCP server by calling `chorus_engine_create` (ident: `"_probe"`):
+
+- **Probe succeeds** → MCP mode active. Immediately call `chorus_reset` to
+  discard the probe handle. Set `$MCP_AVAILABLE = true` for this run.
+- **Probe fails / tool unavailable** → fallback mode. Set `$MCP_AVAILABLE = false`.
+
+This probe is silent (no user message). The chosen mode is noted at the end
+of Phase 6 in the report header.
+
+> ⚠️ `$MCP_AVAILABLE` is a local decision variable for this skill run only.
+> It does not affect Phases 0–5 (infrastructure generation) — those are
+> identical in both modes.
+
+---
+
 ## ⚡ Step 0 — Infrastructure detection (PRIORITY, before any loading)
 
 **This is the first action to execute, without exception.**
@@ -141,8 +160,34 @@ Business logic lives in the YAML files (rules) and in `Helpers.pm` (produced by 
 **Rule for the termination agent:**
 If the KB indicates `TERMINAL: solved` in a YAML → no additional Perl code needed.
 If termination requires a global test (e.g. verifying that ALL Frames have
-their status set) → **do not code this in a YAML** (risk of infinite loop with a global `fmatch`)
-— add a pure Perl rule via `addrule()` after `loadRules()`, using template **T3** (`chorus-templates.md`).
+their status set), two approaches are valid:
+
+**Preferred — YAML EXCEPTION pattern** (MCP-compatible):
+```yaml
+RULE: check-all-done
+FIND:
+  dummy:
+    attribut: <targeting_slot>
+EXCEPTION: |
+  scalar(grep { !defined $_->{<result_slot>} }
+         Chorus::Frame::fmatch(slot => '<targeting_slot>')) > 0
+ACTION: |
+  $SELF->solved();
+  1
+```
+The `EXCEPTION` fires a fmatch on every cycle but **does not bind** — the rule
+is only triggered when no pending frame remains. No infinite loop risk.
+`$SELF->solved()` is correct in YAML `ACTION`/`EFFET` context.
+This form is loaded by `loadRules()` and therefore **works natively in MCP mode**.
+
+> ⚠️ `FIND`/`CHERCHER` must use `attribut:` (not `slot:`) — `slot:` is not a
+> recognized YAML DSL key and will silently drop the rule from the engine.
+
+**Fallback — pure Perl `addrule()`** (use only if EXCEPTION pattern is not expressive enough):
+Add a pure Perl rule via `addrule()` after `loadRules()`, using template **T3** (`chorus-templates.md`).
+⚠️ `addrule()` rules are registered in `build()` — they are **invisible to MCP mode**
+(bypass of `build()`), which will cause `chorus_process` to return `failed` even when
+all frames are correctly processed.
 
 > ⚠️ **`$SELF` (YAML EFFET) vs `$agent` (pure Perl addrule()):**
 > | Context | Correct variable | Reason |
@@ -194,7 +239,76 @@ It is invalidated (deleted) by `chorus-feed` at the end of each run.
 
 ## Phase 6 — Execution and report
 
-Run the pipeline:
+### 6A — MCP mode (`$MCP_AVAILABLE = true`)
+
+Orchestrate the pipeline directly via MCP tools — no `run.pl` invocation:
+
+```
+chorus_reset
+chorus_engine_create (ident: "<Nom1>")  →  h1
+chorus_engine_create (ident: "<Nom2>")  →  h2   (one per agent in pipeline order)
+
+# ⚠️ Inject helpers BEFORE loadRules — one call per Helpers.pm, any order.
+# Injection is global (process-wide): a function injected once is available
+# to all engines of this run. Skip agents without a Helpers.pm.
+chorus_engine_inject (helpers_module: "<Namespace>::Agent::<Nom1>::Helpers",
+                      lib_paths: ["$SANDBOX/lib", "$ENGINE/lib"])
+chorus_engine_inject (helpers_module: "<Namespace>::Agent::<Nom2>::Helpers",
+                      lib_paths: ["$SANDBOX/lib", "$ENGINE/lib"])
+# ... repeat for each agent that has a Helpers.pm
+
+chorus_engine_loadrules (h1, "$SANDBOX/rules/<slug1>/")
+chorus_engine_loadrules (h2, "$SANDBOX/rules/<slug2>/")
+chorus_expert_create (engine_handles: [h1, h2])  →  hX
+chorus_feed_load (namespace: "<Namespace>",
+                  json_path:  "$SANDBOX/projet.json",
+                  lib_paths:  ["$SANDBOX/lib", "$ENGINE/lib"])
+chorus_board_set (hX, { INPUT: <project_data> })   ← if agents read BOARD->INPUT
+chorus_process   (hX)                               →  "solved" | "failed"
+```
+
+After `chorus_process`, collect results:
+
+```
+chorus_frames_list (slot: "statut_conformite",
+                    extra_slots: ["id", "type", "raison_non_conformite", ...])
+chorus_board_get   (hX, <inter-agent slot>)   ← repeat for each BOARD slot of interest
+chorus_reset                                  ← cleanup after collection
+```
+
+Build the compliance report from the collected frame data.
+Apply the same report structure as Phase 6B (blocks 1–4 from T5).
+
+> **Advantages over 6B:**
+> - No `run.pl` required — infrastructure can be partially absent.
+> - Frame introspection between agents (call `chorus_frames_list` after each
+>   `chorus_process` step if agents are run individually).
+> - Report built directly from MCP responses, without parsing stdout.
+> - Helpers injected via `chorus_engine_inject` — same semantics as `build()`.
+
+If `chorus_process` returns `failed`:
+
+**Graceful-failed detection** — before falling through to 6B, inspect frames:
+1. Call `chorus_frames_list` with `slot: <termination_targeting_slot>` and
+   `extra_slots: ["id", "<result_slot>"]`.
+2. If **all** frames have their result slot defined (no `undef`) →
+   the pipeline completed correctly but the termination rule was not reached
+   (typical cause: `addrule()` in `build()`, bypassed in MCP mode).
+   → Build the report from MCP frame data directly. Do **not** fall through to 6B.
+   → Note in the report header: `Mode: MCP ✅ (graceful-failed — termination via addrule bypassed)`
+3. If one or more frames have `undef` result slots → genuine failure.
+   → Call `chorus_reset` to clean up.
+   → Report the failure clearly, then fall through to 6B as a safety net.
+
+> ℹ️ To avoid graceful-failed in the future, prefer the YAML EXCEPTION pattern
+> for termination (see Phase 3) — it is loaded by `loadRules()` and is fully
+> MCP-compatible without requiring `build()`.
+
+---
+
+### 6B — Fallback mode (`$MCP_AVAILABLE = false`)
+
+Run the pipeline via the generated `run.pl`:
 
 ```bash
 perl $SANDBOX/run.pl $SANDBOX/projet.json
@@ -356,6 +470,11 @@ Next step: chorus-strengthen <sandbox-name>
 
 ---
 
+> **Mode used** is reported in the compliance report header:
+> `Mode: MCP ✅` or `Mode: run.pl (MCP unavailable)`
+
+---
+
 ## Phase 7 — Final verification *(post-generation only)*
 
 > ⚠️ This checklist applies **only after generation** of Phases 1–5.
@@ -374,9 +493,13 @@ Next step: chorus-strengthen <sandbox-name>
       Heuristic: `N_frames × N_rules_total × N_agents × 10 < _MAX_CYCLES`.
       In `run.pl`: compute from `scalar(@elements)` and pass via `Expert->run(max_cycles => ...)`.
       Never leave the default value (`10_000`) for a production pipeline.
-- [ ] Termination agent: `solved()` called on `$agent` (closure) in `addrule()`, never on `$SELF`.
-      In a YAML EFFET → `$SELF->solved()`. In a pure Perl `addrule()` → `$agent->solved()` (captured as closure).
-      ⛔ **Never code a termination via global `fmatch` in a YAML** → guaranteed infinite loop.
+- [ ] Termination agent: prefer the **YAML EXCEPTION pattern** for the termination rule
+      (loaded by `loadRules()` → MCP-compatible). See Phase 3 for the template.
+      If using a pure Perl `addrule()` instead: `solved()` must be called on `$agent`
+      (closure), never on `$SELF` — and be aware that `addrule()` is invisible to MCP mode.
+      ⛔ **Never use a global `fmatch` in a YAML `FIND`/`CHERCHER` block** → guaranteed infinite loop.
+      ✅ A `fmatch` in a YAML `EXCEPTION`/`CONDITION` block is safe — it is evaluated
+      per-cycle but does not bind frames.
 - [ ] If `reorder()` is used: the sort function consults `_PREMISSES` — consistent with the YAML files
 - [ ] If `_LOCK_UNTIL_STABLE` is enabled: the agent may be skipped — verify this is the intended behaviour
 - [ ] BOARD: inter-agent keys are documented in `index.org`
