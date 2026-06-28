@@ -1,5 +1,9 @@
 # Chorus::Engine
 
+[![CPAN version](https://badge.fury.io/pl/Chorus-Engine.svg)](https://metacpan.org/dist/Chorus-Engine)
+[![Perl](https://img.shields.io/badge/perl-5.006%2B-blue)](https://www.perl.org/)
+[![License](https://img.shields.io/badge/license-Artistic--2.0-green)](LICENSE)
+
 > A pure-Perl inference engine. No runtime dependencies beyond standard CPAN.
 > Runs on Perl 5.006+.
 
@@ -139,6 +143,19 @@ perl Makefile.PL && make && make test && make install
 - `perldoc Chorus::Expert` — multi-agent orchestration, shared BOARD
 - `perldoc Chorus::Collection::List` — ordered frame sequences
 - `perldoc Chorus::Collection::Filter` — pattern matching on sequences
+
+---
+
+## Contributing
+
+Contributions are welcome — bug reports, documentation fixes, new examples,
+or rule engine improvements.
+
+- **Bug reports / feature requests** — open an [Issue](https://github.com/maelink/Chorus-Engine/issues)
+- **Pull requests** — target the `devel` branch; make sure `make test` passes
+- **Good first issues** — look for the [`good first issue`](https://github.com/maelink/Chorus-Engine/issues?q=label%3A%22good+first+issue%22) label
+- **Questions** — use [GitHub Discussions](https://github.com/maelink/Chorus-Engine/discussions)
+  or the CPAN RT queue: <https://rt.cpan.org/Dist/Display.html?Name=Chorus-Engine>
 
 ---
 
