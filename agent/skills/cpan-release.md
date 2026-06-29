@@ -78,7 +78,7 @@ git -C /home/civorra/Documents/Chorus/Engine commit -m "release: bump version to
 cd /home/civorra/Documents/Chorus/Engine && perl Makefile.PL && make manifest
 ```
 
-Verify that `lib/Chorus/Engine/ECA.pod` is present in `MANIFEST`.
+Verify that `lib/Chorus/Engine/AIAgent.pod` is present in `MANIFEST`.
 Verify that `agent/`, `doc/`, `MYMETA.*`, `Makefile` are absent (excluded by `MANIFEST.SKIP`).
 
 ### 2.2 Check MANIFEST Discrepancies
@@ -113,7 +113,7 @@ cd /home/civorra/Documents/Chorus/Engine && perl -e "
   podchecker('lib/Chorus/Frame.pm');
   podchecker('lib/Chorus/Collection/List.pm');
   podchecker('lib/Chorus/Collection/Filter.pm');
-  podchecker('lib/Chorus/Engine/ECA.pod');
+  podchecker('lib/Chorus/Engine/AIAgent.pod');
 " 2>&1
 ```
 
@@ -136,7 +136,7 @@ tar tzf /home/civorra/Documents/Chorus/Engine/Chorus-Engine-X.YY.tar.gz | sort
 ```
 
 Checkpoints:
-- [ ] `lib/Chorus/Engine/ECA.pod` present
+- [ ] `lib/Chorus/Engine/AIAgent.pod` present
 - [ ] `agent/skills/` present (except `cpan-release.md`)
 - [ ] `agent/org/` present
 - [ ] `agent/sessions/` absent
@@ -205,7 +205,7 @@ Removes: `Makefile`, `MYMETA.*`, `pm_to_blib`, `blib/`, the `.tar.gz` tarball.
 - [ ] `$VERSION` bumped in `lib/Chorus/Engine.pm`
 - [ ] `Changes` updated with date and summary
 - [ ] Bump commit pushed to `devel`
-- [ ] `make manifest` — consistent MANIFEST, `ECA.pod` present, `agent/` absent
+- [ ] `make manifest` — consistent MANIFEST, `AIAgent.pod` present, `agent/` absent
 - [ ] `make distcheck` — zero discrepancies
 - [ ] `make test` — all green
 - [ ] POD checker — zero errors across all 6 files
