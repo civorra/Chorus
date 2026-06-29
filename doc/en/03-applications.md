@@ -33,6 +33,32 @@ The following table presents domains for which the Chorus pattern has been
 analysed. *Estimated onboarding* refers to the time required to build a first
 operational pipeline from the raw corpus using an AI agent.
 
+### 🔐 Cybersecurity / Qualification
+
+| | |
+|---|---|
+| **Typical corpus** | ANSSI SecNumCloud v3.2, RGS v2, ETSI EN 319 412, NIS2 Annex II, DORA |
+| **What is validated** | PKI requirements, security measures, continuity, logging |
+| **Pattern** | Numbered requirements → one Frame per requirement, one agent per security domain |
+| **Estimated onboarding** | 1–2 weeks |
+| **Use cases** | Pre-qualification before ANSSI submission; NIS2 audit for OIV/OES |
+
+The corpus for this domain is structured around four certification levels:
+
+| Level | Key standards |
+|---|---|
+| **Organization** (TSP/PSCE qualification) | ETSI EN 319 401, 411-1/411-2 · eIDAS 1&2 · ANSSI PSCE v1.3 · RFC 3647 |
+| **Product** (software/hardware) | Common Criteria EAL1–EAL7 · ETSI EN 319 401 · ANSSI PSCE v1.3 |
+| **PKI artifacts** (certificates, CRL, OCSP) | ETSI EN 319 412-1 to 5 · RFC 5280/4210/6960/5652 · CABForum TLS/S/MIME BR |
+| **Cross-cutting** (protocols & recommendations) | NIS2 Annex II · DORA · RFC 8446 (TLS 1.3) · ANSSI SecNumCloud v3.2 / RGS v2 |
+
+> ⚡ **Regulatory urgency — NIS2 & DORA.** NIS2 has been transposed into national law
+> across the EU since October 2024, exposing thousands of operators of essential services (OES)
+> and digital service providers to binding compliance obligations. DORA applies to financial
+> entities since January 2025. Both frameworks define **numbered, auditable requirements** —
+> the exact structure Chorus is built for. This is the domain with the **shortest onboarding
+> (1–2 weeks)** and the most immediate regulatory pressure.
+
 ### 🏗️ Construction / Civil Engineering
 
 | | |
@@ -42,16 +68,6 @@ operational pipeline from the raw corpus using an AI agent.
 | **Pattern** | Class levels × geographic zones → `Helpers.pm` tables |
 | **Estimated onboarding** | 2–3 weeks (COB sandbox directly reusable) |
 | **Use cases** | Verify a DCE before submission; automated RE2020 audit; validate plans before architect visa |
-
-### 🔐 Cybersecurity / Qualification
-
-| | |
-|---|---|
-| **Typical corpus** | ANSSI SecNumCloud v3.2, RGS v2, ETSI EN 319 412, NIS2 Annex II, DORA |
-| **What is validated** | PKI requirements, security measures, continuity, logging |
-| **Pattern** | Numbered requirements → one Frame per requirement, one agent per security domain |
-| **Estimated onboarding** | 1–2 weeks (ETSI sandbox already initiated) |
-| **Use cases** | Pre-qualification before ANSSI submission; NIS2 audit for OIV/OES |
 
 ### 🌿 Environment / CSRD
 
@@ -173,6 +189,13 @@ The KB is updated incrementally. The infrastructure is regenerated.
 ---
 
 ## Where to start?
+
+**Recommended entry point — Cybersecurity / NIS2-DORA:**
+If your target domain involves NIS2 (OES/OIV), DORA, or ANSSI qualification,
+start here: the requirement structure is immediately Chorus-compatible, and
+onboarding typically takes **1–2 weeks**. Run `chorus-feed` on your normative
+corpus (SecNumCloud, NIS2 Annex II, DORA annex…) and `chorus-check` to generate
+a first compliance report.
 
 **Explore an existing pipeline:**
 The sandboxes `examples/sandboxes/cob-compliance_fr` and `cob-compliance_en`
