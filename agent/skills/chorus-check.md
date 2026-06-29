@@ -380,8 +380,12 @@ If **NOT CONVERGED** → recommend:
 ## Phase 6-all — `--all` mode (batch run)
 
 > This phase is used **instead of Phase 6** when `--all` is present.
-> Infrastructure detection (Step 0) is shared — the hash check runs once,
-> then Phase 6-all loops over all project files without regenerating anything.
+> Infrastructure detection (Step 0) is shared — the hash check runs once.
+>
+> **Orchestrator mode:** the current agent discovers project files and spawns
+> one sub-agent per project file via `eca__spawn_agent`. Each sub-agent has its
+> own IDE session and token — no timeout risk from extended thinking between runs
+> or during output analysis.
 
 ### 6-all.1 Discover project files
 
@@ -395,20 +399,55 @@ If no `projet-*.json` file is found → stop and report:
    Run chorus-create-project <sandbox-name> --batch first.
 ```
 
-### 6-all.2 Run each project
+### 6-all.2 Spawn sub-agents
 
-For each file discovered, execute:
+Spawn one sub-agent per discovered project file via `eca__spawn_agent`
+(agent: `general`). Sub-agents can run in parallel if the IDE permits,
+otherwise spawn sequentially.
 
-```bash
-perl $SANDBOX/run.pl $SANDBOX/<projet-file>.json 2>&1
+Use this task template for each, substituting `<SANDBOX>` and `<FILE>`:
+
+```
+You are a chorus-check sub-agent. Your sole task: run ONE project file through
+the pipeline and return a structured result block.
+
+SANDBOX: <absolute path>
+PROJECT FILE: <SANDBOX>/<FILE>
+
+YOUR TASKS:
+1. Run the pipeline:
+      perl <SANDBOX>/run.pl <SANDBOX>/<FILE> 2>&1
+   Capture the complete output.
+
+2. Parse the output and extract:
+   - STATUS  : "SOLVED" if "Pipeline : SOLVED ✅" appears in output, "FAILED" otherwise
+   - CONFORME     : count of CONFORME elements
+   - NON_CONFORME : count of NON_CONFORME elements
+   - UNPROCESSED  : count of elements tagged "(unprocessed)" in output
+   - DISCORDANCES : elements whose actual result differs from the expected result
+       • id contains "-OK-" or "-ok-" → expected CONFORME
+       • id contains "-KO-" or "-ko-" → expected NON_CONFORME
+       Also check "_resultats_attendus" in the JSON if present.
+
+3. Return EXACTLY this block (no other text before or after):
+   FILE: <FILE>
+   STATUS: SOLVED|FAILED
+   CONFORME: N
+   NON_CONFORME: N
+   UNPROCESSED: N
+   DISCORDANCES: N
+   DISC_DETAIL:
+     <id>  expected CONFORME  → got NON_CONFORME
+     <id>  expected NON_CONF  → got CONFORME
+   UNPROC_DETAIL:
+     <id>  (<type>) → targeting slot probably missing from Feed
+   (omit DISC_DETAIL lines if DISCORDANCES=0; omit UNPROC_DETAIL lines if UNPROCESSED=0)
 ```
 
-Collect the full output of each run. Do **not** display verbatim output
-per file at this stage — aggregate into the synthesis table below.
+### 6-all.3 Collect results and produce synthesis table
 
-### 6-all.3 Synthesis table
-
-After all runs, display:
+After all sub-agents complete, assemble the synthesis table from the
+returned structured blocks:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -427,16 +466,15 @@ After all runs, display:
 ```
 
 Column definitions:
-- **Status**: `SOLVED ✅` if `Pipeline : SOLVED ✅` in output, `FAILED ❌` otherwise
-- **CONFORME** / **NON_CONF**: count from the pipeline output
-- **Unproc**: count of `(unprocessed)` elements
-- **Disc**: discordances — elements whose actual result differs from `_resultats_attendus`
-  in the JSON (if present), or from the expected result implied by the ID naming
-  (`-OK-` → expected CONFORME, `-KO-` → expected NON_CONFORME)
+- **Status**: `SOLVED ✅` if sub-agent returned `STATUS: SOLVED`, `FAILED ❌` otherwise
+- **CONFORME** / **NON_CONF**: counts from the sub-agent block
+- **Unproc**: `UNPROCESSED` count from the sub-agent block
+- **Disc**: `DISCORDANCES` count from the sub-agent block
 
 ### 6-all.4 Discordance detail
 
-For each file with `Disc > 0`, list the discordant elements:
+For each file with `Disc > 0`, list the discordant elements
+(from sub-agent `DISC_DETAIL`):
 
 ```
   projet-edges — 2 discordances:
@@ -444,7 +482,8 @@ For each file with `Disc > 0`, list the discordant elements:
     E-POT-KO-THICK-02  expected NON_CONF   → got CONFORME      (no rule fired)
 ```
 
-For each file with `Unproc > 0`, list the unprocessed elements:
+For each file with `Unproc > 0`, list the unprocessed elements
+(from sub-agent `UNPROC_DETAIL`):
 
 ```
   projet-scale — 3 unprocessed:
@@ -460,13 +499,15 @@ NOT CONVERGED ❌ — N discordances and/or N unprocessed across M project files
 
 If **NOT CONVERGED** → recommend:
 ```
-Next step: chorus-strengthen <sandbox-name>
+  Next step: chorus-strengthen <sandbox-name>
 ```
 
-> **Fast path guarantee:** `--all` never regenerates the infrastructure.
-> The `.kb-hash` check runs once at Step 0; each subsequent `perl run.pl` call
-> is a pure runtime execution with no Perl file generation.
-> Running 4 projects costs exactly 4 × `perl run.pl` — no overhead.
+> **Sub-agent mode guarantee:** each sub-agent has its own IDE session and token.
+> No timeout risk regardless of pipeline complexity or number of project files.
+> Running N projects costs exactly N sub-agent spawns + N × `perl run.pl`.
+> If a sub-agent fails (token error, crash) → re-run
+> `chorus-check <sandbox> <projet-file>` (single-file mode) for the failed
+> project only — no need to rerun the whole batch.
 
 ---
 
