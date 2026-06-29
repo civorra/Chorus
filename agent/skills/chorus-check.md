@@ -481,6 +481,10 @@ Next step: chorus-strengthen <sandbox-name>
 > Do not run it on the fast path (infrastructure already present).
 
 - [ ] `agent/.kb-hash` written after generation — contains `sha256sum` of all `agent/chorus/*.org`
+- [ ] ⛔ **`type_element` — YAML ↔ Feed alignment:** verify that the `attribut:` key in every
+      `FIND`/`CHERCHER` block of every YAML rule that targets element type is named `type_element`.
+      Then verify that `Feed.pm` creates Frames with the slot key `type_element`.
+      A mismatch between YAML and Feed causes a SOLVED pipeline with all elements unprocessed.
 - [ ] `Feed.pm`: agent 1 targeting slot present in `%SLOTS_REQUIS`
 - [ ] `Feed.pm`: mandatory slot validation covers all element types in the project
 - [ ] `Feed.pm`: unknown types → `warn + next` (not `die`) — safety net for mixed-sandbox JSON

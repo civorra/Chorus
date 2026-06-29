@@ -135,6 +135,15 @@ Result: ordered list of agents (slug + intent + pipeline position).
 For each persistent concept in the corpus (≥ 2 slots, stable identity) → Frame.
 Intermediate calculations remain as slots, not Frames.
 
+> ⛔ **Canonical slot name — `type_element` is mandatory.**
+> The slot identifying the element type **must always be named `type_element`** across
+> the entire sandbox: in the KB org (Slot dictionary, FIND/CHERCHER attribut),
+> in the YAML rules (`attribut: type_element`), and in the project JSON files.
+> Never use `element_type`, `type`, `kind`, `element_kind`, or any other variant.
+> A name mismatch between YAML (`attribut: element_type`) and JSON (`"type_element": ...`)
+> causes all Frames to be silently invisible to every agent →
+> 0 elements processed, pipeline SOLVED but all entries unprocessed.
+
 **1.3 Identify the pipeline**
 
 Order agents by data dependency:
@@ -344,6 +353,10 @@ optimize rule order at runtime. PREMISES declare
 the slots the rule needs — the sorting code consults them via `$rule->_PREMISSES`.
 
 YAML Checklist:
+- [ ] ⛔ **`type_element` — canonical name enforced:** the slot identifying the element type
+      is always named `type_element` in YAML (`attribut: type_element`), the KB Slot dictionary,
+      and the project JSON. Never `element_type`, `type`, `kind`, or any variant.
+      A mismatch silently produces 0 processed frames (SOLVED but all unprocessed).
 - [ ] **Header present** — every `.yml` file opens with the structured `##` header (RULE/REGLE, AGENT, CORPUS, PURPOSE/OBJECTIF, INPUTS/ENTRÉES, OUTPUTS/SORTIES, HELPERS, GUARD). Header language matches the corpus language.
 - [ ] **CORPUS line filled** — references the exact §N article from the corpus. If not identifiable → `# CORPUS: TODO — source not identified`.
 - [ ] **ACTION/EFFET body commented** — each logical block has a one-line comment; early `return 0` statements explain why the Frame is skipped.
@@ -583,6 +596,7 @@ rm -f $SANDBOX/agent/.kb-hash
 | KB file           | `<slug>.org`                            | `conformite-fiscale.org`          |
 | YAML directory    | `rules/<slug>/`                         | `rules/conformite-fiscale/`       |
 | YAML files        | `R<NN>-<slug-rule>.yml`                 | `R01-verif-montant.yml`           |
+| **Element type slot** | **always `type_element`** ⛔ never `element_type` / `type` / `kind` | `type_element: montant_porteur` |
 | Agent helpers     | `lib/<Namespace>/Agent/<Slug>/Helpers.pm` | `lib/CB/Agent/Ossature/Helpers.pm` |
 | Shared helpers    | `lib/<Namespace>/Helpers/Shared.pm`     | `lib/CB/Helpers/Shared.pm`        |
 | Initial corpus    | `corpus/001-<slug-source>.txt`          | `corpus/001-dtu-31-2.txt`         |

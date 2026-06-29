@@ -76,6 +76,23 @@ For each agent, apply this two-step sequence:
 2. **Immediately after** (no thinking between the two calls): read the 
    directory tree $SANDBOX/rules/<slug>/ to list the rule files for this agent.
 
+> **`type_element` — canonical name guard:** while reading the KB, verify that
+> the element type slot is named **`type_element`** in the `Dictionnaire des slots` of
+> each `<slug>.org`. Then, immediately after reading the directory tree of
+> `$SANDBOX/rules/<slug>/`, read one representative `.yml` file from that agent and
+> verify that its `FIND`/`CHERCHER` block uses `attribut: type_element` (not
+> `element_type`, `type`, `kind`, or any variant).
+> If a different name is found → **stop and report** before generating any JSON:
+> ```
+> ⛔ Slot name mismatch detected:
+>    KB org uses '<found_org_name>' / YAML uses 'attribut: <found_yaml_name>'
+>    but the project JSON template uses "type_element".
+>    Fix: rename to `type_element` in the KB org (Slot dictionary), all YAML rules,
+>    and any existing project JSON files before proceeding.
+>    (See chorus-feed.md § Naming Conventions and chorus-engine-yaml.md § YAML Rules checklist)
+> ```
+> Do not generate a JSON that will silently produce 0 processed elements.
+
 > **Why the immediate tool call:** Opus extended thinking after reading a dense KB file
 > can be long enough to expire the IDE token. Reading the directory tree right after
 > each read resets the token TTL and produces a useful rules inventory at no extra cost.
@@ -217,6 +234,11 @@ python3 -c "import json; json.load(open('<fichier.json>')); print('JSON valide')
 Check:
 - [ ] JSON syntactically valid (no trailing comma, correct quotes)
 - [ ] Each element has `id` and `type_element`
+- [ ] ⛔ **`type_element` name cross-check:** verify that the JSON key used for the element type
+      (`"type_element"`) matches exactly the `attribut:` name in the YAML `FIND`/`CHERCHER` blocks
+      of the sandbox rules. A mismatch → SOLVED pipeline with 0 processed elements.
+      If a mismatch is detected here at validation time → do not run `perl run.pl`;
+      report the mismatch and correct the YAML rules or the JSON key first.
 - [ ] All types are present in `%SLOTS_REQUIS` of `Feed.pm`
   (or verify in the `Catalogue des Frames` of the KB — equivalent source)
 - [ ] No slot computed by the pipeline (result slots, qualification/evaluation status slots) is provided

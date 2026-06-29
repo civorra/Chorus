@@ -365,6 +365,12 @@ EFFET: |
 
 ### ✅ YAML Rules
 
+- [ ] ⛔ **`type_element` — canonical slot name:** the slot identifying the element type is
+      **always** named `type_element` in every `FIND`/`CHERCHER` `attribut:` that routes by
+      element type. Never `element_type`, `type`, `kind`, or any other variant.
+      A mismatch with the project JSON key (`"type_element"`) causes a SOLVED pipeline with
+      **all elements unprocessed** — no error, no warning, 0 processed frames.
+      This rule applies to every YAML rule in every sandbox and every `chorus-feed` run.
 - [ ] **Header present** — every generated rule starts with the structured comment header (§ Rule Documentation Standard). Language matches the corpus (English or French).
 - [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that justifies the rule. If the source is unknown → `# CORPUS: TODO — source not identified in corpus`.
 - [ ] **Always** end `ACTION` with a truthy value (`1` or truthy expression)
