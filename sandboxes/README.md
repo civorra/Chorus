@@ -14,10 +14,10 @@ chorus-pdf  my-project  corpus/my-standard.pdf     # optional — PDF extraction
 chorus-feed my-project  corpus/001-my-standard.txt # build the knowledge base
 
 # 2. Create a project to validate
-chorus-create-project my-project projet.json --batch
+chorus-create-project my-project --batch
 
 # 3. Validate the project
-chorus-check my-project projet.json
+chorus-check my-project --all
 ```
 
 The sandbox directory `my-project/` will be created automatically inside
@@ -29,8 +29,8 @@ this `sandboxes/` directory the first time you run `chorus-feed my-project`.
 sandboxes/
   my-project/
     corpus/          ← source documents (numbered NNN-<slug>-text.txt or -vision.md)
-    eca/
-      agents/        ← knowledge base org files (index.org + <slug>.org per agent)
+    agent/
+      chorus/        ← knowledge base org files (index.org + <slug>.org per agent)
       .kb-hash       ← local artefact — not committed
     lib/<Namespace>/
       Agent/<Slug>/
@@ -42,23 +42,19 @@ sandboxes/
     README.org       ← sandbox notes
 ```
 
-## Example sandboxes
+## Example sandbox
 
-Ready-to-explore example sandboxes are available in:
+`demo_en` — timber-frame construction compliance (English)
+against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501-1.
 
+```bash
+perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
 ```
-Engine/examples/sandboxes/
-  cob-compliance_en/   ← English example (construction compliance)
-  cob-compliance_fr/   ← French example (conformité construction)
-```
 
-These examples are read-only reference sandboxes distributed with the engine.
-Copy them here if you want to experiment with them.
+Agents: `qualification` · `domain` · `fire` · `compliance`
 
 ## Notes
 
-- This directory is listed in `.gitignore` — your sandboxes are **not committed**
+- This directory is listed in `.gitignore` — your own sandboxes are **not committed**
   to the Chorus Engine repository.
-- Only this `README.md` file is tracked by git.
-- The `examples/sandboxes/` directory in the engine repository contains
-  fully functional reference sandboxes you can use as a starting point.
+- Only this `README.md` and the `demo_en/` example sandbox are tracked by git.

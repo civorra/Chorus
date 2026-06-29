@@ -204,10 +204,10 @@ générée par un agent IA depuis le corpus. Aucune ligne écrite à la main.
 > `chorus-create-project`, `chorus-import-project`) sont versionnés dans
 > `$ENGINE/agent/skills/` et documentés dans le dépôt.
 
-> **Explorer le sandbox sans agent IA :** les sandboxes `examples/sandboxes/cob-compliance_fr`
-> et `cob-compliance_en` contiennent l'intégralité des artefacts produits par la
-> chaîne (corpus, KB org, règles YAML, infrastructure Perl). Ils permettent de
-> comprendre ce qu'un agent IA génère et de lancer `perl run.pl project-demo.json` en
+> **Explorer le sandbox sans agent IA :** le sandbox `sandboxes/demo_en`
+> contient l'intégralité des artefacts produits par la
+> chaîne (corpus, KB org, règles YAML, infrastructure Perl). Il permet de
+> comprendre ce qu'un agent IA génère et de lancer `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` en
 > direct — mais avec un JSON projet pré-construit. Adapter un nouveau projet
 > requiert un agent IA.
 

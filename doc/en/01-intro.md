@@ -55,10 +55,10 @@ no third-party tool. Level 3 adds an AI agent as a *development* tool — not as
 *runtime* dependency. A pipeline generated at level 3 runs exactly like one
 written by hand at level 1.
 
-> **Starting point:** the examples in `examples/sandboxes/cob-compliance_en`
-> (or `_fr`) are fully functional without an AI agent. They show the complete structure
-> of a Chorus project — corpus, KB, YAML rules, Perl infrastructure — and run
-> with `perl run.pl project-demo.json`.
+> **Starting point:** the example sandbox `sandboxes/demo_en`
+> is fully functional without an AI agent. It shows the complete structure
+> of a Chorus project — corpus, KB, YAML rules, Perl infrastructure — and runs
+> with `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`.
 
 ---
 

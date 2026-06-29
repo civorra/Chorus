@@ -203,9 +203,9 @@ corpus normatif (SecNumCloud, NIS2 Annexe II, annexes DORA…) puis `chorus-chec
 pour générer un premier rapport de conformité.
 
 **Explorer un pipeline existant :**
-Les sandboxes `examples/sandboxes/cob-compliance_fr` et `cob-compliance_en`
-contiennent la chaîne complète — corpus, KB org, règles YAML, infrastructure
-Perl. Lancer `perl run.pl project-demo.json` pour voir le rapport en direct.
+Le sandbox `sandboxes/demo_en` contient la chaîne complète — corpus, KB org,
+règles YAML, infrastructure Perl.
+Lancer `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` pour voir le rapport en direct.
 
 **Comprendre la chaîne assistée par IA :**
 Voir la section *« Couplage avec un agent IA — l'architecture assistée par IA »* dans

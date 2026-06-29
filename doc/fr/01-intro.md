@@ -57,10 +57,10 @@ externe, aucun outil tiers. Le niveau 3 ajoute un agent IA comme outil de
 *développement* — pas comme dépendance d'*exécution*. Un pipeline généré au
 niveau 3 tourne exactement comme un pipeline écrit à la main au niveau 1.
 
-> **Point de départ :** les exemples dans `examples/sandboxes/cob-compliance_fr`
-> (ou `_en`) sont entièrement fonctionnels sans agent IA. Ils montrent la structure
+> **Point de départ :** le sandbox `sandboxes/demo_en`
+> est entièrement fonctionnel sans agent IA. Il montre la structure
 > complète d'un projet Chorus — corpus, KB, règles YAML, infrastructure Perl —
-> et se lancent avec `perl run.pl project-demo.json`.
+> et se lance avec `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`.
 
 ---
 

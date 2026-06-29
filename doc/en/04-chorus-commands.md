@@ -233,13 +233,13 @@ A structured conformity report, per element and per agent:
 
 ```
 ✅ ELEMENT steel-beam-01 — COMPLIANT
-   [qualify-material] material class: S355 ✓
-   [check-geometry]   span/depth ratio: 18.2 ≤ 20 ✓
-   [check-fire]       REI 60 achieved ✓
+   [qualification] material class: S355 ✓
+   [domain]        span/depth ratio: 18.2 ≤ 20 ✓
+   [fire]          REI 60 achieved ✓
 
 ❌ ELEMENT timber-post-03 — NON_COMPLIANT
-   [qualify-material] moisture content: 22% > 18% max (EC5 §3.3)
-   [check-thermal]    vapour barrier: MISSING
+   [qualification] moisture content: 22% > 18% max (EC5 §3.3)
+   [domain]        vapour barrier: MISSING
 ```
 
 ### Next step
@@ -476,11 +476,11 @@ chorus-check my-sandbox project.json
 
 ```bash
 # Generate or import a project file
-chorus-create-project my-sandbox project-demo.json   # generate from KB
+chorus-create-project my-sandbox --batch             # generate from KB
 chorus-import-project my-sandbox engineer-notes.pdf  # align from document
 
 # Validate
-chorus-check my-sandbox project-demo.json
+chorus-check my-sandbox --all
 ```
 
 ### Validating and strengthening the rule base
@@ -554,9 +554,9 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # LLM vision (--auto and --images)
 
 ### Explore the sandbox without an AI agent
 
-The sandboxes `examples/sandboxes/cob-compliance_en` and `cob-compliance_fr`
-contain the complete output of the chain — corpus, org KB, YAML rules, Perl
-infrastructure. Running `perl run.pl project-demo.json` shows the result live
+The `sandboxes/demo_en` sandbox contains the complete output of the chain —
+corpus, org KB, YAML rules, Perl infrastructure. Running
+`perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` shows the result live
 using the pre-built project JSON included in the sandbox. To adapt to a new
 project, an AI agent is required.
 

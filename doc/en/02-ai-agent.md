@@ -196,11 +196,11 @@ from the corpus. Not a single line written by hand.
 > `chorus-create-project`, `chorus-import-project`) are versioned in
 > `$ENGINE/agent/skills/` and documented in the repository.
 
-> **Explore the sandbox without an AI agent:** the sandboxes `examples/sandboxes/cob-compliance_en`
-> and `cob-compliance_fr` contain the full set of artefacts produced by the
-> chain (corpus, KB org files, YAML rules, Perl infrastructure). They let you
-> understand what an AI agent generates and run `perl run.pl project-demo.json` live —
-> but they use a pre-built project JSON. Adapting to a new project requires an AI agent.
+> **Explore the sandbox without an AI agent:** the `sandboxes/demo_en` sandbox
+> contains the full set of artefacts produced by the
+> chain (corpus, KB org files, YAML rules, Perl infrastructure). It lets you
+> understand what an AI agent generates and run `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` live —
+> but it uses a pre-built project JSON. Adapting to a new project requires an AI agent.
 
 ---
 

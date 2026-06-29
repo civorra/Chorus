@@ -100,17 +100,14 @@ claim about AI architecture; it is a description of how the pipeline is wired.
 
 ## Full working example
 
-`examples/sandboxes/cob-compliance_en` — timber-frame construction compliance
+`sandboxes/demo_en` — timber-frame construction compliance
 against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501.
 
 Run it in one line:
 
 ```sh
-perl examples/sandboxes/cob-compliance_en/run.pl \
-     examples/sandboxes/cob-compliance_en/project-demo.json
+perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
 ```
-
-A French-language version is available in `examples/sandboxes/cob-compliance_fr`.
 
 ---
 

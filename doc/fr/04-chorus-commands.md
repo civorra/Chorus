@@ -240,13 +240,13 @@ Un rapport de conformité structuré, par élément et par agent :
 
 ```
 ✅ ÉLÉMENT poteau-bois-01 — CONFORME
-   [qualifier-materiau] classe : C24 ✓
-   [verifier-geometrie] élancement : 45 ≤ 60 ✓
-   [verifier-feu]       REI 60 atteint ✓
+   [qualification] classe : C24 ✓
+   [domain]        élancement : 45 ≤ 60 ✓
+   [fire]          REI 60 atteint ✓
 
 ❌ ÉLÉMENT poteau-bois-03 — NON_CONFORME
-   [qualifier-materiau] teneur en humidité : 22% > 18% max (EC5 §3.3)
-   [verifier-thermique] pare-vapeur : MANQUANT
+   [qualification] teneur en humidité : 22% > 18% max (EC5 §3.3)
+   [domain]        pare-vapeur : MANQUANT
 ```
 
 ### Étape suivante
@@ -486,11 +486,11 @@ chorus-check mon-sandbox projet.json
 
 ```bash
 # Générer ou importer un fichier projet
-chorus-create-project mon-sandbox projet-demo.json   # générer depuis la KB
+chorus-create-project mon-sandbox --batch             # générer depuis la KB
 chorus-import-project mon-sandbox notes-ingenieur.pdf # aligner depuis le document
 
 # Valider
-chorus-check mon-sandbox projet-demo.json
+chorus-check mon-sandbox --all
 ```
 
 ### Valider et renforcer la base de règles
@@ -564,9 +564,9 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # vision LLM (--auto et --images)
 
 ### Explorer le sandbox sans agent IA
 
-Les sandboxes `examples/sandboxes/cob-compliance_fr` et `cob-compliance_en`
-contiennent la sortie complète de la chaîne — corpus, KB org, règles YAML,
-infrastructure Perl. Lancer `perl run.pl project-demo.json` montre le résultat
+Le sandbox `sandboxes/demo_en` contient la sortie complète de la chaîne —
+corpus, KB org, règles YAML, infrastructure Perl. Lancer
+`perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` montre le résultat
 en direct avec le JSON projet pré-construit inclus dans le sandbox. Pour
 adapter un nouveau projet, un agent IA est requis.
 

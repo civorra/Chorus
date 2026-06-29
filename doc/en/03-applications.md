@@ -198,9 +198,9 @@ corpus (SecNumCloud, NIS2 Annex II, DORA annex…) and `chorus-check` to generat
 a first compliance report.
 
 **Explore an existing pipeline:**
-The sandboxes `examples/sandboxes/cob-compliance_fr` and `cob-compliance_en`
-contain the complete chain — corpus, org KB, YAML rules, Perl infrastructure.
-Run `perl run.pl project-demo.json` to see the report live.
+The `sandboxes/demo_en` sandbox contains the complete chain — corpus, org KB,
+YAML rules, Perl infrastructure.
+Run `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` to see the report live.
 
 **Understand the AI-assisted chain:**
 See the section *"Coupling with an AI agent — the AI-assisted architecture"* in
