@@ -255,10 +255,41 @@ Points to watch:
 
 > **Language rule:** use English keywords by default (`RULE`, `FIND`, `ACTION`, `PREMISES`).
 > Use French keywords (`REGLE`, `CHERCHER`, `EFFET`, `PREMISSES`) only when the corpus is in French.
+> **Header language must match the corpus language** — see `chorus-engine-yaml.md § Rule Documentation Standard`.
+
+> **Documentation rule — mandatory for every generated rule:**
+> Each `.yml` file must open with the structured header defined in
+> `chorus-engine-yaml.md § Rule Documentation Standard`.
+> Fill in: `RULE`/`REGLE`, `AGENT` (module + pipeline position), `CORPUS` (§N reference),
+> `PURPOSE`/`OBJECTIF`, `INPUTS`/`ENTRÉES`, `OUTPUTS`/`SORTIES`, `HELPERS` (if any), `GUARD`.
+> The `ACTION`/`EFFET` body must include inline comments per logical block
+> (see inline comment rules in `chorus-engine-yaml.md § Rule Documentation Standard`).
+> A rule without its header is **incomplete** — treat it as a generation defect.
 
 For each rule in the `Rule catalog` of each KB:
 
 ```yaml
+##
+# RULE: <R0N-rule-slug>                          ← or REGLE: for French corpus
+# AGENT: <Namespace>::Agent::<Name>  (pos. N / total)
+# CORPUS: §<N> — <standard> — <section title>
+#
+# PURPOSE
+#   <What this rule checks and why. Mention restricted element types if applicable.>
+#
+# INPUTS  (slots read)
+#   <targeting_slot>  : targeting slot — set by <feed | previous agent RNN>
+#   <slot_a>          : <type and meaning>
+#
+# OUTPUTS (slots written)
+#   <result_slot>     : <domain values> — result of this rule
+#
+# HELPERS  (omit if none)
+#   <helper_name>(<args>)  → <return type>
+#
+# GUARD — EXCEPTION: defined $<var>->{<slot_set>}
+#   Idempotence — prevents re-processing a Frame already handled in a previous cycle.
+##
 RULE: <kebab-case-name>          # mandatory — becomes _ID (deduplication)
 TERMINAL: solved                 # optional — 'solved' or 'failed'
                                  # when the rule fires AND TERMINAL is present →
@@ -274,7 +305,8 @@ EXCEPTION: defined $<var>->{<slot_set>}    # idempotence — return if
 CONDITION: '<optional-guard>'              # return unless
 ACTION: |
   # ⚠️ Flow controls in ACTION: use $SELF (not $agent) → chorus-engine §1.3
-  <Perl code>
+  # <Logical block comment>
+  <Perl code with inline comments per block>
   1
 ```
 
@@ -312,6 +344,9 @@ optimize rule order at runtime. PREMISES declare
 the slots the rule needs — the sorting code consults them via `$rule->_PREMISSES`.
 
 YAML Checklist:
+- [ ] **Header present** — every `.yml` file opens with the structured `##` header (RULE/REGLE, AGENT, CORPUS, PURPOSE/OBJECTIF, INPUTS/ENTRÉES, OUTPUTS/SORTIES, HELPERS, GUARD). Header language matches the corpus language.
+- [ ] **CORPUS line filled** — references the exact §N article from the corpus. If not identifiable → `# CORPUS: TODO — source not identified`.
+- [ ] **ACTION/EFFET body commented** — each logical block has a one-line comment; early `return 0` statements explain why the Frame is skipped.
 - [ ] Slot names = Slot dictionary from the KB
 - [ ] **`CHERCHER`/`FIND` has a named scope variable** — the scope key must be a variable name (`f:`, `e:`, `p:` …), not directly `attribut:`. Without it the engine treats `attribut` itself as the variable name → runtime crash.
       ```yaml

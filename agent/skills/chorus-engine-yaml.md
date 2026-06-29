@@ -238,10 +238,135 @@ $agent->reorder(\&sort_by_interest);
 
 ---
 
+## Rule Documentation Standard
+
+> **Mandatory for every generated YAML rule.**
+> The header language must match the corpus language:
+> English header for an English corpus, French header for a French corpus.
+> Adapt the field labels accordingly (see both templates below).
+
+### Header template — English corpus
+
+```yaml
+##
+# RULE: <R0N-rule-slug>
+# AGENT: <Namespace>::Agent::<Name>  (pos. N / total)
+# CORPUS: §<N> — <standard/document> — <section title>
+#
+# PURPOSE
+#   <One or two sentences describing what this rule checks and why.>
+#   <Mention element types in scope if the rule is type-restricted.>
+#
+# INPUTS  (slots read)
+#   <targeting_slot>  : targeting slot — set by <feed | previous agent RNN>
+#   <slot_a>          : <type and meaning, e.g. "float — measured deflection in mm">
+#   <slot_b>          : <allowed values or range>
+#
+# OUTPUTS (slots written)
+#   <result_slot>     : <"OUI"/"NON", "OK"/"KO", or any domain value> — result of this rule
+#   <targeting_slot>  : deleted after processing (consumed targeting slot)
+#
+# HELPERS  (omit section if none)
+#   <helper_name>(<args>)  → <return type and meaning>
+#
+# GUARD — EXCEPTION: defined $<var>->{<slot_set>}
+#   Idempotence — prevents re-processing a Frame already handled in a previous cycle.
+##
+```
+
+### Header template — French corpus
+
+```yaml
+##
+# REGLE: <R0N-slug-regle>
+# AGENT: <Namespace>::Agent::<Nom>  (pos. N / total)
+# CORPUS: §<N> — <norme/document> — <titre section>
+#
+# OBJECTIF
+#   <Une ou deux phrases décrivant ce que vérifie cette règle et pourquoi.>
+#   <Mentionner les types d'éléments en scope si la règle est restreinte par type.>
+#
+# ENTRÉES  (slots lus)
+#   <slot_ciblage>    : slot de ciblage — posé par <feed | agent précédent RNN>
+#   <slot_a>          : <type et signification, ex. "float — flèche mesurée en mm">
+#   <slot_b>          : <valeurs admises ou plage>
+#
+# SORTIES  (slots écrits)
+#   <slot_resultat>   : <"OUI"/"NON", "OK"/"KO", ou valeur domaine> — résultat de la règle
+#   <slot_ciblage>    : supprimé après traitement (slot de ciblage consommé)
+#
+# HELPERS  (supprimer la section si aucun)
+#   <nom_helper>(<args>)  → <type retour et signification>
+#
+# GARDE — EXCEPTION: defined $<var>->{<slot_pose>}
+#   Idempotence — évite de retraiter un Frame déjà traité lors d'un cycle précédent.
+##
+```
+
+### Inline comment rules (ACTION / EFFET body)
+
+- **Group** the code into logical blocks with a one-line comment per block.
+- **Annotate every early `return`**: explain *why* the Frame is skipped (out-of-scope type, missing data, etc.).
+- **Mark slot writes** that produce the targeting slot for the next agent.
+- **Reference the corpus** (§N) on the line that encodes a normative threshold.
+
+```yaml
+# English example
+ACTION: |
+  # Read input slots
+  my $val  = $p->get('measured_value');
+  return 0 unless defined $val;      # slot absent → frame out of scope, skip silently
+
+  # Normative check — §4.2
+  my $min = _min_required($p->{element_type});
+  return 0 unless defined $min;      # element type not covered by this rule → skip
+
+  # Write result
+  if ($val < $min) {
+    $p->set('result_ok', 'NON');
+    $p->set('rejection_reason', "value $val < min $min (§4.2)");
+    return 1;
+  }
+  $p->set('result_ok', 'OUI');
+  return 1;
+```
+
+```yaml
+# French example
+EFFET: |
+  # Lecture des slots d'entrée
+  my $val  = $p->get('valeur_mesuree');
+  return 0 unless defined $val;      # slot absent → frame hors scope, ignoré silencieusement
+
+  # Vérification normative — §4.2
+  my $min = _seuil_min($p->{type_element});
+  return 0 unless defined $min;      # type non couvert par cette règle → ignoré
+
+  # Écriture du résultat
+  if ($val < $min) {
+    $p->set('resultat_ok', 'NON');
+    $p->set('motif_refus', "valeur $val < min $min (§4.2)");
+    return 1;
+  }
+  $p->set('resultat_ok', 'OUI');
+  return 1;
+```
+
+> **CORPUS line:** when the rule encodes a single standard article, one `CORPUS:` line suffices.
+> When the rule combines several articles, list them all:
+> ```yaml
+> # CORPUS: §4.2 — NF DTU 31.2 — Section minimale montant porteur
+> #          §A.2 — NF DTU 31.2 — Annexe A — Tableaux dimensionnels
+> ```
+
+---
+
 ## Checklist — Anti-Pitfalls
 
 ### ✅ YAML Rules
 
+- [ ] **Header present** — every generated rule starts with the structured comment header (§ Rule Documentation Standard). Language matches the corpus (English or French).
+- [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that justifies the rule. If the source is unknown → `# CORPUS: TODO — source not identified in corpus`.
 - [ ] **Always** end `ACTION` with a truthy value (`1` or truthy expression)
 - [ ] **`filtre` in `FIND`: always use `$_`, never `$f`** — `$f` (scope variable) is only defined inside `ACTION`/`EFFET`. Using `$f->` in `filtre` causes a compilation crash (`Global symbol "$f"`). Use `$_->{slot}` or `$_->get('slot')`.
 - [ ] **`CONDITION` must test data presence, not conformance** — a CONDITION that tests a business result (e.g. `$f->{result} eq 'OK'` or a Helper call returning a pass/fail value) silently blocks all non-conforming Frames: the rule never fires on them, so no slot is ever set → downstream agents never see those Frames → silent pipeline gap. Always restrict `CONDITION` to testing slot presence (`defined $f->{slot}`), type routing (`$f->{type} eq '...'`), or the existence of prerequisite computed slots. Move the conformance test into `ACTION`/`EFFET`, which sets the `_ok` slot to `'OUI'` or `'NON'`.
