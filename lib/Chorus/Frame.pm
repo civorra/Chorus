@@ -101,7 +101,6 @@ The following names are reserved.  Never use them as application slot names
                     (if-removed demon, completing the Minsky triad).
   _REQUIRE          Validation hook: return REQUIRE_FAILED to block the write.
   _NOFRAME          Prevents automatic promotion of a nested hash to a frame.
-  _SERIALIZE        Key used for serialisation round-trips (FREEZE/THAW).
   _TERMINAL_SLOTS   Arrayref of slot names that must hold a real (_VALUE) value
                     for the frame to be considered complete (see complete()).
   _ALTERNATIVES     Arrayref of sibling prototype frames used by fselect()
@@ -173,7 +172,6 @@ my $getMode = MODE_N;       # DEFAULT IS N !!!
 my %REPOSITORY;
 my %FMAP;
 my %INSTANCES;
-my %SERIAL;
 
 our $SELF;
 my @Heap = ();
@@ -319,8 +317,6 @@ sub _register {
   $this->{_KEY} = $k; # _KEY SET HERE !!
   $FMAP{$k} = $this;
 
-  $SERIAL{$this->{_SERIALIZE}} = $k if exists $this->{_SERIALIZE}; # FOR SERIALIZED STORAGE (JSON or BSON)
-
   weaken($FMAP{$k}); # will not increase garbage ref counter to $this !!
   return $this;
 }
@@ -416,7 +412,7 @@ sub new {
 
 =head2 _reset
 
-Clears all global registries (C<%FMAP>, C<%REPOSITORY>, C<%INSTANCES>, C<%SERIAL>),
+Clears all global registries (C<%FMAP>, C<%REPOSITORY>, C<%INSTANCES>),
 resets the C<$SELF> context stack and restores the inheritance mode to B<N>.
 
   Chorus::Frame::_reset();
@@ -429,7 +425,6 @@ sub _reset {
   %REPOSITORY = ();
   %FMAP       = ();
   %INSTANCES  = ();
-  %SERIAL     = ();
   $SELF       = undef;
   @Heap       = ();
   $getMode    = MODE_N;
@@ -453,43 +448,9 @@ sub DESTROY {
       delete($REPOSITORY{$slot}->{$k}) if exists $REPOSITORY{$slot} and exists $REPOSITORY{$slot}->{$k};
     }
 
-    delete $SERIAL{$this->{_SERIALIZE}} if exists $this->{_SERIALIZE};
     delete $FMAP{$k}; # is a weak reference (not counted by garbage collector)
 }
 
-# TESTING Dumper func
-
-sub Freeze {
-    my $self = shift;
-    return { _SERIALIZE => $self->{_SERIALIZE} } if $self->{_SERIALIZE};
-    return $self; # converts frame to hashref ?!
-}
-
-sub Thaw {
-    my $desc = shift;
-    return $FMAP{$SERIAL{$desc->{_SERIALIZE}}} if $desc->{_SERIALIZE}; # WORKS !!
-    return $desc; # TO-FIX - ALWAYS BUILS NEW FRAME (bad) !!
-}
-
-# -----
-
-sub FREEZE { # Commun a CBOR et JSON
-  my ($self, $serialiser) = @_;
-  return ( _SERIALIZE => $self->{_SERIALIZE} ) if $self->{_SERIALIZE};
-  return %$self;
-}
-
-sub FREEZE_PB {
-  my ($self, $serialiser) = @_;
-  return { _SERIALIZE => $self->{_SERIALIZE} } if $self->{_SERIALIZE};
-  return $self; # converts frame to hashref ?!
-}
-
-sub THAW {
-  my ($class, $serialiser, %desc) = @_;
-  return $FMAP{$SERIAL{$desc{_SERIALIZE}}} if $desc{_SERIALIZE}; # WORKS !!
-  $class->new(%desc); # TO-FIX : ALWAYS BUILDS  A NEW FRAME (bad) !!
-}
 
 =head2 get
 
