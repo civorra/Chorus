@@ -5,6 +5,8 @@ use strict;
 
 our $VERSION = '2.01';
 
+=encoding utf8
+
 =head1 NAME
 
 Chorus::Frame - Frame-based knowledge representation with inheritance and procedural attachments.
