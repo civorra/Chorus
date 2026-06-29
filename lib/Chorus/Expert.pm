@@ -277,7 +277,7 @@ sub process {
 
 =head1 AUTHOR
 
-Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
+Christophe Ivorra
 
 =head1 BUGS
 

@@ -397,7 +397,7 @@ Override them on a per-agent basis to implement a custom DSL on top of the YAML 
 
 =head1 AUTHOR
 
-Christophe Ivorra, C<< <ch.ivorra at free.fr> >>
+Christophe Ivorra
 
 =head1 BUGS
 

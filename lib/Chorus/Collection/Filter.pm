@@ -588,7 +588,7 @@ L<Chorus::Frame>, L<Chorus::Collection::List>, L<Chorus::Engine>
 
 =head1 AUTHOR
 
-Christophe Ivorra, E<lt>ch.ivorra@free.frE<gt>
+Christophe Ivorra
 
 =head1 BUGS
 
