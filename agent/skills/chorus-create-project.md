@@ -1,12 +1,22 @@
 # Skill — chorus-create-project
 
-> Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch]`
+> Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch] [--strategy iso|edges|cross|scale]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing a KB produced by `chorus-feed`
 > `<output-file.json>`: name of the JSON file to create in `$SANDBOX/`
->                       (ignored in `--batch` mode — filenames are fixed, see Phase 6)
-> `--batch`: generate the full coverage suite (4 files) instead of a single project
+>                       (ignored in `--batch` and `--strategy` modes — filenames are fixed, see Phase 6)
+> `--batch`: generate the full coverage suite (4 files) in one pass (see Phase 6)
+> `--strategy <slug>`: generate exactly **one** file from the coverage suite, identified by slug.
+>                      Safe alternative to `--batch` when session timeout is a risk.
+>                      Slugs: `iso` → `projet-rules-iso.json` · `edges` → `projet-edges.json`
+>                             `cross` → `projet-cross.json`  · `scale` → `projet-scale.json`
+>
+> **Choosing between `--batch` and `--strategy`:**
+> - Use `--batch` for small/medium sandboxes (≤ 5 agents, short KB files).
+> - Use `--strategy` when `--batch` times out: run 4 sequential sessions, one slug each.
+>   The KB reading (Phase 0) is shared — use the coverage table from the first session
+>   as context for the subsequent ones to avoid re-reading the full KB each time.
 >
 > **Single responsibility: create a valid project JSON file.**
 > This skill reads the sandbox KB to infer types, slots, and thresholds,
@@ -71,7 +81,11 @@ For each agent, apply this two-step sequence:
 > each read resets the token TTL and produces a useful rules inventory at no extra cost.
 >
 > **Rule:** threshold tables are in the `Helpers Perl` section of the org KBs —
-> they are identical to the code in `Helpers.pm`. Do not open `Helpers.pm`.
+> they are supposed to be identical to the code in `Helpers.pm`. Do not open `Helpers.pm`.
+> ⚠️ **If any value looks suspicious** (e.g. an ep_min that seems too low for the zone,
+> an R_min that doesn't match standard memory), flag it before generating elements and
+> ask the user to verify org ↔ Helpers.pm parity — a divergence here corrupts all
+> generated JSON files (see `chorus-feed.md` Helpers Checklist rule "Org KB parity").
 
 ### 0.3 Reference format
 
@@ -235,47 +249,100 @@ If an expected KO element is CONFORME → investigate:
 
 ---
 
-## Phase 6 — Batch mode (`--batch` only)
+## Phase 6 — Multi-file mode (`--batch` or `--strategy`)
 
-> This phase replaces the single-file workflow when `--batch` is present.
-> Instead of one project JSON, generate the full coverage suite in one pass.
+> `--batch`: **orchestrator mode** — the current agent runs Phases 0+1 only, then spawns
+>            4 sub-agents (one per strategy) via `eca__spawn_agent`. Each sub-agent has
+>            its own session and token — no timeout risk from extended thinking between files.
+>
+> `--strategy <slug>`: **single-file mode** — the current agent generates exactly one
+>            targeted file directly (same workflow as a sub-agent). Use when running one
+>            strategy at a time manually, or when resuming a failed `--batch`.
 
-### 6.1 Route by strategy
+### 6.1 `--batch` — Orchestrator workflow
 
-Using the coverage analysis from Phase 1 (coverage table already built),
-generate four project files that each target a different angle:
+#### Step 1 — Run Phases 0+1
 
-| File | Strategy | Volume |
-|---|---|---|
-| `projet-rules-iso.json` | One element per rule: 1 OK + 1 KO | 2 × N_rules |
-| `projet-edges.json` | Boundary values for every continuous slot | 2 × N_thresholds |
-| `projet-cross.json` | Elements triggering multiple rules simultaneously | 1–3 per rule pair |
-| `projet-scale.json` | All types × all classes/zones — full volume stress test | ≥ 100 elements |
+Run Phase 0 in full (inventory + KB reading + keepalives) and Phase 1 (coverage table).
+Do NOT generate any JSON here — stop after the coverage table is built.
 
-### 6.2 ID prefix convention
+#### Step 2 — Build the compact KB summary
 
-To keep each file self-contained and diff-friendly, prefix element IDs with
-a one-letter code reflecting the strategy:
+Distil the KB into a self-contained block (≤ 60 lines).
+This is the **only** KB context passed to sub-agents — do NOT pass raw org file content.
 
-| File | ID prefix |
-|---|---|
-| `projet-rules-iso.json` | `I-` (isolated) |
-| `projet-edges.json` | `E-` (edge) |
-| `projet-cross.json` | `X-` (cross) |
-| `projet-scale.json` | `S-` (scale) |
+```
+SANDBOX: <absolute path>
+NAMESPACE: <Perl namespace>
+AGENTS: <slug1>, <slug2>, …
+TYPES: <type1>, <type2>, …
+TARGETING_SLOT_AGENT1: <slot>
 
-Example: `I-MUR-KO-R03-01`, `E-POT-OK-SLEND-01`, `X-MUR-KO-R01R04-01`, `S-OSS-OK-C24-01`
+THRESHOLDS:
+  <slot>: <value> [<unit>] — <source §>
+  …
 
-### 6.3 Validation and execution
+RULES:
+  <agent_slug> R<NN> (<slot_written>) : <threshold or condition summary>
+  …
 
-For each generated file, run the validation checklist from Phase 4 then execute:
-
-```bash
-python3 -c "import json; json.load(open('$SANDBOX/<file>.json')); print('JSON valide')"
-perl $SANDBOX/run.pl $SANDBOX/<file>.json
+COVERAGE TABLE:
+  <type> | OK: N | KO: N | variants: …
+  …
 ```
 
-Report a summary table after all four runs:
+#### Step 3 — Spawn 4 sub-agents
+
+Spawn 4 sub-agents via `eca__spawn_agent` (agent: `general`).
+They can run in parallel if the IDE permits, otherwise spawn sequentially.
+
+Use this task template for each, substituting `<slug>`, `<FILE>`, and `<PREFIX>`:
+
+| slug | FILE | PREFIX |
+|---|---|---|
+| `iso` | `projet-rules-iso.json` | `I-` |
+| `edges` | `projet-edges.json` | `E-` |
+| `cross` | `projet-cross.json` | `X-` |
+| `scale` | `projet-scale.json` | `S-` |
+
+```
+You are a chorus-create-project sub-agent.
+
+STRATEGY: <slug>
+TARGET FILE: <SANDBOX>/<FILE>
+ID PREFIX: <PREFIX>  (prepend to every element id, e.g. <PREFIX>TYPE-OK-01)
+
+━━━ KB SUMMARY (do NOT read any file — all context is here) ━━━
+<compact KB summary from Step 2>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STRATEGY GOAL:
+  iso   → 1 OK + 1 KO per rule, one rule exercised per element  (≈ 2 × N_rules elements)
+  edges → threshold−ε (KO) / threshold (OK) / threshold+ε for every continuous slot
+  cross → elements that trigger multiple rules simultaneously (1–3 per rule pair)
+  scale → ≥ 100 elements, all types × all classes/zones (termination stress test)
+
+YOUR TASKS:
+1. Compute element values from the threshold tables in the KB summary (never by intuition).
+2. Generate <FILE> following Phase 3 conventions:
+   - id: <PREFIX><TYPE>-<VARIANTE>-<NN>  (e.g. I-MUR-KO-R03-01)
+   - include the targeting slot for agent 1, all mandatory slots
+   - ⛔ do NOT include slots computed by the pipeline (result/status slots)
+   - annotate non-obvious values in a _note_calc field
+3. Write the file using eca__write_file.
+4. Validate:
+   python3 -c "import json; json.load(open('<SANDBOX>/<FILE>')); print('JSON valide')"
+5. If <SANDBOX>/run.pl exists:
+   perl <SANDBOX>/run.pl <SANDBOX>/<FILE>
+6. Return exactly this block:
+   FILE: <SANDBOX>/<FILE>
+   ELEMENTS: <N> CONFORME / <N> NON_CONFORME
+   PIPELINE: SOLVED ✅  |  <error summary if failed>
+```
+
+#### Step 4 — Collect results and report
+
+After all sub-agents complete, display the synthesis table:
 
 ```
 projet-rules-iso  │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
@@ -284,11 +351,45 @@ projet-cross      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unpr
 projet-scale      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
 ```
 
-If any file fails → apply the same diagnosis as Phase 5 before proceeding to the next.
+If a sub-agent failed → re-run with `chorus-create-project <sandbox> --strategy <slug>`
+in a new session, pasting the compact KB summary as context to skip Phase 0.
+
+### 6.2 `--strategy` — Single-file workflow
+
+> This is also the internal workflow of each sub-agent spawned by `--batch`.
+
+Using the KB summary and coverage table (from Phase 0+1, or passed by the orchestrator):
+
+1. **Generate** — compute values from threshold tables; write elements following Phase 3
+   conventions (id with strategy prefix, mandatory slots, no pipeline-computed slots,
+   `_note_calc` annotations where useful).
+2. **Validate** — run the Phase 4 checklist:
+   ```bash
+   python3 -c "import json; json.load(open('$SANDBOX/projet-<slug>.json')); print('JSON valide')"
+   ```
+3. **Execute** — if `run.pl` exists:
+   ```bash
+   perl $SANDBOX/run.pl $SANDBOX/projet-<slug>.json
+   ```
+   Check: `Pipeline : SOLVED ✅`, `Unprocessed: 0`, expected verdicts match.
+   If an expected KO is CONFORME → apply the Phase 5 diagnosis.
+
+### 6.3 ID prefix and strategy reference
+
+| Strategy | File | ID prefix | Goal | Volume |
+|---|---|---|---|---|
+| `iso` | `projet-rules-iso.json` | `I-` | 1 OK + 1 KO per rule in isolation | ≈ 2 × N_rules |
+| `edges` | `projet-edges.json` | `E-` | boundary values (threshold ±ε) | ≈ 2 × N_thresholds |
+| `cross` | `projet-cross.json` | `X-` | multi-rule interactions | 1–3 per rule pair |
+| `scale` | `projet-scale.json` | `S-` | all types × all classes/zones | ≥ 100 elements |
+
+> **ID stability rule:** IDs must be stable across regenerations of the same file.
+> Use deterministic conventions so that successive `chorus-check --all` runs
+> can be compared diff-style. Never use random suffixes or timestamps.
 
 ### 6.4 Convergence criterion
 
-The batch is considered **converged** when all four files satisfy:
+The batch is **converged** when all four files satisfy:
 - `Pipeline : SOLVED ✅`
 - `Unprocessed: 0`
 - No unexpected discordances (all expected OK are CONFORME, all expected KO are NON_CONFORME)
