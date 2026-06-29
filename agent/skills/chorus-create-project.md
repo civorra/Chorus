@@ -166,6 +166,21 @@ the threshold in the correct direction.
 > that the chosen value actually crosses the threshold in the correct direction.
 > Annotate the computation in a `_note_calc` JSON field if useful.
 
+> ⚠️ **Cross-cutting slots in conforming elements.** Some rules apply to ALL element
+> types regardless of their primary role (no type-guard in `CONDITION`/`EXCEPTION`).
+> For any element expected to be globally COMPLIANT, every slot checked by any such
+> universal rule — across ALL agents of the pipeline — must satisfy its constraint,
+> even if that slot is not relevant to the primary test case for this element.
+>
+> **Procedure:** before generating a conforming element, enumerate the "universal" rules
+> of each agent (rules whose `CONDITION` contains no `type_element` guard) and verify
+> every corresponding slot. Common examples: `moisture_content` (qualification, applies
+> to all types), `fire_resistance_period` / `pb_thickness_mm` (fire, applies to all types).
+>
+> A conforming element that has `moisture_content: 0` or an undefined fire slot will be
+> rejected by a universal rule even if it was designed to test a completely different criterion.
+> Annotate the verification in `_note_calc` with the agent name and rule reference.
+
 ---
 
 ## Phase 3 — Generate the JSON
@@ -248,6 +263,12 @@ Check:
   An element may pass the first criterion and fail a secondary criterion of the same rule.
   For each type, list all criteria from the KB and check them one by one.
   Annotate each verified criterion in the `_note_calc` field of the JSON.
+- [ ] ⚠️ **Universal rules (no type guard) — check ALL agents:** some rules apply to every
+  element regardless of type (e.g. moisture check in Qualification, pb_thickness in Fire).
+  For every conforming element, verify that ALL slots touched by universal rules across
+  the full pipeline hold valid values. A `moisture_content: 0` or a missing fire slot
+  silently breaks a conforming element even when its primary rule is unrelated.
+  These checks span agent boundaries — enumerate universal rules from every agent KB.
 
 ---
 
@@ -351,6 +372,14 @@ YOUR TASKS:
    - include the targeting slot for agent 1, all mandatory slots
    - ⛔ do NOT include slots computed by the pipeline (result/status slots)
    - annotate non-obvious values in a _note_calc field
+   - ⚠️ **For every CONFORMING element** (id contains `-OK-`): verify that ALL slots
+     checked by universal rules across the FULL pipeline hold valid values — not just
+     the slots relevant to the primary test case. Universal rules have no `type_element`
+     guard and will reject any element whose cross-cutting slot is out of range, regardless
+     of its intended role (e.g. `moisture_content` must be in [10%,18%] for ALL types,
+     `fire_resistance_period` must meet REI requirements for ALL types, etc.).
+     A conforming element with `moisture_content: 0` will be rejected even if it was
+     designed to test a thermal rule. Annotate each cross-check in `_note_calc`.
 3. Write the file using eca__write_file.
 4. Validate:
    python3 -c "import json; json.load(open('<SANDBOX>/<FILE>')); print('JSON valide')"
