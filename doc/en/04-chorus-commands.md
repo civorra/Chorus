@@ -66,6 +66,28 @@ can identify gaps in the YAML rules and recommend enrichment corpora.
 
 ---
 
+## `chorus-quickstart` — Pipeline overview
+
+```
+chorus-quickstart
+```
+
+**Single responsibility:** display the complete pipeline from a raw corpus to a
+compliance report, with the two available paths and their decision fork.
+
+This command does not execute anything — it is a guided reference showing:
+
+- **Path A** (real project) — `chorus-feed` → `chorus-import-project` → `chorus-check`
+- **Path B** (synthetic coverage) — `chorus-feed` → `chorus-create-project` → `chorus-check`
+- When to use `chorus-import-project` vs `chorus-create-project`
+- The reinforcement loop via `chorus-strengthen`
+- The sandbox directory layout after a full run
+- A quick command cheat-sheet for both paths
+
+> **Start here** if you are new to Chorus or unsure which path to follow.
+
+---
+
 ## `chorus-pdf` — Extract a PDF corpus
 
 ```

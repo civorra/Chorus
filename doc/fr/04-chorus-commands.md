@@ -69,6 +69,28 @@ d'enrichissement à fournir.
 
 ---
 
+## `chorus-quickstart` — Vue d'ensemble du pipeline
+
+```
+chorus-quickstart
+```
+
+**Responsabilité unique :** afficher le pipeline complet depuis un corpus brut jusqu'au
+rapport de conformité, avec les deux chemins disponibles et leur bifurcation.
+
+Cette commande n'exécute rien — c'est une référence guidée qui présente :
+
+- **Chemin A** (vrai projet) — `chorus-feed` → `chorus-import-project` → `chorus-check`
+- **Chemin B** (couverture synthétique) — `chorus-feed` → `chorus-create-project` → `chorus-check`
+- Quand utiliser `chorus-import-project` vs `chorus-create-project`
+- La boucle de renforcement via `chorus-strengthen`
+- Le layout du répertoire sandbox après un run complet
+- Un cheat-sheet des commandes pour les deux chemins
+
+> **Commencer ici** si vous découvrez Chorus ou si vous n'êtes pas sûr du chemin à suivre.
+
+---
+
 ## `chorus-pdf` — Extraire un corpus PDF
 
 ```
