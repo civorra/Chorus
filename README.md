@@ -9,6 +9,22 @@
 > engine executes it deterministically and traceably — no LLM, no network,
 > on any machine with Perl.
 
+The system works in **two distinct phases**:
+
+```
+Phase A — Build   [AI agent, supervised, once per standard]
+  Raw corpus → chorus-feed → KB + YAML rules
+             → chorus-check → deployable Perl pipeline
+
+Phase B — Execute [Chorus alone, no LLM, for every project]
+  project.json → perl run.pl → conformity report
+  100 % deterministic · reproducible · certifiable
+```
+
+The LLM intervenes **only** in Phase A — reading the corpus, structuring knowledge,
+generating artefacts. In Phase B it is gone: the Perl pipeline runs alone, with the
+same result on any machine.
+
 ```
 Normative corpus (PDF, plain text, Word, Excel)
         │
@@ -39,10 +55,10 @@ Rare clauses, normative footnotes, and cross-references between standards are
 silently omitted. The problem: the model does not know what it omits.
 
 **2. Consistency across a full project dossier — certain degradation.**
-A real project dossier includes plans, specifications, calculation notes,
-product data sheets, test reports, CE attestations. On long contexts, an LLM
-loses precision on items introduced early and does not reliably detect
-cross-document contradictions.
+A real dossier includes many heterogeneous documents — specifications, calculation
+notes, product data sheets, supporting evidence. On long contexts, an LLM loses
+precision on items introduced early and does not reliably detect cross-document
+contradictions.
 
 **3. Reproducibility — absent by nature.**
 Two runs on the same project can produce different verdicts. For a control
@@ -98,6 +114,13 @@ Normative corpus (PDF, plain text, Word, Excel)
         │                   then runs: perl run.pl project.json
         ▼
   ✅ COMPLIANT / ❌ NON_COMPLIANT  (per element, per agent, with reason)
+        │
+   chorus-strengthen   ← classifies gaps, produces enrichment roadmap
+        │
+   chorus-feed --enrich ← targeted KB enrichment
+        └──────────────────────────────────────────┐
+                                                   │ reinforcement loop
+                                            chorus-check --all ✅
 ```
 
 The project file fed to `chorus-check` can be:
@@ -106,6 +129,19 @@ The project file fed to `chorus-check` can be:
   variants, optional 4-file coverage suite `--batch`)
 - **aligned from engineer documents** with `chorus-import-project` (PDF, Word,
   Excel, inline table — bridges engineer terminology to KB slot names)
+
+`chorus-import-project` assigns a **confidence level** to each source term:
+
+| Level | Meaning |
+|---|---|
+| ✅ certain | Exact or trivially equivalent match |
+| ⚠️ probable | Close match with documented transformation |
+| ❓ ambiguous | Multiple KB candidates — human decision required |
+| ⛔ gap | Required slot absent from source — blocks the pipeline |
+| ⬜ out-of-scope | Present in source, absent from KB — noted but ignored |
+
+The alignment report produced (`import-report-NNN.org`) serves as the audit trail
+for each mapping decision and is re-read on subsequent imports to prevent drift.
 
 ### Commands at a glance
 
