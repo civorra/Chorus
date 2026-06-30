@@ -209,6 +209,18 @@ chaque agent.
 
 > `perldoc Chorus::Expert` — orchestration multi-agents, BOARD partagé, `_LOCK_UNTIL_STABLE`
 
+**Syntaxe de pattern :**
+
+| Token | Sens |
+|---|---|
+| `^` / `$` | Ancrage début / fin |
+| `[A B C]` | OU : correspond à A, B ou C |
+| `!X` | NON : exclut la valeur X |
+| `.` | N'IMPORTE : tout frame |
+| `X+` / `X*` / `X?` | Un ou plus / Zéro ou plus / Zéro ou un |
+| `X{m,n}` | Entre m et n occurrences |
+| `(...)` | Groupe de capture → `@_VFILTER` |
+
 ---
 
 ## Pour aller plus loin
