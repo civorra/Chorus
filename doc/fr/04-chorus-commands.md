@@ -59,6 +59,18 @@ est aussi nécessaire lorsque le corpus normatif change.
                                      ▼
                       ✅ CONFORME / ❌ NON_CONFORME
                          avec motif, par élément, par agent
+                                     │
+                          chorus-strengthen
+                                     │
+                                     ▼
+                      ┌─────────────────────────────────┐
+                      │  rapport d'écarts + roadmap     │
+                      └──────────────┬──────────────────┘
+                                     │
+                   chorus-feed --enrich  (corrections ciblées)
+                                     └──────────────────┐
+                                                        │ boucle de renforcement
+                                                chorus-check --all ✅
 ```
 
 Le fichier projet peut être écrit à la main, généré depuis la KB avec

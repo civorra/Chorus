@@ -172,7 +172,7 @@ sub setup {
     Chorus::Frame->new(type => 'element', valeur => 42);
 }
 
-ok(setup() && fmatch(type => 'element'), 'frame créé');
+ok(setup() && fmatch(slot => 'type'), 'frame créé');
 ```
 
 ---
@@ -199,12 +199,37 @@ print $enfant->type;     # "element"
 print $enfant->libelle;  # "Frame Chorus::Frame" — hérité, évalué lazily
 ```
 
+### Modes d'héritage N et Z
+
+Le global `$getMode` contrôle la façon dont `get()` parcourt la chaîne d'héritage
+quand un slot n'est pas défini localement.
+
+**Mode N (défaut) :** pour chaque clé de valorisation (`_VALUE`, `_DEFAULT`,
+`_NEEDED`), cherche dans *tous* les frames de l'arbre d'héritage avant de passer
+à la clé suivante — parcours en largeur par clé.
+
+**Mode Z :** parcourt la séquence complète `(_VALUE, _DEFAULT, _NEEDED)` sur
+chaque frame avant de descendre dans ses parents — parcours en profondeur.
+
+```perl
+# Basculer en mode Z (depth-first par frame)
+Chorus::Frame::setMode(GET => 'Z');
+
+# Revenir au mode N (breadth-first par clé)
+Chorus::Frame::setMode(GET => 'N');
+```
+
+> **Quand changer de mode ?** Le mode N est adapté à la majorité des cas
+> (on cherche la valeur la plus spécialisée pour une clé donnée). Le mode Z
+> est utile quand on veut qu'un frame héritant puisse court-circuiter
+> complètement un ancêtre, y compris ses `_DEFAULT` et `_NEEDED`.
+
 **`fmatch()` — interrogation de la mémoire de travail :**
 
 ```perl
-my @tous   = fmatch(slot  => 'masse');              # frames ayant le slot 'masse'
-my @lourds = fmatch(masse => sub { $_ > 10 });      # par condition
-my @typed  = fmatch(type  => 'element');             # par valeur exacte
+my @tous   = fmatch(slot => 'masse');                          # frames ayant le slot 'masse'
+my @lourds = grep { $_->{masse} > 10 } fmatch(slot => 'masse'); # par condition
+my @typed  = grep { $_->{type} eq 'element' } fmatch(slot => 'type'); # par valeur exacte
 ```
 
 > ⚠️ **Pitfall :** toujours utiliser `$f->set('slot', $val)` et
@@ -393,33 +418,54 @@ my $v = $xprt->BOARD->get('cle');
 
 ### `Chorus::Collection::List`
 
-Séquence ordonnée de frames, avec accès indexé et itération :
+Séquence ordonnée de frames. `$LIST` est un **prototype Frame** — on en hérite
+plutôt qu'on ne l'instancie directement :
 
 ```perl
-use Chorus::Collection::List;
+use Chorus::Collection::List qw($LIST);
+use Chorus::Frame;
 
-my $lst    = Chorus::Collection::List->new(@frames);
-my $first  = $lst->first;
-my $last   = $lst->last;
-my @all    = $lst->all;
+my $lst = Chorus::Frame->new(_ISA => $LIST);
+$lst->build($f1, $f2, $f3);          # initialise _ITEMS, chaîne prev/succ
+
+my $first = $lst->first_item;
+my $last  = $lst->last_item;
+my $len   = $lst->length;
+my $found = $lst->HAS('masse');       # premier item ayant le slot 'masse'
 ```
 
 ### `Chorus::Collection::Filter`
 
-Correspondance de motifs sur des séquences de frames — fonctionnement analogue
-aux expressions régulières, mais sur des tokens structurés. Utilisé principalement
-par Grimoire pour l'analyse morphosyntaxique :
+Filtrage regex-like sur des séquences de frames. `$FILTER` est lui aussi un
+**prototype Frame** — même patron que `$LIST`. Les groupes de capture atterrissent
+dans `@_VFILTER` après un `check()` réussi :
 
 ```perl
-use Chorus::Collection::Filter;
+use Chorus::Collection::Filter qw($FILTER @_VFILTER);
+use Chorus::Frame;
 
-my $filtre = Chorus::Collection::Filter->new(
-    sub { $_[0]->{pos} eq 'NOM'  },
-    sub { $_[0]->{pos} eq 'VERB' },
-);
+my $f = Chorus::Frame->new(_ISA => $FILTER);
 
-my @matches = $filtre->match($sequence);
+$f->set_node_test(sub { $_[0]->{pos} });  # valeur comparée dans le pattern
+
+$f->set_filter('^(NOM) VERB ADJ*$');
+
+if ($f->check(@tokens)) {
+    my ($sujets) = @_VFILTER;            # groupe de capture
+}
 ```
+
+**Syntaxe de pattern :**
+
+| Token | Sens |
+|---|---|
+| `^` / `$` | Ancrage début / fin |
+| `[A B C]` | OU : correspond à A, B ou C |
+| `!X` | NON : exclut la valeur X |
+| `.` | N'IMPORTE : tout frame |
+| `X+` / `X*` / `X?` | Un ou plus / Zéro ou plus / Zéro ou un |
+| `X{m,n}` | Entre m et n occurrences |
+| `(...)` | Groupe de capture → `@_VFILTER` |
 
 ---
 
