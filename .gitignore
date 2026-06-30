@@ -22,5 +22,4 @@ sandboxes/demo_en/*
 sandboxes/demo_en/**/.kb-hash
 
 # Claude Code local configuration — not committed
-CLAUDE.md
 .claude/
