@@ -1,50 +1,15 @@
-# Introduction à Chorus
+# Chorus Engine — Guide technique
 
-## Qu'est-ce que Chorus ?
-
-**Chorus** est un moteur d'inférence écrit en Perl pur. Il repose sur trois
-concepts fondamentaux qui s'emboîtent : une **mémoire de travail** peuplée de
-frames, un **cycle d'inférence** qui applique des règles en boucle jusqu'au
-point fixe, et une **orchestration multi-agents** qui décompose les problèmes
-complexes en spécialités indépendantes.
-
-**La mémoire de travail** est constituée de `Chorus::Frame` — des objets Perl
-dont les propriétés (les *slots*) représentent la connaissance du domaine, dans
-la lignée du modèle slots / défauts / attachements procéduraux introduit par
-Minsky (1974). Tous les frames sont indexés dans un registre global ; la fonction
-`fmatch()` permet de les interroger en temps constant. C'est sur cette mémoire que
-portent toutes les règles.
-
-**Le cycle d'inférence** est assuré par `Chorus::Engine`. Un agent contient un
-ensemble de règles ; chaque règle déclare les frames sur lesquels elle s'applique
-(`_SCOPE`) et l'effet qu'elle produit (`_APPLY`). Le moteur déclenche les règles
-en boucle tant qu'au moins l'une d'elles a produit un effet — il s'arrête au
-point fixe, quand rien ne change plus, ou dès qu'un but est atteint. Les règles
-peuvent être écrites en Perl ou chargées depuis des fichiers YAML.
-
-**L'orchestration** est assurée par `Chorus::Expert`. Plusieurs agents
-spécialisés sont enregistrés et partagent un tableau de bord commun (`BOARD`).
-L'Expert les fait coopérer en boucle jusqu'à ce que l'un d'eux déclare le
-problème résolu. Chaque agent ignore les autres et ne traite que son périmètre ;
-c'est leur enchaînement qui produit le résultat global.
-
-```
-Chorus::Expert      coordonne les agents, détecte la fin
-  └─ Chorus::Engine   un agent = un ensemble de règles + boucle d'inférence
-       └─ Chorus::Frame   la mémoire de travail = objets avec slots indexés
-```
-
-L'idée centrale : plutôt que d'écrire un algorithme qui dit *comment* résoudre
-un problème étape par étape, on déclare *ce qu'on sait* (les frames) et *ce
-qu'on sait faire* (les règles), et Chorus se charge du reste — de façon
-déterministe et traçable.
+> Ce document complète le [README](../../README.md). Il suppose acquis le modèle
+> général (pipeline `chorus-*`, positionnement LLM/moteur) et détaille la mécanique
+> interne : DSL YAML, nouveautés 2.0, API Perl de référence.
 
 ---
 
 ## Niveaux d'utilisation
 
-Chorus se découvre et s'adopte par étapes. On n'est pas obligé d'utiliser
-l'ensemble de la chaîne dès le départ.
+Chorus s'adopte par étapes — on n'est pas obligé d'utiliser l'ensemble de la
+chaîne dès le départ.
 
 | Niveau | Ce qu'on utilise | Prérequis | Pour qui |
 |---|---|---|---|
@@ -52,165 +17,241 @@ l'ensemble de la chaîne dès le départ.
 | **2 — YAML** | Règles DSL YAML, `loadRules()` | Perl 5 | Projets maintenables, logique métier riche |
 | **3 — Agent IA** | Pipeline généré depuis un corpus | Perl 5 + agent IA | Domaines normatifs, corpus volumineux |
 
-Les niveaux 1 et 2 sont **100 % autonomes** : Perl pur, aucune dépendance
-externe, aucun outil tiers. Le niveau 3 ajoute un agent IA comme outil de
-*développement* — pas comme dépendance d'*exécution*. Un pipeline généré au
-niveau 3 tourne exactement comme un pipeline écrit à la main au niveau 1.
+Niveaux 1 et 2 : **100 % autonomes** — Perl pur, aucune dépendance externe.
+Le niveau 3 ajoute un agent IA comme outil de *développement* uniquement ; le
+pipeline généré tourne comme un pipeline de niveau 1, sans agent IA ni réseau.
 
-> **Point de départ :** le sandbox `sandboxes/demo_en`
-> est entièrement fonctionnel sans agent IA. Il montre la structure
-> complète d'un projet Chorus — corpus, KB, règles YAML, infrastructure Perl —
-> et se lance avec `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`.
+> **Point de départ :** `sandboxes/demo_en` est entièrement fonctionnel sans agent IA :
+> `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`
+
+> **Note terminologique :** le terme *neuro-symbolique* est parfois appliqué à
+> des systèmes comme Chorus. Il n'est pas exact ici. Dans les systèmes
+> neuro-symboliques, un modèle neuronal *apprend* à simuler des règles logiques.
+> Dans Chorus, le moteur symbolique est réel — frames, slots, chaîne d'inférence —
+> et le LLM est une étape de prétraitement. *Symbolique augmenté* est un label
+> plus précis.
 
 ---
 
-## Chorus::Expert — l'orchestration
+## DSL YAML — référence complète
 
-`Chorus::Expert` est le chef d'orchestre. Il enregistre plusieurs agents
-(`Chorus::Engine`) spécialisés, leur fournit un **tableau de bord partagé**
-(`BOARD`) pour communiquer, et les fait tourner en boucle jusqu'à ce que
-l'un d'eux déclare le travail terminé.
+Pour les projets avec de nombreuses règles, le DSL YAML externalise la logique
+métier sans code Perl répétitif.
 
-```perl
-use Chorus::Expert;
+### Structure d'une règle
 
-my $xprt = Chorus::Expert->new();
-
-$xprt->register($agent_analyse, $agent_calcul, $agent_controle);
-
-my $ok = $xprt->process($donnees);   # 1 = succès, undef = échec ou timeout
+```yaml
+REGLE: nom-de-la-regle           # identifiant unique (_ID interne)
+PREMISSES:                       # slots requis sur le frame candidat (filtre rapide)
+  - slot_requis
+CHERCHER:                        # bindings : nom → critères de sélection
+  var:
+    attribut: nom_slot           # le frame doit posséder ce slot
+    filtre:   '$_->{slot} > 0'  # expression Perl évaluée sur le frame candidat
+CONDITION: |                     # condition globale (tous les bindings résolus)
+  $var->{slot} > seuil
+EXCEPTION: |                     # court-circuit : ne pas déclencher si vrai
+  defined $var->{resultat}
+EFFET: |                         # corps de règle — doit retourner 1 si actif
+  $var->set('resultat', calcul($var->{slot}));
+  1
+TERMINAL: solved                 # ← nouveauté 2.0 — terminer le pipeline
 ```
 
-L'Expert garantit que les agents tournent dans l'ordre d'enregistrement et
-recommence tant que l'un d'eux a produit un effet. Il s'arrête dès qu'un agent
-appelle `solved()` — ou quand `_MAX_ITER` cycles ont été atteints sans
-convergence.
+**Aliases anglais (2.0)** — `RULE` / `FIND` / `ACTION` / `PREMISES` sont des
+synonymes acceptés de `REGLE` / `CHERCHER` / `EFFET` / `PREMISSES`. Les
+sous-clés `attribut` et `filtre` sont invariantes (pas d'alias).
 
-> **Pattern courant :** enregistrer un agent de contrôle en dernière position.
-> Son seul rôle est de vérifier que tous les objets ont été traités, puis
-> d'appeler `$agent->solved()`.
+### Le champ `TERMINAL` — nouveauté 2.0
+
+`TERMINAL` remplace le code Perl qui appelait `solved()` ou `failed()` depuis
+`_APPLY`. Il est déclaré directement dans la règle YAML, sans glue code :
+
+```yaml
+REGLE: tout-verifie
+CHERCHER:
+  obj:
+    attribut: statut
+CONDITION: |
+  $obj->{statut} eq 'ok'
+TERMINAL: solved
+```
+
+Valeurs acceptées : `solved` · `failed`.
+
+Quand la règle s'active et que `TERMINAL` est présent, le moteur appelle
+`solved()` ou `failed()` puis sort de la boucle immédiatement.
+
+### Chargement des règles
+
+```perl
+$agent->loadRules('rules/mon-agent/');       # tous les *.yml du répertoire
+$agent->loadRules('rules/R01-ma-regle.yml'); # fichier unique
+```
+
+Les fichiers sont chargés **par ordre alphabétique** — nommer les fichiers
+`R01-`, `R02-`… pour contrôler l'ordre d'application.
+
+**Déduplication par identifiant (2.0) :** si deux fichiers déclarent une règle
+avec le même `REGLE:` / `RULE:`, le second est ignoré et un avertissement est
+émis.
+
+### Variables de contexte dans `EFFET`
+
+Les variables liées par `CHERCHER` sont directement accessibles sous leur nom.
+`$SELF` désigne le moteur courant :
+
+```yaml
+EFFET: |
+  my $val = $source->{mesure} * $SELF->{facteur};
+  $cible->set('valeur_corrigee', $val);
+  1
+```
 
 ---
 
-## Chorus::Engine — les règles
+## Nouveautés 2.0 — API moteur
 
-`Chorus::Engine` est le moteur d'inférence. Chaque instance est un **agent**
-qui contient une liste de règles. Une règle déclare :
+### Helpers scope/filtre comme méthodes d'instance
 
-- son **scope** (`_SCOPE`) : comment trouver les objets sur lesquels s'appliquer ;
-- son **action** (`_APPLY`) : ce qu'elle fait quand le scope est satisfait.
+En 1.x, `setFilter`, `setScope`, `setCondition`, `setException`, `setEffect`
+étaient des fonctions implicites au niveau du package, dépendantes de la
+variable globale `$SELF`. En 2.0, ce sont de vraies **méthodes d'instance** :
 
 ```perl
-use Chorus::Engine;
-use Chorus::Frame;   # pour fmatch()
-
 my $agent = Chorus::Engine->new();
 
-$agent->addrule(
-    _SCOPE => {
-        animal => sub { [ fmatch(slot => 'cri') ] },
-    },
-    _APPLY => sub {
-        my %opts = @_;
-        return if defined $opts{animal}->{cri_connu};   # déjà traité
-        $opts{animal}->set('cri_connu', $opts{animal}->cri);
-        return 1;   # la règle a produit un effet
-    },
-);
+$agent->setFilter(sub {
+    my ($self, $frame) = @_;
+    $frame->{type} eq 'element';
+});
 
-$agent->loop();   # boucle autonome (sans Expert)
+$agent->setScope(sub {
+    my ($self) = @_;
+    [ fmatch(slot => 'type') ]
+});
+
+$agent->setCondition(sub { ... });
+$agent->setException(sub { ... });
+$agent->setEffect(sub { ... });
 ```
 
-Le moteur applique les règles en boucle tant qu'au moins l'une d'elles produit
-un effet. Il s'arrête quand rien ne change plus, ou quand `solved()` est appelé.
+Le code 1.x reste compatible — `$SELF` est toujours positionné pendant
+l'exécution des règles.
+
+### `_MAX_CYCLES` — garde-fou boucle infinie
+
+```perl
+my $agent = Chorus::Engine->new(_MAX_CYCLES => 5000);
+```
+
+`loop()` s'arrête après `_MAX_CYCLES` cycles (défaut : 10 000) et émet un
+avertissement. Chaque instance possède sa propre limite, indépendante des
+autres agents d'un même `Chorus::Expert`.
+
+Calibration recommandée : `N_frames × N_règles × N_agents × 10`. La KB
+générée par `chorus-feed` documente la valeur cible dans le fichier org de
+chaque agent.
+
+### `Chorus::Frame::_reset()` — isolation des tests
+
+```perl
+Chorus::Frame->_reset();
+```
+
+Vide l'intégralité du registre de frames (`%FMAP`, `%REPOSITORY`, `%INSTANCES`,
+`%SERIAL`, `@Heap`). Conçu pour l'isolation entre cas de test — chaque test
+repart d'une mémoire de travail vierge :
+
+```perl
+use Test::More;
+use Chorus::Frame;
+
+sub setup {
+    Chorus::Frame->_reset();
+    Chorus::Frame->new(type => 'element', valeur => 42);
+}
+
+ok(setup() && fmatch(type => 'element'), 'frame créé');
+```
 
 ---
 
-## Chorus::Frame — la connaissance
+## Chorus::Frame — référence
 
-`Chorus::Frame` est la brique de base : un objet Perl dont les propriétés
-s'appellent des **slots**. Les frames peuvent hériter les uns des autres via
-le slot `_ISA`, exactement comme des prototypes. Un slot peut contenir une
-valeur scalaire ou une fonction calculée à la volée.
+### Slots, héritage et `fmatch()`
 
 ```perl
 use Chorus::Frame;
 
-my $animal = Chorus::Frame->new(
-    type => 'inconnu',
-    cri  => sub { "..." },
+my $base = Chorus::Frame->new(
+    type    => 'inconnu',
+    libelle => sub { "Frame " . ref($_[0]) },  # slot procédural
 );
 
-my $chat = Chorus::Frame->new(
-    _ISA => $animal,
-    type => 'félin',
-    cri  => sub { "miaou" },
+my $enfant = Chorus::Frame->new(
+    _ISA   => $base,
+    type   => 'element',
+    masse  => 12.5,
 );
 
-print $chat->type;   # "félin"
-print $chat->cri;    # "miaou"
+print $enfant->type;     # "element"
+print $enfant->libelle;  # "Frame Chorus::Frame" — hérité, évalué lazily
 ```
 
-Tous les frames sont automatiquement indexés dans un registre global.
-La fonction `fmatch()` permet de les retrouver rapidement par slot :
+**`fmatch()` — interrogation de la mémoire de travail :**
 
 ```perl
-my @avec_cri = fmatch(slot => 'cri');          # tous les frames ayant un slot 'cri'
-my @felins   = fmatch(type => 'félin');         # par valeur de slot
+my @tous   = fmatch(slot  => 'masse');              # frames ayant le slot 'masse'
+my @lourds = fmatch(masse => sub { $_ > 10 });      # par condition
+my @typed  = fmatch(type  => 'element');             # par valeur exacte
 ```
 
-> **Pitfall :** toujours utiliser `$f->set('slot', $val)` et `$f->delete('slot')`
-> — jamais `$f->{slot} = $val` ni `delete $f->{slot}`, qui court-circuitent
-> l'index et rendent les frames invisibles à `fmatch()`.
+> ⚠️ **Pitfall :** toujours utiliser `$f->set('slot', $val)` et
+> `$f->delete('slot')` — jamais `$f->{slot} = $val` ni `delete $f->{slot}`,
+> qui court-circuitent l'index et rendent le frame invisible à `fmatch()`.
 
-### Sélection de frame avec `fselect()`
+### `fselect()` — reconnaissance de situation
 
-`fmatch()` répond à la question *"quels frames possèdent ce slot ?"* — le moteur
-plonge dans la mémoire de travail et en extrait des frames.
-
-`fselect()` inverse la direction, fidèle à l'intention originale de Minsky :
-étant donné un ensemble de propriétés observées, *quel prototype correspond le
-mieux à cette situation ?*  Chaque frame candidat reçoit un point par paire
-slot/valeur correspondante ; le frame avec le meilleur score est retourné.
+`fselect()` répond à la question inverse de `fmatch()` : étant donné un ensemble
+de propriétés observées, *quel prototype correspond le mieux ?* Chaque frame
+candidat reçoit un point par paire slot/valeur correspondante.
 
 ```perl
-# Trois prototypes en mémoire de travail
-my $oiseau = Chorus::Frame->new(type => 'animal', vole => 1,  pattes => 2);
-my $poisson = Chorus::Frame->new(type => 'animal', vole => 0, pattes => 0);
-my $chauve_souris = Chorus::Frame->new(type => 'animal', vole => 1, pattes => 2, nocturne => 1);
+my $acier = Chorus::Frame->new(materiau => 'acier', fy => 355, classe => 'S355');
+my $beton = Chorus::Frame->new(materiau => 'béton', fck => 30,  classe => 'C30');
+my $bois  = Chorus::Frame->new(materiau => 'bois',  classe => 'C24', essence => 'sapin');
 
-# Situation observée : quelque chose qui vole et a deux pattes
-my $proto = fselect(vole => 1, pattes => 2);
-# → $oiseau et $chauve_souris marquent 2 points chacun ; l'un d'eux est retourné
+my $proto   = fselect(classe => 'C24');               # → $bois
+my @classes = fselect(classe => 'C24', _all => 1);    # tous, classés par score
+my $best    = fselect(materiau => 'acier', _from => [$acier, $beton]);  # pool restreint
 
-# Tous les candidats classés du meilleur au moins bon
-my @classes = fselect(vole => 1, pattes => 2, _all => 1);
-
-# Restreindre la recherche à un sous-ensemble connu
-my $meilleur = fselect(vole => 1, _from => [$oiseau, $poisson]);
-
-# Instancier depuis le prototype sélectionné
-my $instance = Chorus::Frame->new(_ISA => $proto, %observations);
+my $instance = Chorus::Frame->new(_ISA => $proto, %observations);  # instancier
 ```
 
 **Options :**
 
 | Option | Défaut | Effet |
 |---|---|---|
-| `_all` | — | Retourner tous les candidats classés par score (liste ou arrayref) |
+| `_all` | — | Retourner tous les candidats classés par score |
 | `_from` | tous les frames | Restreindre le pool de candidats |
-| `_min` | `1` | Score minimum pour être inclus ; `0` pour accepter les candidats sans correspondance |
+| `_min` | `1` | Score minimum ; `0` pour inclure les non-correspondants |
 
-> **Relation avec `fmatch` :** les deux fonctions sont complémentaires.
-> `fmatch` est l'outil principal du moteur — il pilote les règles d'inférence.
-> `fselect` est une primitive de plus haut niveau pour la reconnaissance de
-> situation : choisir un *type* de frame depuis le contexte, puis utiliser
-> `fmatch` pour opérer sur les instances de ce type.
+**Usage typique dans une règle `_APPLY` :**
 
-### La triade Minsky complète — `_NEEDED` / `_AFTER` / `_ON_DELETE`
+```perl
+_APPLY => sub {
+    my %o = @_;
+    my $proto = fselect(classe => $o{element}->{classe});
+    return unless $proto;
+    $o{element}->set('prototype', $proto);
+    return 1;
+},
+```
 
-Minsky définissait trois *démons procéduraux* déclenchés lors de l'accès à un
-slot. `Chorus::Frame` implémente désormais les trois :
+### Les trois démons — `_NEEDED` / `_AFTER` / `_ON_DELETE`
+
+Trois crochets procéduraux déclenchés lors de l'accès aux slots :
 
 | Démon | Slot | Déclencheur | Direction |
 |---|---|---|---|
@@ -221,200 +262,174 @@ slot. `Chorus::Frame` implémente désormais les trois :
 ```perl
 my $f = Chorus::Frame->new(
     budget     => 1000,
-    _AFTER     => sub { print "budget changé : $_[0]\n" },
+    _AFTER     => sub { print "budget modifié : $_[0]\n" },
     _ON_DELETE => sub { print "slot '$_[0]' supprimé\n" },
-    _NEEDED    => sub { 0 },   # arrière : produit une valeur par défaut
+    _NEEDED    => sub {
+        my ($self, $slot) = @_;
+        return $self->{masse} * $self->{densite} if $slot eq 'poids';
+        return undef;
+    },
 );
 
-$f->set('budget', 500);    # → "budget changé : 500"
+$f->set('budget', 500);    # → "budget modifié : 500"
 $f->delete('budget');      # → "slot 'budget' supprimé"
 ```
 
-`_ON_DELETE` reçoit le nom du slot supprimé en argument. `$SELF` est positionné
-sur le frame au moment de l'appel, ce qui permet au hook d'inspecter l'état
-restant du frame.
+`_ON_DELETE` reçoit le nom du slot supprimé. `$SELF` est positionné sur le frame
+au moment de l'appel.
 
-### Slots terminaux et `complete()`
+### `complete()` et `_TERMINAL_SLOTS`
 
-Minsky distinguait les *nœuds terminaux* — slots devant être remplis par des
-données réelles observées — des slots non-terminaux qui peuvent rester
-procéduraux. Le slot `_TERMINAL_SLOTS` et la méthode `complete()` implémentent
-cette distinction.
+`_TERMINAL_SLOTS` liste les slots qui doivent être explicitement renseignés
+(pas seulement hérités ou calculés) pour qu'un frame soit considéré complet.
 
 ```perl
-my $Vehicule = Chorus::Frame->new(
-    _TERMINAL_SLOTS => ['couleur', 'nb_roues'],
-    nb_roues        => sub { 4 },   # non-terminal : possède une valeur par défaut
+my $Element = Chorus::Frame->new(
+    _TERMINAL_SLOTS => ['classe', 'longueur', 'section'],
+    section => sub { 'non définie' },   # valeur par défaut
 );
 
-my $voiture = Chorus::Frame->new(_ISA => $Vehicule, couleur => 'rouge', nb_roues => 4);
-my $velo    = Chorus::Frame->new(_ISA => $Vehicule, couleur => 'bleu');
+my $e1 = Chorus::Frame->new(_ISA => $Element,
+    classe => 'C24', longueur => 4.2, section => '120x80');
+my $e2 = Chorus::Frame->new(_ISA => $Element,
+    classe => 'C24', longueur => 3.0);  # section manquante
 
-$voiture->complete;   # 1    — tous les slots terminaux sont remplis
-$velo->complete;      # undef — nb_roues non explicitement défini sur $velo
-                      #         (le défaut procédural du prototype compte quand même)
+$e1->complete;   # 1     — tous les slots terminaux présents
+$e2->complete;   # undef — 'section' non défini explicitement sur $e2
 ```
 
-`_TERMINAL_SLOTS` est hérité : un frame enfant qui ne le redéclare pas utilise
-la liste de son parent. Chaque slot est résolu via `get()`, donc les valeurs
-`_DEFAULT` et les slots procéduraux comptent comme remplis.
+`_TERMINAL_SLOTS` est hérité. Chaque slot est résolu via `get()` — les valeurs
+procédurales héritées comptent comme remplies.
 
-> **Usage pratique :** appeler `complete()` dans la règle d'un agent de contrôle
-> pour vérifier que tous les objets du domaine ont été traités avant d'appeler
-> `solved()`.
+> **Usage pratique :** appeler `complete()` dans l'agent de contrôle final pour
+> vérifier que tous les objets du domaine ont été traités avant d'appeler `solved()`.
 
-### Réseaux de frames et `_ALTERNATIVES`
+### Réseaux de frames — `_ALTERNATIVES`
 
-Les frames de Minsky étaient organisées en *réseaux de frames alternatives* :
-quand un prototype ne correspond pas à une situation, le système essaie ses
-homologues déclarés. Le slot `_ALTERNATIVES` et l'option `_alternatives` de
-`fselect()` implémentent ce mécanisme.
+`_ALTERNATIVES` déclare les frames homologues à explorer quand un prototype ne
+correspond pas parfaitement. S'utilise avec l'option `_alternatives` de `fselect()` :
 
 ```perl
-my $Chauve_souris = Chorus::Frame->new(vole => 1, pattes => 2, nocturne => 1);
-my $Insecte       = Chorus::Frame->new(vole => 1, pattes => 6);
-my $Oiseau        = Chorus::Frame->new(vole => 1, pattes => 2,
-                                       _ALTERNATIVES => [$Chauve_souris, $Insecte]);
+my $Poteaux = Chorus::Frame->new(type => 'bois', porteur => 1, section => 'carree');
+my $Solives = Chorus::Frame->new(type => 'bois', porteur => 1, section => 'rectangulaire');
+my $Lambris = Chorus::Frame->new(type => 'bois', porteur => 0,
+                                  _ALTERNATIVES => [$Poteaux, $Solives]);
 
-# Observé : quelque chose qui vole et a 6 pattes → Insecte gagne
-my $match = fselect(vole => 1, pattes => 6, _alternatives => $Oiseau);
-# → $Insecte (score 2) devant $Oiseau et $Chauve_souris (score 1 chacun)
+# Observé : élément porteur en bois à section rectangulaire
+my $match = fselect(porteur => 1, section => 'rectangulaire', _alternatives => $Lambris);
+# → $Solives (score 2)
 ```
 
-`_alternatives` restreint le pool de candidats au frame seed et aux frames de
-sa liste `_ALTERNATIVES`, localisant la recherche à un voisinage déclaré plutôt
-que de parcourir tous les frames enregistrés.
+`_alternatives` restreint le pool au frame seed et à sa liste `_ALTERNATIVES`,
+localisant la recherche à un voisinage déclaré.
 
-### Chorus et le modèle de Minsky — synthèse de compatibilité
+---
 
-`Chorus::Frame` implémente le cœur du modèle de frames de Minsky (1974) :
+## Chorus::Engine — référence
 
-| Concept | Chorus | Notes |
+```perl
+use Chorus::Engine;
+
+my $agent = Chorus::Engine->new(
+    _IDENT      => 'mon-agent',   # nom pour les logs
+    _MAX_CYCLES => 5000,
+);
+
+# Règle Perl
+$agent->addrule(
+    _SCOPE => { f => sub { [ fmatch(type => 'element') ] } },
+    _APPLY => sub {
+        my %o = @_;
+        return if $o{f}->{traite};
+        $o{f}->set('traite', 1);
+        return 1;
+    },
+);
+
+# Chargement YAML
+$agent->loadRules('rules/mon-agent/');
+
+# Boucle autonome (sans Expert)
+$agent->loop();
+
+# Termination explicite depuis _APPLY
+$agent->solved();   # BOARD->SOLVED = 'Y'
+$agent->failed();   # BOARD->FAILED = 'Y'
+```
+
+**`_MAX_ITER` (Expert) vs `_MAX_CYCLES` (Engine) :**
+
+| Paramètre | Portée | Ce qu'il limite |
 |---|---|---|
-| Slots nommés + valeurs par défaut | ✅ `_DEFAULT` | Direct |
-| Slots procéduraux | ✅ `sub {}` | Évalués lazily via `get()` |
-| Héritage simple et multiple | ✅ `_ISA` | Direct |
-| Démon *if-needed* | ✅ `_NEEDED` | Chaînage arrière |
-| Démon *if-added* | ✅ `_AFTER` | Chaînage avant |
-| Démon *if-removed* | ✅ `_ON_DELETE` | Effet de bord sur `delete()` |
-| Nœuds terminaux | ✅ `_TERMINAL_SLOTS` + `complete()` | Sans questionnement actif |
-| Sélection de frame | ✅ `fselect()` | Appel explicite, non perceptif |
-| Réseaux de frames | ✅ `_ALTERNATIVES` | Voisinage déclaratif |
-| Sélection automatique par perception | ⚠️ | Structurellement absent — voir ci-dessous |
-| Propagation par marqueurs | ❌ | Non implémenté |
-
-**La principale divergence restante :** dans le modèle original de Minsky, la
-sélection de frame est déclenchée *automatiquement* par l'entrée perceptuelle —
-le système choisit le meilleur prototype sans appel explicite. Dans Chorus,
-`fselect()` doit être appelée explicitement depuis une règle ou du code Perl.
-C'est un choix architectural délibéré : Chorus est un moteur d'inférence piloté
-par des règles, pas un système perceptuel. Le mécanisme de sélection est
-disponible et correct ; son activation est sous le contrôle du développeur.
-
-**Sur la propagation par marqueurs :** Minsky envisageait une propagation de
-marqueurs à travers le réseau de frames pour pré-activer en parallèle les frames
-candidates avant la sélection explicite. `fselect()` score les candidats de façon
-linéaire — correct séquentiellement, mais non propagatif. C'est suffisant pour
-les domaines pilotés par des règles et n'introduit aucune limitation pratique dans
-les contextes où Chorus est utilisé.
+| `_MAX_CYCLES` | `Chorus::Engine` | Cycles dans la boucle d'un agent |
+| `_MAX_ITER` | `Chorus::Expert` | Passes sur l'ensemble des agents |
 
 ---
 
-## Les règles en YAML
+## Chorus::Expert — référence
 
-Pour les projets avec beaucoup de règles, Chorus propose un DSL YAML
-qui évite d'écrire le code Perl à la main :
+```perl
+use Chorus::Expert;
 
-```yaml
-REGLE: calculer-cri-connu
-CHERCHER:
-  animal:
-    attribut: cri
-EXCEPTION: defined $animal->{cri_connu}
-EFFET: |
-  $animal->set('cri_connu', $animal->cri);
-  1
+my $xprt = Chorus::Expert->new(_MAX_ITER => 100);
+
+$xprt->register($agent_1, $agent_2, $agent_controle);
+
+my $ok = $xprt->process($donnees_initiales);
+# → 1 si solved(), undef si failed() ou _MAX_ITER atteint
+
+# Tableau de bord partagé
+$xprt->BOARD->set('cle', 'valeur');
+my $v = $xprt->BOARD->get('cle');
 ```
 
-## Chorus est un moteur d'inférence
-
-Ce modèle s'inscrit directement dans la lignée des systèmes experts des années
-1980–90. CLIPS, OPS5 et leurs prédécesseurs partagent tous le même cycle
-recognize–act, la même mémoire de travail et le même mécanisme de chaînage avant.
-Chorus est une implémentation Perl moderne et minimale de cette tradition — sans
-le poids d'un runtime dédié.
-
-Chorus implémente le cycle classique *recognize–act* : à chaque itération, le
-moteur cherche dans la mémoire de travail les règles dont les conditions sont
-satisfaites, les déclenche, et recommence — jusqu'au **point fixe** (aucune règle
-ne peut plus s'activer) ou jusqu'à ce qu'un but explicite soit atteint.
-
-Ce mécanisme s'exprime à chaque couche de l'architecture.
-
-### La mémoire de travail
-
-Les registres `%FMAP`, `%REPOSITORY` et `%INSTANCES` de `Chorus::Frame`
-constituent la mémoire de travail. La fonction `fmatch()` l'interroge en temps
-constant pour retrouver tous les frames qui possèdent un slot donné, avec
-filtrage optionnel.
-
-### Le cycle recognize–act
-
-`applyrules()` évalue le `_SCOPE` de chaque règle pour identifier les frames
-candidats (phase *recognize*), puis appelle `_APPLY` pour chaque combinaison
-(phase *act*). Elle suit `$stillworking` — vrai si au moins une règle a produit
-un effet. `loop()` répète ce cycle jusqu'au point fixe.
-
-### Le chaînage avant
-
-À deux niveaux :
-- **Au niveau des frames** : le slot `_AFTER` déclenche des effets dès qu'une
-  valeur change, propageant immédiatement les conséquences au sein de la
-  structure de connaissance.
-- **Au niveau du moteur** : les règles enrichissent les frames en leur ajoutant
-  de nouveaux slots, ce qui rend d'autres règles éligibles au prochain cycle.
-
-### Le chaînage arrière
-
-Quand `get()` ne peut pas résoudre un slot, il invoque le coderef `_NEEDED`
-pour *produire* la valeur à la demande. Le slot est calculé uniquement quand
-quelque chose en a besoin — c'est du chaînage arrière au niveau de la
-représentation des connaissances.
-
-### La termination par but
-
-`solved()` / `failed()`, `_TERMINAL`, `_MAX_CYCLES` : le moteur raisonne
-jusqu'à atteindre un état terminal explicite ou épuiser les possibilités.
-L'appel à `replay_all()` permet de relancer l'intégralité du pipeline d'agents,
-pour raisonner sur des états qui évoluent en cours de traitement.
+> **Pattern courant :** enregistrer un agent de contrôle en dernière position.
+> Son seul rôle est de vérifier que tous les objets ont été traités
+> (`$obj->complete` pour chacun), puis d'appeler `$agent->solved()`.
 
 ---
 
-## Pourquoi ce modèle ?
+## Chorus::Collection — référence
 
-L'avantage d'un système à règles explicites est la **traçabilité** :
-chaque résultat est justifiable par une règle précise. La connaissance
-est séparée du moteur et peut être lue, modifiée ou étendue indépendamment,
-sans toucher au code d'inférence.
+### `Chorus::Collection::List`
 
-C'est ce qui distingue Chorus des approches purement algorithmiques :
-on décrit le **quoi**, pas le **comment**.
+Séquence ordonnée de frames, avec accès indexé et itération :
 
----
+```perl
+use Chorus::Collection::List;
 
-## Chorus à l'ère des LLMs
+my $lst    = Chorus::Collection::List->new(@frames);
+my $first  = $lst->first;
+my $last   = $lst->last;
+my @all    = $lst->all;
+```
 
-> Voir [`02-ai-agent.md`](02-ai-agent.md) — positionnement LLM vs Chorus, architecture agent IA,
-> pipeline `chorus-pdf` → `chorus-feed` → `chorus-check`.
+### `Chorus::Collection::Filter`
+
+Correspondance de motifs sur des séquences de frames — fonctionnement analogue
+aux expressions régulières, mais sur des tokens structurés. Utilisé principalement
+par Grimoire pour l'analyse morphosyntaxique :
+
+```perl
+use Chorus::Collection::Filter;
+
+my $filtre = Chorus::Collection::Filter->new(
+    sub { $_[0]->{pos} eq 'NOM'  },
+    sub { $_[0]->{pos} eq 'VERB' },
+);
+
+my @matches = $filtre->match($sequence);
+```
 
 ---
 
 ## Pour aller plus loin
 
-- `perldoc Chorus::Expert` — orchestration multi-agents, BOARD partagé, `_MAX_ITER`
+- [`02-ai-agent.md`](02-ai-agent.md) — positionnement LLM vs Chorus, architecture daemon, pipeline complet
+- [`03-applications.md`](03-applications.md) — domaines d'application, onboarding par secteur
+- [`04-chorus-commands.md`](04-chorus-commands.md) — référence complète des commandes `chorus-*`
 - `perldoc Chorus::Engine` — règles, boucle d'inférence, DSL YAML, contrôle de flux
 - `perldoc Chorus::Frame` — slots, héritage, `fmatch`, `get`, `set`, `delete`
-- `perldoc Chorus::Collection::List` — séquences ordonnées de frames
-- `perldoc Chorus::Collection::Filter` — correspondance de motifs sur séquences
-- [CLIPS](https://www.clipsrules.net/), [OPS5](https://en.wikipedia.org/wiki/OPS5) — la tradition des systèmes experts dont Chorus s'inspire
-- Minsky, M. (1974). *A Framework for Representing Knowledge* — le modèle de frames à l'origine de `Chorus::Frame`
+- `perldoc Chorus::Expert` — orchestration multi-agents, BOARD partagé
+- `perldoc Chorus::Collection::List` — séquences ordonnées
+- `perldoc Chorus::Collection::Filter` — correspondance de motifs

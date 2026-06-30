@@ -72,12 +72,6 @@ Running `chorus-check` twice on the same project file, on any machine, always
 produces the same output — no sampling, no temperature, no randomness in the
 decision layer.
 
-> The term *neuro-symbolic* is sometimes applied to systems like Chorus.
-> It is not accurate here. In neuro-symbolic systems, a neural model learns to
-> simulate logical rules. In Chorus, the symbolic engine is real — frames, slots,
-> inference chain — and the LLM is a preprocessing step. *Augmented symbolic*
-> is a more precise label.
-
 ---
 
 ## AI-assisted pipeline — `chorus-*` commands
@@ -192,18 +186,13 @@ levels) onboards in 2 to 4 weeks.
 
 ## What's new in 2.01
 
-- **`chorus-*` commands** — complete corpus → KB → Perl infrastructure →
-  conformity report pipeline, AI-agent-driven (`chorus-pdf`, `chorus-feed`,
-  `chorus-check`, `chorus-create-project`, `chorus-import-project`, `chorus-strengthen`)
-- **`TERMINAL` field in the YAML DSL** — declare `TERMINAL: solved` or
-  `TERMINAL: failed` directly in a rule, without any Perl glue code
-- **Engine scope/filter helpers promoted** — `setFilter`, `setScope`,
-  `setCondition`, `setException`, `setEffect` are now proper engine instance
-  methods (previously implicit package-level functions relying on `$SELF`)
-- **`_MAX_CYCLES` guard** — `Chorus::Engine::loop()` aborts after 10 000
-  cycles by default; configurable per engine instance
-- **`Chorus::Frame::_reset()`** — clears the entire frame registry; designed
-  for test isolation between test cases
+- **`chorus-*` commands** — full AI-assisted pipeline: `chorus-pdf`, `chorus-feed`, `chorus-check`, `chorus-create-project`, `chorus-import-project`, `chorus-strengthen`
+- **`TERMINAL` field** — declare `TERMINAL: solved` / `failed` directly in a YAML rule, no Perl glue code
+- **Engine helpers as instance methods** — `setFilter`, `setScope`, `setCondition`, `setException`, `setEffect`
+- **`_MAX_CYCLES` guard** — configurable per engine instance (default: 10 000)
+- **`Chorus::Frame::_reset()`** — clears the frame registry for test isolation
+
+> API details: [`doc/en/01-intro.md`](doc/en/01-intro.md)
 
 ---
 
@@ -216,54 +205,8 @@ against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501.
 perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
 ```
 
----
-
-## The underlying engine
-
-The `chorus-*` pipeline is built on a pure-Perl inference engine with no
-runtime dependencies beyond standard CPAN (`YAML`, `Scalar::Util`, `Digest::MD5`).
-
-Chorus implements the classical **recognize–act** cycle from the expert-system
-tradition: at each iteration, the engine identifies which rules apply to the
-current working memory, fires them, and restarts — until nothing changes or a
-goal is reached.
-
-The working memory is made up of `Chorus::Frame` objects whose properties
-(slots) carry domain knowledge. `Chorus::Expert` chains multiple specialised
-engines over a shared working memory.
-
-### Direct API — ten lines
-
-```perl
-use Chorus::Engine;
-use Chorus::Frame;
-
-my $agent = Chorus::Engine->new();
-
-Chorus::Frame->new(color => 'blue', label => 'sky');
-Chorus::Frame->new(color => 'red',  label => 'fire');
-
-$agent->addrule(
-    _SCOPE => { f => sub { [ fmatch(color => 'blue') ] } },
-    _APPLY => sub {
-        my %o = @_;
-        return if $o{f}->{tagged};
-        $o{f}->set('tagged', 'yes');
-        print "Tagged: ", $o{f}->label, "\n";   # → Tagged: sky
-        return 1;
-    },
-);
-
-$agent->loop();
-```
-
-The YAML DSL expresses the same logic without Perl boilerplate, with declarative
-pipeline termination via the `TERMINAL` field.
-
-> Full technical reference:
-> `perldoc Chorus::Engine` · `perldoc Chorus::Frame` · `perldoc Chorus::Expert`
-
----
+> Engine internals (YAML DSL, `Chorus::Frame` API, `_MAX_CYCLES`, `_reset()`):
+> [`doc/en/01-intro.md`](doc/en/01-intro.md)
 
 ## Installation
 

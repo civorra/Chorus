@@ -310,6 +310,14 @@ no practical limitation in the contexts where Chorus is used.
 
 ---
 
+> **Terminology note:** the term *neuro-symbolic* is sometimes applied to systems
+> like Chorus. It is not accurate here. In neuro-symbolic systems, a neural model
+> *learns* to simulate logical rules. In Chorus, the symbolic engine is real —
+> frames, slots, inference chain — and the LLM is a preprocessing step.
+> *Augmented symbolic* is a more precise label.
+
+---
+
 ## Rules in YAML
 
 For projects with many rules, Chorus provides a YAML DSL that avoids writing
