@@ -29,8 +29,8 @@ WriteMakefile(
         resources   => {
             repository => {
                 type => 'git',
-                url  => 'https://github.com/maelink/Chorus-Engine.git',
-                web  => 'https://github.com/maelink/Chorus-Engine',
+                url  => 'https://github.com/civorra/Chorus-Engine.git',
+                web  => 'https://github.com/civorra/Chorus-Engine',
             },
             bugtracker => {
                 web => 'http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine',

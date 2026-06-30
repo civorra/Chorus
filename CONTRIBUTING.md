@@ -22,7 +22,7 @@ new examples, or engine enhancements.
 
 ## Reporting bugs
 
-Please open an [Issue](https://github.com/maelink/Chorus-Engine/issues) on GitHub,
+Please open an [Issue](https://github.com/civorra/Chorus-Engine/issues) on GitHub,
 or file a ticket on the CPAN RT queue:
 <https://rt.cpan.org/Dist/Display.html?Name=Chorus-Engine>
 
@@ -37,7 +37,7 @@ A good bug report includes:
 
 ## Requesting features
 
-Open an [Issue](https://github.com/maelink/Chorus-Engine/issues) with the label
+Open an [Issue](https://github.com/civorra/Chorus-Engine/issues) with the label
 `enhancement`. Describe the use case first — a concrete scenario is more useful
 than an abstract feature description.
 
@@ -62,7 +62,7 @@ to review and slower to merge.
 The only build tool required is `ExtUtils::MakeMaker`, which ships with Perl.
 
 ```sh
-git clone https://github.com/maelink/Chorus-Engine.git
+git clone https://github.com/civorra/Chorus-Engine.git
 cd Chorus-Engine
 perl Makefile.PL
 make

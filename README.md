@@ -273,14 +273,14 @@ perl Makefile.PL && make && make test && make install
 Contributions are welcome — bug reports, documentation fixes, new examples,
 or rule engine improvements.
 
-- **Bug reports / feature requests** — open an [Issue](https://github.com/maelink/Chorus-Engine/issues)
+- **Bug reports / feature requests** — open an [Issue](https://github.com/civorra/Chorus-Engine/issues)
 - **Pull requests** — target the `devel` branch; make sure `make test` passes
-- **Good first issues** — look for the [`good first issue`](https://github.com/maelink/Chorus-Engine/issues?q=label%3A%22good+first+issue%22) label
-- **Questions** — use [GitHub Discussions](https://github.com/maelink/Chorus-Engine/discussions)
+- **Good first issues** — look for the [`good first issue`](https://github.com/civorra/Chorus-Engine/issues?q=label%3A%22good+first+issue%22) label
+- **Questions** — use [GitHub Discussions](https://github.com/civorra/Chorus-Engine/discussions)
   or the CPAN RT queue: <https://rt.cpan.org/Dist/Display.html?Name=Chorus-Engine>
 
 ---
 
 ## Repository
 
-<https://github.com/maelink/Chorus-Engine>
+<https://github.com/civorra/Chorus-Engine>
