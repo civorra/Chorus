@@ -218,9 +218,6 @@ que trois conditions sont réunies :
 | ✈️ **Aérospatial / DO-178C** | DO-178C, ARP4754A, AMC 20-115 (EASA) | 4–6 semaines |
 | ⚡ **Énergie / Nucléaire** | RCC-M, IEC 61511, Guide ASN, IEC 62351 | 6–8 semaines |
 
-⚡ *Urgence réglementaire immédiate : NIS2 transposée depuis octobre 2024, DORA
-applicable depuis janvier 2025, CSRD déployée sur 2024–2028.*
-
 La variable principale est la **qualité du corpus**, pas la complexité du domaine.
 Un corpus bien structuré (exigences numérotées, tableaux de référence, niveaux
 hiérarchiques) s'onboarde en 2 à 4 semaines.

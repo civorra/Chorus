@@ -57,6 +57,18 @@ generically. An AI agent is also needed when the normative corpus changes.
                                      ▼
                       ✅ COMPLIANT / ❌ NON_COMPLIANT
                          with reason, per element, per agent
+                                     │
+                          chorus-strengthen
+                                     │
+                                     ▼
+                      ┌─────────────────────────────────┐
+                      │  gap report + enrichment roadmap│
+                      └──────────────┬──────────────────┘
+                                     │
+                   chorus-feed --enrich  (targeted fixes)
+                                     └──────────────────┐
+                                                        │ reinforcement loop
+                                               chorus-check --all ✅
 ```
 
 The project file can be written by hand, generated from the KB with

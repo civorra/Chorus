@@ -149,13 +149,38 @@ All frames are automatically indexed in a global registry. The `fmatch()`
 function lets you retrieve them quickly by slot:
 
 ```perl
-my @with_cry = fmatch(slot => 'cry');    # all frames that have a 'cry' slot
-my @felines  = fmatch(type => 'feline'); # by slot value
+my @with_cry = fmatch(slot => 'cry');                                   # all frames that have a 'cry' slot
+my @felines  = grep { $_->{type} eq 'feline' } fmatch(slot => 'type'); # by slot value
 ```
 
 > **Pitfall:** always use `$f->set('slot', $val)` and `$f->delete('slot')`
 > — never `$f->{slot} = $val` or `delete $f->{slot}`, which bypass the index
 > and make frames invisible to `fmatch()`.
+
+### Inheritance modes N and Z
+
+The `$getMode` global controls how `get()` traverses the inheritance chain
+when a slot is not defined locally.
+
+**Mode N (default):** for each valuation key (`_VALUE`, `_DEFAULT`, `_NEEDED`),
+searches across *all* frames in the inheritance tree before moving to the next
+key — breadth-first per key.
+
+**Mode Z:** traverses the full sequence `(_VALUE, _DEFAULT, _NEEDED)` on each
+frame before descending into its parents — depth-first per frame.
+
+```perl
+# Switch to mode Z (depth-first per frame)
+Chorus::Frame::setMode(GET => 'Z');
+
+# Switch back to mode N (breadth-first per key)
+Chorus::Frame::setMode(GET => 'N');
+```
+
+> **When to change mode?** Mode N suits the vast majority of cases
+> (you want the most specialised value for a given key). Mode Z is useful
+> when you want a child frame to completely short-circuit an ancestor,
+> including its `_DEFAULT` and `_NEEDED`.
 
 ### Frame selection with `fselect()`
 
@@ -400,6 +425,61 @@ the **what**, not the **how**.
 
 > See [`02-ai-agent.md`](02-ai-agent.md) — LLM vs Chorus positioning, AI agent architecture,
 > `chorus-pdf` → `chorus-feed` → `chorus-check` pipeline.
+
+---
+
+## Chorus::Collection — reference
+
+### `Chorus::Collection::List`
+
+An ordered sequence of frames. `$LIST` is a **Frame prototype** — you inherit
+from it rather than instantiating it directly:
+
+```perl
+use Chorus::Collection::List qw($LIST);
+use Chorus::Frame;
+
+my $lst = Chorus::Frame->new(_ISA => $LIST);
+$lst->build($f1, $f2, $f3);          # initialises _ITEMS, chains prev/succ
+
+my $first = $lst->first_item;
+my $last  = $lst->last_item;
+my $len   = $lst->length;
+my $found = $lst->HAS('mass');        # first item with the 'mass' slot
+```
+
+### `Chorus::Collection::Filter`
+
+Regex-like pattern matching on frame sequences. `$FILTER` is also a
+**Frame prototype** — same pattern as `$LIST`. Capture groups land
+in `@_VFILTER` after a successful `check()`:
+
+```perl
+use Chorus::Collection::Filter qw($FILTER @_VFILTER);
+use Chorus::Frame;
+
+my $f = Chorus::Frame->new(_ISA => $FILTER);
+
+$f->set_node_test(sub { $_[0]->{pos} });  # value compared in the pattern
+
+$f->set_filter('^(NOUN) VERB ADJ*$');
+
+if ($f->check(@tokens)) {
+    my ($subjects) = @_VFILTER;           # capture group
+}
+```
+
+**Pattern syntax:**
+
+| Token | Meaning |
+|---|---|
+| `^` / `$` | Start / end anchor |
+| `[A B C]` | OR: matches A, B or C |
+| `!X` | NOT: excludes value X |
+| `.` | ANY: any frame |
+| `X+` / `X*` / `X?` | One or more / Zero or more / Zero or one |
+| `X{m,n}` | Between m and n occurrences |
+| `(...)` | Capture group → `@_VFILTER` |
 
 ---
 
