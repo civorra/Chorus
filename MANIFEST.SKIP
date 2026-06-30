@@ -8,15 +8,16 @@
 ^\.eca/
 
 # Meta files (ECA / Claude — not part of the CPAN distribution)
-^AGENTS\.md$
 ^CLAUDE\.md$
 ^\.claude/
 
 # MCP server (not part of the CPAN distribution)
 ^mcp/
 
-# User sandboxes (not part of the CPAN distribution — examples/sandboxes/ is kept)
-^sandboxes/
+# User sandboxes — only README.md and demo_en/ are distributed
+^sandboxes/(?!README\.md|demo_en/)
+# Sandbox artefacts not to distribute
+\.kb-hash$
 
 # Build artefacts
 ^blib/
@@ -36,5 +37,7 @@ Chorus-Engine-
 
 # Temp / editor files
 ~$
+^\.\#
+\#$
 \.swp$
 \.orig$

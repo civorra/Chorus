@@ -173,9 +173,6 @@ whenever three conditions hold:
 | ✈️ **Aerospace / DO-178C** | DO-178C, ARP4754A, AMC 20-115 (EASA) | 4–6 weeks |
 | ⚡ **Energy / Nuclear** | RCC-M, IEC 61511, ASN safety guide, IEC 62351 | 6–8 weeks |
 
-⚡ *Immediate regulatory pressure: NIS2 transposed since October 2024, DORA
-applicable since January 2025, CSRD rolling out 2024–2028.*
-
 The key variable is **corpus quality**, not domain complexity. A well-structured
 corpus (numbered requirements, explicit reference tables, defined hierarchy
 levels) onboards in 2 to 4 weeks.

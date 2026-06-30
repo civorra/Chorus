@@ -1,6 +1,6 @@
 # Instructions — Chorus Engine
 
-> This file is read automatically by ECA at the start of any working session on this repository.
+> This file is read automatically at the start of any working session on this repository.
 > It defines conventions, skill triggers, and contribution rules.
 
 ## Paths (relative to the repository root)

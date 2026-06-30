@@ -16,6 +16,10 @@ mcp
 # User sandboxes — local working area, not committed
 sandboxes/*
 !sandboxes/README.md
+!sandboxes/demo_en
+sandboxes/demo_en/*
+!sandboxes/demo_en/**
+sandboxes/demo_en/**/.kb-hash
 
 # Claude Code local configuration — not committed
 CLAUDE.md
