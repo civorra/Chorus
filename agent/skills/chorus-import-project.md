@@ -19,11 +19,13 @@
 > | `chorus-import-project sb f1.pdf f2.xlsx f3.docx` | **Merge** | N sources → 1 merged JSON (same project, complementary files) |
 > | `chorus-import-project sb ./dossier/` | **Batch** | Directory → 1 JSON per file + summary report |
 > | `chorus-import-project sb *.pdf --batch` | **Batch** | Explicit glob → 1 JSON per file + summary report |
+> | `chorus-import-project sb fichier.pdf --align-review` | **Align-review** | Stops after Phase 3 — produces `align-review-NNN.org` for human validation before JSON |
 >
 > **Automatic mode detection rule:**
 > - 1 non-directory source argument → Single
 > - N > 1 source arguments (same or mixed formats) → Merge
 > - 1 directory argument or `--batch` flag present → Batch
+> - `--align-review` present → alignment review mode (compatible with Single and Merge; incompatible with `--batch`)
 >
 > **Single responsibility: align the engineer's project terminology with the sandbox
 > KB slots and types, then produce a valid project JSON file.**
@@ -457,6 +459,25 @@ When `pdf_mode == "text"`, figures produce a placeholder instead of a Claude des
 
 The rest of the extraction (text blocks, reading order) is identical.
 
+> ⛔ **Figure-heavy domains — critical warning**
+>
+> When `pdf_mode == "text"` is active **and** the layout analysis detected ≥ 5 figures,
+> emit a prominent warning **before proceeding**:
+>
+> ```
+> [import-pdf] ⛔  Text mode active — N figures not extracted.
+>              In figure-heavy domains (BTP/Construction, Medical Devices/MDR),
+>              plans, assembly diagrams and specification tables embedded as images
+>              typically contain the constituent element identifiers (P1, P2, IPE-01,
+>              component tags, MDR annex references…).
+>              Phase 3 will be blind to these elements → JSON likely incomplete.
+>              Strongly recommended: set ANTHROPIC_API_KEY and rerun to activate hybrid mode.
+>              Continue in text-only mode? [yes / abort]
+> ```
+>
+> If the engineer confirms `yes`, proceed — but add `"_extraction_warning": "text-mode: N figures not extracted"` in the `_import` block of the output JSON.
+> In batch mode, emit the warning once per file that triggers the threshold.
+
 #### Excel / CSV
 ```bash
 # CSV direct
@@ -592,6 +613,57 @@ Source line / cell              Term identified      Associated values
 
 ## Phase 3 — Terminology Alignment
 
+### KB Coverage Gauge (pre-alignment check)
+
+**Before starting the term-by-term alignment**, compute a coverage indicator from the
+raw inventory (Phase 2) against the KB reference (Phase 1.2):
+
+```
+📊 KB Coverage Gauge
+   Distinct types detected in inventory : N  (e.g. 8)
+   Types recognised in KB               : n / N  (e.g. 5 / 8 = 62%)
+   Critical slots covered               : n / total  (e.g. 11 / 17 = 65%)
+   KB Aliases section present           : yes / no
+```
+
+| Coverage | Level | Action |
+|---|---|---|
+| ≥ 80% types + ≥ 80% critical slots | 🟢 Good | Proceed directly |
+| 60–79% on either axis | 🟡 Moderate | Proceed with a warning — flag `_couverture_kb: moderate` in the JSON `_import` block |
+| < 60% on either axis | 🔴 Low | Emit the warning below and ask whether to continue |
+
+**🔴 Low-coverage warning (display before alignment):**
+
+```
+⚠️  KB Coverage Gauge — LOW COVERAGE DETECTED
+    Types recognised   : n/N (XX%)
+    Critical slots     : n/N (XX%)
+
+    The KB may lack aliases for the project's terminology.
+    Risk: many terms will receive ❓ (ambiguous) or ⬜ (out-of-scope),
+    producing an incomplete or unusable JSON.
+
+    Recommended actions (choose one or both):
+      1. Run `chorus-feed --harvest-aliases <previous-import-report.org>`
+         if a validated import report exists for this sandbox.
+      2. Enrich the KB: add aliases to `$SANDBOX/agent/chorus/<slug>.org`
+         under `** Aliases` before re-running this import.
+
+    Continue anyway? [yes / abort]
+```
+
+If the engineer confirms `yes`, proceed — but set `"_couverture_kb": "low"` in the
+`_import` block and list the unrecognised types under a dedicated section
+`* KB coverage gap` in the import report (Phase 6).
+
+> **Batch mode:** compute the gauge once per file, using the shared KB loaded in Phase 1.
+> Files with 🔴 coverage are flagged in the batch summary report (Phase 6-BATCH)
+> with a `⚠️ low KB coverage` marker in the results table — the batch is not aborted.
+
+---
+
+### Alignment table
+
 This is the core phase. For each term from the raw inventory, cross-reference against
 the KB reference (Phase 1.2) and produce an alignment table:
 
@@ -701,6 +773,67 @@ For each ❓ term, present the following to the engineer:
 
 **Do not proceed until blocking ❓ items are resolved** (ambiguous `type_element` slots).
 ⚠️ items may be provisionally accepted with a `_a_confirmer: 1` flag.
+
+### --align-review mode — stop here for human validation
+
+If `--align-review` was specified, **stop after Phase 3** and produce an alignment review
+file instead of proceeding to Phase 4 / JSON generation:
+
+1. **Write** `$SANDBOX/agent/align-review-<NNN>.org`:
+
+```org
+#+TITLE: Alignment review — <source> — <date>
+#+STATUS: pending-validation
+
+* KB Coverage Gauge
+  Types recognised   : n/N (XX%)
+  Critical slots     : n/N (XX%)
+  Coverage level     : 🟢 good / 🟡 moderate / 🔴 low
+
+* Full alignment table
+  | Project term | KB slot / type_element | KB value | Confidence | Notes |
+  |---|---|---|---|---|
+  | ...          | ...                    | ...      | ✅/⚠️/❓   | ...   |
+
+* Items requiring engineer decision
+  ** Ambiguous (❓) — must be resolved before JSON generation
+     | Term | Options | Decision |
+     |---|---|---|
+
+  ** Likely (⚠️) — provisionally accepted, confirm or override
+     | Term | Proposed mapping | Confirm? |
+     |---|---|---|
+
+  ** Out-of-scope (⬜) — will be excluded from JSON
+     | Term | Reason | Correct sandbox? |
+     |---|---|---|
+
+* Gaps identified at this stage
+  | Element id | Missing slot | Mandatory? |
+  |---|---|---|
+
+* How to proceed
+  1. Review and annotate this file (correct ❓ decisions, confirm/reject ⚠️ items)
+  2. Rerun WITHOUT --align-review to produce the JSON:
+     chorus-import-project <sandbox> <source>
+     The skill will reload this align-review file (Phase 1.3) and apply your decisions.
+```
+
+2. **Display** a summary to the engineer:
+```
+✅ Alignment review produced: $SANDBOX/agent/align-review-NNN.org
+   ✅ certain  : N terms
+   ⚠️ likely   : N terms (to confirm)
+   ❓ ambiguous: N terms (must be resolved)
+   ⬜ out-of-scope: N terms
+   ⛔ gaps     : N mandatory slots absent
+
+   Next step: review the file, then rerun without --align-review to generate the JSON.
+```
+
+3. **Do not** proceed to Phase 4, Phase 5, or Phase 6.
+   The JSON is produced only on the subsequent run (without `--align-review`),
+   after the engineer has validated the alignment file.
 
 ---
 
@@ -824,6 +957,30 @@ Create `$SANDBOX/agent/import-report-<NNN>.org`:
 
 > This report is the **alignment decision memory** for this sandbox.
 > It is automatically re-read during the next `chorus-import-project` run on the same sandbox.
+
+### Post-import — automatic harvest proposal
+
+After writing the import report, check whether new ✅ alignments were produced that are
+**absent from all previous `import-report-*.org`** files in this sandbox:
+
+```
+N_new = count of ✅ alignments not present in any prior import-report-*.org
+```
+
+If `N_new > 0`, display:
+
+```
+💡 Harvest opportunity — N new ✅ alignments detected
+   These mappings are not yet in the KB and will need to be re-derived on every future import.
+   Run the following to integrate them permanently into the sandbox KB:
+
+     chorus-feed --harvest-aliases $SANDBOX/agent/import-report-NNN.org
+
+   Future imports from this sandbox will resolve these terms at ✅ confidence without re-asking.
+   (Skip if the KB is intentionally minimal or the mappings are project-specific.)
+```
+
+If `N_new == 0` (all alignments were already known from prior reports), skip silently.
 
 ### Phase 6-BATCH — Summary Report (batch mode only)
 

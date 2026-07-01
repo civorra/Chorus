@@ -1,6 +1,6 @@
 # Les commandes `chorus-*` — Référence du workflow assisté par agent IA
 
-Les six commandes `chorus-*` forment un pipeline complet pour transformer un
+Les sept commandes `chorus-*` forment un pipeline complet pour transformer un
 corpus normatif (PDF, texte, Word, Excel) en un moteur d'inférence Perl
 opérationnel qui valide des projets réels.
 
@@ -8,16 +8,16 @@ Ce sont des **commandes de l'agent IA** — pas des modules Perl ni des scripts 
 est un skill chargé par un agent IA (Claude, Copilot, ECA…) et exécuté de façon interactive dans l'environnement
 de développement.
 
-**L'agent IA n'est pas une dépendance d'exécution.** Le pipeline Perl généré par la
-chaîne tourne entièrement de façon autonome, sur n'importe quelle machine avec
-Perl installé, sans agent IA et sans connexion réseau.
+**Une fois le pipeline généré, l'exécution est autonome.** Le code Perl produit par la
+chaîne tourne sur n'importe quelle machine avec Perl installé — sans agent IA, sans
+connexion réseau, de façon déterministe.
 
-**L'agent IA est une dépendance de projet.** Pour adapter un sandbox à un nouveau
-projet — aligner les documents d'ingénieur avec les slots de la KB et produire
-un fichier JSON projet valide — il faut `chorus-create-project` ou
-`chorus-import-project`, deux skills de l'agent IA. Le LLM lit la KB et gère l'écart de
-terminologie qu'aucun script statique ne peut couvrir de façon générique. Un agent IA
-est aussi nécessaire lorsque le corpus normatif change.
+**Un agent IA reste nécessaire au niveau projet.** `chorus-create-project` et
+`chorus-import-project` lisent la KB et gèrent l'écart entre la terminologie
+de l'ingénieur et les noms de slots exacts qu'attend le pipeline. Cette capacité
+ne peut pas être couverte par un script statique — elle est propre à chaque sandbox
+et à chaque corpus. Un agent IA est aussi requis lorsque le corpus normatif change
+(`chorus-feed --enrich` puis `chorus-check`).
 
 ---
 
@@ -610,6 +610,7 @@ adapter un nouveau projet, un agent IA est requis.
 
 | Commande | Entrée | Sortie | Prérequis |
 |---|---|---|---|
+| `chorus-quickstart` | *(aucune)* | Guide interactif — présentation du pipeline | — |
 | `chorus-pdf` | Fichier PDF | `corpus/<NNN>-<slug>-text.txt` ou `-vision.md` | `pdfminer.six` ; clé API pour `--auto`/`--images` |
 | `chorus-feed` | Corpus `.txt` ou `.md` | `agent/agents/*.org`, règles YAML, `Helpers.pm` | — |
 | `chorus-check` | JSON projet (ou `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + rapport | `chorus-feed` exécuté au préalable |

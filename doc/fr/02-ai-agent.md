@@ -87,15 +87,14 @@ concurrencer.
 
 ## Couplage avec un agent IA — l'architecture assistée par IA
 
-Imaginez la scène : vous avez un PDF de 150 pages — une norme de construction,
-un DTU, un cahier des charges technique. D'ici la fin de la session, vous voulez
-un pipeline d'inférence Chorus opérationnel qui valide des projets réels contre
-cette norme. Pas un prototype : un moteur avec des agents spécialisés, des règles
-YAML idempotentes, des tables normatives extraites du document, une infrastructure
-Perl correctement câblée, et un rapport de conformité structuré.
+Partez d'un PDF de 150 pages — une norme de construction, un DTU, un cahier des
+charges technique. L'objectif est un pipeline d'inférence Chorus opérationnel qui
+valide des projets réels contre cette norme : agents spécialisés, règles YAML
+idempotentes, tables normatives extraites du document, infrastructure Perl câblée,
+rapport de conformité structuré.
 
-Sans assistance : plusieurs jours de travail Perl expert. Avec un agent IA et ses skills
-Chorus, c'est l'affaire d'une session.
+Sans assistance : plusieurs jours de travail Perl expert. Avec un agent IA et ses
+skills Chorus, le même résultat s'obtient en une session de travail.
 
 > **L'agent IA n'est pas une dépendance d'exécution.** Le pipeline qu'il génère est
 > du Perl pur — `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl`. Il tourne sur
@@ -120,12 +119,10 @@ Chorus, c'est l'affaire d'une session.
 > Emacs offre l'expérience org la plus riche, mais il n'est pas requis pour
 > lire, modifier ou versionner ces fichiers.
 >
-> **ECA sous Emacs** s'adapte le mieux aux sessions Chorus longues : les
-> fichiers org de la KB s'ouvrent comme buffers vivants, l'agent IA les
-> modifie directement, et les récapitulatifs de session permettent de reprendre
-> le contexte d'un jour à l'autre. Les autres éditeurs fonctionnent
-> correctement ; cette combinaison réduit le plus de friction pour les cycles
-> `chorus-feed` et d'enrichissement itératif.
+> **Pour les cycles `chorus-feed` et d'enrichissement itératif**, un éditeur
+> qui ouvre les fichiers org comme buffers vivants réduit le coût de lecture
+> et de correction de la KB entre deux passes. C'est la seule exigence pratique :
+> un accès confortable aux fichiers `.org` du sandbox.
 
 **Ce que la chaîne fait concrètement :**
 
@@ -148,7 +145,7 @@ chorus-check mon-sandbox projet.json
     → affiche le rapport de conformité
 ```
 
-Trois commandes. Le reste est géré.
+Trois commandes couvrent l'intégralité du pipeline.
 
 **Ce qui rend ça possible :**
 

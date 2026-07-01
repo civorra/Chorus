@@ -1,11 +1,14 @@
 # Skill — chorus-feed
 
-> Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich]`
+> Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich] [--harvest-aliases <import-report.org>]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: name of the sandbox directory under `$SANDBOXES/`
 > `<corpus>`: plain-text file (`.txt`), Markdown file (`.md`), or inline content — **never a PDF**
 > `--enrich`: activates Mode B (incremental enrichment) — absent by default
+> `--harvest-aliases <import-report.org>`: activates Mode C — reads a validated import report
+>              and integrates its confirmed ✅ mappings into the KB `** Aliases` sections.
+>              No `<corpus>` argument is needed in this mode.
 >
 > **Single responsibility: enrich knowledge.**
 > This skill never generates infrastructure code (Feed, shell Agent, Expert, run.pl).
@@ -70,6 +73,7 @@ The `--enrich` flag is required to activate Mode B.
 |---|---|
 | No `--enrich` flag | **Mode A** — ignore any existing KB in the sandbox |
 | `--enrich` flag present | **Mode B** — read existing KB and enrich |
+| `--harvest-aliases <report>` present | **Mode C** — read KB + import report, integrate aliases only |
 
 > ⚠ Without `--enrich`, **never** read `agent/chorus/`, existing YAMLs, or
 > any other KB artifact from the sandbox — even if the `<sandbox-name>` directory already exists.
@@ -275,12 +279,69 @@ Mandatory fill order:
 2. Domain
 3. **Targeting slots** — strategy + table + pre-population contract
 4. Pipeline I/O (incoming / outgoing slots)
-5. Ontology
+5. Ontology — including `** Aliases` section (see below)
 6. Frame catalog
 7. Slot dictionary
 8. Rule catalog
 9. **Perl Helpers** — signatures + complete business logic code
 10. Constraints & Pitfalls
+
+#### Ontology — mandatory `** Aliases` section
+
+Every `<slug>.org` file **must include** a `** Aliases` section inside the `* Ontologie`
+heading. This section is the canonical synonym/alias table for `chorus-import-project`
+Phase 3 terminology alignment.
+
+**Structure:**
+
+```org
+** Aliases
+   Sources: corpus §<N> definitions, normative lexicons, XREF INDEX (hybrid corpus)
+   | Canonical KB form (slot / type_element value) | Project-side variants                              | Source                        |
+   |------------------------------------------------|----------------------------------------------------|-------------------------------|
+   | montant_porteur                                | poteau porteur, poteau de rive, stud porteur       | corpus §2.1 — Definitions     |
+   | classe_bois "C24"                              | C 24, C24 EN338, classe résistance C24             | NF EN 338 §4 table 1          |
+   | entraxe_mm                                     | pas, inter-axe, espacement entre montants          | corpus §3.4                   |
+   | epaisseur_mm                                   | e=, ep=, épaisseur totale, ep. isolant             | corpus §5.1                   |
+```
+
+**Population rules:**
+
+1. **From corpus definitions/lexicons:** scan the corpus for sections titled
+   "Definitions", "Terminology", "Glossary", "Lexique", "Définitions", or equivalent.
+   Each defined term → alias entry in the table.
+
+2. **From XREF INDEX (hybrid corpus only):** if a `=== XREF INDEX ===` block was
+   processed in Phase 1.4, the confirmed `(identifier → corpus term)` mappings are
+   added here with source `xref: Figure N, p.N`.
+
+3. **From cross-references within the corpus:** when the corpus uses multiple names
+   for the same concept (e.g. "montant porteur" and "poteau porteur" used interchangeably
+   in different sections), record both as aliases of the canonical KB form.
+
+4. **Unknown variants — leave the table sparse rather than invent:** if the corpus
+   provides no synonyms for a term, the aliases column is empty. Never fabricate aliases
+   from general knowledge — only record what the corpus explicitly supports.
+
+> ⚠️ **Empty is valid.** A sandbox whose corpus contains no definition section will have
+> a `** Aliases` table with zero rows. The table header must still be present — its absence
+> is an error. An empty table is a clear signal that `--harvest-aliases` imports will
+> contribute the bulk of real-world terminology.
+
+**Aliases from figures — sub-section (hybrid corpus only):**
+
+When Phase 1.4 produced confirmed `(figure label → type_element)` mappings, add a
+dedicated sub-section:
+
+```org
+*** Aliases from figures
+    | Figure label | Corpus term / type_element value | Source                 |
+    |--------------+----------------------------------+------------------------|
+    | M-001        | montant_porteur                  | xref: Figure 3, p.12   |
+    | Z-A2         | lisse_haute                      | xref: Figure 3, p.12   |
+```
+
+This sub-section is read first by Phase 3 of `chorus-import-project` (highest confidence).
 
 > **Helpers rule:** a helper belongs to `chorus-feed` (and therefore to the KB)
 > if it encodes **knowledge extracted from the corpus**: value tables,
@@ -656,7 +717,100 @@ rm -f $SANDBOX/agent/.kb-hash
 
 ---
 
-## Quick Reference — Naming Conventions
+## Mode C — Alias Harvest (`--harvest-aliases <import-report.org>`)
+
+Used **only** when `--harvest-aliases` is present. No `<corpus>` argument is needed.
+The sandbox must exist and contain a KB (at least one `<slug>.org` file).
+
+**Purpose:** promote validated project-side terminology (from a past import) into the
+KB `** Aliases` tables permanently. Future `chorus-import-project` runs on this sandbox
+will resolve these terms at ✅ confidence without re-deriving them.
+
+### Phase C0 — Read existing KB
+
+Read each `$SANDBOX/agent/chorus/<slug>.org` into memory (Slot dictionary, Catalogue
+des Frames, current `** Aliases` table). Build a fast-lookup map:
+```
+alias_map : { canonical_kb_form → set(known_aliases) }
+```
+
+### Phase C1 — Parse the import report
+
+Read `<import-report.org>`. Extract the **alignment table** rows where:
+- Confidence column = `✅` (certain)
+- Decision column = confirmed (not rejected, not pending)
+
+For each such row, collect:
+```
+(project_term, kb_slot_or_type, kb_value, source_file)
+```
+
+Ignore rows with `⚠️`, `❓`, `⛔` or `⬜` confidence — only ✅ mappings are harvested.
+
+### Phase C2 — Deduplicate against existing aliases
+
+For each `(project_term, kb_form)` pair:
+- Look up `alias_map[kb_form]`
+- If `project_term` (case-insensitive) **already present** → skip (log: "already known")
+- If **absent** → mark as new
+
+Output:
+```
+N_total  : total ✅ rows in the report
+N_known  : already present in KB aliases
+N_new    : new aliases to integrate
+```
+
+If `N_new == 0` → display "Nothing to harvest — all mappings already known in the KB."
+and stop.
+
+### Phase C3 — Integrate new aliases into KB
+
+For each new alias, locate the correct `<slug>.org` file:
+- Match `kb_slot_or_type` against the `Slot dictionary` and `Catalogue des Frames`
+  of each slug to find the owning agent.
+- Insert the alias row into the `** Aliases` table of that slug's org file:
+
+```org
+| <canonical_kb_form> | <project_term>  | harvested from import-report-NNN.org |
+```
+
+If `kb_form` maps to a `type_element` value, also add an `# alias:` comment in the
+`Catalogue des Frames` under the matching Frame:
+```org
+*** montant_porteur
+    # alias: "poteau porteur" — harvested from import-report-003.org
+```
+
+If no owning slug is found for a mapping → log as unresolved and skip.
+
+### Phase C4 — Harvest closing
+
+1. Invalidate the KB hash:
+```bash
+rm -f $SANDBOX/agent/.kb-hash
+```
+
+2. Display a summary:
+```
+✅ Alias harvest complete — $SANDBOX
+
+   Report read    : <import-report-NNN.org>
+   ✅ rows parsed  : N_total
+   Already known  : N_known (skipped)
+   New aliases    : N_new integrated
+
+   Modified KB files:
+     agent/chorus/<slug1>.org  (+N aliases)
+     agent/chorus/<slug2>.org  (+N aliases)
+
+   Next chorus-import-project run on this sandbox will resolve
+   these N terms at ✅ confidence without re-asking.
+```
+
+3. **Do not** regenerate YAML, Helpers.pm, Feed.pm, or any infrastructure file.
+   Mode C modifies only `<slug>.org` files — exclusively the `** Aliases` section.
+   The KB hash invalidation ensures `chorus-check` regenerates infrastructure on next run.
 
 | Artifact          | Convention                              | Example                           |
 |-------------------|-----------------------------------------|-----------------------------------|

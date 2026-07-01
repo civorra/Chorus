@@ -5,7 +5,7 @@ c'est la nature du problème à résoudre — pas la technologie du secteur.
 
 ---
 
-## Le pattern : quand Chorus est pertinent
+## Quand utiliser Chorus
 
 Un domaine est *Chorus-compatible* dès lors que trois conditions sont réunies :
 

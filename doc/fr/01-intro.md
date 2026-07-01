@@ -30,7 +30,7 @@ pipeline généré tourne comme un pipeline de niveau 1, sans agent IA ni résea
 > Dans Chorus, le moteur symbolique est réel — frames, slots, chaîne d'inférence —
 > et le LLM est une étape de prétraitement. *Symbolique augmenté* est un label
 > plus précis.
-> → [Genèse](../../LISEZMOI.md#genèse)
+> → [Genèse](../../LISEZMOI.md#genèse) · [Positionnement LLM vs Chorus](02-ai-agent.md)
 
 ---
 
@@ -150,7 +150,7 @@ my $agent = Chorus::Engine->new(_MAX_CYCLES => 5000);
 avertissement. Chaque instance possède sa propre limite, indépendante des
 autres agents d'un même `Chorus::Expert`.
 
-Calibration recommandée : `N_frames × N_règles × N_agents × 10`. La KB
+Calibrage recommandé : `N_frames × N_règles × N_agents × 10`. La KB
 générée par `chorus-feed` documente la valeur cible dans le fichier org de
 chaque agent.
 
