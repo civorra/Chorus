@@ -591,8 +591,15 @@ FIGURES AND DIAGRAMS
     - Hatching patterns and what material or condition they represent
     - Scale bar if present
     [END FIGURE <N>]
+    IDENTIFIERS: ["<id1>", "<id2>", ...]
 - If there is no caption visible, assign [FIGURE ?] and describe anyway.
-- Do not add text outside the [FIGURE] ... [END FIGURE] block.
+- For IDENTIFIERS: list every alphanumeric code, label, designation or identifier
+  visible in the figure (callout tags, part numbers, zone codes, element IDs,
+  article references, dimension labels with letters). Use the exact string as printed.
+  Exclude purely numeric values (dimensions, measurements), single letters used as
+  generic variables, and common stopwords. Output valid JSON array on a single line
+  immediately after [END FIGURE <N>]. Output [] if no identifiers found.
+- Do not add text outside the [FIGURE] ... [END FIGURE] block and IDENTIFIERS line.
 - Use UTF-8. Preserve all special characters (±, ≤, ≥, ×, °, ², ³, …).
 """
 
@@ -762,6 +769,170 @@ def assemble_page(page_num, page_data, figure_descriptions):
 
 
 # ---------------------------------------------------------------------------
+# Phase 2.5 — Cross-reference pass
+# ---------------------------------------------------------------------------
+
+# Identifiers to ignore even if they match the extraction pattern:
+# single letters used as generic variables, Greek letters spelled out, and
+# common structural-engineering stopwords.
+_XREF_STOPWORDS = {
+    "N", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+    "M", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    "kN", "mm", "cm", "m", "kg", "kPa", "MPa", "GPa", "kNm",
+    "Figure", "Table", "Clause", "Section", "Annex", "NOTE", "Fig",
+}
+
+# Minimum length for an identifier to be considered (avoids noise like "a1")
+_XREF_MIN_LEN = 2
+
+
+def parse_identifiers(description: str) -> list:
+    """Extract the IDENTIFIERS JSON array from a [FIGURE] description block.
+
+    Returns a de-duplicated, filtered list of identifier strings.
+    Falls back to regex extraction if the JSON line is absent or malformed.
+    """
+    ids = []
+
+    # 1. Try the structured IDENTIFIERS: [...] line
+    m = re.search(r'^IDENTIFIERS:\s*(\[.*?\])\s*$', description, re.MULTILINE)
+    if m:
+        try:
+            raw = json.loads(m.group(1))
+            ids = [str(x).strip() for x in raw if str(x).strip()]
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Fallback: scan the description for plausible identifiers
+    #    Pattern: 2+ chars, at least one letter, mix of letters/digits/hyphens
+    if not ids:
+        ids = re.findall(r'\b([A-Za-z][A-Za-z0-9\-_]{1,19})\b', description)
+
+    # 3. Filter
+    seen = set()
+    result = []
+    for ident in ids:
+        if ident in _XREF_STOPWORDS:
+            continue
+        if len(ident) < _XREF_MIN_LEN:
+            continue
+        if ident.lower() in seen:
+            continue
+        seen.add(ident.lower())
+        result.append(ident)
+
+    return result
+
+
+def find_text_occurrences(identifier: str, page_texts: dict) -> list:
+    """Search all text blocks for occurrences of *identifier* as a whole word.
+
+    Returns a list of (page_num, snippet) tuples, one per matching text block.
+    The snippet is ≤ 120 chars centred on the first match in the block.
+    """
+    pattern = re.compile(r'\b' + re.escape(identifier) + r'\b')
+    results = []
+    for page_num in sorted(page_texts):
+        for (block_text, _y) in page_texts[page_num]:
+            m = pattern.search(block_text)
+            if m:
+                start = max(0, m.start() - 55)
+                end   = min(len(block_text), m.end() + 55)
+                snippet = block_text[start:end].replace('\n', ' ').strip()
+                if start > 0:
+                    snippet = '…' + snippet
+                if end < len(block_text):
+                    snippet = snippet + '…'
+                results.append((page_num, snippet))
+    return results
+
+
+def _fmt_occ(occurrences: list) -> str:
+    """Format occurrence list as a compact multi-line string for the XREF block."""
+    if not occurrences:
+        return "    (no occurrence found in text)"
+    lines = []
+    for page_num, snippet in occurrences:
+        lines.append(f"    p.{page_num}: {snippet}")
+    return '\n'.join(lines)
+
+
+def xref_pass(all_figure_descs: dict, page_texts: dict) -> tuple:
+    """Run the full cross-reference pass.
+
+    Parameters
+    ----------
+    all_figure_descs : {(page_num, fig_idx): description_text}
+    page_texts       : {page_num: [(text_block, y_center), ...]}  (from analyse_pages)
+
+    Returns
+    -------
+    (annotated_descs, xref_index_block)
+
+    annotated_descs   : same keys as all_figure_descs, descriptions now include
+                        a [XREF FIGURE N] annotation appended after [END FIGURE N]
+    xref_index_block  : string — the global === XREF INDEX === section
+    """
+    annotated = {}
+    # Global index: {identifier: [(page_num, fig_idx, occurrences), ...]}
+    global_index = {}
+
+    for (page_num, fig_idx), desc in all_figure_descs.items():
+        identifiers = parse_identifiers(desc)
+        if not identifiers:
+            annotated[(page_num, fig_idx)] = desc
+            continue
+
+        xref_lines = [f"[XREF FIGURE {fig_idx} — page {page_num}]"]
+        for ident in identifiers:
+            occs = find_text_occurrences(ident, page_texts)
+            xref_lines.append(f"  {ident}:")
+            xref_lines.append(_fmt_occ(occs))
+            # Accumulate in global index
+            global_index.setdefault(ident, []).append((page_num, fig_idx, occs))
+        xref_lines.append(f"[END XREF FIGURE {fig_idx}]")
+
+        # Append the XREF annotation to the description, after [END FIGURE …]
+        annotated_desc = re.sub(
+            r'(\[END FIGURE[^\]]*\])',
+            r'\1\n' + '\n'.join(xref_lines),
+            desc,
+            count=1
+        )
+        # If [END FIGURE] marker is absent (malformed), just append
+        if annotated_desc == desc:
+            annotated_desc = desc + '\n' + '\n'.join(xref_lines)
+        annotated[(page_num, fig_idx)] = annotated_desc
+
+    # Build the global XREF INDEX block
+    index_lines = ["=== XREF INDEX ===",
+                   "# Cross-reference: identifiers found in figures → text occurrences",
+                   ""]
+    for ident in sorted(global_index):
+        entries = global_index[ident]
+        all_occs_flat = []
+        fig_refs = []
+        for page_num, fig_idx, occs in entries:
+            fig_refs.append(f"Figure {fig_idx} (p.{page_num})")
+            all_occs_flat.extend(occs)
+        index_lines.append(f"## {ident}")
+        index_lines.append(f"   Appears in: {', '.join(fig_refs)}")
+        if all_occs_flat:
+            # De-duplicate occurrences by page
+            seen_pages = set()
+            for p, snip in all_occs_flat:
+                if p not in seen_pages:
+                    index_lines.append(f"   Text occurrence (p.{p}): {snip}")
+                    seen_pages.add(p)
+        else:
+            index_lines.append("   Text occurrence: (none found)")
+        index_lines.append("")
+    index_lines.append("=== END XREF INDEX ===")
+
+    return annotated, '\n'.join(index_lines)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -803,10 +974,12 @@ def main():
     # --------------------------------------------------------------------------
 
     parts = []
+    # all_figure_descs : {(page_num, fig_idx): description_text}
+    all_figure_descs = {}
+
     with tempfile.TemporaryDirectory(prefix="chorus-pdf-") as tmpdir:
         for page_num in sorted(pages):
             page_data = pages[page_num]
-            figure_descriptions = {}
 
             if page_data['figures']:
                 print(f"[chorus-pdf] Page {page_num} — {len(page_data['figures'])} figure(s) ...",
@@ -815,13 +988,34 @@ def main():
                     png_bytes = render_and_crop(PDF_PATH, page_num, bbox,
                                                page_data['height'], tmpdir)
                     desc = call_claude_figure(png_bytes, page_num, fig_idx)
-                    figure_descriptions[fig_idx] = desc
+                    all_figure_descs[(page_num, fig_idx)] = desc
                     print(f"[chorus-pdf]   fig {fig_idx} → {len(desc)} chars", file=sys.stderr)
             else:
                 print(f"[chorus-pdf] Page {page_num} — text only (pdfminer)", file=sys.stderr)
 
-            page_block = assemble_page(page_num, page_data, figure_descriptions)
-            parts.append(page_block)
+    # --- Phase 2.5 — Cross-reference pass ------------------------------------
+    print("[chorus-pdf] Phase 2.5 — cross-reference pass ...", file=sys.stderr)
+    page_texts = {pn: pd['texts'] for pn, pd in pages.items()}
+    annotated_descs, xref_index = xref_pass(all_figure_descs, page_texts)
+    total_xref = sum(
+        len(parse_identifiers(d)) for d in all_figure_descs.values()
+    )
+    print(f"[chorus-pdf]   → {total_xref} identifier(s) cross-referenced", file=sys.stderr)
+
+    # --- Assemble pages -------------------------------------------------------
+    # Rebuild per-page figure_descriptions from annotated_descs
+    per_page_figs = {}
+    for (page_num, fig_idx), desc in annotated_descs.items():
+        per_page_figs.setdefault(page_num, {})[fig_idx] = desc
+
+    for page_num in sorted(pages):
+        page_data = pages[page_num]
+        figure_descriptions = per_page_figs.get(page_num, {})
+        page_block = assemble_page(page_num, page_data, figure_descriptions)
+        parts.append(page_block)
+
+    # Append global XREF INDEX at the end of the document
+    parts.append(xref_index)
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n\n".join(parts))
@@ -1260,6 +1454,88 @@ if __name__ == "__main__":
 
 ---
 
+## Phase 2.5 — Cross-reference pass (hybrid mode only)
+
+After all figure descriptions have been obtained from Claude (Phase 2), and **before**
+assembling the final Markdown output, the hybrid script runs an automatic cross-reference
+pass at no extra API cost. This pass links identifiers visible in figures to their
+occurrences in the surrounding text.
+
+### 2.5.1 — Collect identifiers from figures
+
+For each `[FIGURE N]` block, parse the `IDENTIFIERS: [...]` JSON line appended by
+Claude (see `FIGURE_PROMPT`). Each item is an alphanumeric code, label, callout tag,
+part number, or element ID as printed in the figure.
+
+Filtering rules applied by `parse_identifiers()`:
+- Remove entries in `_XREF_STOPWORDS` (single letters, unit abbreviations, structural-engineering stopwords)
+- Remove entries shorter than `_XREF_MIN_LEN = 2`
+- De-duplicate case-insensitively
+- Fallback: if the `IDENTIFIERS:` line is absent or malformed, scan the description
+  body with the regex `[A-Za-z][A-Za-z0-9\-_]{1,19}` and apply the same filters
+
+### 2.5.2 — Search text occurrences
+
+For each identifier, `find_text_occurrences()` searches all `page_texts` blocks
+(the raw pdfminer text extracted in `analyse_pages`) using a whole-word regex
+`\bIDENTIFIER\b`. For each matching block, a ≤ 120-char snippet centred on the match
+is recorded along with its page number.
+
+### 2.5.3 — Annotate figure descriptions
+
+A `[XREF FIGURE N]` block is appended immediately after each `[END FIGURE N]` marker:
+
+```
+[XREF FIGURE 3 — page 12]
+  M-001:
+    p.12: …The member M-001 shall be designed for…
+    p.14: …see M-001 in the elevation detail…
+  Z-A2:
+    (no occurrence found in text)
+[END XREF FIGURE 3]
+```
+
+This annotation is embedded in the page block, immediately following the figure it
+annotates, so `chorus-feed` picks it up as part of the same semantic unit.
+
+### 2.5.4 — Append global XREF INDEX
+
+After all page blocks, a global index is appended at the end of the `-vision.md` file:
+
+```
+=== XREF INDEX ===
+# Cross-reference: identifiers found in figures → text occurrences
+
+## M-001
+   Appears in: Figure 3 (p.12), Figure 7 (p.24)
+   Text occurrence (p.12): …The member M-001 shall be designed for…
+   Text occurrence (p.22): …load path through M-001 and M-002…
+
+## Z-A2
+   Appears in: Figure 3 (p.12)
+   Text occurrence: (none found)
+
+=== END XREF INDEX ===
+```
+
+This index gives `chorus-feed` a ready-made cross-reference map: it can create YAML
+slots that link a figure-designated component to the normative text clauses that define
+or constrain it.
+
+### 2.5 — Output format summary
+
+| Section | Location in output | Purpose |
+|---|---|---|
+| `[XREF FIGURE N]` block | Inline, after each `[END FIGURE N]` | Local annotation — kept with the figure for `chorus-feed` |
+| `=== XREF INDEX ===` | End of file | Global map — all identifiers with all occurrences |
+
+> ⚠️ **Hybrid mode only** — the cross-reference pass requires both the pdfminer text
+> blocks (`page_texts`) and the Claude figure descriptions to be available
+> simultaneously. It is not implemented in `--auto` or `--images` modes (those modes
+> do not retain separate text blocks after page-level vision processing).
+
+---
+
 ## Phase 3 — Execute and validate
 
 ### 3.1 Execute the script
@@ -1278,13 +1554,17 @@ import sys, re
 
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
-pages   = re.findall(r'=== PAGE \d+ ===', text)
-figures = re.findall(r'\[FIGURE', text)
-tables  = re.findall(r'^\|', text, re.MULTILINE)
+pages        = re.findall(r'=== PAGE \d+ ===', text)
+figures      = re.findall(r'\[FIGURE', text)
+tables       = re.findall(r'^\|', text, re.MULTILINE)
 placeholders = text.count('not extracted')
+xref_local   = re.findall(r'\[XREF FIGURE', text)
+xref_index   = 1 if '=== XREF INDEX ===' in text else 0
 
 print(f"Pages found      : {len(pages)}")
 print(f"Figures found    : {len(figures)}")
+print(f"XREF annotations : {len(xref_local)}  (inline, hybrid mode)")
+print(f"XREF INDEX       : {'present' if xref_index else 'absent'}")
 print(f"Table rows       : {len(tables)}")
 print(f"Placeholders     : {placeholders}")
 print(f"Total chars      : {len(text)}")
@@ -1294,6 +1574,8 @@ if len(text) < 500:
     print("⚠️  WARNING: output is suspiciously short")
 if placeholders > 0:
     print(f"ℹ️  {placeholders} figure(s) not extracted — run with --auto to extract them")
+if len(figures) > 0 and len(xref_local) == 0:
+    print("ℹ️  Figures found but no XREF annotations — check IDENTIFIERS: lines in figure descriptions")
 EOF
 ```
 
@@ -1345,6 +1627,7 @@ kept for traceability.
    Output   : corpus/<NNN>-<slug>-text.txt   (or: -vision.md)
    Pages    : <N>
    Figures  : <N> blocks extracted  (or: <N> placeholders — use --hybrid or --auto to extract)
+   XREF     : <N> identifier(s) cross-referenced across <N> figure(s)  [hybrid only]
    Table rows: <N>
    Size     : <N> chars
 

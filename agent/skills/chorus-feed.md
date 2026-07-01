@@ -149,6 +149,75 @@ Intermediate calculations remain as slots, not Frames.
 Order agents by data dependency:
 agent N sets slot X → agent N+1 consumes X → N+1 after N.
 
+**1.4 Extract XREF INDEX (hybrid corpus only)**
+
+If the corpus file is a `-vision.md` produced by `chorus-pdf --hybrid`, it may contain
+a `=== XREF INDEX ===` block at the end of the file. This block lists identifiers found
+in figures (callout tags, part numbers, element codes) together with their text
+occurrences — it is a ready-made synonym/alias map between figure labels and corpus
+terms.
+
+**Detection:**
+
+```python
+import re
+
+with open(corpus_path, encoding="utf-8") as f:
+    corpus_text = f.read()
+
+xref_block_match = re.search(
+    r'=== XREF INDEX ===(.*?)=== END XREF INDEX ===',
+    corpus_text, re.DOTALL
+)
+xref_entries = {}   # {identifier: [snippet, ...]}
+if xref_block_match:
+    block = xref_block_match.group(1)
+    current_id = None
+    for line in block.splitlines():
+        m_id  = re.match(r'^## (.+)$', line.strip())
+        m_occ = re.match(r'^\s*Text occurrence \(p\.\d+\):\s*(.+)$', line)
+        if m_id:
+            current_id = m_id.group(1).strip()
+            xref_entries[current_id] = []
+        elif m_occ and current_id:
+            xref_entries[current_id].append(m_occ.group(1).strip())
+```
+
+**Integration into the KB Ontology:**
+
+For each `(identifier, snippets)` pair in `xref_entries`:
+
+1. Search the corpus text and the already-identified Frame types / slot names for a
+   term that co-occurs with `identifier` in the snippets (within ≤ 2 sentences).
+2. If a confident match is found (same element clearly named by both `identifier`
+   and a corpus term):
+   - Add an alias entry in the `Ontologie` section of the relevant `<slug>.org`:
+     ```org
+     ** Aliases from figures
+        | Figure label | Corpus term / slot              | Source                  |
+        |--------------+---------------------------------+-------------------------|
+        | M-001        | montant_porteur                 | xref: Figure 3, p.12    |
+        | Z-A2         | lisse_haute                     | xref: Figure 3, p.12    |
+     ```
+   - If the label maps to a `type_element` value → add it to the `Catalogue des Frames`
+     under the matching Frame as an `# alias:` comment:
+     ```org
+     *** montant_porteur
+         # alias: M-001 (figure label — corpus p.12)
+         Slots obligatoires : ...
+     ```
+3. If the match is uncertain (identifier appears in snippets alongside multiple
+   candidate terms):
+   - Add the entry with a `# TODO: ambiguous alias` comment — do not map silently.
+4. If no corpus term co-occurs with the identifier in the snippets:
+   - Omit from the Ontology — do not invent a mapping.
+
+> ⚠️ **This phase adds zero API calls.** The XREF INDEX was produced at no extra cost
+> by `chorus-pdf --hybrid`. Reading it is a text-only pass on the already-loaded corpus.
+>
+> **Scope:** only `-vision.md` corpus files contain a XREF INDEX. `.txt` (text mode)
+> and `--auto`/`--images` outputs do not — skip this phase silently if the block is absent.
+
 ### Phase 2 — Targeting Strategy (_SCOPE)
 
 **Do not skip this phase.**

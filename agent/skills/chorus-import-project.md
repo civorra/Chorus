@@ -200,7 +200,15 @@ Output a block of the form:
   <Structured description: labeled dimensions, named components, numerical values,
    spatial relationships, units, arrows, hatching, scale bar if present>
   [END FIGURE <N>]
-If no caption is visible, assign [FIGURE ?]. Do not add text outside the block.
+  IDENTIFIERS: ["<id1>", "<id2>", ...]
+If no caption is visible, assign [FIGURE ?]. Do not add text outside the
+[FIGURE] ... [END FIGURE] block and IDENTIFIERS line.
+For IDENTIFIERS: list every alphanumeric code, label, designation or identifier
+visible in the figure (callout tags, part numbers, element IDs, zone codes,
+article references). Use the exact string as printed. Exclude purely numeric
+values (dimensions, measurements), single generic letters, and common stopwords.
+Output a valid JSON array on a single line immediately after [END FIGURE <N>].
+Output [] if no identifiers found.
 Use UTF-8. Preserve special characters (±, ≤, ≥, ×, °, ², ³…)."""
 
 def call_claude_figure(png_bytes, page_num, fig_idx, api_key):
@@ -226,9 +234,11 @@ def call_claude_figure(png_bytes, page_num, fig_idx, api_key):
                 time.sleep(10 * (2 ** attempt)); continue
             raise
 
+# all_figure_descs accumulates figure descriptions across ALL pages before assembly
+all_figure_descs = {}   # {(page_num, fig_idx): description_text}
+
 with tempfile.TemporaryDirectory(prefix="chorus-import-pdf-") as tmpdir:
     for page_num, pdata in sorted(page_data.items()):
-        figure_descriptions = {}
         if pdf_mode == "hybrid" and pdata['figures']:
             prefix = os.path.join(tmpdir, f"p{page_num:04d}")
             subprocess.run(
@@ -245,12 +255,139 @@ with tempfile.TemporaryDirectory(prefix="chorus-import-pdf-") as tmpdir:
                             min(crop_box[2],w), min(crop_box[3],h))
                 buf = io.BytesIO()
                 img.crop(crop_box).save(buf, format="PNG")
-                figure_descriptions[fig_idx] = call_claude_figure(
+                all_figure_descs[(page_num, fig_idx)] = call_claude_figure(
                     buf.getvalue(), page_num, fig_idx, api_key)
-        # ... assemble page (Step 3)
+# → all_figure_descs collected — proceed to Step 2.5 before assembling pages
 ```
 
-##### Step 3 — Assemble page in reading order (top→bottom)
+##### Step 2.5 — Cross-reference pass (hybrid mode only)
+
+Same logic as `chorus-pdf --hybrid` Phase 2.5 — runs **after** all figure descriptions
+are collected, **before** page assembly. No additional API calls.
+
+```python
+import re as _re
+
+_XREF_STOPWORDS = {
+    "N", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+    "M", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    "kN", "mm", "cm", "m", "kg", "kPa", "MPa", "GPa", "kNm",
+    "Figure", "Table", "Clause", "Section", "Annex", "NOTE", "Fig",
+}
+_XREF_MIN_LEN = 2
+
+
+def _parse_identifiers(description):
+    ids = []
+    m = _re.search(r'^IDENTIFIERS:\s*(\[.*?\])\s*$', description, _re.MULTILINE)
+    if m:
+        try:
+            import json as _j
+            ids = [str(x).strip() for x in _j.loads(m.group(1)) if str(x).strip()]
+        except Exception:
+            pass
+    if not ids:
+        ids = _re.findall(r'\b([A-Za-z][A-Za-z0-9\-_]{1,19})\b', description)
+    seen, result = set(), []
+    for ident in ids:
+        if ident in _XREF_STOPWORDS or len(ident) < _XREF_MIN_LEN:
+            continue
+        if ident.lower() not in seen:
+            seen.add(ident.lower())
+            result.append(ident)
+    return result
+
+
+def _find_text_occurrences(identifier, page_data):
+    pattern = _re.compile(r'\b' + _re.escape(identifier) + r'\b')
+    results = []
+    for page_num in sorted(page_data):
+        for (block_text, _y) in page_data[page_num]['texts']:
+            hit = pattern.search(block_text)
+            if hit:
+                s = max(0, hit.start() - 55)
+                e = min(len(block_text), hit.end() + 55)
+                snip = block_text[s:e].replace('\n', ' ').strip()
+                if s > 0:   snip = '…' + snip
+                if e < len(block_text): snip += '…'
+                results.append((page_num, snip))
+    return results
+
+
+def _xref_pass(all_figure_descs, page_data):
+    """Returns (annotated_descs, xref_index_block, xref_map).
+
+    xref_map : {identifier: [(page_num, fig_idx, occurrences), ...]}
+    Used directly by Phase 3 terminology alignment as first-class matching candidates.
+    """
+    annotated, global_index = {}, {}
+
+    for (page_num, fig_idx), desc in all_figure_descs.items():
+        identifiers = _parse_identifiers(desc)
+        if not identifiers:
+            annotated[(page_num, fig_idx)] = desc
+            continue
+
+        xref_lines = [f"[XREF FIGURE {fig_idx} — page {page_num}]"]
+        for ident in identifiers:
+            occs = _find_text_occurrences(ident, page_data)
+            xref_lines.append(f"  {ident}:")
+            if occs:
+                for p, snip in occs:
+                    xref_lines.append(f"    p.{p}: {snip}")
+            else:
+                xref_lines.append("    (no occurrence found in text)")
+            global_index.setdefault(ident, []).append((page_num, fig_idx, occs))
+        xref_lines.append(f"[END XREF FIGURE {fig_idx}]")
+
+        # Append annotation after [END FIGURE …]
+        annotated_desc = _re.sub(
+            r'(\[END FIGURE[^\]]*\])',
+            r'\1\n' + '\n'.join(xref_lines),
+            desc, count=1
+        )
+        if annotated_desc == desc:
+            annotated_desc = desc + '\n' + '\n'.join(xref_lines)
+        annotated[(page_num, fig_idx)] = annotated_desc
+
+    # Build XREF INDEX block
+    lines = ["=== XREF INDEX ===",
+             "# Cross-reference: figure identifiers → text occurrences", ""]
+    for ident in sorted(global_index):
+        entries = global_index[ident]
+        fig_refs = [f"Figure {fi} (p.{pn})" for pn, fi, _ in entries]
+        all_occs = [(p, s) for _, _, occs in entries for p, s in occs]
+        lines.append(f"## {ident}")
+        lines.append(f"   Appears in: {', '.join(fig_refs)}")
+        seen_p = set()
+        for p, snip in all_occs:
+            if p not in seen_p:
+                lines.append(f"   Text occurrence (p.{p}): {snip}")
+                seen_p.add(p)
+        if not all_occs:
+            lines.append("   Text occurrence: (none found)")
+        lines.append("")
+    lines.append("=== END XREF INDEX ===")
+
+    return annotated, '\n'.join(lines), global_index
+
+
+# --- Run the cross-reference pass (hybrid only) ---
+if pdf_mode == "hybrid" and all_figure_descs:
+    annotated_descs, xref_index_block, xref_map = _xref_pass(all_figure_descs, page_data)
+else:
+    annotated_descs = all_figure_descs
+    xref_index_block = ""
+    xref_map = {}
+# xref_map is passed to Phase 3 as first-class matching candidates
+```
+
+> **`xref_map`** is the key output for Phase 3: it maps each figure identifier to the
+> text snippets where it co-occurs with corpus terms.
+> Phase 3 consults `xref_map` at step 1 (KB aliases) and step 2 (figure body)
+> before falling back to generic text search.
+
+##### Step 3 — Assemble pages in reading order (top→bottom)
 
 ```python
 def assemble_page(page_num, pdata, figure_descriptions):
@@ -264,6 +401,24 @@ def assemble_page(page_num, pdata, figure_descriptions):
     elements.sort(key=lambda e: e[0], reverse=True)   # highest Y first
     body = "\n\n".join(content for (_, _, content) in elements)
     return f"=== PAGE {page_num} ===\n{body}\n=== END PAGE {page_num} ==="
+
+# Build per-page figure_descriptions from annotated_descs
+per_page_figs = {}
+for (page_num, fig_idx), desc in annotated_descs.items():
+    per_page_figs.setdefault(page_num, {})[fig_idx] = desc
+
+pages_output = []
+for page_num in sorted(page_data):
+    pages_output.append(assemble_page(page_num, page_data[page_num],
+                                      per_page_figs.get(page_num, {})))
+
+# Append XREF INDEX at end (hybrid only — empty string otherwise)
+if xref_index_block:
+    pages_output.append(xref_index_block)
+
+extracted_text = "\n\n".join(pages_output)
+# extracted_text is the final source passed to Phase 2 (raw inventory)
+# xref_map is passed separately to Phase 3 (terminology alignment)
 ```
 
 ##### Step 4 — nohup gate (hybrid only)
@@ -488,6 +643,39 @@ Project term                  KB slot / type_element    KB value         Confide
 >     # → elements montant_porteur, lisse_basse → ⬜ excluded + report
 > ```
 
+### Figure identifiers as matching candidates (hybrid mode)
+
+When the source document was extracted in hybrid mode, each `[FIGURE N]` block ends with
+an `IDENTIFIERS: [...]` line listing the labels and codes visible in the figure (callout
+tags, part numbers, element IDs).
+
+**These identifiers are first-class matching candidates** for Phase 3:
+
+1. **Cross-reference with KB aliases** — if `chorus-feed` has populated an
+   `** Aliases from figures` table in the KB `Ontologie` (built from the XREF INDEX of
+   the normative corpus), check whether the identifier appears there. A direct hit gives
+   confidence ✅ and maps directly to the corresponding `type_element` or slot value.
+
+2. **Cross-reference with figure description body** — if the identifier is not in the KB
+   aliases, search the description text of the same `[FIGURE N]` block for a co-occurring
+   corpus term. Example: `IDENTIFIERS: ["P1"]` + description mentions *"Poteau porteur
+   45×145 C24"* → candidate `type_element: montant_porteur` at confidence ⚠️.
+
+3. **Cross-reference with surrounding text blocks** — search the raw inventory (Phase 2)
+   for text blocks on the same page that mention the identifier alongside a known slot
+   value. Example: `P1` appears in a table row *"P1 — 45×145 — C24 — h=2.5m"* on the
+   same page → aggregate all slot values from that row under the element `id: P1`.
+
+4. **Preserve identifier as `id`** — when an element is successfully mapped, use the
+   figure identifier as the element `id` in the output JSON (preferred over a generated
+   ID), since it matches the document's own reference system and enables
+   document ↔ JSON traceability.
+
+> **Rule:** figure identifiers that could not be matched to any KB term after steps 1–3
+> are listed in the import report under a dedicated section
+> `* Unmatched figure identifiers` — they are candidates for a future `chorus-feed --enrich`
+> run to extend the KB aliases.
+
 ### Unit Transformations
 
 Explicitly document every conversion:
@@ -622,6 +810,12 @@ Create `$SANDBOX/agent/import-report-<NNN>.org`:
 * Out-of-scope elements (⬜)
   | id | source type_element | Recommended sandbox |
   |---|---|---|
+
+* Unmatched figure identifiers
+  Identifiers found in figures but not mapped to any KB slot or type_element.
+  Candidates for a future chorus-feed --enrich run to extend KB aliases.
+  | Identifier | Figure | Page | Snippets seen | Action |
+  |---|---|---|---|---|
 
 * Output file
   <path projet-*.json>
