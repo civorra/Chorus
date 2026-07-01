@@ -340,6 +340,7 @@ no practical limitation in the contexts where Chorus is used.
 > *learns* to simulate logical rules. In Chorus, the symbolic engine is real —
 > frames, slots, inference chain — and the LLM is a preprocessing step.
 > *Augmented symbolic* is a more precise label.
+> → [Origin](../../README.md#origin)
 
 ---
 

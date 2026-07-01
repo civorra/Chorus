@@ -41,6 +41,31 @@ Normative corpus (PDF, plain text, Word, Excel)
 
 ---
 
+## Origin
+
+Chorus belongs to the tradition of **symbolic AI** — explicit knowledge representation,
+typed structures, deterministic inference. The tradition of expert systems, of
+**Marvin Minsky's Frames**, of LISP.
+
+The first version was born in 2013 from the porting to Perl of an original LISP project.
+The goal was twofold: to show that Perl was perfectly suited to this kind of implementation,
+and to offer the CPAN community an inference engine inspired by Minsky's Frames —
+typed objects, slots, inheritance, inference chain.
+
+More than a decade later, an LLM's analysis of the project revealed an unexpected
+complementarity: where the symbolic engine excels at executing rules deterministically
+and traceably, the LLM excels at reading a corpus and formalising them. The real
+friction — writing YAML rules by hand, a tedious task — was the LLM's natural ground.
+
+That encounter gave rise to version 2.
+
+Chorus v2 is an **augmented symbolic** system: the inference engine remains sovereign —
+frames, slots, inference chain, no neural network in the decision layer. The LLM is a
+preprocessing tool, not a decision-maker. Two forms of AI, complementary rather than
+competing.
+
+---
+
 ## Why an LLM cannot run the verification itself
 
 Chorus occupies a specific position in the current AI landscape. Most hybrid

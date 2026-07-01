@@ -30,6 +30,7 @@ pipeline généré tourne comme un pipeline de niveau 1, sans agent IA ni résea
 > Dans Chorus, le moteur symbolique est réel — frames, slots, chaîne d'inférence —
 > et le LLM est une étape de prétraitement. *Symbolique augmenté* est un label
 > plus précis.
+> → [Genèse](../../LISEZMOI.md#genèse)
 
 ---
 

@@ -42,6 +42,20 @@ Corpus normatif (PDF, texte, Word, Excel)
 
 ---
 
+## Genèse
+
+Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente la connaissance de façon explicite, sous forme de règles et de structures typées, et qui raisonne par inférence déterministe. La tradition des systèmes experts, des **Frames de Marvin Minsky**, de LISP.
+
+La première version est née en 2013 du portage en Perl d'un projet original écrit en LISP. L'objectif était double : montrer que Perl était tout à fait adapté à ce type d'implémentation, et offrir à la communauté CPAN un moteur d'inférence inspiré des Frames de Minsky — objets typés, slots, héritage, chaîne d'inférence.
+
+Plus de dix ans après, l'analyse du projet par un LLM a mis en évidence une complémentarité inattendue : là où le moteur symbolique excelle à exécuter des règles de façon déterministe et traçable, le LLM excelle à lire un corpus et à les formaliser. La friction réelle — la génération des règles YAML, fastidieuse à écrire à la main — devenait le terrain naturel du LLM.
+
+C'est cette rencontre qui a donné naissance à la version 2.
+
+Chorus v2 est un système **symbolique augmenté** : le moteur d'inférence reste souverain — frames, slots, chaîne d'inférence, sans réseau de neurones dans la couche de décision. Le LLM est un outil de prétraitement, pas un décideur. Deux formes d'IA, complémentaires plutôt que concurrentes.
+
+---
+
 ## Pourquoi un LLM ne peut pas valider la conformité à un corpus de normes lui-même
 
 Chorus occupe une position spécifique dans le paysage IA actuel. La plupart des
