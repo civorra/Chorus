@@ -162,23 +162,25 @@ If the KB indicates `TERMINAL: solved` in a YAML → no additional Perl code nee
 If termination requires a global test (e.g. verifying that ALL Frames have
 their status set), two approaches are valid:
 
-**Preferred — YAML EXCEPTION pattern** (MCP-compatible):
+**Preferred — YAML EXCEPTION + TERMINAL pattern** (MCP-compatible):
 ```yaml
 RULE: check-all-done
+TERMINAL: solved
 FIND:
   dummy:
     attribut: <targeting_slot>
 EXCEPTION: |
   scalar(grep { !defined $_->{<result_slot>} }
          Chorus::Frame::fmatch(slot => '<targeting_slot>')) > 0
-ACTION: |
-  $SELF->solved();
-  1
+ACTION: "1"
 ```
 The `EXCEPTION` fires a fmatch on every cycle but **does not bind** — the rule
 is only triggered when no pending frame remains. No infinite loop risk.
-`$SELF->solved()` is correct in YAML `ACTION`/`EFFET` context.
+`TERMINAL: solved` is handled directly by the Engine's `applyrules()` → reliable termination.
 This form is loaded by `loadRules()` and therefore **works natively in MCP mode**.
+
+> `TERMINAL: solved` and `$SELF->solved()` are both valid for termination.
+> They can be combined (both in the same rule) or used independently.
 
 > ⚠️ `FIND`/`CHERCHER` must use `attribut:` (not `slot:`) — `slot:` is not a
 > recognized YAML DSL key and will silently drop the rule from the engine.

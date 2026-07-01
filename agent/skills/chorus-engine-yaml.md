@@ -86,6 +86,8 @@ Safety: `_MAX_CYCLES` (default 10,000) → warning + stop if exceeded.
 
 > ⛔ `$agent` is **not** in scope inside a YAML ACTION eval → `Global symbol "$agent"` crash.
 > Always use `$SELF` for flow control in `.yml` files.
+>
+> ⚠️ `$agent` is **not** in scope in a YAML ACTION — use `$SELF` for flow control.
 
 ---
 
@@ -214,9 +216,9 @@ EXCEPTION: '$p->{status} ne "FINAL"'
 ACTION: "1"
 ```
 
-- `TERMINAL: solved` — rule fires on ONE Frame and that is sufficient to terminate.
-- `$SELF->solved()` in ACTION — when a condition must be checked before concluding.
-- ⛔ **Never** termination via global `fmatch` in a YAML ACTION → guaranteed infinite loop → use pure Perl `addrule()` (see `chorus-check.md` Phase 3).
+- `TERMINAL: solved` — fires when the rule matches and `_APPLY` returns true → reliable, idiomatic.
+- `$SELF->solved()` in ACTION — also valid: `$SELF` inside a YAML ACTION is the agent (Engine), so `$SELF->solved()` correctly sets `BOARD->{SOLVED}`. Can be combined with `TERMINAL: solved` or used alone.
+- ⛔ **Never** use a global `fmatch` in a YAML `FIND`/`CHERCHER` block for a termination rule → guaranteed infinite loop. Use `fmatch` in `EXCEPTION`/`CONDITION` only (safe — not bound).
 
 ### Loading Order
 

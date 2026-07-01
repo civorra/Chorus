@@ -587,7 +587,7 @@ sub applyrules {
 
     my $i    = 0;
     my $head = 'JUMP: {' . join('', map { $i++; 'foreach my $k' . $i . ' (@{$scope{' . $_ . '}}) {$opt{' . $_ . '}=$k' . $i . ';' } keys(%scope));
-    my $body = '$res = $rule->_APPLY(%opt); if ($res && $rule->{_TERMINAL}) { $SELF->solved() if $rule->{_TERMINAL} eq "solved"; $SELF->failed() if $rule->{_TERMINAL} eq "failed"; } last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or do { my $_b=$SELF->get(\'BOARD\'); $_b && ($_b->{SOLVED} || $_b->{FAILED}) }';
+    my $body = '$res = do { my $_af = $rule->{_APPLY}; $_af ? $_af->(%opt) : 0 }; if ($res && $rule->{_TERMINAL}) { $SELF->solved() if $rule->{_TERMINAL} eq "solved"; $SELF->failed() if $rule->{_TERMINAL} eq "failed"; } last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or $SELF->{_REPLAY} or $SELF->{_REPLAY_ALL} or do { my $_b=$SELF->get(\'BOARD\'); $_b && ($_b->{SOLVED} || $_b->{FAILED}) }';
     my $tail = '}' x scalar(keys(%scope)) . '}';
 
     eval $head . $body . $tail;
