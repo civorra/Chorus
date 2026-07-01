@@ -221,16 +221,16 @@ que trois conditions sont réunies :
 
 | Domaine | Corpus type | Onboarding estimé |
 |---|---|---|
-| 🔐 **Cybersécurité / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annexe II, DORA, ETSI EN 319 412 | **1–2 semaines** ⚡ |
-| 🌿 **CSRD / Environnement** | ESRS E1–E5, S1–S4, GHG Protocol, Taxonomie EU | 2–3 semaines ⚡ |
-| 🏗️ **Construction / BTP** | Eurocodes EC2/EC3/EC5, RE2020, DTU | 2–3 semaines |
-| ⚖️ **RGPD / Marchés publics** | RGPD Art. 13/14/28/30/35, NIS2, Code de la Commande Publique | 2–3 semaines |
-| 🏦 **Finance / RegTech** | Bâle IV (CRR3), MiFID II, EMIR | 3–4 semaines |
-| 💊 **Industrie pharmaceutique** | EU GMP Annexe 1, ICH Q8/Q9/Q10, Pharmacopée EU | 3–4 semaines |
-| 🏥 **Dispositifs médicaux** | MDR 2017/745, ISO 13485, IEC 62304, ISO 14971 | 4–5 semaines |
-| 🚗 **Automobile / ISO 26262** | ASIL A/B/C/D, ASPICE v3.1, MISRA C:2012 | 4–5 semaines |
-| ✈️ **Aérospatial / DO-178C** | DO-178C, ARP4754A, AMC 20-115 (EASA) | 4–6 semaines |
-| ⚡ **Énergie / Nucléaire** | RCC-M, IEC 61511, Guide ASN, IEC 62351 | 6–8 semaines |
+| 🔐 **Cybersécurité / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annexe II, DORA, ETSI EN 319 412 |
+| 🌿 **CSRD / Environnement** | ESRS E1–E5, S1–S4, GHG Protocol, Taxonomie EU |
+| 🏗️ **Construction / BTP** | Eurocodes EC2/EC3/EC5, RE2020, DTU |
+| ⚖️ **RGPD / Marchés publics** | RGPD Art. 13/14/28/30/35, NIS2, Code de la Commande Publique |
+| 🏦 **Finance / RegTech** | Bâle IV (CRR3), MiFID II, EMIR |
+| 💊 **Industrie pharmaceutique** | EU GMP Annexe 1, ICH Q8/Q9/Q10, Pharmacopée EU |
+| 🏥 **Dispositifs médicaux** | MDR 2017/745, ISO 13485, IEC 62304, ISO 14971 |
+| 🚗 **Automobile / ISO 26262** | ASIL A/B/C/D, ASPICE v3.1, MISRA C:2012 |
+| ✈️ **Aérospatial / DO-178C** | DO-178C, ARP4754A, AMC 20-115 (EASA) |
+| ⚡ **Énergie / Nucléaire** | RCC-M, IEC 61511, Guide ASN, IEC 62351 |
 
 La variable principale est la **qualité du corpus**, pas la complexité du domaine.
 Un corpus bien structuré (exigences numérotées, tableaux de référence, niveaux

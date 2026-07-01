@@ -223,16 +223,16 @@ whenever three conditions hold:
 
 | Domain | Typical corpus | Estimated onboarding |
 |---|---|---|
-| 🔐 **Cybersecurity / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annex II, DORA, ETSI EN 319 412 | **1–2 weeks** ⚡ |
-| 🌿 **CSRD / Environment** | ESRS E1–E5, S1–S4, GHG Protocol, EU Taxonomy | 2–3 weeks ⚡ |
-| 🏗️ **Construction / BIM** | Eurocodes EC2/EC3/EC5, Building Regs, DTU | 2–3 weeks |
-| ⚖️ **GDPR / Public procurement** | GDPR Art. 13/14/28/30/35, NIS2, procurement code | 2–3 weeks |
-| 🏦 **Finance / RegTech** | Basel IV (CRR3), MiFID II, EMIR | 3–4 weeks |
-| 💊 **Pharmaceuticals / GMP** | EU GMP Annex 1, ICH Q8/Q9/Q10, European Pharmacopoeia | 3–4 weeks |
-| 🏥 **Medical devices** | MDR 2017/745, ISO 13485, IEC 62304, ISO 14971 | 4–5 weeks |
-| 🚗 **Automotive / ISO 26262** | ASIL A/B/C/D, ASPICE v3.1, MISRA C:2012 | 4–5 weeks |
-| ✈️ **Aerospace / DO-178C** | DO-178C, ARP4754A, AMC 20-115 (EASA) | 4–6 weeks |
-| ⚡ **Energy / Nuclear** | RCC-M, IEC 61511, ASN safety guide, IEC 62351 | 6–8 weeks |
+| 🔐 **Cybersecurity / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annex II, DORA, ETSI EN 319 412 |
+| 🌿 **CSRD / Environment** | ESRS E1–E5, S1–S4, GHG Protocol, EU Taxonomy |
+| 🏗️ **Construction / BIM** | Eurocodes EC2/EC3/EC5, Building Regs, DTU |
+| ⚖️ **GDPR / Public procurement** | GDPR Art. 13/14/28/30/35, NIS2, procurement code |
+| 🏦 **Finance / RegTech** | Basel IV (CRR3), MiFID II, EMIR |
+| 💊 **Pharmaceuticals / GMP** | EU GMP Annex 1, ICH Q8/Q9/Q10, European Pharmacopoeia |
+| 🏥 **Medical devices** | MDR 2017/745, ISO 13485, IEC 62304, ISO 14971 |
+| 🚗 **Automotive / ISO 26262** | ASIL A/B/C/D, ASPICE v3.1, MISRA C:2012 |
+| ✈️ **Aerospace / DO-178C** | DO-178C, ARP4754A, AMC 20-115 (EASA) |
+| ⚡ **Energy / Nuclear** | RCC-M, IEC 61511, ASN safety guide, IEC 62351 |
 
 The key variable is **corpus quality**, not domain complexity. A well-structured
 corpus (numbered requirements, explicit reference tables, defined hierarchy
