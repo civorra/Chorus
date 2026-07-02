@@ -108,7 +108,7 @@ Cette commande n'exécute rien — c'est une référence guidée qui présente :
 ## `chorus-pdf` — Extraire un corpus PDF
 
 ```
-chorus-pdf <sandbox-name> <fichier.pdf> [--out <slug>] [--auto] [--images] [--batch]
+chorus-pdf <sandbox-name> <fichier.pdf> [--out <slug>] [--hybrid] [--auto] [--images] [--batch]
 ```
 
 **Responsabilité unique :** produire un fichier texte enrichi depuis un PDF.

@@ -105,7 +105,7 @@ This command does not execute anything — it is a guided reference showing:
 ## `chorus-pdf` — Extract a PDF corpus
 
 ```
-chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--images] [--batch]
+chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--hybrid] [--auto] [--images] [--batch]
 ```
 
 **Single responsibility:** produce an enriched text file from a PDF.
