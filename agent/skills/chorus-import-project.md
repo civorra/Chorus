@@ -938,7 +938,8 @@ This serves two purposes:
 Use this inventory to:
 - Confirm the list of `<slug>.org` files to read in 1.2
 - Know which `rules/<slug>/` directories exist (for the keepalive calls in 1.2)
-- Detect any existing `import-report-*.org` files (for 1.3)
+- Detect `$SANDBOX/agent/thesaurus.org` if present (for 1.2b — highest priority source)
+- Detect any existing `import-report-*.org` files (for 1.3 — secondary memory)
 
 ### 1.1 Pipeline Index
 
@@ -978,11 +979,104 @@ hauteur libre     → hauteur_libre_m             m           decimal
 section           → section_bois                —           "BxH" ex. "45x145"
 ```
 
+### 1.2b Sandbox thesaurus (highest priority source)
+
+If `$SANDBOX/agent/thesaurus.org` exists, **read it immediately after Phase 1.2**,
+before any import-report.
+
+The thesaurus is the **canonical project-terminology memory** for this sandbox. It is
+separated from the normative KB (`<slug>.org`) and from import reports: it stores
+project-specific synonyms validated by the engineer across all previous imports.
+
+**Priority rule:**
+```
+thesaurus.org (1.2b)  >  import-report-*.org (1.3)  >  KB aliases (1.2)
+```
+
+A mapping present in the thesaurus is applied **at ✅ confidence without asking the
+engineer again**, regardless of what the KB or previous import-reports say.
+
+#### Thesaurus format
+
+```org
+#+TITLE: Project terminology thesaurus — sandbox <name>
+#+UPDATED: <date>
+#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox.
+               Maintained automatically by chorus-import-project.
+               Do NOT edit KB org files to add project aliases — use this file instead.
+
+* Aliases — type_element
+  Project terms validated as mapping to a specific KB type_element.
+  Applied at ✅ confidence on every future import without asking again.
+
+  | Project term             | KB type_element       | Confidence   | Source import     |
+  |---|---|---|---|
+  | panneau contreventement  | panneau_osb           | ✅ confirmed | import-report-001 |
+  | poteau intérieur cloison | montant_non_porteur   | ✅ confirmed | import-report-001 |
+
+* Aliases — slot values
+  Project value expressions validated as mapping to a specific KB slot + value.
+  Applied at ✅ confidence on every future import without asking again.
+
+  | Project term  | KB slot             | KB value | Confidence   | Source import     |
+  |---|---|---|---|---|
+  | classe 2      | traitement_applique | "cl2"    | ✅ confirmed | import-report-002 |
+  | laine 032     | classe_conductivite | "032"    | ✅ confirmed | import-report-002 |
+
+* Pending — to confirm on next import
+  Terms provisionally mapped (⚠️) in a previous import, not yet confirmed by the engineer.
+  Re-raised on next import if the same term appears — engineer decision upgrades to ✅ or rejects.
+
+  | Project term   | Proposed KB mapping            | Flag              | Source import     |
+  |---|---|---|---|
+  | isolant soufflé | type_element: isolant_vrac ?  | ⚠️ _a_confirmer  | import-report-003 |
+
+* Out-of-scope terms (⬜)
+  Terms explicitly identified as outside this sandbox's KB scope.
+  Silently excluded on future imports — not re-raised to the engineer.
+
+  | Project term  | Reason                      | Recommended sandbox  | Last seen         |
+  |---|---|---|---|
+  | bardage zinc  | hors périmètre sandbox-structurel | sandbox-bardage | import-report-001 |
+```
+
+#### How the thesaurus is used in Phase 3
+
+When building the alignment table (Phase 3), **check the thesaurus first** for every
+term in the raw inventory:
+
+```
+For each project term T:
+  1. Look up T in thesaurus → Aliases type_element  : hit → apply ✅, skip KB lookup
+  2. Look up T in thesaurus → Aliases slot values   : hit → apply ✅, skip KB lookup
+  3. Look up T in thesaurus → Out-of-scope          : hit → mark ⬜, skip KB lookup
+  4. Look up T in thesaurus → Pending               : hit → re-raise ⚠️ to engineer
+  5. Not in thesaurus → proceed with KB lookup (Phase 3 standard flow)
+```
+
+> **Rule:** a thesaurus hit at step 1–3 is **final** — do not re-ask the engineer,
+> do not consult the KB, do not propose alternatives. The engineer already decided.
+>
+> A thesaurus hit at step 4 (Pending) re-raises the question exactly once. If the
+> engineer confirms → move the entry to Aliases and record ✅. If rejected → move to
+> Out-of-scope and record ⬜.
+
+#### Thesaurus initialisation
+
+If `thesaurus.org` does not yet exist, it is created automatically at the end of the
+first import that produces at least one ✅ or ⚠️ alignment (Phase 6 — see below).
+No manual creation is required.
+
+---
+
 ### 1.3 Previous alignment decisions
 
-If `$SANDBOX/agent/import-report-*.org` exists, read the latest report:
-- Retrieve previously validated mappings → reapply them without asking again
-- Retrieve pending questions → re-raise them if the same terms reappear
+If `$SANDBOX/agent/import-report-*.org` exists, read the **latest report** as a
+secondary memory source — complementary to the thesaurus, not a substitute.
+
+- Retrieve mappings not yet promoted to the thesaurus → reapply without asking
+- Retrieve pending questions not yet in thesaurus → re-raise if the same terms reappear
+- **Skip any entry already covered by thesaurus.org** (1.2b takes priority)
 
 ---
 
@@ -1183,6 +1277,85 @@ For each ❓ term, present the following to the engineer:
 **Do not proceed until blocking ❓ items are resolved** (ambiguous `type_element` slots).
 ⚠️ items may be provisionally accepted with a `_a_confirmer: 1` flag.
 
+### Immediate thesaurus update after each resolution
+
+**After each engineer decision** (❓ resolved or ⚠️ confirmed/rejected), write the
+result into `$SANDBOX/agent/thesaurus.org` **immediately** — do not wait for Phase 6.
+
+This ensures the thesaurus is always up to date, even if the session is interrupted
+before Phase 6 completes.
+
+#### Mapping resolution → thesaurus section
+
+| Engineer decision | Thesaurus action |
+|---|---|
+| ❓ resolved → ✅ (type_element chosen) | Append to `* Aliases — type_element` |
+| ❓ resolved → ✅ (slot value chosen) | Append to `* Aliases — slot values` |
+| ⚠️ confirmed → ✅ | Move from `* Pending` to appropriate `* Aliases` section |
+| ⚠️ rejected → ⬜ | Move from `* Pending` to `* Out-of-scope terms` |
+| ❓ unresolvable → ⬜ (engineer: "exclude") | Append to `* Out-of-scope terms` |
+| New ⚠️ (first time seen) | Append to `* Pending` |
+
+#### Write format per section
+
+**Alias confirmed (type_element):**
+```org
+| <project term> | <KB type_element> | ✅ confirmed | import-report-<NNN> |
+```
+
+**Alias confirmed (slot value):**
+```org
+| <project term> | <KB slot> | <KB value> | ✅ confirmed | import-report-<NNN> |
+```
+
+**New pending entry:**
+```org
+| <project term> | type_element: <proposed> ? | ⚠️ _a_confirmer | import-report-<NNN> |
+```
+
+**Out-of-scope:**
+```org
+| <project term> | <reason> | <recommended sandbox or "unknown"> | import-report-<NNN> |
+```
+
+#### Thesaurus creation (first import)
+
+If `thesaurus.org` does not yet exist when the first resolution occurs:
+
+```org
+#+TITLE: Project terminology thesaurus — sandbox <sandbox-name>
+#+UPDATED: <date>
+#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox.
+               Maintained automatically by chorus-import-project.
+               Do NOT edit KB org files to add project aliases — use this file instead.
+
+* Aliases — type_element
+
+  | Project term | KB type_element | Confidence | Source import |
+  |---|---|---|---|
+
+* Aliases — slot values
+
+  | Project term | KB slot | KB value | Confidence | Source import |
+  |---|---|---|---|---|
+
+* Pending — to confirm on next import
+
+  | Project term | Proposed KB mapping | Flag | Source import |
+  |---|---|---|---|
+
+* Out-of-scope terms (⬜)
+
+  | Project term | Reason | Recommended sandbox | Last seen |
+  |---|---|---|---|
+```
+
+Then append the first resolved entry under the appropriate section.
+
+> ⚠️ **Deduplication rule:** before appending any entry, check whether the project term
+> already exists in the target section. If it does, **update** the existing row
+> (confidence, source import) rather than inserting a duplicate.
+
 ### --align-review mode — stop here for human validation
 
 If `--align-review` was specified, **stop after Phase 3** and produce an alignment review
@@ -1367,29 +1540,78 @@ Create `$SANDBOX/agent/import-report-<NNN>.org`:
 > This report is the **alignment decision memory** for this sandbox.
 > It is automatically re-read during the next `chorus-import-project` run on the same sandbox.
 
-### Post-import — automatic harvest proposal
+### Post-import — thesaurus consolidation (automatic)
 
-After writing the import report, check whether new ✅ alignments were produced that are
-**absent from all previous `import-report-*.org`** files in this sandbox:
+After writing the import report, perform a **thesaurus consolidation pass** to ensure
+`thesaurus.org` is fully up to date — even if Phase 3 already wrote entries incrementally,
+this pass catches any edge cases (batch mode, interrupted sessions, confirmed ⚠️ items).
 
-```
-N_new = count of ✅ alignments not present in any prior import-report-*.org
-```
-
-If `N_new > 0`, display:
+#### Consolidation rules
 
 ```
-💡 Harvest opportunity — N new ✅ alignments detected
-   These mappings are not yet in the KB and will need to be re-derived on every future import.
-   Run the following to integrate them permanently into the sandbox KB:
+For each alignment produced in this import:
 
-     chorus-feed --harvest-aliases $SANDBOX/agent/import-report-NNN.org
+  ✅ certain (newly confirmed in this session):
+    → if NOT already in thesaurus Aliases: append to appropriate Aliases section
+    → if present in thesaurus Pending: move to Aliases, update confidence + source
 
-   Future imports from this sandbox will resolve these terms at ✅ confidence without re-asking.
-   (Skip if the KB is intentionally minimal or the mappings are project-specific.)
+  ⚠️ confirmed by engineer in this session:
+    → move from Pending to Aliases (type_element or slot values)
+    → record source import as current import-report-NNN
+
+  ⚠️ newly seen (no prior record):
+    → append to Pending (if not already present)
+
+  ⬜ out-of-scope (confirmed by engineer):
+    → append to Out-of-scope (if not already present)
+    → remove from Pending if present there
+
+  ⛔ gap (mandatory slot absent — not a mapping decision):
+    → do NOT write to thesaurus (gaps are import-specific, not terminology mappings)
 ```
 
-If `N_new == 0` (all alignments were already known from prior reports), skip silently.
+**Deduplication:** before any write, verify the project term is not already present in
+the target section. Update existing rows rather than duplicating.
+
+**Update the `#+UPDATED:` header** of `thesaurus.org` with today's date after each
+consolidation pass.
+
+#### Consolidation summary (displayed to engineer)
+
+```
+📚 Thesaurus updated — $SANDBOX/agent/thesaurus.org
+   ✅ N new aliases added   (type_element: n / slot values: n)
+   🔄 N pending → confirmed
+   ⬜ N out-of-scope added
+   📋 Thesaurus now covers M distinct project terms
+```
+
+If nothing changed (all terms already in thesaurus) → display silently:
+```
+📚 Thesaurus already up to date — no new entries.
+```
+
+### Post-import — optional KB harvest (secondary)
+
+The thesaurus is the **primary** persistence mechanism for project terminology.
+`chorus-feed --harvest-aliases` is a **secondary, optional** step for promoting
+validated project terms into the normative KB — only useful when the same terminology
+is expected to appear in future projects across multiple sandboxes.
+
+```
+N_promotable = count of ✅ thesaurus aliases not yet present in any KB <slug>.org Aliases section
+```
+
+If `N_promotable > 0`, propose:
+
+```
+💡 Optional KB harvest — N thesaurus aliases could be promoted to the normative KB.
+   This is useful only if the same project terminology will appear in other sandboxes.
+   To promote: chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus.org
+   Skip if the mappings are project-specific or sandbox-specific.
+```
+
+If `N_promotable == 0` → skip silently.
 
 ### Phase 6-BATCH — Summary Report (batch mode only)
 
@@ -1421,9 +1643,9 @@ In addition to the individual reports, create `$SANDBOX/agent/import-batch-<NNN>
   Id conflicts        : N (merge mode only — N/A in batch)
 
 * New terms detected
-  Terms absent from previous import-report-*.org → to integrate into the KB
-  | Source term | File | Proposed alignment | Confidence |
-  |---|---|---|---|
+  Terms absent from thesaurus.org → newly added to thesaurus in this batch run
+  | Source term | File | Alignment | Confidence | Thesaurus action |
+  |---|---|---|---|---|
 
 * Skipped files
   | File | Reason |
@@ -1435,9 +1657,11 @@ In addition to the individual reports, create `$SANDBOX/agent/import-batch-<NNN>
   (run the pipeline on each produced JSON)
 ```
 
-> **New terms**: if a source term was not present in previous reports AND received a
-> ✅ safe alignment, it is a candidate for integration into the `Dictionnaire` section
-> of the corresponding agent KB (via `chorus-feed` or manual editing of the org file).
+> **New terms**: if a source term received a ✅ alignment and was not already in
+> `thesaurus.org`, it has been automatically added to the thesaurus Aliases section.
+> No manual action required — the thesaurus is the primary persistence mechanism.
+> Use `chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus.org` only if you want
+> to promote these mappings to the normative KB for cross-sandbox reuse.
 
 ---
 
