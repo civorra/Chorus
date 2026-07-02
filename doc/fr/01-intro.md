@@ -11,6 +11,67 @@
 
 ---
 
+## Cycle d'inférence
+
+### Niveau 1 — Chaîne d'agents
+
+```
+Expert.process()  ─  répète jusqu'à SOLVED | FAILED
+│
+▼
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Agent A   │ ──► │   Agent B   │ ──► │   Agent C   │
+│  [R1 R2 R3] │     │  [R1 R2]    │     │  [R1]       │
+└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
+       │                   │                   │
+    loop()              loop()              loop()
+   fixpoint             fixpoint            fixpoint
+       │
+       │◄── replay() : relance loop() depuis R1 (cet agent)
+       │
+◄──────┴─────────────────────────────────────────────────
+replay_all() : relance depuis Agent A
+```
+
+### Niveau 2 — Boucle de fixpoint (un agent)
+
+```
+loop()  ─  répète tant qu'au moins une règle s'est déclenchée dans la passe
+
+┌─ Règle R1 ────────────────────────────────────────────────────────┐
+│  CHERCHER résout les combinaisons de frames                       │
+│                                                                   │
+│  Pour chaque combinaison :                                        │
+│    _APPLY() → 0  (inactive)  ──► combinaison suivante             │
+│    _APPLY() → 1  (active)                                         │
+│               │                                                   │
+│               ├── cut()     ──► stop combis → règle suivante      │
+│               └── TERMINAL  ──► solved() ou failed()              │
+└───────────────────────────────────────────────────────────────────┘
+┌─ Règle R2 ────────────────────────────────────────────────────────┐
+│    last() ──────────────────────────────────────────────────────── ──► Agent B
+└───────────────────────────────────────────────────────────────────┘
+┌─ Règle R3 ────────────────────────────────────────────────────────┐
+│  ...                                                              │
+└───────────────────────────────────────────────────────────────────┘
+
+Quiescence : aucune règle déclenchée ──► fin loop() → agent suivant
+```
+
+**Contrôles de flux disponibles dans `EFFET` / `ACTION` :**
+
+| Mécanisme | Portée | Effet |
+|---|---|---|
+| `$SELF->cut()` | combinaisons | stop scope → règle suivante |
+| `$SELF->last()` | règles de l'agent | stop loop() → agent suivant |
+| `$SELF->replay()` | agent courant | relance loop() depuis R1 |
+| `$SELF->replay_all()` | chaîne complète | relance depuis Agent A |
+| `$SELF->solved()` | global | `BOARD.SOLVED` → arrêt Expert |
+| `$SELF->failed()` | global | `BOARD.FAILED` → arrêt Expert |
+| `TERMINAL: solved\|failed` | raccourci YAML | déclenche solved()/failed() si `_APPLY` retourne 1 |
+
+---
+
 ## Trois niveaux d'utilisation
 
 Trois niveaux d'utilisation, indépendants — Perl direct, règles YAML, pipeline agent IA. Chacun est un point d'entrée valable.
@@ -102,10 +163,6 @@ EFFET: |
 
 ### `_MAX_CYCLES` — garde-fou boucle infinie
 
-```perl
-my $agent = Chorus::Engine->new(_MAX_CYCLES => 5000);
-```
-
 `loop()` s'arrête après `_MAX_CYCLES` cycles (défaut : 10 000) et émet un
 avertissement. Chaque instance possède sa propre limite, indépendante des
 autres agents d'un même `Chorus::Expert`.
@@ -116,103 +173,41 @@ chaque agent.
 
 ---
 
-## Chorus::Frame — référence
+## Chorus::Frame
 
-### Slots, héritage et `fmatch()`
+| Concept | Description |
+|---|---|
+| `Chorus::Frame->new(%slots)` | Crée un frame ; `_ISA => $parent` active l'héritage |
+| `$f->set('slot', $val)` / `$f->delete('slot')` | Mutation indexée — **ne jamais** passer par `$f->{slot} = …` (contourne l'index `fmatch`) |
+| `fmatch(slot => 'nom')` | Retourne tous les frames possédant ce slot ; filtrer avec `grep` |
 
-```perl
-use Chorus::Frame;
-
-my $base = Chorus::Frame->new(
-    type    => 'inconnu',
-    libelle => sub { "Frame " . ref($_[0]) },  # slot procédural
-);
-
-my $enfant = Chorus::Frame->new(
-    _ISA   => $base,
-    type   => 'element',
-    masse  => 12.5,
-);
-
-print $enfant->type;     # "element"
-print $enfant->libelle;  # "Frame Chorus::Frame" — hérité, évalué lazily
-```
-
-**`fmatch()` — interrogation de la mémoire de travail :**
-
-```perl
-my @tous   = fmatch(slot => 'masse');                          # frames ayant le slot 'masse'
-my @lourds = grep { $_->{masse} > 10 } fmatch(slot => 'masse'); # par condition
-my @typed  = grep { $_->{type} eq 'element' } fmatch(slot => 'type'); # par valeur exacte
-```
-
-> ⚠️ **Pitfall :** toujours utiliser `$f->set('slot', $val)` et
-> `$f->delete('slot')` — jamais `$f->{slot} = $val` ni `delete $f->{slot}`,
-> qui court-circuitent l'index et rendent le frame invisible à `fmatch()`.
+> `perldoc Chorus::Frame` — slots procéduraux, héritage, modes N/Z, démons, `fselect`, `complete()`, `_TERMINAL_SLOTS`, `_ALTERNATIVES`
 
 ---
 
-## Chorus::Engine — référence
+## Chorus::Engine
 
-```perl
-use Chorus::Engine;
+| Concept | Description |
+|---|---|
+| `Chorus::Engine->new(_IDENT => …, _MAX_CYCLES => N)` | Crée un agent ; `_IDENT` pour les logs |
+| `$agent->addrule(_SCOPE => …, _APPLY => sub {})` | Ajoute une règle Perl |
+| `$agent->loadRules('rules/mon-agent/')` | Charge les règles YAML d'un répertoire ou d'un fichier |
+| `$agent->loop()` | Lance la boucle de fixpoint (autonome, sans Expert) |
 
-my $agent = Chorus::Engine->new(
-    _IDENT      => 'mon-agent',   # nom pour les logs
-    _MAX_CYCLES => 5000,
-);
-
-# Règle Perl
-$agent->addrule(
-    _SCOPE => { f => sub { [ fmatch(type => 'element') ] } },
-    _APPLY => sub {
-        my %o = @_;
-        return if $o{f}->{traite};
-        $o{f}->set('traite', 1);
-        return 1;
-    },
-);
-
-# Chargement YAML
-$agent->loadRules('rules/mon-agent/');
-
-# Boucle autonome (sans Expert)
-$agent->loop();
-
-# Termination explicite depuis _APPLY
-$agent->solved();   # BOARD->SOLVED = 'Y'
-$agent->failed();   # BOARD->FAILED = 'Y'
-```
-
-**`_MAX_ITER` (Expert) vs `_MAX_CYCLES` (Engine) :**
-
-| Paramètre | Portée | Ce qu'il limite |
-|---|---|---|
-| `_MAX_CYCLES` | `Chorus::Engine` | Cycles dans la boucle d'un agent |
-| `_MAX_ITER` | `Chorus::Expert` | Passes sur l'ensemble des agents |
+> `perldoc Chorus::Engine` — règles, boucle d'inférence, DSL YAML, contrôle de flux
 
 ---
 
-## Chorus::Expert — référence
+## Chorus::Expert
 
-```perl
-use Chorus::Expert;
+| Concept | Description |
+|---|---|
+| `Chorus::Expert->new(_MAX_ITER => N)` | Crée l'orchestrateur ; `_MAX_ITER` limite les passes sur la chaîne |
+| `$xprt->register($a, $b, …)` | Enregistre les agents dans l'ordre d'exécution |
+| `$xprt->process($données)` | Lance le cycle complet → `1` (solved) ou `undef` (failed / timeout) |
+| `$xprt->BOARD->set/get('clé', …)` | Tableau de bord partagé entre tous les agents |
 
-my $xprt = Chorus::Expert->new(_MAX_ITER => 100);
-
-$xprt->register($agent_1, $agent_2, $agent_controle);
-
-my $ok = $xprt->process($donnees_initiales);
-# → 1 si solved(), undef si failed() ou _MAX_ITER atteint
-
-# Tableau de bord partagé
-$xprt->BOARD->set('cle', 'valeur');
-my $v = $xprt->BOARD->get('cle');
-```
-
-> **Pattern courant :** enregistrer un agent de contrôle en dernière position.
-> Son seul rôle est de vérifier que tous les objets ont été traités
-> (`$obj->complete` pour chacun), puis d'appeler `$agent->solved()`.
+> `perldoc Chorus::Expert` — orchestration multi-agents, BOARD partagé, `_LOCK_UNTIL_STABLE`
 
 ---
 
