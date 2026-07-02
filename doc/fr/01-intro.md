@@ -213,13 +213,37 @@ chaque agent.
 
 | Token | Sens |
 |---|---|
-| `^` / `$` | Ancrage début / fin |
-| `[A B C]` | OU : correspond à A, B ou C |
-| `!X` | NON : exclut la valeur X |
-| `.` | N'IMPORTE : tout frame |
-| `X+` / `X*` / `X?` | Un ou plus / Zéro ou plus / Zéro ou un |
-| `X{m,n}` | Entre m et n occurrences |
-| `(...)` | Groupe de capture → `@_VFILTER` |
+| `Chorus::Frame->new(%slots)` | Crée un frame ; `_ISA => $parent` active l'héritage |
+| `$f->set('slot', $val)` / `$f->delete('slot')` | Mutation indexée — **ne jamais** passer par `$f->{slot} = …` (contourne l'index `fmatch`) |
+| `fmatch(slot => 'nom')` | Retourne tous les frames possédant ce slot ; filtrer avec `grep` |
+
+> `perldoc Chorus::Frame` — slots procéduraux, héritage, modes N/Z, démons, `fselect`, `complete()`, `_TERMINAL_SLOTS`, `_ALTERNATIVES`
+
+---
+
+## Chorus::Engine
+
+| Concept | Description |
+|---|---|
+| `Chorus::Engine->new(_IDENT => …, _MAX_CYCLES => N)` | Crée un agent ; `_IDENT` pour les logs |
+| `$agent->addrule(_SCOPE => …, _APPLY => sub {})` | Ajoute une règle Perl |
+| `$agent->loadRules('rules/mon-agent/')` | Charge les règles YAML d'un répertoire ou d'un fichier |
+| `$agent->loop()` | Lance la boucle de fixpoint (autonome, sans Expert) |
+
+> `perldoc Chorus::Engine` — règles, boucle d'inférence, DSL YAML, contrôle de flux
+
+---
+
+## Chorus::Expert
+
+| Concept | Description |
+|---|---|
+| `Chorus::Expert->new(_MAX_ITER => N)` | Crée l'orchestrateur ; `_MAX_ITER` limite les passes sur la chaîne |
+| `$xprt->register($a, $b, …)` | Enregistre les agents dans l'ordre d'exécution |
+| `$xprt->process($données)` | Lance le cycle complet → `1` (solved) ou `undef` (failed / timeout) |
+| `$xprt->BOARD->set/get('clé', …)` | Tableau de bord partagé entre tous les agents |
+
+> `perldoc Chorus::Expert` — orchestration multi-agents, BOARD partagé, `_LOCK_UNTIL_STABLE`
 
 ---
 

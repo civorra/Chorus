@@ -255,13 +255,37 @@ if ($f->check(@tokens)) {
 
 | Token | Meaning |
 |---|---|
-| `^` / `$` | Start / end anchor |
-| `[A B C]` | OR: matches A, B or C |
-| `!X` | NOT: excludes value X |
-| `.` | ANY: any frame |
-| `X+` / `X*` / `X?` | One or more / Zero or more / Zero or one |
-| `X{m,n}` | Between m and n occurrences |
-| `(...)` | Capture group → `@_VFILTER` |
+| `Chorus::Frame->new(%slots)` | Creates a frame; `_ISA => $parent` activates inheritance |
+| `$f->set('slot', $val)` / `$f->delete('slot')` | Indexed mutation — **never** use `$f->{slot} = …` directly (bypasses the `fmatch` index) |
+| `fmatch(slot => 'name')` | Returns all frames with that slot; filter with `grep` |
+
+> `perldoc Chorus::Frame` — procedural slots, inheritance, N/Z modes, demons, `fselect`, `complete()`, `_TERMINAL_SLOTS`, `_ALTERNATIVES`
+
+---
+
+## Chorus::Engine
+
+| Concept | Description |
+|---|---|
+| `Chorus::Engine->new(_IDENT => …, _MAX_CYCLES => N)` | Creates an agent; `_IDENT` for logs |
+| `$agent->addrule(_SCOPE => …, _APPLY => sub {})` | Adds a Perl rule |
+| `$agent->loadRules('rules/my-agent/')` | Loads YAML rules from a directory or single file |
+| `$agent->loop()` | Runs the fixpoint loop (standalone, without Expert) |
+
+> `perldoc Chorus::Engine` — rules, inference loop, YAML DSL, flow control
+
+---
+
+## Chorus::Expert
+
+| Concept | Description |
+|---|---|
+| `Chorus::Expert->new(_MAX_ITER => N)` | Creates the orchestrator; `_MAX_ITER` limits passes over the chain |
+| `$xprt->register($a, $b, …)` | Registers agents in execution order |
+| `$xprt->process($data)` | Runs the full cycle → `1` (solved) or `undef` (failed / timeout) |
+| `$xprt->BOARD->set/get('key', …)` | Shared board accessible to all agents |
+
+> `perldoc Chorus::Expert` — multi-agent orchestration, shared BOARD, `_LOCK_UNTIL_STABLE`
 
 ---
 
