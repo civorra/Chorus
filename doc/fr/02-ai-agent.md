@@ -83,12 +83,11 @@ skills Chorus, le même résultat s'obtient en une session de travail.
 **Ce que la chaîne fait concrètement :**
 
 ```
-chorus-pdf  norme.pdf --auto
-    → extrait le texte page par page (pdfminer pour le texte,
-      vision LLM pour les figures et tableaux)
-    → corpus/001-norme-vision.md
+chorus-pdf   norme.pdf            → corpus/001-norme-vision.md
+chorus-word  annexe.docx          → corpus/002-annexe-vision.md
+chorus-excel tableaux-ref.xlsx    → corpus/003-tableaux-text.txt
 
-chorus-feed mon-sandbox corpus/001-norme-vision.md
+chorus-feed mon-sandbox corpus/
     → identifie les spécialités → agents
     → conçoit l'ontologie de slots
     → écrit agent/agents/<specialite>.org (KB par agent)
@@ -101,7 +100,7 @@ chorus-check mon-sandbox projet.json
     → affiche le rapport de conformité
 ```
 
-Trois commandes couvrent l'intégralité du pipeline.
+L'extraction du corpus (PDF, Word, Excel) + `chorus-feed` + `chorus-check` couvrent l'intégralité du pipeline.
 
 **Ce qui rend ça possible :**
 

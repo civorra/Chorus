@@ -80,12 +80,11 @@ skills, it is the work of one session.
 **What the chain does in practice:**
 
 ```
-chorus-pdf  standard.pdf --auto
-    → extracts text page by page (pdfminer for text,
-      LLM vision for figures and tables)
-    → corpus/001-standard-vision.md
+chorus-pdf   standard.pdf         → corpus/001-standard-vision.md
+chorus-word  annex.docx           → corpus/002-annex-vision.md
+chorus-excel ref-tables.xlsx      → corpus/003-ref-tables-text.txt
 
-chorus-feed my-sandbox corpus/001-standard-vision.md
+chorus-feed my-sandbox corpus/
     → identifies specialities → agents
     → designs the slot ontology
     → writes agent/agents/<speciality>.org (KB per agent)
@@ -98,7 +97,7 @@ chorus-check my-sandbox project.json
     → prints the conformity report
 ```
 
-Three commands. Everything else is handled.
+Corpus extraction (PDF, Word, Excel) + `chorus-feed` + `chorus-check` cover the entire pipeline.
 
 **What makes this possible:**
 
