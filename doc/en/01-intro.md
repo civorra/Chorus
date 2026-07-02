@@ -89,12 +89,12 @@ $agent->loadRules('rules/R01-my-rule.yml'); # single file
 
 ### Context variables in `ACTION`
 
-Variables bound by `FIND` are directly accessible by name. `$SELF` refers to the
-current engine:
+Variables bound by `FIND` are directly accessible by name in the `ACTION` block.
+`$SELF` refers to the engine (`Chorus::Engine`) — not a frame — and gives access to the shared board via `$SELF->BOARD`:
 
 ```yaml
 ACTION: |
-  my $val = $source->{measure} * $SELF->{factor};
+  my $val = $source->{measure} * $target->{factor};
   $target->set('corrected_value', $val);
   1
 ```

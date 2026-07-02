@@ -88,12 +88,12 @@ $agent->loadRules('rules/R01-ma-regle.yml'); # fichier unique
 
 ### Variables de contexte dans `EFFET`
 
-Les variables liées par `CHERCHER` sont directement accessibles sous leur nom.
-`$SELF` désigne le moteur courant :
+Les variables liées par `CHERCHER` sont directement accessibles sous leur nom dans le bloc `EFFET`.
+`$SELF` désigne le moteur (`Chorus::Engine`) — pas un frame — et donne accès au tableau partagé via `$SELF->BOARD` :
 
 ```yaml
 EFFET: |
-  my $val = $source->{mesure} * $SELF->{facteur};
+  my $val = $source->{mesure} * $cible->{facteur};
   $cible->set('valeur_corrigee', $val);
   1
 ```
