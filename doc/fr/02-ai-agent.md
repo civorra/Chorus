@@ -18,7 +18,7 @@ pratique pour trois raisons structurelles :
 Chorus-2.0 répond à ces trois problèmes, non pas en abandonnant l'approche
 symbolique, mais en confiant exactement ces trois difficultés à un modèle de langage :
 
-| Échec historique | Réponse Chorus-2.0 |
+| freins IA symbolique seule | Chorus-2.0 |
 |---|---|
 | Acquisition des connaissances | `chorus-feed` lit des documents bruts et alimente la KB automatiquement |
 | Langage naturel en entrée | Le LLM extrait et structure ; le moteur ne parse jamais du texte libre |
@@ -109,20 +109,8 @@ skills Chorus, le même résultat s'obtient en une session de travail.
 > peut couvrir de façon générique. L'agent IA est aussi nécessaire lorsque le corpus
 > normatif évolue — pour relancer `chorus-feed --enrich` puis `chorus-check`.
 
-> **Les agents IA fonctionnent nativement sur Neovim, VS Code, IntelliJ et Emacs** — sans
-> dépendance à un éditeur particulier. Les fichiers `AGENTS.md` et skills sont
-> du Markdown plain ; ils fonctionnent de façon identique quel que soit l'éditeur.
->
-> **Les fichiers KB (`.org`)** sont du texte structuré lisible avec n'importe
-> quel éditeur. Les tableaux et headings s'affichent correctement dans
-> `nvim-orgmode`, les extensions org de VS Code, et tout éditeur de texte.
-> Emacs offre l'expérience org la plus riche, mais il n'est pas requis pour
-> lire, modifier ou versionner ces fichiers.
->
-> **Pour les cycles `chorus-feed` et d'enrichissement itératif**, un éditeur
-> qui ouvre les fichiers org comme buffers vivants réduit le coût de lecture
-> et de correction de la KB entre deux passes. C'est la seule exigence pratique :
-> un accès confortable aux fichiers `.org` du sandbox.
+> Les skills Chorus fonctionnent depuis n'importe quel terminal IA — Claude,
+> Copilot, ou tout agent compatible `AGENTS.md`.
 
 **Ce que la chaîne fait concrètement :**
 

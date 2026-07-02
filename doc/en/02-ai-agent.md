@@ -16,7 +16,7 @@ deterministic output. They failed in practice for three structural reasons:
 Chorus-2.0 addresses all three, not by abandoning the symbolic approach, but by
 delegating exactly these three problems to a language model:
 
-| Historical failure | Chorus-2.0 response |
+| Symbolic AI alone | Chorus-2.0 |
 |---|---|
 | Knowledge acquisition | `chorus-feed` reads raw documents and populates the KB automatically |
 | Natural language input | The LLM extracts and structures; the engine never parses free text |
@@ -105,20 +105,8 @@ skills, it is the work of one session.
 > needed when the normative corpus changes — to re-run `chorus-feed --enrich`
 > and `chorus-check`.
 
-> **AI agents run natively on Neovim, VS Code, IntelliJ and Emacs** — no editor
-> lock-in. The `AGENTS.md` and skill files are plain Markdown; they work
-> identically regardless of the editor.
->
-> **KB files (`.org`)** are structured plain text, readable with any editor.
-> Tables and headings render well in `nvim-orgmode`, VS Code org extensions,
-> and any text editor. Emacs gives the richest org experience but is not
-> required to read, edit or version these files.
->
-> **ECA in Emacs** is the most natural fit for multi-day Chorus sessions:
-> KB org files open as live buffers, the AI agent edits them directly, and
-> session summaries keep the working context resumable across days. Other
-> editors work correctly; this combination removes the most friction for long
-> `chorus-feed` and incremental enrichment cycles.
+> Chorus skills work from any AI terminal — Claude, Copilot, or any
+> `AGENTS.md`-compatible agent.
 
 **What the chain does in practice:**
 
