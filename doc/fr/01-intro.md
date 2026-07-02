@@ -89,13 +89,6 @@ $agent->loadRules('rules/mon-agent/');       # tous les *.yml du répertoire
 $agent->loadRules('rules/R01-ma-regle.yml'); # fichier unique
 ```
 
-Les fichiers sont chargés **par ordre alphabétique** — nommer les fichiers
-`R01-`, `R02-`… pour contrôler l'ordre d'application.
-
-**Déduplication par identifiant (2.0) :** si deux fichiers déclarent une règle
-avec le même `REGLE:` / `RULE:`, le second est ignoré et un avertissement est
-émis.
-
 ### Variables de contexte dans `EFFET`
 
 Les variables liées par `CHERCHER` sont directement accessibles sous leur nom.

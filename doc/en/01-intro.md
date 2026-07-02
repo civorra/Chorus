@@ -94,12 +94,6 @@ $agent->loadRules('rules/my-agent/');       # all *.yml files in the directory
 $agent->loadRules('rules/R01-my-rule.yml'); # single file
 ```
 
-Files are loaded **in alphabetical order** — name files `R01-`, `R02-`… to control
-the order of application.
-
-**Deduplication by identifier (v2.0):** if two files declare a rule with the same
-`RULE:` / `REGLE:`, the second is ignored and a warning is emitted.
-
 ### Context variables in `ACTION`
 
 Variables bound by `FIND` are directly accessible by name. `$SELF` refers to the
