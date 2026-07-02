@@ -1,16 +1,13 @@
 # Chorus Engine — Guide technique
 
-> Ce document complète le [README](../../README.md). Il détaille la mécanique interne : DSL YAML, API Perl de référence, nouveautés v2.
-
----
-
-## Le verrou que Chorus 2.0 lève
-
-Dans Chorus v1, les règles YAML s'écrivent à la main — une règle par article de norme, slot par slot. Sur un corpus réel (quelques dizaines de pages, des centaines d'exigences), c'est le vrai frein : non pas le moteur, mais la production des règles.
-
-Chorus 2.0 supprime ce verrou. Le moteur Perl reste le socle — frames, slots, règles YAML, chaîne d'inférence. Un agent IA s'y greffe pour lire le corpus normatif et générer les règles. Le moteur s'exécute ensuite sans LLM — déterministe, reproductible, sur n'importe quelle machine.
-
-**Ce que ce guide documente :** la mécanique que l'agent IA génère et que l'expert du domaine peut lire, corriger et étendre — DSL YAML, Frame API, règles de ciblage.
+> Le [README](../../README.md) décrit le pipeline et la division du travail LLM/moteur.
+> Ce guide entre dans la mécanique : structure des règles YAML, comportement du moteur,
+> API Perl de référence. Il s'adresse à l'expert du domaine qui lit, corrige et étend
+> le pipeline généré par l'agent IA.
+>
+> Le moteur Perl est le socle — frames, slots, règles YAML, chaîne d'inférence.
+> Un agent IA s'y greffe pour lire le corpus normatif et générer les règles.
+> Le moteur s'exécute ensuite sans LLM — déterministe, reproductible.
 
 ---
 
