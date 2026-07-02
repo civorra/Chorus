@@ -6,8 +6,7 @@
 
 > Chorus est un moteur d'inférence Perl qui transforme un corpus normatif en
 > pipeline de vérification de conformité. Un agent IA construit la base de
-> connaissance ; le moteur l'exécute de façon déterministe et traçable —
-> sans LLM, sans réseau, sur n'importe quelle machine avec Perl.
+> connaissance ; le moteur l'exécute de façon déterministe et traçable.
 
 Le système fonctionne en **deux temps radicalement distincts** :
 
@@ -22,14 +21,13 @@ Temps B — Exécution      [Chorus seul, sans LLM, à chaque projet]
 ```
 
 Le LLM intervient **uniquement** en Temps A — pour lire le corpus, structurer la
-connaissance et générer les artefacts. En Temps B, il n'est plus là : le pipeline
-Perl s'exécute seul, à la même vitesse et avec le même résultat sur n'importe
-quelle machine.
+connaissance et générer les artefacts. En Temps B, il n'intervient plus : le pipeline
+Perl s'exécute seul, de façon déterministe et reproductible.
 
 ```
 Corpus normatif (PDF, texte, Word, Excel)
         │
-   chorus-pdf + chorus-feed   ← l'agent IA extrait et formalise les règles
+   chorus-pdf / chorus-word / chorus-excel + chorus-feed   ← l'agent IA extrait et formalise les règles
         │
    KB : ontologie · règles YAML · tables normatives
         │
@@ -44,7 +42,7 @@ Corpus normatif (PDF, texte, Word, Excel)
 
 ## Genèse
 
-Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente la connaissance de façon explicite, sous forme de règles et de structures typées, et qui raisonne par inférence déterministe. La tradition des systèmes experts, des **Frames de Marvin Minsky**, de LISP.
+Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente la connaissance de façon explicite, sous forme de règles et de structures typées, et qui raisonne par inférence déterministe. Dans la lignée des systèmes experts, des **Frames de Marvin Minsky**, de LISP.
 
 La première version est née en 2013 du portage en Perl d'un projet original écrit en LISP. L'objectif était double : montrer que Perl était tout à fait adapté à ce type d'implémentation, et offrir à la communauté CPAN un moteur d'inférence inspiré des Frames de Minsky — objets typés, slots, héritage, chaîne d'inférence.
 
@@ -56,7 +54,7 @@ Chorus v2 est un système **symbolique augmenté** : le moteur d'inférence rest
 
 ---
 
-## Pourquoi un LLM ne peut pas valider la conformité à un corpus de normes lui-même
+## Pourquoi un LLM ne peut pas valider à lui seul la conformité à un corpus de normes
 
 Chorus occupe une position spécifique dans le paysage IA actuel. La plupart des
 systèmes hybrides utilisent un modèle de langage comme couche de décision et les
@@ -125,7 +123,9 @@ requise à l'exécution.
 ```
 Corpus normatif (PDF, texte, Word, Excel)
         │
-   chorus-pdf          ← extrait les PDFs (mode texte, hybride ou vision complète)
+   chorus-pdf          ← extrait les PDFs (hybride par défaut / texte / auto / images)
+   chorus-word         ← extrait les documents Word (.docx)
+   chorus-excel        ← extrait les feuilles Excel et CSV (.xlsx, .csv)
         │
    corpus/<NNN>-<slug>.txt / -vision.md
         │
@@ -171,7 +171,9 @@ de chaque décision et est relu lors des imports suivants pour éviter les déri
 | Commande | Rôle |
 |---|---|
 | `chorus-quickstart` | Vue d'ensemble guidée — commencer ici si vous découvrez Chorus |
-| `chorus-pdf` | Extraire un corpus PDF (mode texte / hybride / vision complète) |
+| `chorus-pdf` | Extraire un corpus PDF (hybride par défaut / texte / auto / images) |
+| `chorus-word` | Extraire un document Word (.docx) en corpus enrichi |
+| `chorus-excel` | Extraire une feuille Excel ou CSV en corpus enrichi |
 | `chorus-feed` | Construire ou enrichir la KB depuis un corpus |
 | `chorus-check` | Générer l'infrastructure + lancer la vérification de conformité |
 | `chorus-create-project` | Générer un fichier projet JSON synthétique depuis la KB |

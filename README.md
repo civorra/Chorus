@@ -22,13 +22,12 @@ Phase B — Execute [Chorus alone, no LLM, for every project]
 ```
 
 The LLM intervenes **only** in Phase A — reading the corpus, structuring knowledge,
-generating artefacts. In Phase B it is gone: the Perl pipeline runs alone, with the
-same result on any machine.
+generating artefacts. In Phase B, it no longer intervenes: the Perl pipeline runs alone, deterministically and reproducibly.
 
 ```
 Normative corpus (PDF, plain text, Word, Excel)
         │
-   chorus-pdf + chorus-feed   ← AI agent extracts and formalises the rules
+   chorus-pdf / chorus-word / chorus-excel + chorus-feed   ← AI agent extracts and formalises the rules
         │
    KB: ontology · YAML rules · normative tables
         │
@@ -127,7 +126,9 @@ its own: no AI agent, no LLM, no network connection required at runtime.
 ```
 Normative corpus (PDF, plain text, Word, Excel)
         │
-   chorus-pdf          ← extracts PDFs (text, hybrid, or full-vision mode)
+   chorus-pdf          ← extracts PDFs (hybrid by default / text / auto / images)
+   chorus-word         ← extracts Word documents (.docx)
+   chorus-excel        ← extracts Excel spreadsheets and CSV (.xlsx, .csv)
         │
    corpus/<NNN>-<slug>.txt / -vision.md
         │
@@ -173,7 +174,9 @@ for each mapping decision and is re-read on subsequent imports to prevent drift.
 | Command | Role |
 |---|---|
 | `chorus-quickstart` | Guided overview — start here if new to Chorus |
-| `chorus-pdf` | Extract a PDF corpus (text / hybrid / full-vision mode) |
+| `chorus-pdf` | Extract a PDF corpus (hybrid by default / text / auto / images) |
+| `chorus-word` | Extract a Word document (.docx) into an enriched corpus |
+| `chorus-excel` | Extract an Excel spreadsheet or CSV into an enriched corpus |
 | `chorus-feed` | Build or enrich the KB from a corpus |
 | `chorus-check` | Generate infrastructure + run conformity check |
 | `chorus-create-project` | Generate a synthetic project JSON from the KB |

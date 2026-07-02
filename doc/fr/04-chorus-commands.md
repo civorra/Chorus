@@ -1,6 +1,6 @@
 # Les commandes `chorus-*` — Référence du workflow assisté par agent IA
 
-Les sept commandes `chorus-*` forment un pipeline complet pour transformer un
+Les neuf commandes `chorus-*` forment un pipeline complet pour transformer un
 corpus normatif (PDF, texte, Word, Excel) en un moteur d'inférence Perl
 opérationnel qui valide des projets réels.
 
@@ -28,7 +28,9 @@ et à chaque corpus. Un agent IA est aussi requis lorsque le corpus normatif cha
                       │  Corpus normatif (PDF, texte…)  │
                       └──────────────┬──────────────────┘
                                      │
-                          chorus-pdf  (si PDF)
+                          chorus-pdf    (si PDF)
+                          chorus-word   (si .docx)
+                          chorus-excel  (si .xlsx / .csv)
                                      │
                                      ▼
                       ┌─────────────────────────────────┐
@@ -118,16 +120,30 @@ en images, les mises en page multi-colonnes et les annotations de figures.
 
 | Mode | Flag | Moteur | Clé API | Sortie |
 |---|---|---|---|---|
-| **Texte** (défaut) | *(aucun)* | `pdfminer.six` | ❌ non requise | `<slug>-text.txt` |
+| **Hybride** (**défaut**) | *(aucun — auto-détecté)* | `pdfminer` texte sur toutes les pages + Claude vision sur figures recadrées | ✅ `ANTHROPIC_API_KEY` | `<slug>-vision.md` |
+| **Texte** (repli) | *(aucun — sans clé API)* | `pdfminer.six` uniquement | ❌ non requise | `<slug>-text.txt` |
 | **Auto** | `--auto` | pdfminer (pages texte) + vision LLM (pages figures) | ✅ | `<slug>-vision.md` |
 | **Images** | `--images` | `pdftoppm` 150 DPI + vision LLM sur toutes les pages | ✅ | `<slug>-vision.md` |
 
 **Choisir un mode :**
 
 ```
-Pas de clé API → mode texte (défaut)
-Clé API disponible, document mixte (surtout texte + quelques figures) → --auto  ← recommandé
-Clé API disponible, PDF surtout composé de schémas ou scanné → --images
+Pas de flag fourni
+  → Phase 0.0 détecte automatiquement ANTHROPIC_API_KEY
+  → clé valide   : --hybrid activé automatiquement  ← DÉFAUT
+  → clé absente ou invalide : mode texte (repli)
+
+Clé API disponible, document mixte (texte + figures intégrées)
+  → (défaut — hybrid activé automatiquement)
+
+Clé API disponible, document majoritairement textuel (peu ou pas de figures)
+  → --auto  ← plus rapide, moins d'appels API
+
+Clé API disponible, PDF composé de schémas ou scanné
+  → --images
+
+Pas de clé API disponible
+  → (mode texte — repli forcé)
 ```
 
 `--auto` classifie d'abord chaque page (pdfminer sur les pages texte, vision sur
@@ -152,6 +168,78 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # pour --auto et --images
 ```
 chorus-feed <sandbox-name> corpus/<NNN>-<slug>-text.txt
             (ou : corpus/<NNN>-<slug>-vision.md)
+```
+
+---
+
+## `chorus-word` — Extraire un document Word
+
+```
+chorus-word <sandbox-name> <fichier.docx> [--out <slug>] [--batch]
+```
+
+**Responsabilité unique :** produire un fichier texte enrichi depuis un document Word (.docx).
+Les outils de conversion Word classiques suppriment silencieusement les images intégrées,
+les cellules fusionnées et l'ordre de lecture réel. `chorus-word` les préserve.
+
+### Modes d'extraction
+
+| Mode | Moteur | Clé API | Images | Tableaux | Sortie |
+|---|---|---|---|---|---|
+| **Hybride** (**défaut**) | python-docx texte + Claude vision sur images | ✅ `ANTHROPIC_API_KEY` | ✅ décrits | ✅ Markdown pipe | `<slug>-vision.md` |
+| **Texte** (repli) | python-docx uniquement | ❌ non requise | `[IMAGE — non extraite]` | ✅ Markdown pipe | `<slug>-text.txt` |
+
+Le mode est détecté automatiquement : hybride si la clé API est présente et valide, texte sinon.
+
+### Prérequis
+
+```bash
+pip install python-docx
+export ANTHROPIC_API_KEY="sk-ant-..."   # pour le mode hybride
+```
+
+### Étape suivante
+
+```
+chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
+            (ou : corpus/<NNN>-<slug>-text.txt)
+```
+
+---
+
+## `chorus-excel` — Extraire une feuille Excel ou CSV
+
+```
+chorus-excel <sandbox-name> <fichier.xlsx|fichier.csv> [--out <slug>] [--sheet <nom>] [--batch]
+```
+
+**Responsabilité unique :** produire un fichier texte enrichi depuis un tableur Excel (.xlsx) ou CSV.
+Les conversions naïves aplatissent les cellules fusionnées, ignorent les images intégrées et ne
+décrivent pas les graphiques. `chorus-excel` les récupère.
+
+### Modes d'extraction
+
+| Mode | Format | Moteur | Clé API | Images/Graphiques | Sortie |
+|---|---|---|---|---|---|
+| **Hybride** (**défaut**) | `.xlsx` | openpyxl + Claude vision | ✅ `ANTHROPIC_API_KEY` | ✅ décrits | `<slug>-vision.md` |
+| **Texte** (repli) | `.xlsx` | openpyxl uniquement | ❌ non requise | `[IMAGE/CHART — non extrait]` | `<slug>-text.txt` |
+| **CSV** | `.csv` | `csv.reader` | ❌ | N/A | `<slug>-text.txt` |
+
+Le mode est détecté automatiquement selon l'extension et la présence de la clé API.
+
+### Prérequis
+
+```bash
+pip install openpyxl
+sudo apt install libreoffice   # pour les graphiques en mode hybride
+export ANTHROPIC_API_KEY="sk-ant-..."   # pour le mode hybride
+```
+
+### Étape suivante
+
+```
+chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
+            (ou : corpus/<NNN>-<slug>-text.txt)
 ```
 
 ---
@@ -475,12 +563,14 @@ arguments sources.
 
 1. `agent/agents/index.org` — types de Frame, pipeline, namespace
 2. `agent/agents/<slug>.org` — noms de slots, domaines de valeurs, obligatoires/optionnels
-3. Tout `agent/import-report-*.org` précédent — décisions d'alignement antérieures (pour la cohérence)
+3. `agent/thesaurus.org` (si présent) — terminologie projet validée lors des imports précédents *(priorité maximale)*
+4. Tout `agent/import-report-*.org` précédent — décisions d'alignement antérieures (secondaire — ignoré si couvert par le thésaurus)
 
 ### Ce que l'agent IA produit
 
 - `projet-import-<NNN>.json` — le JSON projet aligné
 - `agent/import-report-<NNN>.org` — rapport d'alignement : correspondances de termes, lacunes, ambiguïtés
+- `agent/thesaurus.org` — mis à jour incrémentalement après chaque décision d'alignement ; créé au premier import si absent
 
 Les lacunes (valeurs absentes du document source) sont signalées mais jamais inventées.
 
@@ -611,7 +701,9 @@ adapter un nouveau projet, un agent IA est requis.
 | Commande | Entrée | Sortie | Prérequis |
 |---|---|---|---|
 | `chorus-quickstart` | *(aucune)* | Guide interactif — présentation du pipeline | — |
-| `chorus-pdf` | Fichier PDF | `corpus/<NNN>-<slug>-text.txt` ou `-vision.md` | `pdfminer.six` ; clé API pour `--auto`/`--images` |
+| `chorus-pdf` | Fichier PDF | `corpus/<NNN>-<slug>-text.txt` ou `-vision.md` | `pdfminer.six` ; clé API pour `--hybrid`/`--auto`/`--images` |
+| `chorus-word` | Fichier `.docx` | `corpus/<NNN>-<slug>-vision.md` ou `-text.txt` | `python-docx` ; clé API pour le mode hybride |
+| `chorus-excel` | Fichier `.xlsx` ou `.csv` | `corpus/<NNN>-<slug>-vision.md` ou `-text.txt` | `openpyxl` ; clé API pour le mode hybride |
 | `chorus-feed` | Corpus `.txt` ou `.md` | `agent/agents/*.org`, règles YAML, `Helpers.pm` | — |
 | `chorus-check` | JSON projet (ou `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + rapport | `chorus-feed` exécuté au préalable |
 | `chorus-create-project` | *(KB uniquement)* | JSON projet ou suite de 4 fichiers (`--batch`) | `chorus-feed` exécuté au préalable |

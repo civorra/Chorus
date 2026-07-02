@@ -1,6 +1,6 @@
 # The `chorus-*` Commands — AI-Assisted Workflow Reference
 
-The six `chorus-*` commands form a complete pipeline for turning a normative
+The nine `chorus-*` commands form a complete pipeline for turning a normative
 corpus (PDF, plain text, Word, Excel) into a running Perl inference engine that
 validates real projects.
 
@@ -26,7 +26,9 @@ generically. An AI agent is also needed when the normative corpus changes.
                       │  Normative corpus (PDF, text…)  │
                       └──────────────┬──────────────────┘
                                      │
-                          chorus-pdf  (if PDF)
+                          chorus-pdf    (if PDF)
+                          chorus-word   (if .docx)
+                          chorus-excel  (if .xlsx / .csv)
                                      │
                                      ▼
                       ┌─────────────────────────────────┐
@@ -114,16 +116,30 @@ multi-column layouts, and figure annotations. `chorus-pdf` recovers them.
 
 | Mode | Flag | Engine | API key | Output |
 |---|---|---|---|---|
-| **Text** (default) | *(none)* | `pdfminer.six` | ❌ not required | `<slug>-text.txt` |
+| **Hybrid** (**default**) | *(none — auto-detected)* | `pdfminer` text on ALL pages + Claude vision on cropped figures | ✅ `ANTHROPIC_API_KEY` | `<slug>-vision.md` |
+| **Text** (fallback) | *(none — no API key)* | `pdfminer.six` only | ❌ not required | `<slug>-text.txt` |
 | **Auto** | `--auto` | pdfminer (text pages) + LLM vision (figure pages) | ✅ | `<slug>-vision.md` |
 | **Images** | `--images` | `pdftoppm` 150 DPI + LLM vision on all pages | ✅ | `<slug>-vision.md` |
 
 **Choosing a mode:**
 
 ```
-No API key → text mode (default)
-API key available, mixed document (mostly text + some figures) → --auto  ← recommended
-API key available, mostly diagrams or scanned PDF → --images
+No flag provided
+  → Phase 0.0 auto-detects ANTHROPIC_API_KEY
+  → if key valid   : --hybrid activated automatically  ← DEFAULT
+  → if key absent or invalid : text mode (fallback)
+
+API key available, mixed document (text + embedded figures)
+  → (default — hybrid activated automatically)
+
+API key available, text-dominant document (few or no embedded figures)
+  → --auto  ← faster, fewer API calls
+
+API key available, mostly diagrams or scanned PDF
+  → --images
+
+No API key available
+  → (default text mode — forced fallback)
 ```
 
 `--auto` classifies each page first (pdfminer on text-only pages, vision on
@@ -147,6 +163,78 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # for --auto and --images
 ```
 chorus-feed <sandbox-name> corpus/<NNN>-<slug>-text.txt
             (or: corpus/<NNN>-<slug>-vision.md)
+```
+
+---
+
+## `chorus-word` — Extract a Word document
+
+```
+chorus-word <sandbox-name> <file.docx> [--out <slug>] [--batch]
+```
+
+**Single responsibility:** produce an enriched text file from a Word document (.docx).
+Standard Word-to-text converters silently drop embedded images, merged cells, and
+the actual reading order. `chorus-word` preserves them.
+
+### Extraction modes
+
+| Mode | Engine | API key | Images | Tables | Output |
+|---|---|---|---|---|---|
+| **Hybrid** (**default**) | python-docx text + Claude vision on images | ✅ `ANTHROPIC_API_KEY` | ✅ described | ✅ Markdown pipe | `<slug>-vision.md` |
+| **Text** (fallback) | python-docx only | ❌ not required | `[IMAGE — not extracted]` placeholder | ✅ Markdown pipe | `<slug>-text.txt` |
+
+Mode is auto-detected: hybrid if the API key is present and valid, text otherwise.
+
+### Prerequisites
+
+```bash
+pip install python-docx
+export ANTHROPIC_API_KEY="sk-ant-..."   # for hybrid mode
+```
+
+### Next step
+
+```
+chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
+            (or: corpus/<NNN>-<slug>-text.txt)
+```
+
+---
+
+## `chorus-excel` — Extract an Excel spreadsheet or CSV
+
+```
+chorus-excel <sandbox-name> <file.xlsx|file.csv> [--out <slug>] [--sheet <name>] [--batch]
+```
+
+**Single responsibility:** produce an enriched text file from an Excel spreadsheet (.xlsx)
+or CSV file. Naive conversions flatten merged cells, ignore embedded images, and do not
+describe charts. `chorus-excel` recovers them.
+
+### Extraction modes
+
+| Mode | Format | Engine | API key | Images / Charts | Output |
+|---|---|---|---|---|---|
+| **Hybrid** (**default**) | `.xlsx` | openpyxl + Claude vision | ✅ `ANTHROPIC_API_KEY` | ✅ described | `<slug>-vision.md` |
+| **Text** (fallback) | `.xlsx` | openpyxl only | ❌ not required | `[IMAGE/CHART — not extracted]` | `<slug>-text.txt` |
+| **CSV** | `.csv` | `csv.reader` | ❌ | N/A | `<slug>-text.txt` |
+
+Mode is auto-detected from the file extension and API key availability.
+
+### Prerequisites
+
+```bash
+pip install openpyxl
+sudo apt install libreoffice   # for charts in hybrid mode
+export ANTHROPIC_API_KEY="sk-ant-..."   # for hybrid mode
+```
+
+### Next step
+
+```
+chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
+            (or: corpus/<NNN>-<slug>-text.txt)
 ```
 
 ---
@@ -465,12 +553,14 @@ domains the Chorus pipeline expects.
 
 1. `agent/agents/index.org` — Frame types, pipeline, namespace
 2. `agent/agents/<slug>.org` — slot names, value domains, mandatory/optional
-3. Previous `agent/import-report-*.org` — past alignment decisions (for consistency)
+3. `agent/thesaurus.org` (if present) — validated project terminology from previous imports *(highest priority)*
+4. Previous `agent/import-report-*.org` — past alignment decisions (secondary — skipped if covered by thesaurus)
 
 ### What the AI agent produces
 
 - `project-import-<NNN>.json` — the aligned project JSON
 - `agent/import-report-<NNN>.org` — alignment report: term mappings, gaps, ambiguities
+- `agent/thesaurus.org` — updated incrementally after each alignment decision; created on first import if absent
 
 Gaps (values absent from the source document) are reported but never invented.
 
@@ -600,7 +690,9 @@ project, an AI agent is required.
 
 | Command | Input | Output | Prerequisites |
 |---|---|---|---|
-| `chorus-pdf` | PDF file | `corpus/<NNN>-<slug>-text.txt` or `-vision.md` | `pdfminer.six`; API key for `--auto`/`--images` |
+| `chorus-pdf` | PDF file | `corpus/<NNN>-<slug>-text.txt` or `-vision.md` | `pdfminer.six`; API key for `--hybrid`/`--auto`/`--images` |
+| `chorus-word` | `.docx` file | `corpus/<NNN>-<slug>-vision.md` or `-text.txt` | `python-docx`; API key for hybrid mode |
+| `chorus-excel` | `.xlsx` or `.csv` file | `corpus/<NNN>-<slug>-vision.md` or `-text.txt` | `openpyxl`; API key for hybrid mode |
 | `chorus-feed` | `.txt` or `.md` corpus | `agent/agents/*.org`, YAML rules, `Helpers.pm` | — |
 | `chorus-check` | project JSON (or `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + report | `chorus-feed` run first |
 | `chorus-create-project` | *(KB only)* | project JSON or 4-file coverage suite (`--batch`) | `chorus-feed` run first |
@@ -615,6 +707,8 @@ project, an AI agent is required.
 - [`02-ai-agent.md`](02-ai-agent.md) — LLM vs Chorus positioning, why the chain works
 - [`03-applications.md`](03-applications.md) — domain-by-domain analysis, onboarding times
 - `agent/skills/chorus-pdf.md` — full skill reference for `chorus-pdf`
+- `agent/skills/chorus-word.md` — full skill reference for `chorus-word`
+- `agent/skills/chorus-excel.md` — full skill reference for `chorus-excel`
 - `agent/skills/chorus-feed.md` — full skill reference for `chorus-feed`
 - `agent/skills/chorus-check.md` — full skill reference for `chorus-check`
 - `agent/skills/chorus-create-project.md` — full skill reference for `chorus-create-project`

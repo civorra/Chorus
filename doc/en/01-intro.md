@@ -1,6 +1,46 @@
-# Introduction to Chorus
+# Chorus Engine — Technical Reference
 
-## What is Chorus?
+> This document complements the [README](../../README.md). It covers the internal
+> mechanics: YAML DSL, Perl API reference, v2 additions.
+
+---
+
+## The bottleneck Chorus 2.0 removes
+
+In Chorus v1, YAML rules are written by hand — one rule per normative article,
+slot by slot. On a real corpus (dozens of pages, hundreds of requirements), that
+is the real friction: not the engine, but the production of the rules.
+
+Chorus 2.0 removes that bottleneck. An AI agent reads the normative corpus and
+generates the YAML rules, the KB, and the Perl infrastructure. The engine then
+runs without an LLM — deterministic, reproducible, on any machine.
+
+**What this guide documents:** the mechanics the AI agent generates and the domain
+expert can read, correct, and extend — YAML DSL, Frame API, targeting rules.
+
+---
+
+## Usage levels
+
+Three independent usage levels — pure Perl, YAML rules, AI agent pipeline. Each is a valid entry point.
+
+| Level | What you use | Prerequisites | Who it is for |
+|---|---|---|---|
+| **1 — Pure Perl** | `addrule()`, `loop()` in Perl | Perl 5 | Discovery, prototyping, small projects |
+| **2 — YAML** | YAML DSL rules, `loadRules()` | Perl 5 | Maintainable projects, rich business logic |
+| **3 — AI agent** | Pipeline generated from a corpus | Perl 5 + AI agent | Normative domains, large corpora |
+
+Levels 1 and 2 are **100 % self-contained**: pure Perl, no external dependency.
+Level 3 adds an AI agent as a *development* tool only — a pipeline generated at
+level 3 runs exactly like one written by hand at level 1, without an AI agent or
+network.
+
+> **Starting point:** `sandboxes/demo_en` is fully functional without an AI agent:
+> `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`
+
+---
+
+## Core concepts
 
 **Chorus** is an inference engine written in pure Perl. It rests on three
 fundamental concepts: a **working memory** populated with frames, an **inference
@@ -36,29 +76,6 @@ The core idea: instead of writing an algorithm that says *how* to solve a
 problem step by step, you declare *what you know* (the frames) and *what you
 know how to do* (the rules), and Chorus takes care of the rest — deterministically
 and traceably.
-
----
-
-## Usage levels
-
-Chorus is designed to be adopted gradually. You do not have to use the full
-chain from the start.
-
-| Level | What you use | Prerequisites | Who it is for |
-|---|---|---|---|
-| **1 — Pure Perl** | `addrule()`, `loop()` in Perl | Perl 5 | Discovery, prototyping, small projects |
-| **2 — YAML** | YAML DSL rules, `loadRules()` | Perl 5 | Maintainable projects, rich business logic |
-| **3 — AI agent** | Pipeline generated from a corpus | Perl 5 + AI agent | Normative domains, large corpora |
-
-Levels 1 and 2 are **100 % self-contained**: pure Perl, no external dependency,
-no third-party tool. Level 3 adds an AI agent as a *development* tool — not as a
-*runtime* dependency. A pipeline generated at level 3 runs exactly like one
-written by hand at level 1.
-
-> **Starting point:** the example sandbox `sandboxes/demo_en`
-> is fully functional without an AI agent. It shows the complete structure
-> of a Chorus project — corpus, KB, YAML rules, Perl infrastructure — and runs
-> with `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`.
 
 ---
 

@@ -1,15 +1,22 @@
 # Chorus Engine — Guide technique
 
-> Ce document complète le [README](../../README.md). Il suppose acquis le modèle
-> général (pipeline `chorus-*`, positionnement LLM/moteur) et détaille la mécanique
-> interne : DSL YAML, nouveautés 2.0, API Perl de référence.
+> Ce document complète le [README](../../README.md). Il détaille la mécanique interne : DSL YAML, API Perl de référence, nouveautés v2.
 
 ---
 
-## Niveaux d'utilisation
+## Le verrou que Chorus 2.0 lève
 
-Chorus s'adopte par étapes — on n'est pas obligé d'utiliser l'ensemble de la
-chaîne dès le départ.
+Dans Chorus v1, les règles YAML s'écrivent à la main — une règle par article de norme, slot par slot. Sur un corpus réel (quelques dizaines de pages, des centaines d'exigences), c'est le vrai frein : non pas le moteur, mais la production des règles.
+
+Chorus 2.0 supprime ce verrou. Un agent IA lit le corpus normatif et génère les règles YAML, la KB et le code Perl d'infrastructure. Le moteur s'exécute ensuite sans LLM — déterministe, reproductible, sur n'importe quelle machine.
+
+**Ce que ce guide documente :** la mécanique que l'agent IA génère et que l'expert du domaine peut lire, corriger et étendre — DSL YAML, Frame API, règles de ciblage.
+
+---
+
+## Trois niveaux d'utilisation
+
+Trois niveaux d'utilisation, indépendants — Perl direct, règles YAML, pipeline agent IA. Chacun est un point d'entrée valable.
 
 | Niveau | Ce qu'on utilise | Prérequis | Pour qui |
 |---|---|---|---|
@@ -56,7 +63,7 @@ EXCEPTION: |                     # court-circuit : ne pas déclencher si vrai
 EFFET: |                         # corps de règle — doit retourner 1 si actif
   $var->set('resultat', calcul($var->{slot}));
   1
-TERMINAL: solved                 # ← nouveauté 2.0 — terminer le pipeline
+TERMINAL: solved                 # terminer le pipeline
 ```
 
 **Aliases anglais (2.0)** — `RULE` / `FIND` / `ACTION` / `PREMISES` sont des
