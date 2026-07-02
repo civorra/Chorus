@@ -478,40 +478,449 @@ The rest of the extraction (text blocks, reading order) is identical.
 > If the engineer confirms `yes`, proceed — but add `"_extraction_warning": "text-mode: N figures not extracted"` in the `_import` block of the output JSON.
 > In batch mode, emit the warning once per file that triggers the threshold.
 
-#### Excel / CSV
-```bash
-# CSV direct
-cat "<fichier.csv>"
+#### Excel / CSV — full-quality pipeline (same depth as PDF)
 
-# Excel → CSV via LibreOffice
-libreoffice --headless --convert-to csv "<fichier.xlsx>" --outdir /tmp/
-cat /tmp/"<fichier>.csv"
+Excel and CSV extraction uses the **same architecture as `chorus-pdf`**: tables are
+reconstructed as Markdown pipe tables with merged-cell handling, embedded images and
+charts are sent to Claude vision (hybrid mode), and the XREF pass links figure
+identifiers back to cell values across all sheets.
 
-# Excel via Python (si LibreOffice absent)
-python3 -c "
+> **Why it matters:** project spreadsheets (BET quantity surveys, thermal calculation
+> tables, compliance matrices) embed images and charts alongside tabular data.
+> A naive `openpyxl` dump loses merged cells, images, and chart content entirely.
+
+##### Format detection
+
+```python
+import os
+ext = os.path.splitext(source_path)[1].lower()
+if ext == '.csv':
+    excel_mode = 'csv'    # always text — no images
+elif ext in ('.xlsx', '.xlsm', '.ods'):
+    excel_mode = 'excel'  # hybrid or text depending on API key
+else:
+    excel_mode = 'fallback'  # libreoffice convert → csv
+```
+
+##### Step 0 — Auto-detect mode (Excel only — identical to PDF pipeline)
+
+```python
+api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+if excel_mode == 'excel' and api_key and probe_claude(api_key):
+    extraction_mode = "hybrid"
+    print("[import-excel] ANTHROPIC_API_KEY detected — hybrid mode activated.", flush=True)
+elif excel_mode == 'csv':
+    extraction_mode = "csv"
+    print("[import-excel] CSV format — text mode (no images).", flush=True)
+else:
+    extraction_mode = "text"
+    print("[import-excel] No API key or CSV — text mode (fallback).", flush=True)
+```
+
+##### Step 1 — CSV extraction
+
+```python
+import csv
+
+def csv_to_markdown(csv_path):
+    with open(csv_path, newline='', encoding='utf-8-sig') as f:
+        rows = list(csv.reader(f))
+    if not rows:
+        return ""
+    def cell(c):
+        return str(c or "").replace("|", "｜").strip()
+    n_cols = max(len(r) for r in rows)
+    rows_padded = [r + [''] * (n_cols - len(r)) for r in rows]
+    lines = ["| " + " | ".join(cell(c) for c in rows_padded[0]) + " |",
+             "| " + " | ".join("---" for _ in rows_padded[0]) + " |"]
+    for row in rows_padded[1:]:
+        lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+    return "\n".join(lines)
+
+extracted_text = csv_to_markdown(source_path)
+# → proceed to Phase 2 (no xref_map for CSV)
+xref_map = {}
+```
+
+##### Step 1 — XLSX extraction (text mode and hybrid mode)
+
+```python
 import openpyxl
-wb = openpyxl.load_workbook('<fichier.xlsx>')
-for ws in wb.worksheets:
-    for row in ws.iter_rows(values_only=True):
-        print('\t'.join(str(c) if c is not None else '' for c in row))
-"
+
+def build_merged_map(ws):
+    """Map (row, col) → master_value for all merged cell slaves."""
+    merged_map = {}
+    for merged_range in ws.merged_cells.ranges:
+        cells = list(merged_range.cells)
+        if not cells:
+            continue
+        master_row, master_col = cells[0]
+        master_val = ws.cell(row=master_row, column=master_col).value
+        master_str = str(master_val) if master_val is not None else ""
+        for row, col in cells[1:]:
+            merged_map[(row, col)] = master_str
+    return merged_map
+
+def cell_value(cell, merged_map):
+    if cell.value is not None:
+        return str(cell.value)
+    return merged_map.get((cell.row, cell.column), "")
+
+def sheet_to_markdown(ws):
+    """Convert one worksheet to a Markdown pipe table, handling merged cells."""
+    merged_map = build_merged_map(ws)
+    rows_out = []
+    for row in ws.iter_rows():
+        cells_out = [cell_value(c, merged_map).replace("|", "｜").replace("\n", " ").strip()
+                     for c in row]
+        rows_out.append(cells_out)
+    # Skip fully empty rows
+    rows_out = [r for r in rows_out if any(c for c in r)]
+    if not rows_out:
+        return "(empty sheet)"
+    n_cols = max(len(r) for r in rows_out)
+    rows_padded = [r + [''] * (n_cols - len(r)) for r in rows_out]
+    lines = ["| " + " | ".join(rows_padded[0]) + " |",
+             "| " + " | ".join("---" for _ in rows_padded[0]) + " |"]
+    for row in rows_padded[1:]:
+        lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(lines)
+
+wb = openpyxl.load_workbook(source_path, data_only=True)
+sheet_parts = []
+all_image_entries = []    # [(sheet_name, img_idx, png_bytes)]
+all_chart_entries = []    # [(sheet_name, chart_idx, png_bytes_or_None)]
+
+for sheet_name in wb.sheetnames:
+    ws = wb[sheet_name]
+    sheet_parts.append(f"=== SHEET: {sheet_name} ===")
+    sheet_parts.append(sheet_to_markdown(ws))
+    # Collect embedded images
+    for i, img_anchor in enumerate(ws._images, 1):
+        png = convert_blob_to_png(img_anchor.image.blob)  # Pillow conversion
+        all_image_entries.append((sheet_name, i, png))
+        if extraction_mode == "text":
+            sheet_parts.append(
+                f"\n[IMAGE {i} — not extracted]\n"
+                "[Run with ANTHROPIC_API_KEY to extract images via hybrid mode]")
+    # Collect charts
+    for i, chart_anchor in enumerate(ws._charts, 1):
+        if extraction_mode == "hybrid":
+            png = chart_to_png_via_libreoffice(source_path, chart_anchor, tmpdir)
+            all_chart_entries.append((sheet_name, i, png))
+        else:
+            sheet_parts.append(
+                f"\n[CHART {i} — not extracted]\n"
+                "[Run with ANTHROPIC_API_KEY + LibreOffice to extract charts via hybrid mode]")
+    sheet_parts.append(f"=== END SHEET: {sheet_name} ===")
 ```
 
-#### Word (.docx)
-```bash
-python3 -c "
+##### Step 2 — Hybrid mode: Claude vision on images and charts
+
+Only if `extraction_mode == "hybrid"` and images/charts were detected.
+
+```python
+from PIL import Image
+import io, base64, json, urllib.request, time
+
+def convert_blob_to_png(blob):
+    """Convert image blob (PNG/JPEG/EMF) to PNG bytes via Pillow."""
+    try:
+        img = Image.open(io.BytesIO(blob))
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return buf.getvalue()
+    except Exception:
+        return blob if blob[:4] == b'\x89PNG' else None
+
+# call_claude_figure: same function as chorus-pdf hybrid (FIGURE_PROMPT, claude-opus-4-5, retry)
+all_figure_descs = {}   # {(sheet_name, img_idx): description_text}
+
+for sheet_name, img_idx, png_bytes in all_image_entries:
+    if png_bytes:
+        desc = call_claude_figure(png_bytes, sheet_name, img_idx, api_key)
+        all_figure_descs[(sheet_name, img_idx)] = desc
+
+for sheet_name, chart_idx, png_bytes in all_chart_entries:
+    if png_bytes:
+        desc = call_claude_figure(png_bytes, sheet_name, chart_idx + 1000, api_key)
+        all_figure_descs[(sheet_name, chart_idx + 1000)] = desc
+```
+
+##### Step 2.5 — Cross-reference pass (hybrid mode only)
+
+The XREF pass links figure identifiers to cell values across all sheets — the same
+mechanism as `chorus-pdf` Phase 2.5, adapted for a grid coordinate system.
+
+```python
+def build_sheet_texts(wb):
+    """Build {sheet_name: [(text, row, col), ...]} for all non-empty text cells."""
+    result = {}
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        cells = []
+        merged_map = build_merged_map(ws)
+        for row in ws.iter_rows():
+            for cell in row:
+                val = cell_value(cell, merged_map)
+                if val.strip():
+                    cells.append((val.strip(), cell.row, cell.column))
+        result[sheet_name] = cells
+    return result
+
+def find_text_occurrences_excel(identifier, sheet_texts):
+    import re
+    pattern = re.compile(r'\b' + re.escape(identifier) + r'\b')
+    results = []
+    for sheet_name, cells in sheet_texts.items():
+        for (text, row, col) in cells:
+            m = pattern.search(text)
+            if m:
+                s = max(0, m.start() - 55); e = min(len(text), m.end() + 55)
+                snippet = text[s:e].replace('\n', ' ').strip()
+                if s > 0: snippet = '…' + snippet
+                if e < len(text): snippet += '…'
+                results.append((f"Sheet '{sheet_name}' R{row}C{col}", snippet))
+    return results
+
+if extraction_mode == "hybrid" and all_figure_descs:
+    sheet_texts = build_sheet_texts(wb)
+    annotated_descs, xref_index_block, xref_map = _xref_pass_excel(
+        all_figure_descs, sheet_texts, find_text_occurrences_excel)
+else:
+    annotated_descs = all_figure_descs
+    xref_index_block = ""
+    xref_map = {}
+# xref_map passed to Phase 3 as first-class matching candidates (same as PDF pipeline)
+```
+
+##### Step 3 — Assemble final output
+
+Inject figure descriptions at their anchor position within each sheet block, then
+append the XREF INDEX at the end.
+
+```python
+extracted_text = "\n\n".join(sheet_parts)
+if xref_index_block:
+    extracted_text += "\n\n" + xref_index_block
+```
+
+##### nohup gate (hybrid mode — Excel)
+
+If the workbook contains **≥ 15 images + charts** combined → exit(2) + nohup command.
+`CHORUS_EXCEL_FORCE=1` to bypass, identical to `chorus-pdf` nohup gate.
+
+##### Dependencies
+
+| Package | Install | Notes |
+|---------|---------|-------|
+| `openpyxl` | `pip install openpyxl` | XLSX extraction |
+| `Pillow` | `pip install Pillow` | Image conversion (hybrid mode) |
+| `LibreOffice` | `sudo apt install libreoffice` | Chart extraction (optional — graceful fallback) |
+| `pdftoppm` | `sudo apt install poppler-utils` | Chart page rendering (optional) |
+
+> ⛔ **If extraction tools are absent** → warn and offer Case A (inline paste).
+> Never block the workflow over a missing optional tool.
+
+---
+
+#### Word (.docx) — full-quality pipeline (same depth as PDF)
+
+Word extraction uses the **same architecture as `chorus-pdf`**: the native XML body
+order is preserved for correct reading order, tables are reconstructed as Markdown
+pipe tables with merged-cell handling, embedded images are sent to Claude vision
+(hybrid mode), and the XREF pass links figure identifiers to paragraph text.
+
+> **Why it matters:** project CCTP, BET reports, and specification documents routinely
+> embed structural diagrams, assembly drawings, and specification tables as images.
+> A naive `python-docx` paragraph dump loses all images and flattens table structure.
+
+##### Step 0 — Auto-detect mode (identical to PDF pipeline)
+
+```python
+api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+if api_key and probe_claude(api_key):
+    word_mode = "hybrid"
+    print("[import-word] ANTHROPIC_API_KEY detected — hybrid mode activated.", flush=True)
+else:
+    word_mode = "text"
+    print("[import-word] No API key or Claude unreachable — text mode (fallback).", flush=True)
+```
+
+##### Step 1 — Document traversal via XML body order
+
+```python
 import docx
-doc = docx.Document('<fichier.docx>')
-for p in doc.paragraphs: print(p.text)
-for t in doc.tables:
-    for row in t.rows:
-        print('\t'.join(c.text for c in row.cells))
-"
+from docx.oxml.ns import qn
+
+def iter_block_items(doc):
+    """Yield (kind, obj) in document XML order — preserves reading order."""
+    body = doc.element.body
+    img_counter = [0]
+    for child in body:
+        tag = child.tag.split('}')[-1]
+        if tag == 'p':
+            para = docx.text.paragraph.Paragraph(child, doc)
+            blips = child.findall('.//' + qn('a:blip'))
+            if blips:
+                for blip in blips:
+                    rId = blip.get(qn('r:embed'))
+                    if rId and rId in doc.part.rels:
+                        img_counter[0] += 1
+                        yield ('image', (img_counter[0], doc.part.rels[rId].target_part.blob))
+            else:
+                text = para.text.strip()
+                if text:
+                    yield ('para', (text, para.style.name if para.style else ''))
+        elif tag == 'tbl':
+            yield ('table', docx.table.Table(child, doc))
+
+def table_to_markdown(tbl):
+    """Convert python-docx Table to Markdown pipe, deduplicating merged cells."""
+    seen, rows_out = set(), []
+    for row in tbl.rows:
+        row_cells = []
+        for cell in row.cells:
+            cid = id(cell._tc)
+            if cid not in seen:
+                seen.add(cid)
+                row_cells.append(
+                    " ".join(p.text.strip() for p in cell.paragraphs if p.text.strip()))
+        rows_out.append(row_cells)
+    if not rows_out or not rows_out[0]:
+        return ""
+    n_cols = max(len(r) for r in rows_out)
+    rows_padded = [r + [''] * (n_cols - len(r)) for r in rows_out]
+    def cell_md(c): return str(c or "").replace("|", "｜").replace("\n", " ").strip()
+    lines = ["| " + " | ".join(cell_md(c) for c in rows_padded[0]) + " |",
+             "| " + " | ".join("---" for _ in rows_padded[0]) + " |"]
+    for row in rows_padded[1:]:
+        lines.append("| " + " | ".join(cell_md(c) for c in row) + " |")
+    return "\n".join(lines)
 ```
 
-> ⚠️ If extraction tools are absent → ask the engineer to provide copy-pasted content
-> from their application (Case A).
-> Never block the workflow over a missing tool — offer the inline alternative.
+##### Step 2 — Hybrid mode: Claude vision on embedded images
+
+```python
+from PIL import Image
+import io
+
+def convert_to_png(blob):
+    """Convert image blob (PNG/JPEG/EMF/WMF) to PNG bytes via Pillow."""
+    try:
+        img = Image.open(io.BytesIO(blob))
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return buf.getvalue()
+    except Exception:
+        return blob if blob[:4] == b'\x89PNG' else None  # EMF/WMF → skip
+
+doc = docx.Document(source_path)
+block_texts = []       # [(text, block_idx)] — for XREF pass
+all_figure_descs = {}  # {(doc_name, img_idx): description_text}
+elements = []          # [(kind, content)] — in XML order
+
+for kind, obj in iter_block_items(doc):
+    if kind == 'para':
+        text, style = obj
+        block_idx = len(block_texts)
+        block_texts.append((text, block_idx))
+        elements.append(('text', text))
+    elif kind == 'table':
+        md = table_to_markdown(obj)
+        if md:
+            elements.append(('table', md))
+    elif kind == 'image':
+        img_idx, blob = obj
+        png_bytes = convert_to_png(blob)
+        if word_mode == "hybrid" and png_bytes:
+            desc = call_claude_figure(png_bytes, "word-doc", img_idx, api_key)
+            all_figure_descs[("word-doc", img_idx)] = desc
+            elements.append(('figure', desc))
+        else:
+            elements.append(('image',
+                "[IMAGE — not extracted]\n"
+                "[Run with ANTHROPIC_API_KEY to extract images via hybrid mode]"))
+```
+
+##### Step 2.5 — Cross-reference pass (hybrid mode only)
+
+The XREF pass links figure identifiers to paragraph text blocks — identical to
+`chorus-pdf` Phase 2.5, adapted for a block-index coordinate system.
+
+```python
+def build_word_block_texts(block_texts):
+    """Adapt block_texts for find_text_occurrences: {0: [(text, block_idx), ...]}"""
+    return {0: [(text, block_idx) for (text, block_idx) in block_texts]}
+
+def find_text_occurrences_word(identifier, block_texts):
+    import re
+    pattern = re.compile(r'\b' + re.escape(identifier) + r'\b')
+    results = []
+    for (text, block_idx) in block_texts:
+        m = pattern.search(text)
+        if m:
+            s = max(0, m.start() - 55); e = min(len(text), m.end() + 55)
+            snippet = text[s:e].replace('\n', ' ').strip()
+            if s > 0: snippet = '…' + snippet
+            if e < len(text): snippet += '…'
+            results.append((f"bloc {block_idx}", snippet))
+    return results
+
+if word_mode == "hybrid" and all_figure_descs:
+    annotated_descs, xref_index_block, xref_map = _xref_pass_word(
+        all_figure_descs, block_texts, find_text_occurrences_word)
+else:
+    annotated_descs = all_figure_descs
+    xref_index_block = ""
+    xref_map = {}
+# xref_map passed to Phase 3 as first-class matching candidates (same as PDF pipeline)
+```
+
+##### Step 3 — Assemble final output
+
+XML order is the reading order — no Y-sort required. Append XREF INDEX at end.
+
+```python
+output_parts = [content for (_, content) in elements]
+if xref_index_block:
+    output_parts.append(xref_index_block)
+extracted_text = "\n\n".join(output_parts)
+```
+
+##### nohup gate (hybrid mode — Word)
+
+If the document contains **≥ 15 embedded images** → exit(2) + nohup command.
+`CHORUS_WORD_FORCE=1` to bypass, identical to `chorus-pdf` nohup gate.
+
+##### Figure-heavy domains warning (text mode)
+
+When `word_mode == "text"` **and** ≥ 5 images detected, emit the same prominent
+warning as the PDF pipeline — Phase 3 will be blind to image content.
+
+##### Dependencies
+
+| Package | Install | Notes |
+|---------|---------|-------|
+| `python-docx` | `pip install python-docx` | DOCX extraction |
+| `Pillow` | `pip install Pillow` | Image conversion (hybrid mode) |
+
+> ⛔ **If extraction tools are absent** → warn and offer Case A (inline paste).
+> Never block the workflow over a missing optional tool.
+
+---
+
+#### Other formats — LibreOffice universal fallback
+
+For formats not natively handled (`.doc`, `.odt`, `.pptx`, `.ods`, `.rtf`):
+
+```bash
+libreoffice --headless --convert-to pdf "<fichier>" --outdir /tmp/
+# → produces /tmp/<basename>.pdf → feed to PDF hybrid pipeline above
+```
+
+If LibreOffice is absent → ask the engineer to provide copy-pasted content (Case A).
+Never block the workflow over a missing tool — offer the inline alternative.
 
 ---
 
