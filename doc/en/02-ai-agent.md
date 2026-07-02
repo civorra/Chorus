@@ -1,10 +1,10 @@
 # Chorus in the age of LLMs
 
-## Why expert systems failed — and what changed
+## Symbolic AI and LLMs — a natural complementarity
 
 Rule-based systems from the 1980s–90s (CLIPS, OPS5, commercial expert systems)
 shared a solid theoretical foundation: explicit knowledge, traceable reasoning,
-deterministic output. They failed in practice for three structural reasons:
+deterministic output. They run into three structural difficulties:
 
 1. **Knowledge acquisition** — filling a rule base required dedicated knowledge
    engineers and didn't scale. Every new domain was a fresh, expensive undertaking.
@@ -29,7 +29,7 @@ encroaches on the other's domain.
 > **On terminology.** The label *neuro-symbolic* is sometimes applied to systems
 > like Chorus. It is not accurate. In neuro-symbolic systems, a neural model learns
 > to simulate logical rules. In Chorus, the symbolic engine is real — frames, slots,
-> an explicit inference chain — and the LLM is a preprocessing tool. *Augmented
+> an explicit inference chain — and the LLM structures and formalises the knowledge, without taking part in the reasoning. *Augmented
 > symbolic* is a more precise description.
 
 ---

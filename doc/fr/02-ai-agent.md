@@ -1,11 +1,11 @@
 # Chorus à l'ère des LLMs
 
-## Pourquoi les systèmes experts ont échoué — et ce qui a changé
+## L'IA symbolique et les LLMs — une complémentarité naturelle
 
 Les systèmes à base de règles des années 80–90 (CLIPS, OPS5, systèmes experts
 commerciaux) reposaient sur des fondements théoriques solides : connaissance
-explicite, raisonnement traçable, résultat déterministe. Ils ont échoué en
-pratique pour trois raisons structurelles :
+explicite, raisonnement traçable, résultat déterministe. Ils se heurtent à
+trois difficultés structurelles :
 
 1. **L'acquisition des connaissances** — remplir une base de règles demandait
    des *knowledge engineers* dédiés et ne passait pas à l'échelle. Chaque nouveau
@@ -32,7 +32,7 @@ Aucun des deux n'empiète sur le domaine de l'autre.
 > à des systèmes comme Chorus. Elle est inexacte ici. Dans les systèmes
 > neuro-symboliques, un modèle neuronal apprend à *simuler* des règles logiques.
 > Dans Chorus, le moteur symbolique est réel — frames, slots, chaîne d'inférence
-> explicite — et le LLM est un outil de prétraitement. *Symbolique augmenté* est
+> explicite — et le LLM structure et formalise la connaissance, sans intervenir dans le raisonnement. *Symbolique augmenté* est
 > une description plus précise.
 
 ---
