@@ -34,37 +34,6 @@ encroaches on the other's domain.
 
 ---
 
-Large language models (GPT, Claude, Gemini…) now achieve remarkable performance
-on comprehension, generation, and general reasoning tasks. This raises a
-legitimate question: what is a rule engine like Chorus still good for?
-
-The answer is one word: **control**.
-
----
-
-## What LLMs do not provide
-
-An LLM "knows" things, but that knowledge is implicit, distributed across
-billions of parameters, and fundamentally opaque. You cannot:
-
-- **point to** the rule that produced a particular result,
-- **surgically fix** an error without retraining the model,
-- **guarantee** that a business constraint will always be respected,
-- **read or hand over** the modelled knowledge to a human expert.
-
-For many use cases this opacity is acceptable. For others — regulated domains,
-certifiable systems, auditable expertise — it is a showstopper.
-
----
-
-## What Chorus provides
-
-With Chorus, knowledge is an **explicit artefact**: readable frames, versioned
-YAML rules that can be discussed and challenged. A domain expert can read them,
-contest them, refine them. Every conclusion has a traceable justification.
-
----
-
 ## Complementarity rather than competition
 
 | Task | Right tool |
@@ -189,17 +158,6 @@ from the corpus. Not a single line written by hand.
 > chain (corpus, KB org files, YAML rules, Perl infrastructure). It lets you
 > understand what an AI agent generates and run `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` live —
 > but it uses a pre-built project JSON. Adapting to a new project requires an AI agent.
-
----
-
-## In summary
-
-LLMs excel at what is **vast and ambiguous**.
-Chorus excels at what is **precise and certifiable**.
-
-For a developer or domain expert who needs to *master* the knowledge they model —
-not just use it — Chorus remains an irreplaceable tool, precisely because it
-solves a problem that LLMs cannot solve by construction.
 
 ---
 

@@ -37,38 +37,6 @@ Aucun des deux n'empiète sur le domaine de l'autre.
 
 ---
 
-Les grands modèles de langage (GPT, Claude, Gemini…) atteignent aujourd'hui
-des performances remarquables sur des tâches de compréhension, de génération
-et de raisonnement général. Cela pose une question légitime : à quoi sert
-encore un moteur à règles comme Chorus ?
-
-La réponse tient en un mot : **maîtrise**.
-
----
-
-## Ce que les LLMs ne donnent pas
-
-Un LLM « sait » des choses, mais cette connaissance est implicite, distribuée
-dans des milliards de paramètres, et fondamentalement opaque. On ne peut pas :
-
-- **pointer** la règle qui a produit un résultat particulier,
-- **corriger** chirurgicalement une erreur sans réentraîner le modèle,
-- **garantir** qu'une contrainte métier sera toujours respectée,
-- **lire ou transmettre** la connaissance modélisée à un expert humain.
-
-Pour beaucoup d'usages, cette opacité est acceptable. Pour d'autres — domaines
-réglementés, systèmes certifiables, expertise à auditer — elle est rédhibitoire.
-
----
-
-## Ce que Chorus apporte
-
-Avec Chorus, la connaissance est un **artefact explicite** : des frames lisibles,
-des règles YAML versionnées, discutables. Un expert du domaine peut les lire,
-les contester, les affiner. Chaque conclusion dispose d'une justification traçable.
-
----
-
 ## La complémentarité plutôt que la concurrence
 
 | Tâche | Outil adapté |
@@ -195,18 +163,6 @@ générée par un agent IA depuis le corpus. Aucune ligne écrite à la main.
 > comprendre ce qu'un agent IA génère et de lancer `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` en
 > direct — mais avec un JSON projet pré-construit. Adapter un nouveau projet
 > requiert un agent IA.
-
----
-
-## En résumé
-
-Les LLMs excellent à traiter ce qui est **vaste et ambigu**.
-Chorus excelle à traiter ce qui est **précis et certifiable**.
-
-Pour un développeur ou un expert qui a besoin de *maîtriser* la connaissance
-qu'il modélise — et pas seulement de l'utiliser — Chorus reste un outil
-irremplaçable, précisément parce qu'il répond à un problème que les LLMs
-ne peuvent pas résoudre par construction.
 
 ---
 
