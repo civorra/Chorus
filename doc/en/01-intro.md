@@ -11,9 +11,7 @@ In Chorus v1, YAML rules are written by hand — one rule per normative article,
 slot by slot. On a real corpus (dozens of pages, hundreds of requirements), that
 is the real friction: not the engine, but the production of the rules.
 
-Chorus 2.0 removes that bottleneck. An AI agent reads the normative corpus and
-generates the YAML rules, the KB, and the Perl infrastructure. The engine then
-runs without an LLM — deterministic, reproducible, on any machine.
+Chorus 2.0 removes that bottleneck. The Perl engine remains the foundation — frames, slots, YAML rules, inference chain. An AI agent plugs into it to read the normative corpus and generate the rules. The engine then runs without an LLM — deterministic, reproducible, on any machine.
 
 **What this guide documents:** the mechanics the AI agent generates and the domain
 expert can read, correct, and extend — YAML DSL, Frame API, targeting rules.

@@ -8,7 +8,7 @@
 
 Dans Chorus v1, les règles YAML s'écrivent à la main — une règle par article de norme, slot par slot. Sur un corpus réel (quelques dizaines de pages, des centaines d'exigences), c'est le vrai frein : non pas le moteur, mais la production des règles.
 
-Chorus 2.0 supprime ce verrou. Un agent IA lit le corpus normatif et génère les règles YAML, la KB et le code Perl d'infrastructure. Le moteur s'exécute ensuite sans LLM — déterministe, reproductible, sur n'importe quelle machine.
+Chorus 2.0 supprime ce verrou. Le moteur Perl reste le socle — frames, slots, règles YAML, chaîne d'inférence. Un agent IA s'y greffe pour lire le corpus normatif et générer les règles. Le moteur s'exécute ensuite sans LLM — déterministe, reproductible, sur n'importe quelle machine.
 
 **Ce que ce guide documente :** la mécanique que l'agent IA génère et que l'expert du domaine peut lire, corriger et étendre — DSL YAML, Frame API, règles de ciblage.
 
