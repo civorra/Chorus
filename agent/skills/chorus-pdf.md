@@ -41,12 +41,12 @@ capability:
 
 ### Four extraction modes
 
-| Mode | Flag | Engine | API key | Figures | Output |
-|------|------|--------|---------|---------|--------|
-| **Hybrid** (**default**) | *(none — auto-detected)* | `pdfminer` for text on ALL pages + Claude vision on cropped figures only | ✅ `ANTHROPIC_API_KEY` | ✅ described (precise crop) | `<slug>-vision.md` |
-| **Text** (fallback) | *(none — no API key)* | `pdfminer.six` | ❌ not required | `[FIGURE — not extracted]` placeholder | `<slug>-text.txt` |
-| **Auto** | `--auto` | `pdfminer` on text pages + vision LLM on figure pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (targeted) | `<slug>-vision.md` |
-| **Images** | `--images` | `pdftoppm` 150 DPI + vision LLM on all pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (exhaustive) | `<slug>-vision.md` |
+| Mode | Flag | Engine | API key | Figures | Tables (vector) | Output |
+|------|------|--------|---------|---------|-----------------|--------|
+| **Hybrid** (**default**) | *(none — auto-detected)* | `pdfminer` for text on ALL pages + Claude vision on cropped figures only | ✅ `ANTHROPIC_API_KEY` | ✅ described (precise crop) | ✅ `pdfplumber` — Markdown pipe table | `<slug>-vision.md` |
+| **Text** (fallback) | *(none — no API key)* | `pdfminer.six` | ❌ not required | `[FIGURE — not extracted]` placeholder | ✅ `pdfplumber` — Markdown pipe table | `<slug>-text.txt` |
+| **Auto** | `--auto` | `pdfminer` on text pages + vision LLM on figure pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (targeted) | ⚠️ not reconstructed | `<slug>-vision.md` |
+| **Images** | `--images` | `pdftoppm` 150 DPI + vision LLM on all pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (exhaustive) | ⚠️ not reconstructed | `<slug>-vision.md` |
 
 **Choosing a mode:**
 
@@ -277,6 +277,107 @@ Report the classification to the user before generating the script:
 For `--hybrid`, figure bounding boxes are detected via `pdfminer` layout analysis.
 Each `LTFigure` element exposes its `(x0, y0, x1, y1)` coordinates in PDF space.
 
+### 1.4b Vector table detection (all modes)
+
+Many normative PDFs (EU directives, JOUE publications, regulatory annexes) encode their
+tables as **vectors** (`LTCurve` elements — thin lines forming cell borders), not as
+`LTFigure` or embedded images. Standard pdfminer text extraction silently discards the
+table structure and dumps cell contents in Y-order, mixing columns.
+
+**Detection heuristic** — applied during `analyse_pages` on every page:
+
+```python
+from pdfminer.layout import LTCurve
+
+h_lines = [el for el in layout if isinstance(el, LTCurve)
+           and (el.y1 - el.y0) < 3 and (el.x1 - el.x0) > 50]   # horizontal rule
+v_lines = [el for el in layout if isinstance(el, LTCurve)
+           and (el.x1 - el.x0) < 3 and (el.y1 - el.y0) > 30]   # vertical separator
+
+has_table = len(h_lines) >= 2 and len(v_lines) >= 1
+```
+
+Store `has_table` in the `analyse_pages` result so that the assembly phase knows
+which pages require `pdfplumber` table reconstruction.
+
+**Reconstruction with `pdfplumber`:**
+
+When `has_table` is `True`, use `pdfplumber` to reconstruct the table as a Markdown
+pipe table. The key insight is that pdfplumber's automatic column detection often fails
+on PDF files with doubled/hairline lines (linewidth ≈ 0). Use `'vertical_strategy':
+'explicit'` with column x-coordinates derived from the V-edges detected above:
+
+```python
+def detect_table_columns(page):
+    """Detect explicit vertical column separators from V-edges on this pdfplumber page.
+    Returns a sorted list of x-coordinates, or None if no table structure found."""
+    edges  = page.edges
+    v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
+    h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
+    if len(h_edges) < 2 or len(v_edges) < 1:
+        return None
+    # Cluster x-coordinates — snap duplicates within 3 pt
+    xs = sorted(set(e['x0'] for e in v_edges))
+    clustered = []
+    for x in xs:
+        if not clustered or x - clustered[-1] > 3:
+            clustered.append(x)
+    # Add left/right boundaries from the widest H-edge
+    widest = max(h_edges, key=lambda e: e['width'])
+    all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
+    return all_xs if len(all_xs) >= 2 else None
+
+def extract_tables_from_page(page):
+    """Extract tables from a pdfplumber page as (bbox, markdown) tuples."""
+    col_xs = detect_table_columns(page)
+    if col_xs is None:
+        return []
+    settings = {
+        'vertical_strategy':   'explicit',
+        'horizontal_strategy': 'lines',
+        'explicit_vertical_lines': col_xs,
+        'snap_tolerance': 6,
+        'join_tolerance':  6,
+        'edge_min_length': 10,
+    }
+    result = []
+    try:
+        for tobj in page.find_tables(table_settings=settings):
+            rows = tobj.extract()
+            if not rows or not any(any(c for c in row) for row in rows):
+                continue
+            # Build Markdown pipe table
+            def cell(c):
+                return str(c or "").replace("\n", " ").replace("|", "｜").strip()
+            lines = []
+            lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
+            lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
+            for row in rows[1:]:
+                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+            result.append((tobj.bbox, "\n".join(lines)))
+    except Exception:
+        pass
+    return result
+```
+
+**Coordinate system — pdfplumber `top` → pdfminer `y_center`:**
+
+pdfplumber uses origin=top-left (`top` increases downward); pdfminer uses
+origin=bottom-left (`y` increases upward). Convert with:
+
+```python
+def pdfplumber_top_to_pdfminer_y(top, page_height_pt):
+    return page_height_pt - top
+```
+
+**Deduplication:** after inserting a table block at its Y-position, suppress all
+`LTTextBox` elements whose `y_center` falls within the table's vertical range —
+they are already represented by the Markdown table.
+
+**Dependency:** `pdfplumber` — installed in the pipx venv at
+`~/.local/share/pipx/venvs/pdfplumber/bin/python3` if not available system-wide.
+The script must detect the correct interpreter or fall back gracefully.
+
 ```python
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LAParams, LTTextBox, LTFigure
@@ -466,15 +567,16 @@ FIGURE_PLACEHOLDER = (
 )
 
 
-def extract_pages(pdf_path):
+def analyse_pages_text(pdf_path):
+    """Extract text + detect figures and vector tables. Returns list of
+    (page_num, text_blocks, has_figure, has_table, page_height)."""
     try:
         from pdfminer.high_level import extract_pages as pm_extract
-        from pdfminer.layout import LAParams, LTTextBox, LTFigure
+        from pdfminer.layout import LAParams, LTTextBox, LTFigure, LTCurve
     except ImportError:
         print("⛔ pdfminer.six not installed. Run: pip install pdfminer.six", file=sys.stderr)
         sys.exit(1)
 
-    # boxes_flow=0.5 : balanced horizontal/vertical ordering — handles multi-column well
     laparams = LAParams(
         line_overlap=0.5,
         char_margin=2.0,
@@ -485,42 +587,126 @@ def extract_pages(pdf_path):
         all_texts=False
     )
 
-    pages = []
-    for page_num, page_layout in enumerate(pm_extract(pdf_path, laparams=laparams), 1):
-        blocks = []
+    result = []
+    for page_num, layout in enumerate(pm_extract(pdf_path, laparams=laparams), 1):
+        blocks     = []
         has_figure = False
-        for element in page_layout:
-            if isinstance(element, LTTextBox):
-                t = element.get_text().strip()
+        curves     = []
+        for el in layout:
+            if isinstance(el, LTTextBox):
+                t = el.get_text().strip()
                 if t:
-                    blocks.append(t)
-            elif isinstance(element, LTFigure):
+                    blocks.append((t, (el.y0 + el.y1) / 2, el.x0, el.x1))
+            elif isinstance(el, LTFigure):
                 has_figure = True
+            elif isinstance(el, LTCurve):
+                curves.append(el)
+        h_lines   = [c for c in curves if (c.y1 - c.y0) < 3 and (c.x1 - c.x0) > 50]
+        v_lines   = [c for c in curves if (c.x1 - c.x0) < 3 and (c.y1 - c.y0) > 30]
+        has_table = len(h_lines) >= 2 and len(v_lines) >= 1
+        result.append((page_num, blocks, has_figure, has_table, layout.height))
+    return result
 
-        text = "\n".join(blocks)
-        if has_figure:
-            text += f"\n\n{FIGURE_PLACEHOLDER}"
 
-        pages.append((page_num, text))
+def detect_table_columns(page):
+    edges   = page.edges
+    v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
+    h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
+    if len(h_edges) < 2 or len(v_edges) < 1:
+        return None
+    xs = sorted(set(e['x0'] for e in v_edges))
+    clustered = []
+    for x in xs:
+        if not clustered or x - clustered[-1] > 3:
+            clustered.append(x)
+    widest = max(h_edges, key=lambda e: e['width'])
+    all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
+    return all_xs if len(all_xs) >= 2 else None
 
-    return pages
+
+def extract_tables_from_page(page):
+    col_xs = detect_table_columns(page)
+    if col_xs is None:
+        return []
+    settings = {
+        'vertical_strategy':       'explicit',
+        'horizontal_strategy':     'lines',
+        'explicit_vertical_lines': col_xs,
+        'snap_tolerance': 6, 'join_tolerance': 6, 'edge_min_length': 10,
+    }
+    def cell(c):
+        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
+    result = []
+    try:
+        for tobj in page.find_tables(table_settings=settings):
+            rows = tobj.extract()
+            if not rows or not any(any(c for c in row) for row in rows):
+                continue
+            lines = ["| " + " | ".join(cell(c) for c in rows[0]) + " |",
+                     "| " + " | ".join("---" for _ in rows[0]) + " |"]
+            for row in rows[1:]:
+                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+            result.append((tobj.bbox, "\n".join(lines)))
+    except Exception:
+        pass
+    return result
 
 
 def main():
+    # Optional pdfplumber for vector table reconstruction
+    try:
+        import pdfplumber as pdfplumber_mod
+        HAS_PDFPLUMBER = True
+    except ImportError:
+        HAS_PDFPLUMBER = False
+        print("[chorus-pdf] ⚠️  pdfplumber not available — vector tables will not be reconstructed",
+              file=sys.stderr)
+
     print(f"[chorus-pdf] Text mode — {PDF_PATH}", file=sys.stderr)
-    pages = extract_pages(PDF_PATH)
+    page_data = analyse_pages_text(PDF_PATH)
+    plumber_pdf = pdfplumber_mod.open(PDF_PATH) if HAS_PDFPLUMBER else None
 
     parts = []
-    for page_num, text in pages:
-        parts.append(
-            f"=== PAGE {page_num} ===\n{text}\n=== END PAGE {page_num} ==="
-        )
+    fig_pages   = 0
+    total_tables = 0
+
+    for page_num, blocks, has_figure, has_table, page_height in page_data:
+        elements = []  # (y_center, content)
+
+        # Vector table reconstruction
+        table_y_ranges = []
+        if plumber_pdf and has_table:
+            table_entries = extract_tables_from_page(plumber_pdf.pages[page_num - 1])
+            for (tx0, t_top, tx1, t_bottom), md in table_entries:
+                y_min = page_height - t_bottom
+                y_max = page_height - t_top
+                y_c   = (y_min + y_max) / 2
+                table_y_ranges.append((y_min, y_max))
+                elements.append((y_c, md))
+                total_tables += 1
+
+        # Text blocks — suppressed if inside a table bbox
+        for (text, y_center, x0, x1) in blocks:
+            if any(y_min <= y_center <= y_max for (y_min, y_max) in table_y_ranges):
+                continue
+            elements.append((y_center, text))
+
+        # Figure placeholder
+        if has_figure:
+            elements.append((0, FIGURE_PLACEHOLDER))
+            fig_pages += 1
+
+        elements.sort(key=lambda e: e[0], reverse=True)
+        body = "\n\n".join(c for (_, c) in elements)
+        parts.append(f"=== PAGE {page_num} ===\n{body}\n=== END PAGE {page_num} ===")
+
+    if plumber_pdf:
+        plumber_pdf.close()
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n\n".join(parts))
 
-    fig_pages = sum(1 for _, t in pages if "FIGURE — not extracted" in t)
-    print(f"[chorus-pdf] ✅ {len(pages)} pages extracted", file=sys.stderr)
+    print(f"[chorus-pdf] ✅ {len(page_data)} pages extracted, {total_tables} table(s)", file=sys.stderr)
     if fig_pages:
         print(f"[chorus-pdf]    {fig_pages} page(s) contain figures — use --hybrid or --auto to extract them",
               file=sys.stderr)
@@ -531,7 +717,7 @@ if __name__ == "__main__":
     main()
 ```
 
-> ⚠️ **Dependency**: `pip install pdfminer.six`
+> ⚠️ **Dependencies**: `pip install pdfminer.six pdfplumber` (`pdfplumber` optional — graceful fallback if absent)
 
 ---
 
@@ -609,11 +795,11 @@ FIGURES AND DIAGRAMS
 # ---------------------------------------------------------------------------
 
 def analyse_pages(pdf_path):
-    """Return {page_num: {'texts': [(text, y_center)], 'figures': [(x0,y0,x1,y1)],
-                          'height': float}}"""
+    """Return {page_num: {'texts': [(text, y_center, x0, x1)], 'figures': [(x0,y0,x1,y1)],
+                          'height': float, 'has_table': bool}}"""
     try:
         from pdfminer.high_level import extract_pages
-        from pdfminer.layout import LAParams, LTTextBox, LTFigure
+        from pdfminer.layout import LAParams, LTTextBox, LTFigure, LTCurve
     except ImportError:
         print("⛔ pdfminer.six not installed. Run: pip install pdfminer.six", file=sys.stderr)
         sys.exit(1)
@@ -623,20 +809,92 @@ def analyse_pages(pdf_path):
     for page_num, layout in enumerate(extract_pages(pdf_path, laparams=laparams), 1):
         texts   = []
         figures = []
+        curves  = []
         for el in layout:
             if isinstance(el, LTTextBox):
                 t = el.get_text().strip()
                 if t:
                     y_center = (el.y0 + el.y1) / 2
-                    texts.append((t, y_center))
+                    texts.append((t, y_center, el.x0, el.x1))
             elif isinstance(el, LTFigure):
                 figures.append((el.x0, el.y0, el.x1, el.y1))
+            elif isinstance(el, LTCurve):
+                curves.append(el)
+        # Detect vector table structure: ≥2 H-rules (w>50) + ≥1 V-separator (h>30)
+        h_lines = [c for c in curves if (c.y1 - c.y0) < 3 and (c.x1 - c.x0) > 50]
+        v_lines = [c for c in curves if (c.x1 - c.x0) < 3 and (c.y1 - c.y0) > 30]
+        has_table = len(h_lines) >= 2 and len(v_lines) >= 1
         result[page_num] = {
-            'texts':   texts,
-            'figures': figures,
-            'height':  layout.height,
+            'texts':     texts,
+            'figures':   figures,
+            'height':    layout.height,
+            'has_table': has_table,
         }
     return result
+
+
+# ---------------------------------------------------------------------------
+# pdfplumber — vector table detection and Markdown reconstruction
+# ---------------------------------------------------------------------------
+
+def detect_table_columns(page):
+    """Detect explicit vertical column separators from V-edges on this pdfplumber page.
+    Returns a sorted list of x-coordinates, or None if no table structure found."""
+    edges   = page.edges
+    v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
+    h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
+    if len(h_edges) < 2 or len(v_edges) < 1:
+        return None
+    # Cluster x-coordinates — snap duplicates within 3 pt
+    xs = sorted(set(e['x0'] for e in v_edges))
+    clustered = []
+    for x in xs:
+        if not clustered or x - clustered[-1] > 3:
+            clustered.append(x)
+    # Add left/right boundaries from the widest H-edge
+    widest = max(h_edges, key=lambda e: e['width'])
+    all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
+    return all_xs if len(all_xs) >= 2 else None
+
+
+def extract_tables_from_page(page):
+    """Extract tables from a pdfplumber page as (bbox, markdown) tuples.
+    bbox = (x0, top, x1, bottom) in pdfplumber coords."""
+    col_xs = detect_table_columns(page)
+    if col_xs is None:
+        return []
+    settings = {
+        'vertical_strategy':       'explicit',
+        'horizontal_strategy':     'lines',
+        'explicit_vertical_lines': col_xs,
+        'snap_tolerance':          6,
+        'join_tolerance':          6,
+        'edge_min_length':         10,
+    }
+
+    def cell(c):
+        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
+
+    result = []
+    try:
+        for tobj in page.find_tables(table_settings=settings):
+            rows = tobj.extract()
+            if not rows or not any(any(c for c in row) for row in rows):
+                continue
+            lines = []
+            lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
+            lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
+            for row in rows[1:]:
+                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+            result.append((tobj.bbox, "\n".join(lines)))
+    except Exception:
+        pass
+    return result
+
+
+def pdfplumber_top_to_pdfminer_y(top, page_height_pt):
+    """Convert pdfplumber 'top' (origin top-left) to pdfminer y (origin bottom-left)."""
+    return page_height_pt - top
 
 
 # ---------------------------------------------------------------------------
@@ -745,25 +1003,50 @@ def call_claude_figure(png_bytes, page_num, fig_idx):
 # Assemble one page: merge text blocks and figure descriptions in reading order
 # ---------------------------------------------------------------------------
 
-def assemble_page(page_num, page_data, figure_descriptions):
+def assemble_page(page_num, page_data, figure_descriptions, table_entries=None):
     """
-    Merge text blocks and [FIGURE] descriptions sorted by Y (top-to-bottom).
-    figure_descriptions: {fig_idx: description_text}
+    Merge text blocks, [FIGURE] descriptions and Markdown tables sorted by Y (top-to-bottom).
+
+    figure_descriptions : {fig_idx: description_text}
+    table_entries       : list of (plumber_bbox, markdown_string)
+                          bbox = (x0, top, x1, bottom) in pdfplumber coords
     """
-    elements = []
+    if table_entries is None:
+        table_entries = []
 
-    for text, y_center in page_data['texts']:
-        elements.append((y_center, 'text', text))
+    elements = []   # (y_center, kind, content, x0, x1)
 
-    for fig_idx, (x0, y0, x1, y1) in enumerate(page_data['figures'], 1):
-        y_center_fig = (y0 + y1) / 2
+    for text, y_center, x0, x1 in page_data['texts']:
+        elements.append((y_center, 'text', text, x0, x1))
+
+    for fig_idx, (fx0, fy0, fx1, fy1) in enumerate(page_data['figures'], 1):
+        y_center_fig = (fy0 + fy1) / 2
         desc = figure_descriptions.get(fig_idx, f"[FIGURE {fig_idx} — description unavailable]")
-        elements.append((y_center_fig, 'figure', desc))
+        elements.append((y_center_fig, 'figure', desc, fx0, fx1))
 
-    # Sort top-to-bottom (highest Y first in PDF space)
-    elements.sort(key=lambda e: e[0], reverse=True)
+    # Insert table blocks + record their Y-ranges for text deduplication
+    table_y_ranges = []
+    page_height_pt = page_data['height']
+    for (tx0, t_top, tx1, t_bottom), md in table_entries:
+        y_min_pm = pdfplumber_top_to_pdfminer_y(t_bottom, page_height_pt)
+        y_max_pm = pdfplumber_top_to_pdfminer_y(t_top,    page_height_pt)
+        y_center_pm = (y_min_pm + y_max_pm) / 2
+        table_y_ranges.append((y_min_pm, y_max_pm))
+        elements.append((y_center_pm, 'table', md, tx0, tx1))
 
-    blocks = [content for (_, _, content) in elements]
+    # Suppress text blocks whose y_center falls inside a table bounding box
+    def is_inside_table(y_center):
+        return any(y_min <= y_center <= y_max for (y_min, y_max) in table_y_ranges)
+
+    filtered = [
+        el for el in elements
+        if not (el[1] == 'text' and is_inside_table(el[0]))
+    ]
+
+    # Sort top-to-bottom (highest PDF y first)
+    filtered.sort(key=lambda e: e[0], reverse=True)
+
+    blocks = [content for (_, _, content, _, _) in filtered]
     body   = "\n\n".join(blocks)
     return f"=== PAGE {page_num} ===\n{body}\n=== END PAGE {page_num} ==="
 
@@ -833,7 +1116,8 @@ def find_text_occurrences(identifier: str, page_texts: dict) -> list:
     pattern = re.compile(r'\b' + re.escape(identifier) + r'\b')
     results = []
     for page_num in sorted(page_texts):
-        for (block_text, _y) in page_texts[page_num]:
+        for entry in page_texts[page_num]:
+            block_text = entry[0]   # texts tuple: (text, y_center, x0, x1)
             m = pattern.search(block_text)
             if m:
                 start = max(0, m.start() - 55)
@@ -937,6 +1221,15 @@ def xref_pass(all_figure_descs: dict, page_texts: dict) -> tuple:
 # ---------------------------------------------------------------------------
 
 def main():
+    # Check pdfplumber availability (optional — graceful fallback)
+    try:
+        import pdfplumber as _pdfplumber
+        HAS_PDFPLUMBER = True
+    except ImportError:
+        HAS_PDFPLUMBER = False
+        print("[chorus-pdf] ⚠️  pdfplumber not available — vector tables will not be reconstructed",
+              file=sys.stderr)
+
     if not API_KEY:
         print("⛔ ANTHROPIC_API_KEY not set", file=sys.stderr)
         sys.exit(1)
@@ -946,13 +1239,12 @@ def main():
     total      = len(pages)
     n_with_fig = sum(1 for p in pages.values() if p['figures'])
     n_figs     = sum(len(p['figures']) for p in pages.values())
-    print(f"[chorus-pdf]   → {total} pages, {n_with_fig} with figures, {n_figs} figure(s) total",
+    n_with_tbl = sum(1 for p in pages.values() if p['has_table'])
+    print(f"[chorus-pdf]   → {total} pages, {n_with_fig} with figures, "
+          f"{n_figs} figure(s), {n_with_tbl} page(s) with tables",
           file=sys.stderr)
 
     # --- nohup gate -----------------------------------------------------------
-    # At ~30s per Claude call and a 10-min IDE timeout, the safe limit is 15
-    # figures.  If the layout analysis reveals more, print a warning and abort
-    # so the user can relaunch with nohup + CHORUS_PDF_FORCE=1.
     NOHUP_THRESHOLD = 15
     force = os.environ.get("CHORUS_PDF_FORCE", "") == "1"
     if n_figs > NOHUP_THRESHOLD and not force:
@@ -974,13 +1266,27 @@ def main():
     # --------------------------------------------------------------------------
 
     parts = []
-    # all_figure_descs : {(page_num, fig_idx): description_text}
     all_figure_descs = {}
+    total_tables = 0
+
+    # Open pdfplumber once for the main extraction loop
+    import pdfplumber as pdfplumber_mod
+    plumber_pdf = pdfplumber_mod.open(PDF_PATH) if HAS_PDFPLUMBER else None
 
     with tempfile.TemporaryDirectory(prefix="chorus-pdf-") as tmpdir:
         for page_num in sorted(pages):
             page_data = pages[page_num]
 
+            # --- Table extraction (pdfplumber) ---
+            table_entries = []
+            if plumber_pdf and page_data['has_table']:
+                table_entries = extract_tables_from_page(plumber_pdf.pages[page_num - 1])
+                if table_entries:
+                    total_tables += len(table_entries)
+                    print(f"[chorus-pdf] Page {page_num} — {len(table_entries)} table(s) extracted",
+                          file=sys.stderr)
+
+            # --- Figure extraction (Claude vision) ---
             if page_data['figures']:
                 print(f"[chorus-pdf] Page {page_num} — {len(page_data['figures'])} figure(s) ...",
                       file=sys.stderr)
@@ -990,43 +1296,57 @@ def main():
                     desc = call_claude_figure(png_bytes, page_num, fig_idx)
                     all_figure_descs[(page_num, fig_idx)] = desc
                     print(f"[chorus-pdf]   fig {fig_idx} → {len(desc)} chars", file=sys.stderr)
-            else:
+            elif not table_entries:
                 print(f"[chorus-pdf] Page {page_num} — text only (pdfminer)", file=sys.stderr)
 
+    if plumber_pdf:
+        plumber_pdf.close()
+
     # --- Phase 2.5 — Cross-reference pass ------------------------------------
-    print("[chorus-pdf] Phase 2.5 — cross-reference pass ...", file=sys.stderr)
-    page_texts = {pn: pd['texts'] for pn, pd in pages.items()}
-    annotated_descs, xref_index = xref_pass(all_figure_descs, page_texts)
-    total_xref = sum(
-        len(parse_identifiers(d)) for d in all_figure_descs.values()
-    )
-    print(f"[chorus-pdf]   → {total_xref} identifier(s) cross-referenced", file=sys.stderr)
+    if all_figure_descs:
+        print("[chorus-pdf] Phase 2.5 — cross-reference pass ...", file=sys.stderr)
+        page_texts = {pn: pd['texts'] for pn, pd in pages.items()}
+        annotated_descs, xref_index = xref_pass(all_figure_descs, page_texts)
+        total_xref = sum(len(parse_identifiers(d)) for d in all_figure_descs.values())
+        print(f"[chorus-pdf]   → {total_xref} identifier(s) cross-referenced", file=sys.stderr)
+    else:
+        annotated_descs = {}
+        xref_index = None
 
     # --- Assemble pages -------------------------------------------------------
-    # Rebuild per-page figure_descriptions from annotated_descs
     per_page_figs = {}
     for (page_num, fig_idx), desc in annotated_descs.items():
         per_page_figs.setdefault(page_num, {})[fig_idx] = desc
 
+    # Re-open pdfplumber for assembly pass (table_entries needed per page)
+    plumber_pdf2 = pdfplumber_mod.open(PDF_PATH) if HAS_PDFPLUMBER else None
+
     for page_num in sorted(pages):
         page_data = pages[page_num]
         figure_descriptions = per_page_figs.get(page_num, {})
-        page_block = assemble_page(page_num, page_data, figure_descriptions)
+        table_entries = []
+        if plumber_pdf2 and page_data['has_table']:
+            table_entries = extract_tables_from_page(plumber_pdf2.pages[page_num - 1])
+        page_block = assemble_page(page_num, page_data, figure_descriptions, table_entries)
         parts.append(page_block)
 
-    # Append global XREF INDEX at the end of the document
-    parts.append(xref_index)
+    if plumber_pdf2:
+        plumber_pdf2.close()
+
+    if xref_index:
+        parts.append(xref_index)
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n\n".join(parts))
-    print(f"[chorus-pdf] ✅ Written to {OUTPUT_PATH}", file=sys.stderr)
+    print(f"[chorus-pdf] ✅ {total} pages, {n_figs} figure(s), {total_tables} table(s) — "
+          f"Written to {OUTPUT_PATH}", file=sys.stderr)
 
 
 if __name__ == "__main__":
     main()
 ```
 
-> ⚠️ **Dependencies**: `pip install pdfminer.six pypdf Pillow`
+> ⚠️ **Dependencies**: `pip install pdfminer.six pypdf Pillow pdfplumber`
 >
 > ⚠️ **`pdftoppm` required**: `sudo apt install poppler-utils`
 >
@@ -1034,6 +1354,11 @@ if __name__ == "__main__":
 >
 > ℹ️ **API calls**: 1 call per `LTFigure` element (not per page) — maximally targeted.
 > A 30-page document with 8 figures = 8 API calls, regardless of page count.
+>
+> ℹ️ **Vector tables**: detected automatically on every page via `LTCurve` heuristic.
+> `pdfplumber` is used to reconstruct them as Markdown pipe tables, with column
+> separators derived from the V-edges of the PDF. Falls back gracefully if
+> `pdfplumber` is unavailable (tables suppressed, text dumped in Y-order).
 
 ---
 
