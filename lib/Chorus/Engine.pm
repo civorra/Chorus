@@ -362,6 +362,7 @@ precedence.
   ACTION      EFFET       Effect body — body of _APPLY (mandatory)
   TERMINAL    TERMINAL    Optional: 'solved' or 'failed'
   PREMISES    PREMISSES   Optional: metadata for reorder()
+  PRODUCES    PRODUIT     Optional: list of slots written by this rule — populates _PRODUCES
   CONDITION   CONDITION   Optional: guard — return unless CONDITION
   EXCEPTION   EXCEPTION   Optional: guard — return if EXCEPTION
   TRACE       TRACE       Optional: 1 — log to STDERR each time this rule fires
@@ -372,6 +373,9 @@ Example using English keywords:
   TERMINAL:  solved             # optional  -- 'solved' or 'failed'
   PREMISES:                     # optional  -- metadata for reorder()
     - slot-name
+  PRODUCES:                     # optional  -- slots written by this rule (backward-chaining index)
+    - result-slot
+    - note-slot
   FIND:                         # mandatory -- defines _SCOPE
     var:
       attribut: slot-name       # fmatch(slot => 'slot-name')
@@ -501,8 +505,9 @@ sub codeRule {
 
     my $res = '';
 
-    my $rulename  = $rule->{REGLE}   // $rule->{RULE}   // '';
+    my $rulename  = $rule->{REGLE}    // $rule->{RULE}     // '';
     my $premisses = $rule->{PREMISSES} // $rule->{PREMISES} // [];
+    my $produces  = $rule->{PRODUIT}  // $rule->{PRODUCES} // [];
     my $scp       = $rule->{CHERCHER} // $rule->{FIND};
     my $terminal  = $rule->{TERMINAL}  || '';
 
@@ -510,6 +515,7 @@ sub codeRule {
     $res .= "  _TERMINAL  => '$terminal',\n" if $terminal;
     $res .= "  _TRACE     => 1,\n" if $rule->{TRACE};
     $res .= ( "  _PREMISSES => {\n    " . join( ",\n    ", map {"$_ => 'Y'"} @$premisses ) . "\n  },\n" ) if scalar(@$premisses);
+    $res .= ( "  _PRODUCES  => [" . join(", ", map { "'$_'" } @$produces) . "],\n" ) if scalar(@$produces);
     $res .= "  _SCOPE => {\n    ";
     $res .= join( ",\n    ", map { "$_ => sub { [ " . $engine->setScope( $scp->{$_} ) . ' ] }' } keys( %{$scp} ) );
     $res .= "\n  },\n\n";
