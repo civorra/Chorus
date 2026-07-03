@@ -42,26 +42,28 @@ Normative corpus (PDF, plain text, Word, Excel)
 
 ## Origin
 
-Chorus belongs to the tradition of **symbolic AI** — explicit knowledge representation,
-typed structures, deterministic inference. The tradition of expert systems and
-**Marvin Minsky's Frames**..
+Chorus belongs to the tradition of **symbolic AI** — explicit knowledge
+representation, typed structures, deterministic inference. In the lineage of
+expert systems and **Marvin Minsky's Frames**.
 
-The first version was born in 2013 from the porting to Perl of an original LISP project.
-The goal was twofold: to show that Perl was perfectly suited to this kind of implementation,
-and to offer the CPAN community an inference engine inspired by Minsky's Frames —
-typed objects, slots, inheritance, inference chain.
+The first version was born in 2013 from the porting to Perl of an original
+LISP project. The goal was twofold: to show that Perl was perfectly suited to
+this kind of implementation, and to offer the CPAN community an inference
+engine inspired by Minsky's Frames — typed objects, slots, inheritance,
+inference chain.
 
-More than a decade later, an LLM's analysis of the project revealed an unexpected
-complementarity: where the symbolic engine excels at executing rules deterministically
-and traceably, the LLM excels at reading a corpus and formalising them. The real
-friction — writing YAML rules by hand, a tedious task — was the LLM's natural ground.
+More than a decade later, an LLM's analysis of the project revealed an
+unexpected complementarity: where the symbolic engine excels at executing
+rules deterministically and traceably, the LLM excels at reading a corpus and
+formalising them. The real friction — writing YAML rules by hand, a tedious
+task — was the LLM's natural ground.
 
 That encounter gave rise to version 2.
 
-Chorus v2 is an **augmented symbolic** system: the inference engine remains sovereign —
-frames, slots, inference chain, no neural network in the decision layer. The LLM is a
-preprocessing tool, not a decision-maker. Two forms of AI, complementary rather than
-competing.
+Chorus v2 is an **augmented symbolic** system: the inference engine remains
+sovereign — frames, slots, inference chain, no neural network in the decision
+layer. The LLM is a preprocessing tool, not a decision-maker. Two forms of
+AI, complementary rather than competing.
 
 ---
 
@@ -245,18 +247,6 @@ levels) onboards in 2 to 4 weeks.
 
 ---
 
-## What's new in 2.01
-
-- **`chorus-*` commands** — full AI-assisted pipeline: `chorus-pdf`, `chorus-feed`, `chorus-check`, `chorus-create-project`, `chorus-import-project`, `chorus-strengthen`
-- **`TERMINAL` field** — declare `TERMINAL: solved` / `failed` directly in a YAML rule, no Perl glue code
-- **Engine helpers as instance methods** — `setFilter`, `setScope`, `setCondition`, `setException`, `setEffect`
-- **`_MAX_CYCLES` guard** — configurable per engine instance (default: 10 000)
-- **`Chorus::Frame::_reset()`** — clears the frame registry for test isolation
-
-> API details: [`doc/en/01-intro.md`](doc/en/01-intro.md)
-
----
-
 ## Full working example
 
 `sandboxes/demo_en` — timber-frame construction compliance
@@ -268,6 +258,73 @@ perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
 
 > Engine internals (YAML DSL, `Chorus::Frame` API, `_MAX_CYCLES`, `_reset()`):
 > [`doc/en/01-intro.md`](doc/en/01-intro.md)
+
+## The core — Perl inference engine
+
+The `chorus-*` pipeline runs on a pure Perl inference engine with no runtime
+dependency beyond the standard CPAN (`YAML`, `Scalar::Util`, `Digest::MD5`).
+
+Chorus implements the classic **recognise–act** cycle of the expert-system
+tradition: at each iteration, the engine identifies rules applicable to the
+current working memory, fires them, then loops — until nothing changes or a
+goal is reached.
+
+The working memory is made of `Chorus::Frame` objects whose properties (slots)
+carry domain knowledge. `Chorus::Expert` chains several specialised engines
+over a shared working memory.
+
+| Module | Role |
+|---|---|
+| `Chorus::Frame` | Knowledge representation — slots, inheritance, global registries, forward/backward chaining |
+| `Chorus::Engine` | Inference loop — rules, scope combinatorics, flow control, YAML loading |
+| `Chorus::Expert` | Multi-agent orchestration — shared BOARD, outer loop |
+| `Chorus::Collection::List` | Ordered Frame sequences — bidirectional `prev`/`succ` navigation, merge, positional tests |
+| `Chorus::Collection::Filter` | Regex-like filtering on Frame sequences — capture groups in `@_VFILTER` |
+
+### Direct API — ten lines
+
+```perl
+use Chorus::Engine;
+use Chorus::Frame;
+
+my $agent = Chorus::Engine->new();
+
+Chorus::Frame->new(color => 'blue', label => 'sky');
+Chorus::Frame->new(color => 'red',  label => 'fire');
+
+$agent->addrule(
+    _SCOPE => { f => sub { [ grep { $_->{color} eq 'blue' } fmatch(slot => 'color') ] } },
+    _APPLY => sub {
+        my %o = @_;
+        return if $o{f}->{tagged};
+        $o{f}->set('tagged', 'yes');
+        print "Tagged: ", $o{f}->label, "\n";   # → Tagged: sky
+        return 1;
+    },
+);
+
+$agent->loop();
+```
+
+The YAML DSL expresses the same logic without repetitive Perl code:
+
+```yaml
+RULE: tag-blue-frames
+FIND:
+  f:
+    attribut: color
+    filtre:   blue
+PREMISES:
+  - not $f->{tagged}
+ACTION:
+  - $f->set('tagged', 'yes')
+  - print "Tagged: $f->{label}\n"   # → Tagged: sky
+```
+
+> Full technical reference:
+> `perldoc Chorus::Engine` · `perldoc Chorus::Frame` · `perldoc Chorus::Expert`
+
+---
 
 ## Installation
 

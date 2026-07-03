@@ -42,15 +42,29 @@ Corpus normatif (PDF, texte, Word, Excel)
 
 ## Genèse
 
-Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente la connaissance de façon explicite, sous forme de règles et de structures typées, et qui raisonne par inférence déterministe. Dans la lignée des systèmes experts et des **Frames de Marvin Minsky**..
+Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente
+la connaissance de façon explicite, sous forme de règles et de structures
+typées, et qui raisonne par inférence déterministe. Dans la lignée des
+systèmes experts et des **Frames de Marvin Minsky**.
 
-La première version est née en 2013 du portage en Perl d'un projet original écrit en LISP. L'objectif était double : montrer que Perl était tout à fait adapté à ce type d'implémentation, et offrir à la communauté CPAN un moteur d'inférence inspiré des Frames de Minsky — objets typés, slots, héritage, chaîne d'inférence.
+La première version est née en 2013 du portage en Perl d'un projet original
+écrit en LISP. L'objectif était double : montrer que Perl était tout à fait
+adapté à ce type d'implémentation, et offrir à la communauté CPAN un moteur
+d'inférence inspiré des Frames de Minsky — objets typés, slots, héritage,
+chaîne d'inférence.
 
-Plus de dix ans après, l'analyse du projet par un LLM a mis en évidence une complémentarité inattendue : là où le moteur symbolique excelle à exécuter des règles de façon déterministe et traçable, le LLM excelle à lire un corpus et à les formaliser. La friction réelle — la génération des règles YAML, fastidieuse à écrire à la main — devenait le terrain naturel du LLM.
+Plus de dix ans après, l'analyse du projet par un LLM a mis en évidence une
+complémentarité inattendue : là où le moteur symbolique excelle à exécuter
+des règles de façon déterministe et traçable, le LLM excelle à lire un corpus
+et à les formaliser. La friction réelle — la génération des règles YAML,
+fastidieuse à écrire à la main — devenait le terrain naturel du LLM.
 
 C'est cette rencontre qui a donné naissance à la version 2.
 
-Chorus v2 est un système **symbolique augmenté** : le moteur d'inférence reste souverain — frames, slots, chaîne d'inférence, sans réseau de neurones dans la couche de décision. Le LLM est un outil de prétraitement, pas un décideur. Deux formes d'IA, complémentaires plutôt que concurrentes.
+Chorus v2 est un système **symbolique augmenté** : le moteur d'inférence
+reste souverain — frames, slots, chaîne d'inférence, sans réseau de neurones
+dans la couche de décision. Le LLM est un outil de prétraitement, pas un
+décideur. Deux formes d'IA, complémentaires plutôt que concurrentes.
 
 ---
 
@@ -242,23 +256,6 @@ hiérarchiques) s'onboarde en 2 à 4 semaines.
 
 ---
 
-## Nouveautés de la version 2.01
-
-- **Commandes `chorus-*`** — pipeline complet corpus → KB → infrastructure Perl →
-  rapport de conformité, piloté par agent IA (`chorus-pdf`, `chorus-feed`,
-  `chorus-check`, `chorus-create-project`, `chorus-import-project`, `chorus-strengthen`)
-- **Champ `TERMINAL` dans le DSL YAML** — déclarer `TERMINAL: solved` ou
-  `TERMINAL: failed` directement dans une règle, sans code Perl intermédiaire
-- **Helpers de scope/filtre du moteur promus** — `setFilter`, `setScope`,
-  `setCondition`, `setException`, `setEffect` sont désormais de vraies méthodes
-  d'instance du moteur
-- **Garde-fou `_MAX_CYCLES`** — `Chorus::Engine::loop()` s'arrête après 10 000 cycles
-  par défaut ; configurable par instance de moteur
-- **`Chorus::Frame::_reset()`** — vide l'intégralité du registre de frames ; conçu
-  pour l'isolation des cas de test
-
----
-
 ## Exemple complet fonctionnel
 
 `sandboxes/demo_en` — vérification de conformité d'une construction à ossature bois
@@ -317,7 +314,20 @@ $agent->addrule(
 $agent->loop();
 ```
 
-Le DSL YAML permet d'exprimer la même logique sans code Perl répétitif.
+Le DSL YAML permet d'exprimer la même logique sans code Perl répétitif :
+
+```yaml
+REGLE: marquer-frames-bleues
+CHERCHER:
+  f:
+    attribut: color
+    filtre:   blue
+PREMISSES:
+  - not $f->{tagged}
+EFFET:
+  - $f->set('tagged', 'yes')
+  - print "Marqué : $f->{label}\n"   # → Marqué : sky
+```
 
 > Documentation technique complète :
 > `perldoc Chorus::Engine` · `perldoc Chorus::Frame` · `perldoc Chorus::Expert`
