@@ -14,7 +14,8 @@ use YAML qw(LoadFile);
 
 =head1 NAME
 
-Chorus::Engine - A lightweight inference engine for rule-based reasoning over frames.
+Chorus::Engine - Perl inference engine with AI-assisted pipeline for
+deterministic compliance checking against normative corpora.
 
 =head1 VERSION
 
@@ -22,17 +23,23 @@ Chorus::Engine - A lightweight inference engine for rule-based reasoning over fr
 
 =head1 DESCRIPTION
 
-C<Chorus::Engine> makes it easy to write rule-based systems in Perl.  Rules declare
-their own working scope (C<_SCOPE>), so the engine only generates combinations that
-are relevant to each rule rather than iterating over all objects.
+C<Chorus::Engine> is a symbolic inference engine that turns a normative corpus
+(PDF, Word, Excel, plain text) into a deterministic, reproducible
+compliance-checking pipeline.
 
-An engine instance is itself a L<Chorus::Frame>.  All methods (C<loop>, C<addrule>,
-C<solved>...) are slots on a shared prototype frame, accessible through inheritance.
+An AI agent reads the corpus, formalises the rules into a YAML DSL and a local
+knowledge base, and generates the Perl infrastructure.  The engine then executes
+that pipeline autonomously — no LLM, no network, on any machine with Perl.  Two
+runs on the same input always produce the same output.
 
-The engine integrates naturally with L<Chorus::Frame>: use C<fmatch()> inside C<_SCOPE>
-closures to target only frames that provide the slots your rule needs.
+The engine implements the classic B<recognise-act> cycle over typed objects
+(L<Chorus::Frame>): slots carry domain knowledge, rules declare their own working
+scope (C<_SCOPE>), so only relevant combinations are evaluated.  Rules can be
+written in Perl via C<addrule()> or in a compact YAML DSL loaded with
+C<loadRules()>; see L</"YAML DSL"> below.
 
-Optional YAML rule files can be loaded with C<loadRules()>; see L</"YAML DSL"> below.
+C<Chorus::Expert> chains several specialised engine instances over a shared
+working memory for multi-agent pipelines.
 
 =head1 SYNOPSIS
 

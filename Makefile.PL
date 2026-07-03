@@ -26,6 +26,10 @@ WriteMakefile(
 
     META_MERGE => {
         'meta-spec' => { version => 2 },
+        keywords    => [qw(
+            inference-engine expert-system rule-engine compliance
+            symbolic-ai llm yaml frames
+        )],
         resources   => {
             repository => {
                 type => 'git',
