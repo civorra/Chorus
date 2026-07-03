@@ -42,7 +42,7 @@ Corpus normatif (PDF, texte, Word, Excel)
 
 ## Genèse
 
-Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente la connaissance de façon explicite, sous forme de règles et de structures typées, et qui raisonne par inférence déterministe. Dans la lignée des systèmes experts, des **Frames de Marvin Minsky**, de LISP.
+Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente la connaissance de façon explicite, sous forme de règles et de structures typées, et qui raisonne par inférence déterministe. Dans la lignée des systèmes experts et des **Frames de Marvin Minsky**..
 
 La première version est née en 2013 du portage en Perl d'un projet original écrit en LISP. L'objectif était double : montrer que Perl était tout à fait adapté à ce type d'implémentation, et offrir à la communauté CPAN un moteur d'inférence inspiré des Frames de Minsky — objets typés, slots, héritage, chaîne d'inférence.
 
@@ -151,9 +151,8 @@ Le fichier projet fourni à `chorus-check` peut être :
 - **généré depuis la KB** avec `chorus-create-project` (variantes conformes + KO,
   suite de couverture 4 fichiers `--batch` en option)
 - **aligné depuis des documents d'un dossier** avec `chorus-import-project` (PDF, Word,
-  Excel, tableau inline — fait le pont entre la terminologie ingénieur et les noms de slots de la KB)
-
-`chorus-import-project` attribue à chaque terme source un **niveau de confiance** :
+  Excel, tableau inline) — fait le pont entre la terminologie ingénieur et les noms de slots de la KB *
+  par l'enrichissement d'un thesaurus en attribuant à chaque terme source un **niveau de confiance** :
 
 | Niveau | Signification |
 |---|---|
@@ -164,7 +163,8 @@ Le fichier projet fourni à `chorus-check` peut être :
 | ⬜ hors-périmètre | Présent dans la source, absent de la KB — noté mais ignoré |
 
 Le rapport d'alignement produit (`import-report-NNN.org`) constitue la piste d'audit
-de chaque décision et est relu lors des imports suivants pour éviter les dérives.
+de chaque décision et le thesaurus est relu et enrichi lors des imports suivants pour affiner la correspondance avec
+la terminologie du corpus.
 
 ### Commandes en un coup d'œil
 
@@ -210,7 +210,7 @@ perl run.pl autre-projet.json
 
 ## Domaines d'application
 
-Chorus n'est pas lié à un secteur. Un domaine est *Chorus-compatible* dès lors
+Chorus n'est pas lié à un secteur. Un domaine est applicable dès lors
 que trois conditions sont réunies :
 
 1. **Le projet est décrit par des éléments typés** — chaque objet à valider
@@ -221,7 +221,7 @@ que trois conditions sont réunies :
 3. **La décision doit être traçable et reproductible** — audit, certification,
    dépôt réglementaire, contentieux.
 
-| Domaine | Corpus type | Onboarding estimé |
+| Domaine | Corpus type |
 |---|---|---|
 | 🔐 **Cybersécurité / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annexe II, DORA, ETSI EN 319 412 |
 | 🌿 **CSRD / Environnement** | ESRS E1–E5, S1–S4, GHG Protocol, Taxonomie EU |
@@ -262,7 +262,7 @@ hiérarchiques) s'onboarde en 2 à 4 semaines.
 ## Exemple complet fonctionnel
 
 `sandboxes/demo_en` — vérification de conformité d'une construction à ossature bois
-selon BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501.
+selon BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501 (simulation).
 
 ```sh
 perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
@@ -317,8 +317,7 @@ $agent->addrule(
 $agent->loop();
 ```
 
-Le DSL YAML permet d'exprimer la même logique sans code Perl répétitif, avec
-terminaison déclarative du pipeline via le champ `TERMINAL`.
+Le DSL YAML permet d'exprimer la même logique sans code Perl répétitif.
 
 > Documentation technique complète :
 > `perldoc Chorus::Engine` · `perldoc Chorus::Frame` · `perldoc Chorus::Expert`

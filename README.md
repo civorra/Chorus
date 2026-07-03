@@ -43,8 +43,8 @@ Normative corpus (PDF, plain text, Word, Excel)
 ## Origin
 
 Chorus belongs to the tradition of **symbolic AI** — explicit knowledge representation,
-typed structures, deterministic inference. The tradition of expert systems, of
-**Marvin Minsky's Frames**, of LISP.
+typed structures, deterministic inference. The tradition of expert systems and
+**Marvin Minsky's Frames**..
 
 The first version was born in 2013 from the porting to Perl of an original LISP project.
 The goal was twofold: to show that Perl was perfectly suited to this kind of implementation,
@@ -154,9 +154,8 @@ The project file fed to `chorus-check` can be:
 - **generated from the KB** with `chorus-create-project` (conforming + KO
   variants, optional 4-file coverage suite `--batch`)
 - **aligned from engineer documents** with `chorus-import-project` (PDF, Word,
-  Excel, inline table — bridges engineer terminology to KB slot names)
-
-`chorus-import-project` assigns a **confidence level** to each source term:
+  Excel, inline table) — bridges engineer terminology to KB slot names *
+  by enriching a thesaurus and assigning a **confidence level** to each source term:
 
 | Level | Meaning |
 |---|---|
@@ -167,7 +166,8 @@ The project file fed to `chorus-check` can be:
 | ⬜ out-of-scope | Present in source, absent from KB — noted but ignored |
 
 The alignment report produced (`import-report-NNN.org`) serves as the audit trail
-for each mapping decision and is re-read on subsequent imports to prevent drift.
+for each mapping decision and the thesaurus is re-read and enriched on subsequent
+imports to refine the match with the corpus terminology.
 
 ### Commands at a glance
 
@@ -224,7 +224,7 @@ whenever three conditions hold:
 3. **The decision must be traceable and reproducible** — audit, certification,
    regulatory filing, litigation.
 
-| Domain | Typical corpus | Estimated onboarding |
+| Domain | Typical corpus |
 |---|---|---|
 | 🔐 **Cybersecurity / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annex II, DORA, ETSI EN 319 412 |
 | 🌿 **CSRD / Environment** | ESRS E1–E5, S1–S4, GHG Protocol, EU Taxonomy |
@@ -260,7 +260,7 @@ levels) onboards in 2 to 4 weeks.
 ## Full working example
 
 `sandboxes/demo_en` — timber-frame construction compliance
-against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501.
+against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501 (simulation).
 
 ```sh
 perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
