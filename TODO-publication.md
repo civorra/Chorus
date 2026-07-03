@@ -20,7 +20,7 @@
 
 - [ ] **PrePAN** — poster une review request avant la publication CPAN
       <http://prepan.org>
-- [ ] **Réécrire POD `DESCRIPTION`** plus orienté v2 (corpus → pipeline → conformité)
+- [x] **Réécrire POD `DESCRIPTION`** plus orienté v2 (corpus → pipeline → conformité)
 - [ ] **Article blogs.perl.org** — présentation jour J
       Angle suggéré : pipeline complet corpus → rapport de conformité
 
