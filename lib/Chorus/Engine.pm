@@ -234,6 +234,31 @@ Re-enables a paused engine.
 
   $agent->wakeup();
 
+=head2 set_mutable
+
+Marks a list of slots on a domain Frame as mutable (modifiable by a planner or
+simulation).  Stores the list as C<_MUTABLE_SLOTS> on the Frame.
+
+  $agent->set_mutable($frame, 'strength_class', 'stud_spacing_mm');
+
+This is the Perl API counterpart of the C<_mutable> key in JSON project files.
+Slots not listed are considered immutable (fixed inputs).
+
+=head2 mutable_slots
+
+Returns a hashref of mutable slots for a given Frame
+(C<< { slot_name => 1, ... } >>).  Returns an empty hashref if no mutable slots
+have been declared.
+
+  my $mutable = $agent->mutable_slots($frame);
+  # { strength_class => 1, stud_spacing_mm => 1 }
+
+=head2 is_mutable
+
+Returns C<1> if C<$slot> is mutable on C<$frame>, empty string otherwise.
+
+  if ($agent->is_mutable($frame, 'strength_class')) { ... }
+
 =head2 loadRules
 
 Loads all C<*.yml> files from a directory in alphabetical order, compiles each one
@@ -707,7 +732,23 @@ my $ENGINE = Chorus::Frame->new(
   failed  => sub { $SELF->BOARD->{FAILED} = 'Y'; return },
 
   pause   => sub { $SELF->{_SLEEPING} = 'Y' },
-  wakeup  => sub { $SELF->delete('_SLEEPING')},
+  wakeup  => sub { $SELF->delete('_SLEEPING') },
+
+  set_mutable => sub {
+    my ($frame, @slots) = @_;
+    $frame->{_MUTABLE_SLOTS} = { map { $_ => 1 } @slots };
+    return $frame;
+  },
+
+  mutable_slots => sub {
+    my ($frame) = @_;
+    return $frame->{_MUTABLE_SLOTS} // {};
+  },
+
+  is_mutable => sub {
+    my ($frame, $slot) = @_;
+    return ($frame->{_MUTABLE_SLOTS} && $frame->{_MUTABLE_SLOTS}{$slot}) ? 1 : '';
+  },
 
   addrule => sub {
     my @rule_def = @_;
