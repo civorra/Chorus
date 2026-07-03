@@ -15,6 +15,24 @@
 
 ---
 
+## KB Chorus — lecture prioritaire
+
+La KB Chorus est dans `$CHORUS/eca/kb/` (hors repo, non versionnée) :
+
+| Fichier | Contenu |
+|---|---|
+| `$CHORUS/eca/kb/pitfalls.org` | Pièges connus — lire en premier |
+| `$CHORUS/eca/kb/architecture.org` | Décisions structurelles, invariants, feuille de route backward-chaining |
+| `$CHORUS/eca/kb/components.org` | Internals Chorus::Engine / Expert / Frame / Collection |
+
+Lire via `eca__read_file` (pas de MCP `kb__query_kb` — la KB Chorus n'est pas
+configurée dans le serveur MCP, contrairement à KB6/KB5/KBOTC).
+
+**Règle :** lire les 3 fichiers KB avant de lire les sources — évite de redécouvrir
+ce qui est déjà documenté. Mettre à jour la KB si la session révèle de nouveaux findings.
+
+---
+
 ## Existing reference reports (load before reading sources)
 
 | Report | Content |
