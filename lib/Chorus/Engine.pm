@@ -259,6 +259,18 @@ Returns C<1> if C<$slot> is mutable on C<$frame>, empty string otherwise.
 
   if ($agent->is_mutable($frame, 'strength_class')) { ... }
 
+=head2 rule_produces
+
+Returns an arrayref of rule Frames that declared C<$slot> in their C<PRODUCES:>
+list.  Returns an empty arrayref if no rule produces that slot.
+
+  my $rules = $agent->rule_produces('frame_ok');
+  # [ $rule_frame_R01, $rule_frame_R02, ... ]
+
+The index is populated automatically by C<addrule()> from C<_PRODUCES>.
+It is the per-agent component of the backward-chaining dependency graph;
+see L<Chorus::Expert/rule_produces> for the cross-agent merged view.
+
 =head2 loadRules
 
 Loads all C<*.yml> files from a directory in alphabetical order, compiles each one
@@ -750,6 +762,11 @@ my $ENGINE = Chorus::Frame->new(
     return ($frame->{_MUTABLE_SLOTS} && $frame->{_MUTABLE_SLOTS}{$slot}) ? 1 : '';
   },
 
+  rule_produces => sub {
+    my ($slot) = @_;
+    return $SELF->{_RULE_PRODUCES}{$slot} // [];
+  },
+
   addrule => sub {
     my @rule_def = @_;
     my %args = @rule_def;
@@ -775,7 +792,14 @@ my $ENGINE = Chorus::Frame->new(
       };
       @rule_def = %args;
     }
-    push @{$SELF->{_RULES}}, Chorus::Frame->new(@rule_def);
+    my $rule = Chorus::Frame->new(@rule_def);
+    push @{$SELF->{_RULES}}, $rule;
+    # Index _PRODUCES → %_RULE_PRODUCES (backward-chaining)
+    if (my $produces = $args{_PRODUCES}) {
+      for my $slot (@$produces) {
+        push @{ $SELF->{_RULE_PRODUCES}{$slot} }, $rule;
+      }
+    }
   },
 
   reorder => \&reorderRules,
@@ -824,6 +848,7 @@ my $ENGINE = Chorus::Frame->new(
 sub new {
     shift;                                            # get rid of clasical bless $class here !!
     my $res = Chorus::Frame->new( _RULES => [], @_ ); # may already contains _ISA !
+    $res->{_RULE_PRODUCES} = {};                     # direct assignment — avoids Frame promotion of {}
     $res->_inherits($ENGINE);                         # -> possible multiple inheritance !!
     return $res;
 }

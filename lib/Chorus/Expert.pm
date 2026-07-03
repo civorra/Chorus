@@ -69,6 +69,17 @@ C<_MAX_ITER>, assign directly after construction:
   my $xprt = Chorus::Expert->new();
   $xprt->{_MAX_ITER} = 50_000;   # default is 10,000
 
+=head2 rule_produces
+
+Returns an arrayref of rule Frames (across all registered agents) that declared
+C<$slot> in their C<PRODUCES:> list.  Returns an empty arrayref if none.
+
+  my $rules = $xprt->rule_produces('frame_ok');
+
+The index is built by merging each agent's C<_RULE_PRODUCES> at C<register()>
+time.  Agents registered after the initial call are also merged incrementally.
+This is the cross-agent view used by C<Chorus::Planner>.
+
 =head2 register
 
 Registers one or more agents.  Each agent receives:
@@ -218,7 +229,19 @@ sub register {
   $_->set('BOARD',  $board) for @_;   # BOARD shared between agents of this instance
   $_->set('EXPERT', $this)  for @_;   # each agent can talk back to me
   push @{ $this->{_agents} }, @_;
+  # Merge _RULE_PRODUCES from each agent into the Expert-level index
+  for my $agent (@_) {
+      my $rp = $agent->{_RULE_PRODUCES} // {};
+      for my $slot (keys %$rp) {
+          push @{ $this->{_rule_produces}{$slot} }, @{ $rp->{$slot} };
+      }
+  }
   return $this;
+}
+
+sub rule_produces {
+  my ($this, $slot) = @_;
+  return $this->{_rule_produces}{$slot} // [];
 }
 
 # --
