@@ -259,6 +259,39 @@ Returns C<1> if C<$slot> is mutable on C<$frame>, empty string otherwise.
 
   if ($agent->is_mutable($frame, 'strength_class')) { ... }
 
+=head2 explain_trace
+
+Returns the arrayref of non-firing trace entries accumulated since the last
+C<clear_explain()> call (or engine creation).  Each entry is a hashref:
+
+  {
+      rule    => 'rule-id',       # _ID of the rule that did not fire
+      scope   => \%opts,          # scope combination that was tried
+      blocked => 'APPLY',         # reason: _APPLY returned false/undef
+  }
+
+Requires C<_EXPLAIN> to be set on the engine before C<addrule()> or
+C<loadRules()>:
+
+  $agent->set('_EXPLAIN', 1);
+  $agent->loadRules($dir);
+  $agent->loop();
+  my @trace = @{ $agent->explain_trace() };
+
+B<Note> — the trace is NOT automatically cleared between C<loop()> calls.  Call
+C<clear_explain()> explicitly to reset it.
+
+B<Limitation> — this wrapper captures non-firings at the C<_APPLY> level only.
+Rules whose scope is empty (no Frames found by C<fmatch()>) are not included
+because C<_APPLY> is never called for them.  Use C<_EXPLAIN_SCOPE_EMPTY> (future)
+for that case.
+
+=head2 clear_explain
+
+Clears the explain trace and returns the engine (chainable).
+
+  $agent->clear_explain()->loop();
+
 =head2 rule_produces
 
 Returns an arrayref of rule Frames that declared C<$slot> in their C<PRODUCES:>
@@ -767,6 +800,15 @@ my $ENGINE = Chorus::Frame->new(
     return $SELF->{_RULE_PRODUCES}{$slot} // [];
   },
 
+  explain_trace => sub {
+    return $SELF->{_EXPLAIN_TRACE} // [];
+  },
+
+  clear_explain => sub {
+    $SELF->{_EXPLAIN_TRACE} = [];
+    return $SELF;
+  },
+
   addrule => sub {
     my @rule_def = @_;
     my %args = @rule_def;
@@ -776,7 +818,7 @@ my $ENGINE = Chorus::Frame->new(
         return;
       }
     }
-    # Logging wrapper — active when _LOG is set on the engine OR _TRACE on the rule
+    # Logging + _EXPLAIN wrapper — active when _LOG/_TRACE/_EXPLAIN set on engine/rule
     if (my $orig_apply = $args{_APPLY}) {
       my $engine   = $SELF;
       my $rule_id  = $args{_ID} // '(unnamed)';
@@ -787,6 +829,14 @@ my $ENGINE = Chorus::Frame->new(
         if ($res) {
           my $log = $engine->{_LOG} // ($do_trace ? 1 : undef);
           _log_fire($engine, $rule_id, \%opts, $log) if $log;
+        } else {
+          if ($engine->{_EXPLAIN}) {
+            push @{ $engine->{_EXPLAIN_TRACE} }, {
+              rule    => $rule_id,
+              scope   => \%opts,
+              blocked => 'APPLY',
+            };
+          }
         }
         return $res;
       };
@@ -848,7 +898,8 @@ my $ENGINE = Chorus::Frame->new(
 sub new {
     shift;                                            # get rid of clasical bless $class here !!
     my $res = Chorus::Frame->new( _RULES => [], @_ ); # may already contains _ISA !
-    $res->{_RULE_PRODUCES} = {};                     # direct assignment — avoids Frame promotion of {}
+    $res->{_RULE_PRODUCES}   = {};  # direct assignment — avoids Frame promotion of {}
+    $res->{_EXPLAIN_TRACE}   = [];  # direct assignment — trace for _EXPLAIN mode
     $res->_inherits($ENGINE);                         # -> possible multiple inheritance !!
     return $res;
 }
