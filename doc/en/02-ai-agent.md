@@ -152,11 +152,26 @@ from the corpus. Not a single line written by hand.
 > `chorus-create-project`, `chorus-import-project`) are versioned in
 > `$ENGINE/agent/skills/` and documented in the repository.
 
-> **Explore the sandbox without an AI agent:** the `sandboxes/demo_en` sandbox
-> contains the full set of artefacts produced by the
-> chain (corpus, KB org files, YAML rules, Perl infrastructure). It lets you
-> understand what an AI agent generates and run `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` live —
-> but it uses a pre-built project JSON. Adapting to a new project requires an AI agent.
+> **Explore the demo sandbox:** the `sandboxes/demo_en` sandbox illustrates
+> concretely what the pipeline produces. At the start, it contained only a
+> single file — the raw corpus:
+>
+> ```
+> corpus/001-timber-frame-intro-simul.txt   ← starting point
+> ```
+>
+> An AI agent then ran `chorus-feed` followed by `chorus-check` to generate
+> everything you find there today: KB org files, YAML rules, `Feed.pm`,
+> `Agent/*.pm`, `Expert.pm`, `run.pl`. You can run the pipeline as-is:
+>
+> ```sh
+> perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
+> ```
+>
+> or start from the corpus alone and replay `chorus-feed` + `chorus-check` to
+> watch the chain build itself from scratch. Adapting to a new project (project
+> JSON file) requires an AI agent (`chorus-create-project` or
+> `chorus-import-project`).
 
 ---
 

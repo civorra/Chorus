@@ -156,12 +156,27 @@ générée par un agent IA depuis le corpus. Aucune ligne écrite à la main.
 > `chorus-create-project`, `chorus-import-project`) sont versionnés dans
 > `$ENGINE/agent/skills/` et documentés dans le dépôt.
 
-> **Explorer le sandbox sans agent IA :** le sandbox `sandboxes/demo_en`
-> contient l'intégralité des artefacts produits par la
-> chaîne (corpus, KB org, règles YAML, infrastructure Perl). Il permet de
-> comprendre ce qu'un agent IA génère et de lancer `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` en
-> direct — mais avec un JSON projet pré-construit. Adapter un nouveau projet
-> requiert un agent IA.
+> **Explorer le sandbox de démo :** le sandbox `sandboxes/demo_en` illustre
+> concrètement ce que produit le pipeline. À l'origine, il ne contenait qu'un
+> seul fichier — le corpus brut :
+>
+> ```
+> corpus/001-timber-frame-intro-simul.txt   ← point de départ
+> ```
+>
+> Un agent IA a ensuite exécuté `chorus-feed` puis `chorus-check` pour générer
+> l'intégralité de ce qui s'y trouve aujourd'hui : fichiers KB org, règles YAML,
+> `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl`. Vous pouvez lancer le pipeline
+> tel quel :
+>
+> ```sh
+> perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
+> ```
+>
+> ou repartir du corpus seul et rejouer `chorus-feed` + `chorus-check` pour voir
+> la chaîne se construire depuis zéro. Adapter un nouveau projet (fichier JSON
+> projet) requiert un agent IA (`chorus-create-project` ou
+> `chorus-import-project`).
 
 ---
 
