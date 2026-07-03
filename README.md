@@ -53,7 +53,7 @@ hand remained tedious. That's the precise spot where an LLM helps naturally —
 reading a normative corpus and generating YAML rules.
 
 Version 2 formalises this complementarity: **the LLM generates rules, the
-**engine executes them**. Two forms of AI, each in its optimal role.
+engine executes them**. Two forms of AI, each in its optimal role.
 
 ---
 
