@@ -14,7 +14,7 @@
 - [ ] **Topics GitHub** (UI → ⚙️ → Topics) :
       `perl` `inference-engine` `expert-system` `rule-engine`
       `compliance` `symbolic-ai` `llm` `yaml`
-- [ ] **Pinned repositories** — épingler `Chorus-Engine` sur le profil GitHub
+- [ ] **Pinned repositories** — épingler `Chorus` sur le profil GitHub
 
 ## 🟡 Utile — avant / jour J
 
