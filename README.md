@@ -281,7 +281,7 @@ over a shared working memory.
 | `Chorus::Collection::List` | Ordered Frame sequences — bidirectional `prev`/`succ` navigation, merge, positional tests |
 | `Chorus::Collection::Filter` | Regex-like filtering on Frame sequences — capture groups in `@_VFILTER` |
 
-### Direct API — ten lines
+### Direct API
 
 ```perl
 use Chorus::Engine;
@@ -298,7 +298,7 @@ $agent->addrule(
         my %o = @_;
         return if $o{f}->{tagged};
         $o{f}->set('tagged', 'yes');
-        print "Tagged: ", $o{f}->label, "\n";   # → Tagged: sky
+        print "Tagged: ", $o{f}->{label}, "\n";   # → Tagged: sky
         return 1;
     },
 );
@@ -314,12 +314,32 @@ FIND:
   f:
     attribut: color
     filtre:   blue
-PREMISES:
-  - not $f->{tagged}
-ACTION:
-  - $f->set('tagged', 'yes')
-  - print "Tagged: $f->{label}\n"   # → Tagged: sky
+EXCEPTION: defined $f->{tagged}
+ACTION: |
+  $f->set('tagged', 'yes');
+  print "Tagged: $f->{label}\n";   # → Tagged: sky
+  return 1;
 ```
+
+Each YAML rule lives in its own `.yml` file. To load them, save the rule as
+`rules/tag-blue-frames.yml` and call `loadRules()` instead of `addrule()`:
+
+```perl
+use Chorus::Engine;
+use Chorus::Frame;
+
+my $agent = Chorus::Engine->new();
+
+Chorus::Frame->new(color => 'blue', label => 'sky');
+Chorus::Frame->new(color => 'red',  label => 'fire');
+
+$agent->loadRules('rules/');   # loads all *.yml in the directory
+
+$agent->loop();
+```
+
+Files are compiled in alphabetical order — prefix with `R01-`, `R02-`… to
+control priority. Multiple `loadRules()` calls accumulate.
 
 > Full technical reference:
 > `perldoc Chorus::Engine` · `perldoc Chorus::Frame` · `perldoc Chorus::Expert`

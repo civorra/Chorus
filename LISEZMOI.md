@@ -289,7 +289,7 @@ moteurs spécialisés sur une mémoire de travail partagée.
 | `Chorus::Collection::List` | Séquences ordonnées de Frames — navigation bidirectionnelle `prev`/`succ`, merge, tests positionnels |
 | `Chorus::Collection::Filter` | Filtrage regex-like sur séquences de Frames — groupes de capture dans `@_VFILTER` |
 
-### API directe — dix lignes
+### API directe
 
 ```perl
 use Chorus::Engine;
@@ -306,7 +306,7 @@ $agent->addrule(
         my %o = @_;
         return if $o{f}->{tagged};
         $o{f}->set('tagged', 'yes');
-        print "Tagged: ", $o{f}->label, "\n";   # → Tagged: sky
+        print "Tagged: ", $o{f}->{label}, "\n";   # → Tagged: sky
         return 1;
     },
 );
@@ -322,12 +322,33 @@ CHERCHER:
   f:
     attribut: color
     filtre:   blue
-PREMISSES:
-  - not $f->{tagged}
-EFFET:
-  - $f->set('tagged', 'yes')
-  - print "Marqué : $f->{label}\n"   # → Marqué : sky
+EXCEPTION: defined $f->{tagged}
+EFFET: |
+  $f->set('tagged', 'yes');
+  print "Marqué : $f->{label}\n";   # → Marqué : sky
+  return 1;
 ```
+
+Chaque règle YAML vit dans un fichier `.yml` distinct. Pour les charger,
+sauvegarder la règle dans `rules/marquer-frames-bleues.yml` puis appeler
+`loadRules()` à la place de `addrule()` :
+
+```perl
+use Chorus::Engine;
+use Chorus::Frame;
+
+my $agent = Chorus::Engine->new();
+
+Chorus::Frame->new(color => 'blue', label => 'sky');
+Chorus::Frame->new(color => 'red',  label => 'fire');
+
+$agent->loadRules('rules/');   # charge tous les *.yml du dossier
+
+$agent->loop();
+```
+
+Les fichiers sont compilés dans l'ordre alphabétique — préfixer avec `R01-`,
+`R02-`… pour contrôler la priorité. Plusieurs appels à `loadRules()` s'accumulent.
 
 > Documentation technique complète :
 > `perldoc Chorus::Engine` · `perldoc Chorus::Frame` · `perldoc Chorus::Expert`
