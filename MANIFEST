@@ -32,6 +32,7 @@ examples/rules/diagnosis/collect/R02-materialise-temperature.yml
 examples/rules/diagnosis/diagnose/R01-diagnose-flu.yml
 examples/rules/diagnosis/diagnose/R02-diagnose-strep.yml
 examples/rules/diagnosis/diagnose/R03-diagnose-viral-syndrome.yml
+lib/Chorus.pm
 lib/Chorus/Collection/Filter.pm
 lib/Chorus/Collection/List.pm
 lib/Chorus/Engine.pm
@@ -50,15 +51,6 @@ sandboxes/demo_en/agent/chorus/fire.org
 sandboxes/demo_en/agent/chorus/index.org
 sandboxes/demo_en/agent/chorus/qualification.org
 sandboxes/demo_en/corpus/001-timber-frame-intro-simul.txt
-sandboxes/demo_en/lib/CobIntro/Agent/Compliance.pm
-sandboxes/demo_en/lib/CobIntro/Agent/Domain.pm
-sandboxes/demo_en/lib/CobIntro/Agent/Domain/Helpers.pm
-sandboxes/demo_en/lib/CobIntro/Agent/Fire.pm
-sandboxes/demo_en/lib/CobIntro/Agent/Fire/Helpers.pm
-sandboxes/demo_en/lib/CobIntro/Agent/Qualification.pm
-sandboxes/demo_en/lib/CobIntro/Agent/Qualification/Helpers.pm
-sandboxes/demo_en/lib/CobIntro/Expert.pm
-sandboxes/demo_en/lib/CobIntro/Feed.pm
 sandboxes/demo_en/project-01.json
 sandboxes/demo_en/project-cross.json
 sandboxes/demo_en/project-edges.json
