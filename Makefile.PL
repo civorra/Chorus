@@ -12,7 +12,6 @@ WriteMakefile(
     MIN_PERL_VERSION => '5.006',
 
     PREREQ_PM => {
-        'Chorus::Frame' => '0',
         'YAML'          => '0',
         'Scalar::Util'  => '0',
         'Digest::MD5'   => '0',
