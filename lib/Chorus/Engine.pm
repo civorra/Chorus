@@ -4,7 +4,7 @@ use 5.006;
 use strict;
 use warnings;
 
-our $VERSION = '2.01';
+our $VERSION = '2.0.1';
 
 use Chorus::Frame;
 use Chorus::Collection::Filter qw(@_VFILTER);
@@ -19,7 +19,7 @@ deterministic compliance checking against normative corpora.
 
 =head1 VERSION
 
-2.01
+2.0.1
 
 =head1 DESCRIPTION
 
