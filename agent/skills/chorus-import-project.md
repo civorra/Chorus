@@ -5,8 +5,10 @@
 >
 > `<sandbox-name>` : sandbox containing a KB produced by `chorus-feed`
 > `<source…>`      : one or more project sources from the engineer (see modes below)
->                    Accepted formats: PDF, Word (.docx), Excel (.xlsx/.csv),
->                    plain text, table pasted in the chat, directory path
+>                    Accepted formats: **PDF, Word (.docx), Excel (.xlsx/.csv), XML/HTML,
+>                    plain text, table pasted in the chat, or directory path**.
+>                    Document files (PDF/DOCX/XLSX/CSV/XML/HTML) are automatically converted
+>                    to plain text before semantic processing.
 > `--out`          : output JSON filename (merge mode only;
 >                    default: `projet-import-<NNN>.json`)
 > `--batch`        : force batch mode even if a single source is provided
@@ -44,6 +46,82 @@
 ---
 
 ## Phase 0 — Source Data Acquisition
+
+### Format Detection & Auto-conversion
+
+**Before mode detection**, check each source file's extension (case-insensitive).
+`chorus-import-project` accepts **plain text, inline data, and directories by default**.
+**However**, if a document format requiring preprocessing is detected, the corresponding
+conversion skill is invoked **automatically** and the extracted output replaces the input
+for subsequent phases.
+
+| Extension | Format | Auto-conversion skill | Output file(s) |
+|---|---|---|---|
+| `.pdf` | PDF | `chorus-pdf <sandbox> <file> --auto` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.docx` | Word | `chorus-word <sandbox> <file>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.xlsx` / `.csv` | Spreadsheet | `chorus-excel <sandbox> <file>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.xml` / `.html` / `.htm` | XML/HTML | `chorus-xml <sandbox> <file>` | `<NNN>-<slug>-content.md` or `-vision.md` |
+| `.txt` / `.md` / inline | Plain/Markdown | *(none)* | Use as-is |
+
+**Auto-conversion algorithm:**
+
+```
+For each source in <source…>:
+  If source is a directory:
+    # Preserve directory mode — will be expanded later
+    Add to sources list as-is
+  Else if source ends in .pdf, .docx, .xlsx, .csv, .xml, .html, .htm:
+    # Invoke conversion skill
+    ext = source file extension
+    if ext == .pdf:
+      Call: chorus-pdf <sandbox> <source> --auto
+    elif ext == .docx:
+      Call: chorus-word <sandbox> <source>
+    elif ext in (.xlsx, .csv):
+      Call: chorus-excel <sandbox> <source>
+    elif ext in (.xml, .html, .htm):
+      Call: chorus-xml <sandbox> <source>
+
+    Wait for skill to complete (expected exit code 0)
+
+    # Auto-detect converted file
+    candidates = glob(<sandbox>/corpus/[0-9][0-9][0-9]-*-{text,content,vision}.{txt,md})
+    converted_path = max(candidates, key=mtime)  # newest file
+
+    # Replace source with converted file for subsequent phases
+    source = converted_path
+    Print: "[import] Auto-converted <original.ext> → <converted_path>"
+
+  Else:
+    # Plain .txt, .md, or inline content — use as-is
+    source remains unchanged
+```
+
+**Example scenarios:**
+
+```bash
+# Single PDF — auto-converted
+chorus-import-project test-05-RGPD corpus/002-norme.pdf
+→ [auto] Detected .pdf — calling chorus-pdf test-05-RGPD corpus/002-norme.pdf --auto
+→ [auto] Conversion complete → corpus/003-norme-vision.md
+→ [import] Using converted corpus/003-norme-vision.md
+→ [Phase 1] Reading KB...
+
+# Merge mode: mixed formats — each auto-converted separately
+chorus-import-project test-05-RGPD dctp.docx isolations.xlsx norms.txt
+→ [auto] dctp.docx → corpus/004-dctp-vision.md (via chorus-word)
+→ [auto] isolations.xlsx → corpus/005-isolations-text.txt (via chorus-excel)
+→ [auto] norms.txt → use as-is
+→ [merge] Merging 3 sources...
+
+# Batch mode: directory with mixed formats
+chorus-import-project test-05-RGPD ./sources/
+→ [auto] Processing sources/norme.pdf → corpus/006-norme-vision.md
+→ [auto] Processing sources/dossier.docx → corpus/007-dossier-vision.md
+→ [batch] Generating projet-import-001.json, projet-import-002.json...
+```
+
+After format detection and auto-conversion (if any), proceed to Mode Detection.
 
 ### Mode Detection and Source Collection
 

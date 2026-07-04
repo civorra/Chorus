@@ -53,14 +53,6 @@ Le corpus de ce domaine s'articule autour de quatre niveaux de certification :
 | **Artefacts PKI** (certificats, LCR, OCSP) | ETSI EN 319 412-1 à 5 · RFC 5280/4210/6960/5652 · CABForum TLS/S/MIME BR |
 | **Transversal** (protocoles & recommandations) | NIS2 Annexe II · DORA · RFC 8446 (TLS 1.3) · ANSSI SecNumCloud v3.2 / RGS v2 |
 
-> ⚡ **Urgence réglementaire — NIS2 & DORA.** NIS2 est transposée dans le droit national
-> des États membres depuis octobre 2024, exposant des milliers d'opérateurs de services
-> essentiels (OES) et de fournisseurs de services numériques à des obligations de conformité
-> contraignantes. DORA s'applique aux entités financières depuis janvier 2025. Ces deux
-> textes définissent des **exigences numérotées et auditables** — exactement la structure
-> pour laquelle Chorus a été conçu. C'est le domaine avec **l'onboarding le plus court
-> (1–2 semaines)** et la pression réglementaire la plus immédiate.
-
 ### 🏗️ Construction / BTP
 
 | | |

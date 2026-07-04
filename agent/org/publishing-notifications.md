@@ -91,7 +91,7 @@ curl -s "https://fastapi.metacpan.org/v1/favorite?q=distribution:Chorus-Frame&si
   | jq '.hits.total.value'
 
 # Chorus::Engine
-curl -s "https://fastapi.metacpan.org/v1/favorite?q=distribution:Chorus-Engine&size=1" \
+curl -s "https://fastapi.metacpan.org/v1/favorite?q=distribution:Chorus&size=1" \
   | jq '.hits.total.value'
 ```
 

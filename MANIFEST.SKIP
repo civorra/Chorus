@@ -33,7 +33,7 @@
 # Distribution tarballs
 \.tar\.gz$
 \.zip$
-Chorus-Engine-
+Chorus-
 
 # Temp / editor files
 ~$

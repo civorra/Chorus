@@ -4,7 +4,9 @@
 > Agent: `architect`
 >
 > `<sandbox-name>`: name of the sandbox directory under `$SANDBOXES/`
-> `<corpus>`: plain-text file (`.txt`), Markdown file (`.md`), or inline content — **never a PDF**
+> `<corpus>`: plain-text file (`.txt`), Markdown file (`.md`), or inline content —
+>              **or** a document file requiring preprocessing (PDF, DOCX, XLSX/CSV, XML/HTML).
+>              If a document format is provided, the corresponding conversion skill is called automatically.
 > `--enrich`: activates Mode B (incremental enrichment) — absent by default
 > `--harvest-aliases <import-report.org>`: activates Mode C — reads a validated import report
 >              and integrates its confirmed ✅ mappings into the KB `** Aliases` sections.
@@ -36,30 +38,50 @@ self-contained unit. Cross-sandbox reads are forbidden in all modes (A and B).
 
 Load: `chorus-engine-yaml.md` — YAML authoring reference (Frame essentials, Engine rule triggering, YAML guide, checklists)
 
-### ⛔ PDF input guard
+### ⛔ Document Format Guard — Auto-conversion
 
-**Before doing anything else**, check the `<corpus>` argument.
-If it ends in `.pdf` (case-insensitive) → **stop immediately** and output:
+**Before doing anything else**, check the `<corpus>` argument's file extension
+(case-insensitive). `chorus-feed` accepts **only** plain-text (`.txt`), Markdown
+(`.md`), or inline content (no file extension). **However**, if a preprocessing-required
+format is detected, the corresponding conversion skill is invoked automatically.
+
+| Extension | Format | Auto-conversion skill | Extracted file(s) |
+|---|---|---|---|
+| `.pdf` | PDF | `chorus-pdf <sandbox-name> <file.pdf> --auto` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.docx` | Word | `chorus-word <sandbox-name> <file.docx>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.xlsx` / `.csv` | Spreadsheet | `chorus-excel <sandbox-name> <file>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.xml` / `.html` / `.htm` | XML/HTML | `chorus-xml <sandbox-name> <file>` | `<NNN>-<slug>-content.md` or `-vision.md` |
+| `.txt` / `.md` / inline | Plain/Markdown | *(none)* | Use as-is |
+
+**Auto-conversion logic:**
 
 ```
-⛔ The corpus provided is a PDF file.
-   chorus-feed requires a plain-text or Markdown file as input.
+If <corpus> ends in .pdf, .docx, .xlsx, .csv, .xml, .html, .htm (case-insensitive):
+  1. Invoke the corresponding skill (chorus-pdf, chorus-word, chorus-excel, or chorus-xml)
+  2. Wait for completion (exit code 0 expected)
+  3. Auto-detect the output file: glob corpus/[0-9][0-9][0-9]-*-{text,content,vision}.{txt,md}
+     (newest by mtime if multiple outputs)
+  4. Use the extracted file as <corpus> for the remainder of Phase 1+
 
-   Run first:
-     chorus-pdf <sandbox-name> <file.pdf>           (text only, no API key)
-     chorus-pdf <sandbox-name> <file.pdf> --auto    (recommended — pdfminer + vision)
-     chorus-pdf <sandbox-name> <file.pdf> --images  (full vision — scanned PDFs)
-
-   Then re-run:
-     chorus-feed <sandbox-name> corpus/<NNN>-<slug>-text.txt
-     (or: corpus/<NNN>-<slug>-vision.md)
-
-   chorus-pdf extracts text, tables, figures and diagrams and produces
-   a .txt (text mode) or .md (auto/images mode) file ready for chorus-feed.
+Else:
+  <corpus> is accepted as-is (plain .txt, .md, or inline content)
 ```
 
-Do not proceed past this point if the input is a PDF.
+**Example:**
+
+```bash
+# Input is a PDF
+chorus-feed test-05-RGPD corpus/002-norme-publiee.pdf
+→ [auto] Detected .pdf format
+→ [auto] Calling: chorus-pdf test-05-RGPD corpus/002-norme-publiee.pdf --auto
+→ [auto] Waiting for completion...
+→ [auto] Output detected: corpus/003-norme-publiee-vision.md
+→ [auto] Using corpus/003-norme-publiee-vision.md as source
+→ [feed] Mode A initialization with corpus/003-norme-publiee-vision.md
+```
+
 Inline content (no file extension) is always accepted as-is.
+After auto-conversion (if any), proceed to Phase 0 — Sandbox Initialization.
 
 ---
 

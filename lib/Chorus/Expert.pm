@@ -292,7 +292,7 @@ The default is 10,000 iterations.  For a pipeline of N frames × M total rules,
 a safe heuristic is C<N × M × safety_margin> (typically ×10).
 
 Please report other bugs via the CPAN request tracker:
-L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus-Engine>
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Chorus>
 
 =head1 SUPPORT
 

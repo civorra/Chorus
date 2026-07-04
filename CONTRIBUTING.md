@@ -1,6 +1,6 @@
-# Contributing to Chorus::Engine
+# Contributing to Chorus
 
-Thank you for your interest in Chorus::Engine!
+Thank you for your interest in Chorus!
 Contributions of any kind are welcome: bug reports, documentation improvements,
 new examples, or engine enhancements.
 
@@ -22,9 +22,9 @@ new examples, or engine enhancements.
 
 ## Reporting bugs
 
-Please open an [Issue](https://github.com/civorra/Chorus-Engine/issues) on GitHub,
+Please open an [Issue](https://github.com/civorra/Chorus/issues) on GitHub,
 or file a ticket on the CPAN RT queue:
-<https://rt.cpan.org/Dist/Display.html?Name=Chorus-Engine>
+<https://rt.cpan.org/Dist/Display.html?Name=Chorus>
 
 A good bug report includes:
 
@@ -37,7 +37,7 @@ A good bug report includes:
 
 ## Requesting features
 
-Open an [Issue](https://github.com/civorra/Chorus-Engine/issues) with the label
+Open an [Issue](https://github.com/civorra/Chorus/issues) with the label
 `enhancement`. Describe the use case first — a concrete scenario is more useful
 than an abstract feature description.
 
@@ -62,8 +62,8 @@ to review and slower to merge.
 The only build tool required is `ExtUtils::MakeMaker`, which ships with Perl.
 
 ```sh
-git clone https://github.com/civorra/Chorus-Engine.git
-cd Chorus-Engine
+git clone https://github.com/civorra/Chorus.git
+cd Chorus
 perl Makefile.PL
 make
 make test

@@ -1,6 +1,7 @@
 # Chorus::Engine
 
-[![CPAN version](https://badge.fury.io/pl/Chorus-Engine.svg)](https://metacpan.org/dist/Chorus-Engine)
+[![CPAN version](https://badge.fury.io/pl/Chorus.svg)](https://metacpan.org/dist/Chorus)
+[![CI](https://github.com/civorra/Chorus/actions/workflows/ci.yml/badge.svg)](https://github.com/civorra/Chorus/actions/workflows/ci.yml)
 [![Perl](https://img.shields.io/badge/perl-5.006%2B-blue)](https://www.perl.org/)
 [![License](https://img.shields.io/badge/license-Artistic--2.0-green)](LICENSE)
 
@@ -378,14 +379,14 @@ perl Makefile.PL && make && make test && make install
 Contributions are welcome — bug reports, documentation fixes, new examples,
 or rule engine improvements.
 
-- **Bug reports / feature requests** — open an [Issue](https://github.com/civorra/Chorus-Engine/issues)
+- **Bug reports / feature requests** — open an [Issue](https://github.com/civorra/Chorus/issues)
 - **Pull requests** — target the `devel` branch; make sure `make test` passes
-- **Good first issues** — look for the [`good first issue`](https://github.com/civorra/Chorus-Engine/issues?q=label%3A%22good+first+issue%22) label
-- **Questions** — use [GitHub Discussions](https://github.com/civorra/Chorus-Engine/discussions)
-  or the CPAN RT queue: <https://rt.cpan.org/Dist/Display.html?Name=Chorus-Engine>
+- **Good first issues** — look for the [`good first issue`](https://github.com/civorra/Chorus/issues?q=label%3A%22good+first+issue%22) label
+- **Questions** — use [GitHub Discussions](https://github.com/civorra/Chorus/discussions)
+  or the CPAN RT queue: <https://rt.cpan.org/Dist/Display.html?Name=Chorus>
 
 ---
 
 ## Repository
 
-<https://github.com/civorra/Chorus-Engine>
+<https://github.com/civorra/Chorus>

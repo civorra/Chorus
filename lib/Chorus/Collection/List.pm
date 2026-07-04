@@ -413,7 +413,7 @@ Christophe Ivorra
 
 =head1 BUGS
 
-Please report bugs via L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine>.
+Please report bugs via L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus>.
 
 =head1 LICENSE AND COPYRIGHT
 

@@ -4,10 +4,10 @@ use warnings;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
-    NAME             => 'Chorus::Engine',
+    NAME             => 'Chorus',
     AUTHOR           => 'Christophe Ivorra <ch.ivorra@free.fr>',
-    VERSION_FROM     => 'lib/Chorus/Engine.pm',
-    ABSTRACT_FROM    => 'lib/Chorus/Engine.pm',
+    VERSION_FROM     => 'lib/Chorus.pm',
+    ABSTRACT_FROM    => 'lib/Chorus.pm',
     LICENSE          => 'perl_5',
     MIN_PERL_VERSION => '5.006',
 
@@ -33,15 +33,15 @@ WriteMakefile(
         resources   => {
             repository => {
                 type => 'git',
-                url  => 'https://github.com/civorra/Chorus-Engine.git',
-                web  => 'https://github.com/civorra/Chorus-Engine',
+                url  => 'https://github.com/civorra/Chorus.git',
+                web  => 'https://github.com/civorra/Chorus',
             },
             bugtracker => {
-                web => 'http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus-Engine',
+                web => 'http://rt.cpan.org/NoAuth/Bugs.html?Dist=Chorus',
             },
         },
     },
 
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
-    clean => { FILES    => 'Chorus-Engine-*' },
+    clean => { FILES    => 'Chorus-*' },
 );

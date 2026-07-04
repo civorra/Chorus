@@ -127,12 +127,12 @@ Zero errors expected.
 cd /home/civorra/Documents/Chorus/Engine && make dist 2>&1
 ```
 
-Verify that the tarball `Chorus-Engine-X.YY.tar.gz` is created in `$ENGINE/`.
+Verify that the tarball `Chorus-X.YY.tar.gz` is created in `$ENGINE/`.
 
 Inspect the contents to confirm the absence of unwanted files:
 
 ```bash
-tar tzf /home/civorra/Documents/Chorus/Engine/Chorus-Engine-X.YY.tar.gz | sort
+tar tzf /home/civorra/Documents/Chorus/Engine/Chorus-X.YY.tar.gz | sort
 ```
 
 Checkpoints:
@@ -165,13 +165,13 @@ password MOTDEPASSE
 ### 4.2 Upload
 
 ```bash
-cpan-upload /home/civorra/Documents/Chorus/Engine/Chorus-Engine-X.YY.tar.gz
+cpan-upload /home/civorra/Documents/Chorus/Engine/Chorus-X.YY.tar.gz
 ```
 
 After the upload:
 - PAUSE sends a confirmation email to the account address
 - MetaCPAN indexing typically takes 15–60 minutes
-- Check at: `https://metacpan.org/dist/Chorus-Engine`
+- Check at: `https://metacpan.org/dist/Chorus`
 
 ---
 
@@ -226,9 +226,9 @@ Removes: `Makefile`, `MYMETA.*`, `pm_to_blib`, `blib/`, the `.tar.gz` tarball.
 5. make distcheck                             # check discrepancies
 6. make test                                  # tous verts
 7. AUTHOR_TESTING=1 make test                 # POD
-8. make dist                                  # → Chorus-Engine-X.YY.tar.gz
-9. tar tzf Chorus-Engine-X.YY.tar.gz | sort  # inspecter
-10. cpan-upload Chorus-Engine-X.YY.tar.gz    # upload PAUSE
+8. make dist                                  # → Chorus-X.YY.tar.gz
+9. tar tzf Chorus-X.YY.tar.gz | sort  # inspecter
+10. cpan-upload Chorus-X.YY.tar.gz    # upload PAUSE
 11. git tag vX.YY && git push origin vX.YY   # tag
 12. make distclean                            # nettoyage
 ```
@@ -246,12 +246,12 @@ cpan CPAN::Uploader
 **Test the tarball locally before uploading:**
 
 ```bash
-cd /tmp && tar xzf /home/civorra/Documents/Chorus/Engine/Chorus-Engine-X.YY.tar.gz
-cd Chorus-Engine-X.YY && perl Makefile.PL && make test
+cd /tmp && tar xzf /home/civorra/Documents/Chorus/Engine/Chorus-X.YY.tar.gz
+cd Chorus-X.YY && perl Makefile.PL && make test
 ```
 
 **Check indexing after upload:**
-`https://metacpan.org/dist/Chorus-Engine` — refresh until the new version appears.
+`https://metacpan.org/dist/Chorus` — refresh until the new version appears.
 
 **PAUSE:** `https://pause.perl.org` — account required to upload.
-Bug queue: `https://rt.cpan.org/Dist/Display.html?Name=Chorus-Engine`
+Bug queue: `https://rt.cpan.org/Dist/Display.html?Name=Chorus`

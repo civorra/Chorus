@@ -23,3 +23,6 @@ sandboxes/demo_en/**/.kb-hash
 
 # Claude Code local configuration — not committed
 .claude/
+
+# Local work files — not committed
+TODO-publication.md
