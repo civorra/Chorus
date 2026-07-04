@@ -20,6 +20,7 @@ WriteMakefile(
 
     TEST_REQUIRES => {
         'Test::More'          => '0',
+        'Test::Warn'          => '0',
         'File::Temp'          => '0',
     },
 
