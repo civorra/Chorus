@@ -1,6 +1,11 @@
-Revision history for Chorus::Expert
+Revision history for Chorus
 
-2.01    2026-06-21
+2.0.2   2026-07-04
+        - Cleanup release: deprecated Chorus-Expert distribution removed from CPAN
+        - No functional changes to engine or code
+        - Preparation for CPAN re-release with complete sandbox included
+
+2.0.1   2026-06-21
         - Engine.pm : add TERMINAL field to YAML DSL for declarative pipeline termination
           (solved/failed callable from pure YAML rules)
         - Engine.pm : promote setFilter/setScope/setCondition/setException/setEffect

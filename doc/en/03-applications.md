@@ -181,13 +181,6 @@ The KB is updated incrementally. The infrastructure is regenerated.
 
 ## How to get started?
 
-**Recommended entry point — Cybersecurity / NIS2-DORA:**
-If your target domain involves NIS2 (OES/OIV), DORA, or ANSSI qualification,
-start here: the requirement structure is immediately Chorus-compatible, and
-onboarding typically takes **1–2 weeks**. Run `chorus-feed` on your normative
-corpus (SecNumCloud, NIS2 Annex II, DORA annex…), then `chorus-check` to generate
-a first compliance report.
-
 **Explore an existing pipeline:**
 The `sandboxes/demo_en` sandbox contains the complete chain — corpus, org KB,
 YAML rules, and Perl infrastructure.

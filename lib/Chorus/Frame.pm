@@ -3,7 +3,7 @@ package Chorus::Frame;
 use 5.006;
 use strict;
 
-our $VERSION = '2.01';
+our $VERSION = '2.0.2';
 
 =encoding utf8
 

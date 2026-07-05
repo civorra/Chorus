@@ -4,7 +4,7 @@ use 5.006;
 use strict;
 use warnings;
 
-our $VERSION = '2.0.1';
+our $VERSION = '2.0.2';
 
 =encoding UTF-8
 
@@ -14,7 +14,7 @@ Chorus - Perl inference engine and AI-assisted compliance-checking platform
 
 =head1 VERSION
 
-2.0.1
+2.0.2
 
 =head1 DESCRIPTION
 

@@ -14,10 +14,9 @@
 # MCP server (not part of the CPAN distribution)
 ^mcp/
 
-# User sandboxes — only README.md is distributed
-^sandboxes/
-# Exclude all sandbox content (.pm, .kb-hash, etc.)
-^\.kb-hash$
+# User sandboxes — distribute demo_en, exclude others
+^sandboxes/(?!demo_en/)
+^sandboxes/demo_en/\.kb-hash$
 
 # Build artefacts
 ^blib/

@@ -4,7 +4,7 @@ use 5.006;
 use strict;
 use warnings;
 
-our $VERSION = '2.01';
+our $VERSION = '2.0.2';
 
 =encoding UTF-8
 

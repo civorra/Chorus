@@ -43,27 +43,27 @@ WriteMakefile(
         provides    => {
             'Chorus' => {
                 file    => 'lib/Chorus.pm',
-                version => '2.0.1',
+                version => '2.0.2',
             },
             'Chorus::Engine' => {
                 file    => 'lib/Chorus/Engine.pm',
-                version => '2.0.1',
+                version => '2.0.2',
             },
             'Chorus::Expert' => {
                 file    => 'lib/Chorus/Expert.pm',
-                version => '2.0.1',
+                version => '2.0.2',
             },
             'Chorus::Frame' => {
                 file    => 'lib/Chorus/Frame.pm',
-                version => '2.0.1',
+                version => '2.0.2',
             },
             'Chorus::Collection::List' => {
                 file    => 'lib/Chorus/Collection/List.pm',
-                version => '2.0.1',
+                version => '2.0.2',
             },
             'Chorus::Collection::Filter' => {
                 file    => 'lib/Chorus/Collection/Filter.pm',
-                version => '2.0.1',
+                version => '2.0.2',
             },
         },
     },

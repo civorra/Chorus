@@ -1,4 +1,4 @@
-# Chorus::Engine
+# Chorus
 
 [![Version CPAN](https://badge.fury.io/pl/Chorus.svg)](https://metacpan.org/dist/Chorus)
 [![CI](https://github.com/civorra/Chorus/actions/workflows/ci.yml/badge.svg)](https://github.com/civorra/Chorus/actions/workflows/ci.yml)
@@ -41,31 +41,19 @@ Corpus normatif (PDF, texte, Word, Excel)
 
 ---
 
-## Genèse
+## Origines
 
-Chorus appartient à la tradition de l'**IA symbolique** — celle qui représente
-la connaissance de façon explicite, sous forme de règles et de structures
-typées, et qui raisonne par inférence déterministe. Dans la lignée des
-systèmes experts et des **Frames de Marvin Minsky**.
+Chorus naît en 2013 du portage en Perl d'un système expert écrit en LISP.
+L'idée : offrir à la communauté CPAN un moteur d'inférence aux concepts 
+clairs — objets typés, slots, chaîne d'inférence déterministe.
 
-La première version est née en 2013 du portage en Perl d'un projet original
-écrit en LISP. L'objectif était double : montrer que Perl était tout à fait
-adapté à ce type d'implémentation, et offrir à la communauté CPAN un moteur
-d'inférence inspiré des Frames de Minsky — objets typés, slots, héritage,
-chaîne d'inférence.
+Plus de dix ans plus tard, un constat : tandis que le moteur excelle à
+exécuter des règles de façon traçable, rédiger des règles YAML à la main
+reste fastidieux. C'est sur ce point précis qu'un LLM apporte une aide
+naturelle — en lisant un corpus de normes et en générant les règles YAML.
 
-Plus de dix ans après, l'analyse du projet par un LLM a mis en évidence une
-complémentarité inattendue : là où le moteur symbolique excelle à exécuter
-des règles de façon déterministe et traçable, le LLM excelle à lire un corpus
-et à les formaliser. La friction réelle — la génération des règles YAML,
-fastidieuse à écrire à la main — devenait le terrain naturel du LLM.
-
-C'est cette rencontre qui a donné naissance à la version 2.
-
-Chorus v2 est un système **symbolique augmenté** : le moteur d'inférence
-reste souverain — frames, slots, chaîne d'inférence, sans réseau de neurones
-dans la couche de décision. Le LLM est un outil de prétraitement, pas un
-décideur. Deux formes d'IA, complémentaires plutôt que concurrentes.
+La version 2 formalise cette complémentarité : **le LLM génère les règles,
+le moteur les exécute**. Deux formes d'IA, chacune dans son rôle optimal.
 
 ---
 
@@ -237,7 +225,7 @@ que trois conditions sont réunies :
    dépôt réglementaire, contentieux.
 
 | Domaine | Corpus type |
-|---|---|---|
+|---|---|
 | 🔐 **Cybersécurité / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annexe II, DORA, ETSI EN 319 412 |
 | 🌿 **CSRD / Environnement** | ESRS E1–E5, S1–S4, GHG Protocol, Taxonomie EU |
 | 🏗️ **Construction / BTP** | Eurocodes EC2/EC3/EC5, RE2020, DTU |
@@ -359,7 +347,7 @@ Les fichiers sont compilés dans l'ordre alphabétique — préfixer avec `R01-`
 ## Installation
 
 ```sh
-cpanm Chorus::Engine
+cpanm Chorus
 ```
 
 Ou depuis les sources :

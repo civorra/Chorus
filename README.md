@@ -1,4 +1,4 @@
-# Chorus::Engine
+# Chorus
 
 [![CPAN version](https://badge.fury.io/pl/Chorus.svg)](https://metacpan.org/dist/Chorus)
 [![CI](https://github.com/civorra/Chorus/actions/workflows/ci.yml/badge.svg)](https://github.com/civorra/Chorus/actions/workflows/ci.yml)
@@ -41,30 +41,19 @@ Normative corpus (PDF, plain text, Word, Excel)
 
 ---
 
-## Origin
+## Origins
 
-Chorus belongs to the tradition of **symbolic AI** — explicit knowledge
-representation, typed structures, deterministic inference. In the lineage of
-expert systems and **Marvin Minsky's Frames**.
+Chorus was born in 2013 from porting a LISP expert system to Perl.
+The goal: offer the CPAN community a clear inference engine — typed objects,
+slots, deterministic inference chain.
 
-The first version was born in 2013 from the porting to Perl of an original
-LISP project. The goal was twofold: to show that Perl was perfectly suited to
-this kind of implementation, and to offer the CPAN community an inference
-engine inspired by Minsky's Frames — typed objects, slots, inheritance,
-inference chain.
+More than a decade later, one observation emerged: the engine excels at
+executing rules deterministically and traceably, but writing YAML rules by
+hand remained tedious. That's the precise spot where an LLM helps naturally —
+reading a normative corpus and generating YAML rules.
 
-More than a decade later, an LLM's analysis of the project revealed an
-unexpected complementarity: where the symbolic engine excels at executing
-rules deterministically and traceably, the LLM excels at reading a corpus and
-formalising them. The real friction — writing YAML rules by hand, a tedious
-task — was the LLM's natural ground.
-
-That encounter gave rise to version 2.
-
-Chorus v2 is an **augmented symbolic** system: the inference engine remains
-sovereign — frames, slots, inference chain, no neural network in the decision
-layer. The LLM is a preprocessing tool, not a decision-maker. Two forms of
-AI, complementary rather than competing.
+Version 2 formalises this complementarity: **the LLM generates rules, the
+engine executes them**. Two forms of AI, each in its optimal role.
 
 ---
 
@@ -350,7 +339,7 @@ control priority. Multiple `loadRules()` calls accumulate.
 ## Installation
 
 ```sh
-cpanm Chorus::Engine
+cpanm Chorus
 ```
 
 Or from source:
