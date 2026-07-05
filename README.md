@@ -217,7 +217,7 @@ whenever three conditions hold:
    regulatory filing, litigation.
 
 | Domain | Typical corpus |
-|---|---|---|
+|---|---|
 | 🔐 **Cybersecurity / NIS2 / DORA** | SecNumCloud v3.2, NIS2 Annex II, DORA, ETSI EN 319 412 |
 | 🌿 **CSRD / Environment** | ESRS E1–E5, S1–S4, GHG Protocol, EU Taxonomy |
 | 🏗️ **Construction / BIM** | Eurocodes EC2/EC3/EC5, Building Regs, DTU |
@@ -338,15 +338,36 @@ control priority. Multiple `loadRules()` calls accumulate.
 
 ## Installation
 
+### Perl modules only (CPAN)
+
+For the inference engine and API only — no skills, no agents, no KB:
+
 ```sh
 cpanm Chorus
 ```
 
-Or from source:
+This installs `Chorus`, `Chorus::Engine`, `Chorus::Frame`, and `Chorus::Expert`.
+You can then use the engine directly in Perl code (see *Direct API* above).
+
+### Complete framework (git)
+
+For the full AI-assisted pipeline — skills, agents, KB templates, sandbox architecture:
 
 ```sh
+git clone https://github.com/civorra/Chorus
+cd Chorus
 perl Makefile.PL && make && make test && make install
 ```
+
+The complete framework includes:
+- `lib/` — Perl modules (same as CPAN)
+- `agent/skills/` — ECA skills for `chorus-feed`, `chorus-check`, etc.
+- `agent/org/` — KB templates and agent ontology
+- `sandboxes/demo_en` — working example (timber-frame building compliance)
+
+> **Note:** CPAN distributions contain only `.pm` files. Non-Perl assets
+> (skills, KB templates) are only available via git. This is by design: the
+> engine (modules) is independent of the pipeline (skills).
 
 ---
 

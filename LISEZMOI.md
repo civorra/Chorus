@@ -346,15 +346,36 @@ Les fichiers sont compilés dans l'ordre alphabétique — préfixer avec `R01-`
 
 ## Installation
 
+### Modules Perl uniquement (CPAN)
+
+Pour le moteur d'inférence et l'API uniquement — sans skills, sans agents, sans KB :
+
 ```sh
 cpanm Chorus
 ```
 
-Ou depuis les sources :
+Cela installe `Chorus`, `Chorus::Engine`, `Chorus::Frame` et `Chorus::Expert`.
+Vous pouvez ensuite utiliser le moteur directement dans du code Perl (voir *API directe* ci-dessus).
+
+### Framework complet (git)
+
+Pour le pipeline complet assisté par IA — skills, agents, templates KB, architecture sandbox :
 
 ```sh
+git clone https://github.com/civorra/Chorus
+cd Chorus
 perl Makefile.PL && make && make test && make install
 ```
+
+Le framework complet comprend :
+- `lib/` — modules Perl (identiques à CPAN)
+- `agent/skills/` — skills ECA pour `chorus-feed`, `chorus-check`, etc.
+- `agent/org/` — templates KB et ontologie agent
+- `sandboxes/demo_en` — exemple fonctionnel (conformité ossature bois)
+
+> **Note :** Les distributions CPAN ne contiennent que les fichiers `.pm`. Les
+> assets non-Perl (skills, templates KB) ne sont disponibles que via git.
+> C'est voulu : le moteur (modules) est indépendant du pipeline (skills).
 
 ---
 
