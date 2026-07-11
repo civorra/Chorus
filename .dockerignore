@@ -1,0 +1,13 @@
+# Dockerfile clones depuis GitHub — contexte local peut être vide
+# Mais on laisse le contexte ouvert pour les fichiers locaux si besoin
+
+# Exclure seulement les fichiers volumineux/inutiles
+.git
+.gitignore
+*.swp
+*.swo
+*~
+.DS_Store
+Chorus-*.tar.gz
+MYMETA.*
+Makefile
