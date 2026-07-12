@@ -15,6 +15,3 @@ Build
 mcp
 sandboxes/demo_en/**/.kb-hash
 
-# Claude Code local configuration — not committed
-.claude/
-

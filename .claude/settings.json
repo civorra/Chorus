@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(perl *)",
+      "Bash(python3 *)",
+      "Bash(chorus-* *)",
+      "Bash(cpanm *)",
+      "Bash(pip3 install *)",
+      "WriteFile(*)",
+      "ReadFile(*)"
+    ]
+  }
+}
