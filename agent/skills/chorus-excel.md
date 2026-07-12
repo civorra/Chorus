@@ -25,14 +25,12 @@
 > include `.xlsx` or `.csv` files — `chorus-import-project`'s built-in Excel handler is
 > minimal (tab-separated dump). `chorus-excel` preserves structure, merges, images and charts.
 
----
 
 ## ⛔ Strict sandbox isolation
 
 Never read any KB, YAML, or artifact from a sandbox other than `<sandbox-name>`.
 This skill operates exclusively on the `corpus/` directory of the target sandbox.
 
----
 
 ## Overview
 
@@ -67,7 +65,6 @@ No API key available, or CSV file
   → (default text/CSV mode — forced fallback)
 ```
 
----
 
 ## Phase 0.0 — Auto-detect mode (no explicit flag)
 
@@ -153,7 +150,6 @@ def probe_claude(api_key):
 
 Print the selected mode to stderr before proceeding to Phase 0.1.
 
----
 
 ## Phase 0 — Resolve inputs
 
@@ -215,7 +211,6 @@ Input  : corpus/002-elements-structure.csv
 CSV mode         : corpus/003-elements-structure-text.txt
 ```
 
----
 
 ## Phase 1 — Workbook analysis
 
@@ -320,7 +315,6 @@ cells in the range are "slaves" with `value = None`. The extraction script must:
 3. Display the merged value **only once** in the first column of the merged range
 4. Optionally annotate prominent merged ranges: `[MERGED: A1:C1 — "Titre section"]`
 
----
 
 ## Phase 1.5 — nohup gate (hybrid mode only)
 
@@ -348,14 +342,82 @@ The threshold constant `NOHUP_THRESHOLD = 15` is defined at the top of the scrip
 > automatically. Set `CHORUS_EXCEL_FORCE=1` and relaunch with `nohup` — pre-approved, no
 > confirmation required.
 
----
 
 ## Phase 2 — Generate the extraction script
 
 Create `$SANDBOX/agent/` if it does not exist.
 Write `$SANDBOX/agent/extract-excel-<slug>.py`, then execute it.
 
----
+
+### Shared utilities — Text & Hybrid modes
+
+The following functions are used verbatim in both the Text and Hybrid script templates.
+Include them in the generated script when either mode is active.
+
+```python
+def build_merged_map(ws):
+    merged_map = {}
+    for merged_range in ws.merged_cells.ranges:
+        cells = list(merged_range.cells)
+        if not cells:
+            continue
+        master_row, master_col = cells[0]
+        master_cell = ws.cell(row=master_row, column=master_col)
+        master_val = master_cell.value if master_cell.value is not None else ""
+        for row, col in cells[1:]:
+            merged_map[(row, col)] = master_val
+    return merged_map
+
+
+def cell_value(cell, merged_map):
+    if cell.value is not None:
+        if isinstance(cell.value, str) and cell.value.startswith('='):
+            return FORMULA_PLACEHOLDER
+        return str(cell.value)
+    master = merged_map.get((cell.row, cell.column))
+    return str(master) if master is not None else ""
+
+
+def extract_sheet_to_markdown(ws):
+    merged_map = build_merged_map(ws)
+    min_row = ws.min_row or 1
+    max_row = ws.max_row or 1
+    min_col = ws.min_column or 1
+    max_col = ws.max_column or 1
+    rows = []
+    for r in range(min_row, max_row + 1):
+        row = [cell_value(ws.cell(row=r, column=c), merged_map)
+               for c in range(min_col, max_col + 1)]
+        rows.append(row)
+    rows = [r for r in rows if any(v.strip() for v in r if v)]
+    if not rows:
+        return "(empty sheet)"
+    def cell_md(v):
+        return str(v or "").replace("|", "｜").replace("\n", " ").strip()
+    n_cols = max(len(r) for r in rows)
+    rows_padded = [r + [''] * (n_cols - len(r)) for r in rows]
+    lines = ["| " + " | ".join(cell_md(v) for v in rows_padded[0]) + " |",
+             "| " + " | ".join("---" for _ in rows_padded[0]) + " |"]
+    for row in rows_padded[1:]:
+        lines.append("| " + " | ".join(cell_md(v) for v in row) + " |")
+    return "\n".join(lines)
+
+
+def get_image_position(img_anchor):
+    """Return (row, col) of the image anchor top-left (1-based)."""
+    anchor = img_anchor.anchor
+    if hasattr(anchor, '_from'):
+        return (anchor._from.row + 1, anchor._from.col + 1)
+    return (0, 0)   # AbsoluteAnchor — insert at top of sheet
+
+
+def get_chart_position(chart_anchor):
+    """Return (row, col) of the chart anchor top-left (1-based)."""
+    anchor = chart_anchor.anchor
+    if hasattr(anchor, '_from'):
+        return (anchor._from.row + 1, anchor._from.col + 1)
+    return (0, 0)
+```
 
 ### Script template — CSV mode (always text, no API key needed)
 
@@ -374,31 +436,6 @@ import os
 
 CSV_PATH    = "<input-csv-path>"
 OUTPUT_PATH = "<output-txt-path>"
-
-
-def csv_to_markdown(csv_path):
-    """Convert a CSV file to a Markdown pipe table."""
-    with open(csv_path, newline='', encoding='utf-8-sig') as f:
-        reader = csv.reader(f)
-        rows = list(reader)
-    if not rows:
-        return "(empty CSV file)"
-
-    def cell(c):
-        return str(c or "").replace("|", "｜").replace("\n", " ").strip()
-
-    # Determine column count from widest row
-    n_cols = max(len(r) for r in rows)
-
-    # Header row
-    lines = ["| " + " | ".join(cell(c) for c in rows[0][:n_cols].ljust_pad(n_cols, '')) + " |",
-             "| " + " | ".join("---" for _ in range(n_cols)) + " |"]
-    # Pad rows with empty cells if shorter than header
-    for row in rows[1:]:
-        padded = row + [''] * max(0, n_cols - len(row))
-        lines.append("| " + " | ".join(cell(c) for c in padded[:n_cols]) + " |")
-    return "\n".join(lines)
-
 
 def csv_to_markdown_safe(csv_path):
     """Convert CSV to Markdown pipe table (safe version without list method abuse)."""
@@ -426,7 +463,6 @@ def csv_to_markdown_safe(csv_path):
         lines.append("| " + " | ".join(cell(c) for c in padded) + " |")
     return "\n".join(lines)
 
-
 def main():
     print(f"[chorus-excel] CSV mode — {CSV_PATH}", file=sys.stderr)
     md = csv_to_markdown_safe(CSV_PATH)
@@ -436,7 +472,6 @@ def main():
     print(f"[chorus-excel] ✅ CSV → Markdown ({line_count} lines). Written to {OUTPUT_PATH}",
           file=sys.stderr)
 
-
 if __name__ == "__main__":
     main()
 ```
@@ -444,7 +479,6 @@ if __name__ == "__main__":
 > ⚠️ **Encoding:** `utf-8-sig` handles BOM-prefixed CSV files produced by Excel on Windows.
 > ⚠️ **Dependencies**: none beyond Python 3.6+ stdlib.
 
----
 
 ### Script template — Text mode (XLSX without API key)
 
@@ -477,95 +511,8 @@ CHART_PLACEHOLDER = (
 )
 FORMULA_PLACEHOLDER = "[FORMULA — not evaluated]"
 
-
-def build_merged_map(ws):
-    """Build {(row, col): master_value} for all merged cell slaves.
-
-    The master cell (top-left of merge range) is NOT in this map — it
-    retains its own value. Only slave cells are mapped.
-    """
-    merged_map = {}
-    for merged_range in ws.merged_cells.ranges:
-        cells = list(merged_range.cells)
-        if not cells:
-            continue
-        master_row, master_col = cells[0]
-        master_cell = ws.cell(row=master_row, column=master_col)
-        master_val = master_cell.value if master_cell.value is not None else ""
-        for row, col in cells[1:]:
-            merged_map[(row, col)] = master_val
-    return merged_map
-
-
-def cell_value(cell, merged_map):
-    """Return a cell's display value, resolving merged cell slaves."""
-    if cell.value is not None:
-        if isinstance(cell.value, str) and cell.value.startswith('='):
-            # Formula with no cached value
-            return FORMULA_PLACEHOLDER
-        return str(cell.value)
-    # Check if this cell is a merged slave
-    master = merged_map.get((cell.row, cell.column))
-    if master is not None:
-        return str(master) if master != "" else ""
-    return ""
-
-
-def extract_sheet_to_markdown(ws):
-    """Extract one worksheet as a Markdown pipe table.
-
-    Skips entirely empty rows. Returns the Markdown string.
-    """
-    merged_map = build_merged_map(ws)
-    min_row = ws.min_row or 1
-    max_row = ws.max_row or 1
-    min_col = ws.min_column or 1
-    max_col = ws.max_column or 1
-
-    rows = []
-    for r in range(min_row, max_row + 1):
-        row = []
-        for c in range(min_col, max_col + 1):
-            cell = ws.cell(row=r, column=c)
-            row.append(cell_value(cell, merged_map))
-        rows.append(row)
-
-    # Remove entirely empty rows
-    rows = [r for r in rows if any(v.strip() for v in r if v)]
-
-    if not rows:
-        return "(empty sheet)"
-
-    def cell_md(v):
-        return str(v or "").replace("|", "｜").replace("\n", " ").strip()
-
-    n_cols = max(len(r) for r in rows)
-    rows_padded = [r + [''] * (n_cols - len(r)) for r in rows]
-
-    lines = [
-        "| " + " | ".join(cell_md(v) for v in rows_padded[0]) + " |",
-        "| " + " | ".join("---" for _ in rows_padded[0]) + " |",
-    ]
-    for row in rows_padded[1:]:
-        lines.append("| " + " | ".join(cell_md(v) for v in row) + " |")
-    return "\n".join(lines)
-
-
-def get_image_position(img_anchor):
-    """Return (row, col) of the image anchor top-left corner (1-based)."""
-    anchor = img_anchor.anchor
-    if hasattr(anchor, '_from'):
-        return (anchor._from.row + 1, anchor._from.col + 1)
-    return (0, 0)   # AbsoluteAnchor — insert at top of sheet
-
-
-def get_chart_position(chart_anchor):
-    """Return (row, col) of the chart anchor top-left corner (1-based)."""
-    anchor = chart_anchor.anchor
-    if hasattr(anchor, '_from'):
-        return (anchor._from.row + 1, anchor._from.col + 1)
-    return (0, 0)
-
+# → build_merged_map / cell_value / extract_sheet_to_markdown / get_image_position / get_chart_position
+#   see "Shared utilities — Text & Hybrid modes" above
 
 def main():
     try:
@@ -618,7 +565,6 @@ def main():
         f.write("\n\n".join(parts))
     print(f"[chorus-excel] ✅ Written to {OUTPUT_PATH}", file=sys.stderr)
 
-
 if __name__ == "__main__":
     main()
 ```
@@ -626,7 +572,6 @@ if __name__ == "__main__":
 > ⚠️ **Dependencies**: `pip install openpyxl`
 > ⚠️ Images and charts are not extracted in text mode — use hybrid mode with `ANTHROPIC_API_KEY`.
 
----
 
 ### Script template — Hybrid mode (XLSX with API key)
 
@@ -713,7 +658,6 @@ CHART_PLACEHOLDER_VISION = (
 
 FORMULA_PLACEHOLDER = "[FORMULA — not evaluated]"
 
-
 # ---------------------------------------------------------------------------
 # Image extraction helpers
 # ---------------------------------------------------------------------------
@@ -744,22 +688,7 @@ def extract_image_png(img_anchor):
             return blob
         return None   # unsupported format (EMF/WMF) — skip
 
-
-def get_image_position(img_anchor):
-    """Return (row, col) of the image anchor top-left (1-based)."""
-    anchor = img_anchor.anchor
-    if hasattr(anchor, '_from'):
-        return (anchor._from.row + 1, anchor._from.col + 1)
-    return (0, 0)   # AbsoluteAnchor — insert at top of sheet
-
-
-def get_chart_position(chart_anchor):
-    """Return (row, col) of the chart anchor top-left (1-based)."""
-    anchor = chart_anchor.anchor
-    if hasattr(anchor, '_from'):
-        return (anchor._from.row + 1, anchor._from.col + 1)
-    return (0, 0)
-
+# → get_image_position / get_chart_position — see "Shared utilities — Text & Hybrid modes" above
 
 # ---------------------------------------------------------------------------
 # Chart extraction via LibreOffice (Strategy A)
@@ -814,7 +743,6 @@ def chart_to_png_via_libreoffice(xlsx_path, tmpdir):
 
     return pages_png if pages_png else None
 
-
 def extract_chart_metadata(chart_obj):
     """Extract chart title and type from the openpyxl chart object for the fallback placeholder."""
     try:
@@ -828,7 +756,6 @@ def extract_chart_metadata(chart_obj):
         return title, chart_type, series_names
     except Exception:
         return "untitled", "Chart", []
-
 
 # ---------------------------------------------------------------------------
 # Claude vision — describe a single image or chart crop
@@ -873,64 +800,8 @@ def call_claude_figure(png_bytes, sheet_name, fig_idx):
                 raise RuntimeError(
                     f"HTTP {e.code} sheet='{sheet_name}' fig={fig_idx}: {body[:300]}")
 
-
-# ---------------------------------------------------------------------------
-# Table extraction (same as text mode)
-# ---------------------------------------------------------------------------
-
-def build_merged_map(ws):
-    merged_map = {}
-    for merged_range in ws.merged_cells.ranges:
-        cells = list(merged_range.cells)
-        if not cells:
-            continue
-        master_row, master_col = cells[0]
-        master_cell = ws.cell(row=master_row, column=master_col)
-        master_val = master_cell.value if master_cell.value is not None else ""
-        for row, col in cells[1:]:
-            merged_map[(row, col)] = master_val
-    return merged_map
-
-
-def cell_value(cell, merged_map):
-    if cell.value is not None:
-        if isinstance(cell.value, str) and cell.value.startswith('='):
-            return FORMULA_PLACEHOLDER
-        return str(cell.value)
-    master = merged_map.get((cell.row, cell.column))
-    return str(master) if master is not None else ""
-
-
-def extract_sheet_to_markdown(ws):
-    merged_map = build_merged_map(ws)
-    min_row = ws.min_row or 1
-    max_row = ws.max_row or 1
-    min_col = ws.min_column or 1
-    max_col = ws.max_column or 1
-
-    rows = []
-    for r in range(min_row, max_row + 1):
-        row = [cell_value(ws.cell(row=r, column=c), merged_map)
-               for c in range(min_col, max_col + 1)]
-        rows.append(row)
-
-    rows = [r for r in rows if any(v.strip() for v in r if v)]
-    if not rows:
-        return "(empty sheet)"
-
-    def cell_md(v):
-        return str(v or "").replace("|", "｜").replace("\n", " ").strip()
-
-    n_cols = max(len(r) for r in rows)
-    rows_padded = [r + [''] * (n_cols - len(r)) for r in rows]
-    lines = [
-        "| " + " | ".join(cell_md(v) for v in rows_padded[0]) + " |",
-        "| " + " | ".join("---" for _ in rows_padded[0]) + " |",
-    ]
-    for row in rows_padded[1:]:
-        lines.append("| " + " | ".join(cell_md(v) for v in row) + " |")
-    return "\n".join(lines)
-
+# → build_merged_map / cell_value / extract_sheet_to_markdown
+#   see "Shared utilities — Text & Hybrid modes" above
 
 # ---------------------------------------------------------------------------
 # Phase 2.5 — Cross-reference pass (Excel adaptation)
@@ -943,7 +814,6 @@ _XREF_STOPWORDS = {
     "Figure", "Table", "Clause", "Section", "Annex", "NOTE", "Fig",
 }
 _XREF_MIN_LEN = 2
-
 
 def build_sheet_texts(wb, sheet_names):
     """Build {sheet_name: [(text, row, col), ...]} for all text cells.
@@ -961,7 +831,6 @@ def build_sheet_texts(wb, sheet_names):
                     cells.append((cell.value.strip(), cell.row, cell.column))
         result[sheet_name] = cells
     return result
-
 
 def parse_identifiers(description: str) -> list:
     """Extract IDENTIFIERS JSON array from a [FIGURE] block. Same as chorus-pdf."""
@@ -986,7 +855,6 @@ def parse_identifiers(description: str) -> list:
         result.append(ident)
     return result
 
-
 def find_text_occurrences_excel(identifier: str, sheet_texts: dict) -> list:
     """Search all sheet cells for identifier as a whole word.
 
@@ -1007,7 +875,6 @@ def find_text_occurrences_excel(identifier: str, sheet_texts: dict) -> list:
                 results.append((sheet_name, row, col, snippet))
     return results
 
-
 def _fmt_occ_excel(occurrences: list) -> str:
     """Format Excel occurrence list: Sheet 'X' R5C3: ..."""
     if not occurrences:
@@ -1016,7 +883,6 @@ def _fmt_occ_excel(occurrences: list) -> str:
     for sheet_name, row, col, snippet in occurrences:
         lines.append(f"    Sheet '{sheet_name}' R{row}C{col}: {snippet}")
     return '\n'.join(lines)
-
 
 def xref_pass_excel(all_figure_descs: dict, sheet_texts: dict) -> tuple:
     """Run the full cross-reference pass (Excel adaptation of chorus-pdf xref_pass).
@@ -1086,7 +952,6 @@ def xref_pass_excel(all_figure_descs: dict, sheet_texts: dict) -> tuple:
 
     return annotated, '\n'.join(index_lines)
 
-
 # ---------------------------------------------------------------------------
 # Assembly: one block per sheet
 # ---------------------------------------------------------------------------
@@ -1105,7 +970,6 @@ def assemble_sheet(sheet_name, md_table, figure_descs_ordered):
         parts.append(desc)
     parts.append(f"=== END SHEET: {sheet_name} ===")
     return "\n\n".join(parts)
-
 
 # ---------------------------------------------------------------------------
 # Main
@@ -1267,7 +1131,6 @@ def main():
     print(f"[chorus-excel] ✅ {len(sheet_parts)} sheet(s), {total_figs} figure(s) — "
           f"Written to {OUTPUT_PATH}", file=sys.stderr)
 
-
 if __name__ == "__main__":
     main()
 ```
@@ -1284,7 +1147,6 @@ if __name__ == "__main__":
 > ℹ️ **Merged cells**: master values are propagated to slave cells automatically.
 > The Markdown table shows the master value once in its natural column position.
 
----
 
 ## Phase 2.5 — Cross-reference pass (hybrid mode only)
 
@@ -1351,7 +1213,6 @@ After all sheet blocks, a global index is appended at the end of the `-vision.md
 > ⚠️ **Hybrid mode only** — the XREF pass requires both `sheet_texts` (cell content)
 > and Claude figure descriptions. It is not available in text or CSV modes.
 
----
 
 ## Phase 3 — Execute and validate
 
@@ -1411,7 +1272,6 @@ Run this validation snippet on `$SANDBOX/corpus/<NNN>-<slug>-vision.md` (or `-te
 | EMF/WMF image — skipped | Unsupported format | Re-export the image as PNG in Excel before processing |
 | CSV: garbled characters | Wrong encoding | Add `encoding='latin-1'` or `encoding='cp1252'` in the reader |
 
----
 
 ## Phase 4 — Update sandbox metadata
 
@@ -1445,7 +1305,6 @@ Do **not** remove the original `.xlsx` or `.csv` — keep it in `corpus/` for tr
               (or: corpus/<NNN>-<slug>-text.txt)
 ```
 
----
 
 ## Integration with chorus-feed
 
@@ -1497,7 +1356,6 @@ chorus-import-project <sandbox> corpus/<NNN>-source-vision.md
 - XREF cross-reference pass linking figure identifiers to cell values
 - Structured output compatible with `chorus-feed` and `chorus-import-project`
 
----
 
 ## Dependencies
 
@@ -1509,7 +1367,6 @@ chorus-import-project <sandbox> corpus/<NNN>-source-vision.md
 | `pdftoppm` | `sudo apt install poppler-utils` | Chart page rendering — optional, required if LibreOffice used |
 | `ANTHROPIC_API_KEY` | `export ANTHROPIC_API_KEY="sk-ant-..."` | Hybrid mode |
 
----
 
 ## Quick Reference — Naming Conventions
 
@@ -1520,7 +1377,6 @@ chorus-import-project <sandbox> corpus/<NNN>-source-vision.md
 | Hybrid mode output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-devis-isolation-vision.md` |
 | Original XLSX/CSV | kept as-is in `corpus/` | `corpus/002-devis-isolation.xlsx` |
 
----
 
 ## Troubleshooting
 

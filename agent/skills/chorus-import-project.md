@@ -43,7 +43,6 @@
 > ⛔ **Never read** `Helpers.pm`, `Feed.pm`, `Agent/*.pm` to infer slots.
 > ⛔ **Never invent** a value absent from the source document — report the gap.
 
----
 
 ## Phase 0 — Source Data Acquisition
 
@@ -356,7 +355,6 @@ _XREF_STOPWORDS = {
 }
 _XREF_MIN_LEN = 2
 
-
 def _parse_identifiers(description):
     ids = []
     m = _re.search(r'^IDENTIFIERS:\s*(\[.*?\])\s*$', description, _re.MULTILINE)
@@ -377,7 +375,6 @@ def _parse_identifiers(description):
             result.append(ident)
     return result
 
-
 def _find_text_occurrences(identifier, page_data):
     pattern = _re.compile(r'\b' + _re.escape(identifier) + r'\b')
     results = []
@@ -392,7 +389,6 @@ def _find_text_occurrences(identifier, page_data):
                 if e < len(block_text): snip += '…'
                 results.append((page_num, snip))
     return results
-
 
 def _xref_pass(all_figure_descs, page_data):
     """Returns (annotated_descs, xref_index_block, xref_map).
@@ -450,7 +446,6 @@ def _xref_pass(all_figure_descs, page_data):
     lines.append("=== END XREF INDEX ===")
 
     return annotated, '\n'.join(lines), global_index
-
 
 # --- Run the cross-reference pass (hybrid only) ---
 if pdf_mode == "hybrid" and all_figure_descs:
@@ -582,18 +577,9 @@ else:
 
 ##### Step 0 — Auto-detect mode (Excel only — identical to PDF pipeline)
 
-```python
-api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-if excel_mode == 'excel' and api_key and probe_claude(api_key):
-    extraction_mode = "hybrid"
-    print("[import-excel] ANTHROPIC_API_KEY detected — hybrid mode activated.", flush=True)
-elif excel_mode == 'csv':
-    extraction_mode = "csv"
-    print("[import-excel] CSV format — text mode (no images).", flush=True)
-else:
-    extraction_mode = "text"
-    print("[import-excel] No API key or CSV — text mode (fallback).", flush=True)
-```
+Same `probe_claude()` probe as PDF Step 0. Three-branch result:
+`extraction_mode = "hybrid"` (xlsx + valid key) / `"csv"` (csv format, unconditionally) / `"text"` (fallback).
+Print prefix: `[import-excel]`.
 
 ##### Step 1 — CSV extraction
 
@@ -800,7 +786,6 @@ If the workbook contains **≥ 15 images + charts** combined → exit(2) + nohup
 > ⛔ **If extraction tools are absent** → warn and offer Case A (inline paste).
 > Never block the workflow over a missing optional tool.
 
----
 
 #### Word (.docx) — full-quality pipeline (same depth as PDF)
 
@@ -815,15 +800,7 @@ pipe tables with merged-cell handling, embedded images are sent to Claude vision
 
 ##### Step 0 — Auto-detect mode (identical to PDF pipeline)
 
-```python
-api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-if api_key and probe_claude(api_key):
-    word_mode = "hybrid"
-    print("[import-word] ANTHROPIC_API_KEY detected — hybrid mode activated.", flush=True)
-else:
-    word_mode = "text"
-    print("[import-word] No API key or Claude unreachable — text mode (fallback).", flush=True)
-```
+Same `probe_claude()` probe as PDF Step 0. Result: `word_mode = "hybrid"` or `"text"`. Print prefix: `[import-word]`.
 
 ##### Step 1 — Document traversal via XML body order
 
@@ -986,7 +963,6 @@ warning as the PDF pipeline — Phase 3 will be blind to image content.
 > ⛔ **If extraction tools are absent** → warn and offer Case A (inline paste).
 > Never block the workflow over a missing optional tool.
 
----
 
 #### Other formats — LibreOffice universal fallback
 
@@ -1000,7 +976,6 @@ libreoffice --headless --convert-to pdf "<fichier>" --outdir /tmp/
 If LibreOffice is absent → ask the engineer to provide copy-pasted content (Case A).
 Never block the workflow over a missing tool — offer the inline alternative.
 
----
 
 ## Phase 1 — Read the KB (canonical terminology)
 
@@ -1145,7 +1120,6 @@ If `thesaurus.org` does not yet exist, it is created automatically at the end of
 first import that produces at least one ✅ or ⚠️ alignment (Phase 6 — see below).
 No manual creation is required.
 
----
 
 ### 1.3 Previous alignment decisions
 
@@ -1156,7 +1130,6 @@ secondary memory source — complementary to the thesaurus, not a substitute.
 - Retrieve pending questions not yet in thesaurus → re-raise if the same terms reappear
 - **Skip any entry already covered by thesaurus.org** (1.2b takes priority)
 
----
 
 ## Phase 2 — Raw Inventory of Project Elements
 
@@ -1190,7 +1163,6 @@ Source line / cell              Term identified      Associated values
 > **Rule:** do not map at this stage — inventory first, align later.
 > Preserve the original source text in the inventory for traceability.
 
----
 
 ## Phase 3 — Terminology Alignment
 
@@ -1241,7 +1213,6 @@ If the engineer confirms `yes`, proceed — but set `"_couverture_kb": "low"` in
 > Files with 🔴 coverage are flagged in the batch summary report (Phase 6-BATCH)
 > with a `⚠️ low KB coverage` marker in the results table — the batch is not aborted.
 
----
 
 ### Alignment table
 
@@ -1398,36 +1369,8 @@ before Phase 6 completes.
 
 #### Thesaurus creation (first import)
 
-If `thesaurus.org` does not yet exist when the first resolution occurs:
-
-```org
-#+TITLE: Project terminology thesaurus — sandbox <sandbox-name>
-#+UPDATED: <date>
-#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox.
-               Maintained automatically by chorus-import-project.
-               Do NOT edit KB org files to add project aliases — use this file instead.
-
-* Aliases — type_element
-
-  | Project term | KB type_element | Confidence | Source import |
-  |---|---|---|---|
-
-* Aliases — slot values
-
-  | Project term | KB slot | KB value | Confidence | Source import |
-  |---|---|---|---|---|
-
-* Pending — to confirm on next import
-
-  | Project term | Proposed KB mapping | Flag | Source import |
-  |---|---|---|---|
-
-* Out-of-scope terms (⬜)
-
-  | Project term | Reason | Recommended sandbox | Last seen |
-  |---|---|---|---|
-```
-
+If `thesaurus.org` does not yet exist → create it using the format defined in Phase 1.2b
+(Thesaurus format), with all four section tables empty (headers only, no example rows).
 Then append the first resolved entry under the appropriate section.
 
 > ⚠️ **Deduplication rule:** before appending any entry, check whether the project term
@@ -1495,7 +1438,6 @@ file instead of proceeding to Phase 4 / JSON generation:
    The JSON is produced only on the subsequent run (without `--align-review`),
    after the engineer has validated the alignment file.
 
----
 
 ## Phase 4 — Identify Gaps
 
@@ -1518,7 +1460,6 @@ montant_porteur hauteur_libre_m     ✅          "h=2.5m"
 | Out-of-domain value (e.g. `classe_bois: "C12"`) | Report — let the engineer correct it |
 | Entire element unmappable | Include with `_incomplet: 1` — will be cleanly rejected by Feed |
 
----
 
 ## Phase 5 — Produce the JSON
 
@@ -1564,7 +1505,6 @@ Each file produces its own JSON named `projet-import-<NNN>.json`.
 The `_import.mode` field is `"batch"`.
 No cross-file merging — each JSON is self-contained and can be piped independently.
 
----
 
 ## Phase 6 — Produce the Import Report
 
@@ -1741,7 +1681,6 @@ In addition to the individual reports, create `$SANDBOX/agent/import-batch-<NNN>
 > Use `chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus.org` only if you want
 > to promote these mappings to the normative KB for cross-sandbox reuse.
 
----
 
 ## Phase 7 — Run the Pipeline (optional)
 
@@ -1753,7 +1692,6 @@ perl $SANDBOX/run.pl $SANDBOX/<projet-import-NNN.json>
 
 If `run.pl` does not yet exist → indicate that `chorus-check` should be run first.
 
----
 
 ## Separation of Responsibilities
 
@@ -1765,7 +1703,6 @@ If `run.pl` does not yet exist → indicate that `chorus-check` should be run fi
 | **Gaps** | n/a | reported, never invented | computed from KB | n/a |
 | **Never reads** | — | Helpers.pm, Feed.pm | Helpers.pm, Feed.pm | — |
 
----
 
 ## Architectural Principle — sandbox granularity = JSON granularity
 

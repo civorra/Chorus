@@ -24,14 +24,12 @@
 > This skill must be run **before** `chorus-import-project` when the corpus contains
 > `.xml`/`.html`/`.htm` files. `chorus-feed` then takes the output file as its corpus input.
 
----
 
 ## ⛔ Strict sandbox isolation
 
 Never read any KB, YAML, or artifact from a sandbox other than `<sandbox-name>`.
 This skill operates exclusively on the `corpus/` directory of the target sandbox.
 
----
 
 ## ⛔ XXE — mandatory security guard
 
@@ -45,13 +43,15 @@ access:
 ```python
 from lxml import etree
 
-parser = etree.XMLParser(
-    resolve_entities=False,   # never expand external entities
-    no_network=True,          # never fetch remote DTD/schema over network
-    dtd_validation=False,     # never validate against (possibly remote) DTD
-    load_dtd=False,           # never load the DTD at all
-    huge_tree=False,          # guard against decompression-bomb style huge documents
-)
+def safe_lxml_parser():
+    """Mandatory XXE-safe parser — use for every parser instantiation in this skill."""
+    return etree.XMLParser(
+        resolve_entities=False,   # never expand external entities
+        no_network=True,          # never fetch remote DTD/schema over network
+        dtd_validation=False,     # never validate against (possibly remote) DTD
+        load_dtd=False,           # never load the DTD at all
+        huge_tree=False,          # guard against decompression-bomb style huge documents
+    )
 ```
 
 For HTML (via BeautifulSoup + lxml backend), the same underlying `lxml.etree` parser
@@ -61,7 +61,6 @@ instance created with `resolve_entities=False`.
 > ⛔ This guard is **not optional** and must appear unmodified in every generated
 > extraction script (text mode and hybrid mode).
 
----
 
 ## Overview
 
@@ -93,7 +92,6 @@ two API-availability modes (text / hybrid) identical in spirit to `chorus-word`.
 | **Hybrid** (**default**) | *(none — auto-detected)* | DOM text + Claude vision on images | ✅ `ANTHROPIC_API_KEY` | ✅ described | ✅ Markdown pipe | `<NNN>-<slug>-vision.md` |
 | **Text** (fallback) | *(none — no API key)* | DOM parsing only | ❌ not required | `[IMAGE — not extracted]` placeholder | ✅ Markdown pipe | `<NNN>-<slug>-content.md` |
 
----
 
 ## Phase 0.0 — Auto-detect format mode (HTML vs XML)
 
@@ -119,27 +117,13 @@ Print the detected mode to stderr:
 [chorus-xml] Format detected: xml    (source: <?xml version= declaration, no <html> root)
 ```
 
----
 
 ## Phase 0.1 — Auto-detect API mode (no explicit flag)
 
-Identical logic to `chorus-word` Phase 0.0:
+Identical to `chorus-word` Phase 0.0 — same 3-step logic (key check → probe → decision),
+same decision table and message strings. Use `probe_claude()` from `chorus-word.md`
+Phase 0.0.2 verbatim.
 
-1. Check `ANTHROPIC_API_KEY` presence — absent → text mode, skip probe.
-2. If present, probe Claude with a minimal 1-token request (`claude-haiku-4-5`).
-3. Decision table:
-
-| `ANTHROPIC_API_KEY` | Probe result | Mode activated |
-|---|---|---|
-| absent | — | text |
-| present | ✅ valid | **hybrid** |
-| present | ❌ invalid (401/403) | text |
-| present | ❌ unreachable | text |
-| present | ⚠️ throttled (429/529) | **hybrid** |
-
-Reuse the exact `probe_claude()` function from `chorus-word.md` Phase 0.0.2 verbatim.
-
----
 
 ## Phase 0.2 — Resolve inputs
 
@@ -200,7 +184,6 @@ Text    : corpus/003-norme-nf-en-338-content.md
 
 Both formats are valid inputs for `chorus-feed`.
 
----
 
 ## Phase 1 — Document analysis
 
@@ -210,13 +193,7 @@ Both formats are valid inputs for `chorus-feed`.
 
 ```python
 from bs4 import BeautifulSoup
-from lxml import etree
-
-def safe_lxml_parser():
-    return etree.XMLParser(
-        resolve_entities=False, no_network=True,
-        dtd_validation=False, load_dtd=False, huge_tree=False,
-    )
+# → safe_lxml_parser(): defined in XXE guard section above
 
 with open(html_path, encoding="utf-8", errors="replace") as f:
     raw = f.read()
@@ -407,7 +384,6 @@ approach, iterating `ROW_LIKE`/`CELL_LIKE` children instead of `tr`/`td`.
 If a schema-specific image element is encountered (e.g. DITA `<image href=...>`),
 it falls through to a `[IMAGE — not extracted: unsupported XML schema]` placeholder.
 
----
 
 ## Phase 1.5 — nohup gate (hybrid mode only)
 
@@ -429,7 +405,6 @@ Bypass with `CHORUS_XML_FORCE=1`. Exit code 2 = "nohup required", not an error.
 The agent must set `CHORUS_XML_FORCE=1` and relaunch with `nohup` — pre-approved,
 no confirmation required.
 
----
 
 ## Phase 2 — Generate the extraction script
 
@@ -480,7 +455,6 @@ IMAGE_PLACEHOLDER = (
 REMOTE_IMAGE_PLACEHOLDER = "[IMAGE — remote URL, not fetched (no network access)]"
 ```
 
----
 
 ## Phase 3 — Execute and validate
 
@@ -536,7 +510,6 @@ Report the sanity check results to the user before proceeding.
 | Remote image not fetched | By design — no network access | Download the image manually into `corpus/` and reference it locally if needed |
 | Script exited with code 2 | ≥ 16 images detected | Run via nohup with `CHORUS_XML_FORCE=1` (see Phase 1.5) |
 
----
 
 ## Phase 4 — Update sandbox metadata
 
@@ -569,7 +542,6 @@ Do **not** remove the row for the original XML/HTML file or any prior file.
       chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
 ```
 
----
 
 ## Integration with chorus-feed
 
@@ -595,7 +567,6 @@ chorus-feed <sandbox> corpus/003-norme-publiee-content.md
 chorus-feed <sandbox> corpus/003-norme-publiee-vision.md
 ```
 
----
 
 ## Dependencies
 
@@ -609,7 +580,6 @@ chorus-feed <sandbox> corpus/003-norme-publiee-vision.md
 > ℹ️ No external binary is required. Both `lxml` and `beautifulsoup4` are pure
 > Python-wheel installs (lxml ships prebuilt libxml2/libxslt binaries on PyPI).
 
----
 
 ## Quick Reference — Naming Conventions
 
@@ -620,7 +590,6 @@ chorus-feed <sandbox> corpus/003-norme-publiee-vision.md
 | Hybrid output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-norme-nf-en-338-vision.md` |
 | Original XML/HTML | kept as-is in `corpus/` | `corpus/002-norme-nf-en-338.xml` |
 
----
 
 ## Troubleshooting
 

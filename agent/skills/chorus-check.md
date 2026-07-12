@@ -17,7 +17,6 @@
 > Prerequisite: `chorus-feed <sandbox-name>` must have been run beforehand
 > (KB org + YAML present in the sandbox).
 
----
 
 ## 🔌 Preliminary — MCP mode detection
 
@@ -36,7 +35,6 @@ of Phase 6 in the report header.
 > It does not affect Phases 0–5 (infrastructure generation) — those are
 > identical in both modes.
 
----
 
 ## ⚡ Step 0 — Infrastructure detection (PRIORITY, before any loading)
 
@@ -85,7 +83,6 @@ Load:
 
 Then execute Phases 0, 1–5, 6, 7 in order.
 
----
 
 ## Phase 0 — KB prerequisite check *(full path only)*
 
@@ -103,7 +100,6 @@ Extract from `index.org`:
 - The ordered list of agents (pos, slug, Perl module)
 - The termination agent (last)
 
----
 
 ## Phase 1 — Analyse the project file
 
@@ -137,7 +133,6 @@ These slots will drive the Feed validation.
 Read the `Slots de ciblage` section of the KB for the agent at position 1.
 This slot must be present on all Frames created by the Feed.
 
----
 
 ## Phase 2 — Generate `Feed.pm`
 
@@ -147,7 +142,6 @@ Create `$SANDBOX/lib/<Namespace>/Feed.pm` from template **T1** (`chorus-template
 - `%SLOTS_REQUIS` ← `obligatoire` slots from the Catalogue des Frames of each KB
 - agent 1 targeting slot comment ← `Slots de ciblage` section KB pos 1
 
----
 
 ## Phase 3 — Generate Agent modules
 
@@ -200,7 +194,6 @@ all frames are correctly processed.
 > - In a **`.yml` file** → always `$SELF->solved()`, `$SELF->cut()`, etc.
 > - In a **pure Perl `addrule()`** → capture `$agent` as a closure, never `$SELF`.
 
----
 
 ## Phase 4 — Generate `Expert.pm`
 
@@ -210,7 +203,6 @@ Create `$SANDBOX/lib/<Namespace>/Expert.pm` from template **T4** (`chorus-templa
 Force `$xprt->{_MAX_ITER}` after `new()` (known bug: `new()` ignores its arguments).
 Document BOARD inter-agent keys in `index.org` if agents communicate via BOARD slots.
 
----
 
 ## Phase 5 — Generate `run.pl`
 
@@ -223,7 +215,6 @@ Create `$SANDBOX/run.pl` from template **T5** (`chorus-templates.md`).
 
 **Rule:** `run.pl` contains **no hardcoded data** — all project input comes from the JSON argument.
 
----
 
 ## Phase 5.5 — Record KB hash *(full path only, after Phases 1–5)*
 
@@ -237,7 +228,6 @@ sha256sum $SANDBOX/agent/chorus/*.org > $SANDBOX/agent/.kb-hash
 This file is **never committed** (local artefact, like `sessions/`).
 It is invalidated (deleted) by `chorus-feed` at the end of each run.
 
----
 
 ## Phase 6 — Execution and report
 
@@ -306,7 +296,6 @@ If `chorus_process` returns `failed`:
 > for termination (see Phase 3) — it is loaded by `loadRules()` and is fully
 > MCP-compatible without requiring `build()`.
 
----
 
 ### 6B — Fallback mode (`$MCP_AVAILABLE = false`)
 
@@ -377,7 +366,6 @@ If **NOT CONVERGED** → recommend:
   Next step: chorus-strengthen <sandbox-name>
 ```
 
----
 
 ## Phase 6-all — `--all` mode (batch run)
 
@@ -499,10 +487,7 @@ CONVERGED ✅   — all projects SOLVED, 0 discordances, 0 unprocessed
 NOT CONVERGED ❌ — N discordances and/or N unprocessed across M project files
 ```
 
-If **NOT CONVERGED** → recommend:
-```
-  Next step: chorus-strengthen <sandbox-name>
-```
+If **NOT CONVERGED** → `Next step: chorus-strengthen <sandbox-name>`
 
 > **Sub-agent mode guarantee:** each sub-agent has its own IDE session and token.
 > No timeout risk regardless of pipeline complexity or number of project files.
@@ -511,12 +496,10 @@ If **NOT CONVERGED** → recommend:
 > `chorus-check <sandbox> <projet-file>` (single-file mode) for the failed
 > project only — no need to rerun the whole batch.
 
----
 
 > **Mode used** is reported in the compliance report header:
 > `Mode: MCP ✅` or `Mode: run.pl (MCP unavailable)`
 
----
 
 ## Phase 7 — Final verification *(post-generation only)*
 
@@ -540,13 +523,10 @@ If **NOT CONVERGED** → recommend:
       Heuristic: `N_frames × N_rules_total × N_agents × 10 < _MAX_CYCLES`.
       In `run.pl`: compute from `scalar(@elements)` and pass via `Expert->run(max_cycles => ...)`.
       Never leave the default value (`10_000`) for a production pipeline.
-- [ ] Termination agent: prefer the **YAML EXCEPTION pattern** for the termination rule
-      (loaded by `loadRules()` → MCP-compatible). See Phase 3 for the template.
-      If using a pure Perl `addrule()` instead: `solved()` must be called on `$agent`
-      (closure), never on `$SELF` — and be aware that `addrule()` is invisible to MCP mode.
+- [ ] Termination agent: use **YAML EXCEPTION pattern** (see Phase 3 template) — MCP-compatible, no infinite loop.
+      `addrule()` fallback: `solved()` on `$agent` (closure), never `$SELF`; invisible to MCP mode.
       ⛔ **Never use a global `fmatch` in a YAML `FIND`/`CHERCHER` block** → guaranteed infinite loop.
-      ✅ A `fmatch` in a YAML `EXCEPTION`/`CONDITION` block is safe — it is evaluated
-      per-cycle but does not bind frames.
+      ✅ `fmatch` in a YAML `EXCEPTION`/`CONDITION` block is safe (evaluated per-cycle, does not bind).
 - [ ] If `reorder()` is used: the sort function consults `_PREMISSES` — consistent with the YAML files
 - [ ] If `_LOCK_UNTIL_STABLE` is enabled: the agent may be skipped — verify this is the intended behaviour
 - [ ] BOARD: inter-agent keys are documented in `index.org`
@@ -555,7 +535,6 @@ If **NOT CONVERGED** → recommend:
       contains an `if` without `else` → return `0` when no slot is modified:
       `if (...) { ...; return 1 } 0`
 
----
 
 ## Separation of concerns — summary
 

@@ -19,14 +19,12 @@
 > This skill must be run **before** `chorus-import-project` when the corpus contains `.docx` files.
 > `chorus-feed` then takes the output file as its corpus input.
 
----
 
 ## ⛔ Strict sandbox isolation
 
 Never read any KB, YAML, or artifact from a sandbox other than `<sandbox-name>`.
 This skill operates exclusively on the `corpus/` directory of the target sandbox.
 
----
 
 ## Overview
 
@@ -64,7 +62,6 @@ API key absent
 > (smaller payload, lower cost). Tables are always reconstructed as Markdown pipe tables
 > via python-docx in both modes.
 
----
 
 ## Phase 0.0 — Auto-detect mode (no explicit flag)
 
@@ -136,7 +133,6 @@ def probe_claude(api_key):
 
 Print the selected mode to stderr before proceeding to Phase 0.1.
 
----
 
 ## Phase 0 — Resolve inputs
 
@@ -194,7 +190,6 @@ Hybrid  : corpus/003-cctp-structure-vision.md
 Text    : corpus/003-cctp-structure-text.txt
 ```
 
----
 
 ## Phase 1 — Document analysis
 
@@ -281,7 +276,6 @@ def iter_block_items(doc):
 > `y_center` descending), the Word pipeline simply iterates the XML body in order.
 > The reading order is guaranteed by the document format itself.
 
----
 
 ## Phase 1.5 — nohup gate (hybrid mode only)
 
@@ -311,7 +305,6 @@ to skip the gate and proceed unconditionally.
 > **not** retry automatically. Instead, it must set `CHORUS_WORD_FORCE=1` and relaunch
 > with `nohup` — **launch the nohup command** (pre-approved, no confirmation required).
 
----
 
 ## Phase 2 — Generate the extraction script
 
@@ -350,7 +343,78 @@ FIGURES AND DIAGRAMS
 """
 ```
 
----
+
+### Shared utilities — Text & Hybrid modes
+
+The following functions are used verbatim in both the Text and Hybrid script templates.
+Include them in the generated script when either mode is active.
+
+```python
+def cell_text(cell):
+    """Concatenate all paragraph text in a cell, stripping whitespace."""
+    return " ".join(p.text.strip() for p in cell.paragraphs if p.text.strip())
+
+
+def table_to_markdown(tbl):
+    """Convert a python-docx Table to a Markdown pipe table.
+    Handles merged cells by tracking unique _tc XML elements per row.
+    """
+    if not tbl.rows:
+        return ""
+    seen_cells = set()
+    deduped = []
+    for row in tbl.rows:
+        row_cells = []
+        for cell in row.cells:
+            cell_id = id(cell._tc)
+            if cell_id not in seen_cells:
+                seen_cells.add(cell_id)
+                row_cells.append(cell_text(cell))
+        if row_cells:
+            deduped.append(row_cells)
+    if not deduped or not deduped[0]:
+        return ""
+    n_cols = max(len(r) for r in deduped)
+    rows_padded = [r + [''] * (n_cols - len(r)) for r in deduped]
+    def cell_md(c):
+        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
+    lines = ["| " + " | ".join(cell_md(c) for c in rows_padded[0]) + " |",
+             "| " + " | ".join("---" for _ in rows_padded[0]) + " |"]
+    for row in rows_padded[1:]:
+        lines.append("| " + " | ".join(cell_md(c) for c in row) + " |")
+    return "\n".join(lines)
+
+
+def iter_block_items(doc):
+    """Yield (kind, obj) in XML body order (= reading order for DOCX).
+    Yields: ('para', (text, style)) | ('table', Table) | ('image', (idx, blob))
+    """
+    from docx.oxml.ns import qn
+    import docx.text.paragraph as _dp
+    body = doc.element.body
+    img_counter = [0]
+    for child in body:
+        tag = child.tag.split('}')[-1]
+        if tag == 'p':
+            para = _dp.Paragraph(child, doc)
+            blips = child.findall('.//' + qn('a:blip'))
+            if blips:
+                for blip in blips:
+                    rId = blip.get(qn('r:embed'))
+                    if rId and rId in doc.part.rels:
+                        img_part = doc.part.rels[rId].target_part
+                        img_counter[0] += 1
+                        yield ('image', (img_counter[0], img_part.blob))
+            else:
+                text = para.text.strip()
+                if text:
+                    style = para.style.name if para.style else ''
+                    yield ('para', (text, style))
+        elif tag == 'tbl':
+            import docx as _docx
+            tbl = _docx.table.Table(child, doc)
+            yield ('table', tbl)
+```
 
 ### Script template — Text mode (no API key or Claude unavailable)
 
@@ -379,95 +443,8 @@ IMAGE_PLACEHOLDER = (
     "[Run chorus-word with ANTHROPIC_API_KEY set to extract images via hybrid mode]"
 )
 
-
-def cell_text(cell):
-    """Concatenate all paragraph text in a cell, stripping whitespace."""
-    return " ".join(p.text.strip() for p in cell.paragraphs if p.text.strip())
-
-
-def table_to_markdown(tbl):
-    """Convert a python-docx Table to a Markdown pipe table.
-
-    Handles merged cells: merged cells share the same _tc XML element.
-    We track unique cell XML elements per row to deduplicate repeated content
-    caused by horizontal merges.
-    """
-    if not tbl.rows:
-        return ""
-
-    # Deduplicate merged cells per row by tracking unique _tc elements
-    seen_cells = set()
-    deduped = []
-    for row in tbl.rows:
-        row_cells = []
-        for cell in row.cells:
-            cell_id = id(cell._tc)
-            if cell_id not in seen_cells:
-                seen_cells.add(cell_id)
-                row_cells.append(cell_text(cell))
-        if row_cells:
-            deduped.append(row_cells)
-
-    if not deduped or not deduped[0]:
-        return ""
-
-    # Normalize column count across all rows
-    n_cols = max(len(r) for r in deduped)
-    rows_padded = [r + [''] * (n_cols - len(r)) for r in deduped]
-
-    def cell_md(c):
-        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
-
-    lines = [
-        "| " + " | ".join(cell_md(c) for c in rows_padded[0]) + " |",
-        "| " + " | ".join("---" for _ in rows_padded[0]) + " |",
-    ]
-    for row in rows_padded[1:]:
-        lines.append("| " + " | ".join(cell_md(c) for c in row) + " |")
-    return "\n".join(lines)
-
-
-def iter_block_items(doc):
-    """Yield (kind, obj) in XML body order (= reading order for DOCX).
-
-    Yields:
-      ('para',  (text: str, style: str))
-      ('table', Table)
-      ('image', (img_idx: int, blob: bytes))
-    """
-    try:
-        from docx.oxml.ns import qn
-        import docx.text.paragraph
-        import docx.table
-    except ImportError:
-        print("⛔ python-docx not installed. Run: pip install python-docx", file=sys.stderr)
-        sys.exit(1)
-
-    body = doc.element.body
-    img_counter = [0]
-    for child in body:
-        tag = child.tag.split('}')[-1]
-        if tag == 'p':
-            import docx as _docx
-            para = _docx.text.paragraph.Paragraph(child, doc)
-            blips = child.findall('.//' + qn('a:blip'))
-            if blips:
-                for blip in blips:
-                    rId = blip.get(qn('r:embed'))
-                    if rId and rId in doc.part.rels:
-                        img_part = doc.part.rels[rId].target_part
-                        img_counter[0] += 1
-                        yield ('image', (img_counter[0], img_part.blob))
-            else:
-                text = para.text.strip()
-                if text:
-                    style = para.style.name if para.style else ''
-                    yield ('para', (text, style))
-        elif tag == 'tbl':
-            import docx as _docx
-            tbl = _docx.table.Table(child, doc)
-            yield ('table', tbl)
-
+# → cell_text / table_to_markdown / iter_block_items
+#   see "Shared utilities — Text & Hybrid modes" above
 
 def main():
     try:
@@ -535,14 +512,12 @@ def main():
         print(f"[chorus-word]    {n_images} image(s) not extracted — "
               f"set ANTHROPIC_API_KEY to enable hybrid mode", file=sys.stderr)
 
-
 if __name__ == "__main__":
     main()
 ```
 
 > ⚠️ **Dependencies**: `pip install python-docx`
 
----
 
 ### Script template — Hybrid mode (default when API key present)
 
@@ -577,40 +552,13 @@ MAX_RETRIES = 4
 API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 API_URL     = "https://api.anthropic.com/v1/messages"
 
-FIGURE_PROMPT = """You are a technical document extraction engine.
-Describe this figure extracted from a normative PDF document.
-
-Apply the following rules strictly:
-
-FIGURES AND DIAGRAMS
-- Output a block of the form:
-    [FIGURE <N> — <title or caption if visible>]
-    <Structured description of all visual content:>
-    - Labeled dimensions, dimensions with units
-    - Named components and their spatial relationships
-    - Numerical values visible in or next to the figure
-    - Arrows, load paths, connection points, hinge symbols, support symbols
-    - Hatching patterns and what material or condition they represent
-    - Scale bar if present
-    [END FIGURE <N>]
-    IDENTIFIERS: ["<id1>", "<id2>", ...]
-- If there is no caption visible, assign [FIGURE ?] and describe anyway.
-- For IDENTIFIERS: list every alphanumeric code, label, designation or identifier
-  visible in the figure (callout tags, part numbers, zone codes, element IDs,
-  article references, dimension labels with letters). Use the exact string as printed.
-  Exclude purely numeric values (dimensions, measurements), single letters used as
-  generic variables, and common stopwords. Output valid JSON array on a single line
-  immediately after [END FIGURE <N>]. Output [] if no identifiers found.
-- Do not add text outside the [FIGURE] ... [END FIGURE] block and IDENTIFIERS line.
-- Use UTF-8. Preserve all special characters (±, ≤, ≥, ×, °, ², ³, …).
-"""
+FIGURE_PROMPT = """<verbatim — see "Figure description prompt" above in Phase 2>"""
 
 # ---------------------------------------------------------------------------
 # nohup gate
 # ---------------------------------------------------------------------------
 
 NOHUP_THRESHOLD = 15
-
 
 def check_nohup_gate(n_images):
     """Exit with code 2 if image count exceeds threshold (unless CHORUS_WORD_FORCE=1)."""
@@ -634,90 +582,8 @@ def check_nohup_gate(n_images):
             file=sys.stderr
         )
 
-
-# ---------------------------------------------------------------------------
-# python-docx — block iteration (reading order = XML body order)
-# ---------------------------------------------------------------------------
-
-def cell_text(cell):
-    """Concatenate all paragraph text in a cell."""
-    return " ".join(p.text.strip() for p in cell.paragraphs if p.text.strip())
-
-
-def table_to_markdown(tbl):
-    """Convert a python-docx Table to a Markdown pipe table.
-
-    Handles merged cells by tracking unique _tc XML elements per row.
-    """
-    if not tbl.rows:
-        return ""
-
-    seen_cells = set()
-    deduped = []
-    for row in tbl.rows:
-        row_cells = []
-        for cell in row.cells:
-            cell_id = id(cell._tc)
-            if cell_id not in seen_cells:
-                seen_cells.add(cell_id)
-                row_cells.append(cell_text(cell))
-        if row_cells:
-            deduped.append(row_cells)
-
-    if not deduped or not deduped[0]:
-        return ""
-
-    n_cols = max(len(r) for r in deduped)
-    rows_padded = [r + [''] * (n_cols - len(r)) for r in deduped]
-
-    def cell_md(c):
-        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
-
-    lines = [
-        "| " + " | ".join(cell_md(c) for c in rows_padded[0]) + " |",
-        "| " + " | ".join("---" for _ in rows_padded[0]) + " |",
-    ]
-    for row in rows_padded[1:]:
-        lines.append("| " + " | ".join(cell_md(c) for c in row) + " |")
-    return "\n".join(lines)
-
-
-def iter_block_items(doc):
-    """Yield (kind, obj) in XML body order.
-
-    Yields:
-      ('para',  (text: str, style: str))
-      ('table', Table)
-      ('image', (img_idx: int, blob: bytes))
-    """
-    from docx.oxml.ns import qn
-    import docx.text.paragraph as _dp
-    import docx.table as _dt
-
-    body = doc.element.body
-    img_counter = [0]
-    for child in body:
-        tag = child.tag.split('}')[-1]
-        if tag == 'p':
-            para = _dp.Paragraph(child, doc)
-            blips = child.findall('.//' + qn('a:blip'))
-            if blips:
-                for blip in blips:
-                    rId = blip.get(qn('r:embed'))
-                    if rId and rId in doc.part.rels:
-                        img_part = doc.part.rels[rId].target_part
-                        img_counter[0] += 1
-                        yield ('image', (img_counter[0], img_part.blob))
-            else:
-                text = para.text.strip()
-                if text:
-                    style = para.style.name if para.style else ''
-                    yield ('para', (text, style))
-        elif tag == 'tbl':
-            import docx as _docx
-            tbl = _docx.table.Table(child, doc)
-            yield ('table', tbl)
-
+# → cell_text / table_to_markdown / iter_block_items
+#   see "Shared utilities — Text & Hybrid modes" above
 
 # ---------------------------------------------------------------------------
 # Image conversion — blob → PNG bytes via Pillow
@@ -752,7 +618,6 @@ def convert_to_png(blob):
         if len(blob) >= 8 and blob[:8] == b'\x89PNG\r\n\x1a\n':
             return blob
         return None
-
 
 # ---------------------------------------------------------------------------
 # Claude vision — describe a single image
@@ -812,7 +677,6 @@ def call_claude_image(png_bytes, doc_name, img_idx):
                     f"HTTP {e.code} image {img_idx}: {body[:300]}"
                 )
 
-
 # ---------------------------------------------------------------------------
 # Phase 2.5 — Cross-reference pass
 # ---------------------------------------------------------------------------
@@ -829,7 +693,6 @@ _XREF_STOPWORDS = {
 
 # Minimum length for an identifier to be considered (avoids noise like "a1")
 _XREF_MIN_LEN = 2
-
 
 def parse_identifiers(description):
     """Extract the IDENTIFIERS JSON array from a [FIGURE] description block.
@@ -868,7 +731,6 @@ def parse_identifiers(description):
 
     return result
 
-
 def find_text_occurrences(identifier, block_texts):
     """Search all text blocks for occurrences of *identifier* as a whole word.
 
@@ -897,7 +759,6 @@ def find_text_occurrences(identifier, block_texts):
                 results.append((block_idx, snippet))
     return results
 
-
 def _fmt_occ(occurrences):
     """Format occurrence list as a compact multi-line string for the XREF block."""
     if not occurrences:
@@ -906,7 +767,6 @@ def _fmt_occ(occurrences):
     for block_idx, snippet in occurrences:
         lines.append(f"    § {block_idx}: {snippet}")
     return '\n'.join(lines)
-
 
 def xref_pass(all_image_descs, block_texts):
     """Run the full cross-reference pass.
@@ -983,7 +843,6 @@ def xref_pass(all_image_descs, block_texts):
     index_lines.append("=== END XREF INDEX ===")
 
     return annotated, '\n'.join(index_lines)
-
 
 # ---------------------------------------------------------------------------
 # Main
@@ -1155,7 +1014,6 @@ def main():
         file=sys.stderr
     )
 
-
 if __name__ == "__main__":
     main()
 ```
@@ -1171,7 +1029,6 @@ if __name__ == "__main__":
 > is not supported by Pillow. These images are skipped with a warning. Convert the
 > document to DOCX with a modern Word version to re-embed images as PNG/JPEG.
 
----
 
 ## Phase 2.5 — Cross-reference pass (hybrid mode only)
 
@@ -1245,7 +1102,6 @@ After all content blocks, a global index is appended at the end of the `-vision.
 > ⚠️ **Hybrid mode only** — the cross-reference pass requires both the paragraph text
 > blocks and the Claude image descriptions to be available simultaneously.
 
----
 
 ## Phase 3 — Execute and validate
 
@@ -1307,7 +1163,6 @@ Report the sanity check results to the user before proceeding.
 | `blob not found` warning | Image relationship broken | The DOCX has a dangling rId — re-save the document from Word |
 | Script exited with code 2 | ≥ 16 images detected | Run via nohup with `CHORUS_WORD_FORCE=1` (see Phase 1.5) |
 
----
 
 ## Phase 4 — Update sandbox metadata
 
@@ -1340,7 +1195,6 @@ kept for traceability.
               (or: corpus/<NNN>-<slug>-vision.md)
 ```
 
----
 
 ## Integration with chorus-feed
 
@@ -1367,7 +1221,6 @@ chorus-feed <sandbox> corpus/003-cctp-structure-text.txt
             (or: corpus/003-cctp-structure-vision.md)
 ```
 
----
 
 ## Dependencies
 
@@ -1380,7 +1233,6 @@ chorus-feed <sandbox> corpus/003-cctp-structure-text.txt
 > ℹ️ No external binary is required (`pdftoppm` is not needed for Word documents).
 > `python-docx` reads the DOCX XML directly without any native dependency.
 
----
 
 ## Quick Reference — Naming Conventions
 
@@ -1391,7 +1243,6 @@ chorus-feed <sandbox> corpus/003-cctp-structure-text.txt
 | Hybrid output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-cctp-structure-vision.md` |
 | Original DOCX | kept as-is in `corpus/` | `corpus/002-cctp-structure.docx` |
 
----
 
 ## Troubleshooting
 

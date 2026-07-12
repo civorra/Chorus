@@ -23,14 +23,10 @@
 > This skill must be run **before** `chorus-feed` when the corpus contains PDFs.
 > `chorus-feed` then takes the output file as its corpus input.
 
----
-
 ## ⛔ Strict sandbox isolation
 
 Never read any KB, YAML, or artifact from a sandbox other than `<sandbox-name>`.
 This skill operates exclusively on the `corpus/` directory of the target sandbox.
-
----
 
 ## Overview
 
@@ -75,8 +71,6 @@ No API key available
 > Claude vision on cropped figures only (smaller payload, lower cost, no text
 > re-interpretation). On pages with both text and figures, text fidelity is
 > maximised and API calls are minimised to the figure bounding boxes.
-
----
 
 ## Phase 0.0 — Auto-detect mode (no explicit flag)
 
@@ -152,8 +146,6 @@ Print the selected mode to stderr before proceeding to Phase 0.1.
 > `--auto`, `--hybrid` and `--images` bypass Phase 0.0 entirely — no probe, no key check.
 > Phase 0.0 is only entered when the user provides no mode flag.
 
----
-
 ## Phase 0 — Resolve inputs
 
 ### 0.1 Resolve the sandbox path
@@ -213,8 +205,6 @@ Default : corpus/003-uk-approved-doc-a-2013-text.txt
 --images: corpus/003-uk-approved-doc-a-2013-vision.md
 ```
 
----
-
 ## Phase 1 — PDF assessment
 
 ### 1.1 Count pages
@@ -240,21 +230,9 @@ pdfinfo "<path/to/file.pdf>" | grep "^Pages:" | awk '{print $2}'
 ### 1.2 Page classification (--auto mode only)
 
 For `--auto`, each page is classified **before** generating the script,
-using `pypdf` to inspect the page content:
+using `pypdf` to inspect the page content.
 
-```python
-import pypdf
-reader = pypdf.PdfReader(pdf_path)
-for i, page in enumerate(reader.pages, 1):
-    text      = page.extract_text() or ""
-    has_image = len(page.images) > 0
-    has_text  = len(text.strip()) > 50   # threshold: ignore near-empty pages
-
-    if has_image or not has_text:
-        category = 'vision'   # → pdftoppm + Claude
-    else:
-        category = 'text'     # → pdfminer
-```
+→ Implementation: see `classify_pages()` in the Auto mode script template.
 
 Report the classification to the user before generating the script:
 ```
@@ -284,18 +262,8 @@ tables as **vectors** (`LTCurve` elements — thin lines forming cell borders), 
 `LTFigure` or embedded images. Standard pdfminer text extraction silently discards the
 table structure and dumps cell contents in Y-order, mixing columns.
 
-**Detection heuristic** — applied during `analyse_pages` on every page:
-
-```python
-from pdfminer.layout import LTCurve
-
-h_lines = [el for el in layout if isinstance(el, LTCurve)
-           and (el.y1 - el.y0) < 3 and (el.x1 - el.x0) > 50]   # horizontal rule
-v_lines = [el for el in layout if isinstance(el, LTCurve)
-           and (el.x1 - el.x0) < 3 and (el.y1 - el.y0) > 30]   # vertical separator
-
-has_table = len(h_lines) >= 2 and len(v_lines) >= 1
-```
+**Detection heuristic** — applied during `analyse_pages` on every page: ≥2 horizontal `LTCurve` elements (width > 50) + ≥1 vertical (height > 30) → `has_table = True`.
+→ Implementation: see `analyse_pages()` in "Shared utilities — Text & Hybrid modes" (Phase 2).
 
 Store `has_table` in the `analyse_pages` result so that the assembly phase knows
 which pages require `pdfplumber` table reconstruction.
@@ -305,143 +273,43 @@ which pages require `pdfplumber` table reconstruction.
 When `has_table` is `True`, use `pdfplumber` to reconstruct the table as a Markdown
 pipe table. The key insight is that pdfplumber's automatic column detection often fails
 on PDF files with doubled/hairline lines (linewidth ≈ 0). Use `'vertical_strategy':
-'explicit'` with column x-coordinates derived from the V-edges detected above:
+'explicit'` with column x-coordinates derived from the V-edges detected above.
 
-```python
-def detect_table_columns(page):
-    """Detect explicit vertical column separators from V-edges on this pdfplumber page.
-    Returns a sorted list of x-coordinates, or None if no table structure found."""
-    edges  = page.edges
-    v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
-    h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
-    if len(h_edges) < 2 or len(v_edges) < 1:
-        return None
-    # Cluster x-coordinates — snap duplicates within 3 pt
-    xs = sorted(set(e['x0'] for e in v_edges))
-    clustered = []
-    for x in xs:
-        if not clustered or x - clustered[-1] > 3:
-            clustered.append(x)
-    # Add left/right boundaries from the widest H-edge
-    widest = max(h_edges, key=lambda e: e['width'])
-    all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
-    return all_xs if len(all_xs) >= 2 else None
-
-def extract_tables_from_page(page):
-    """Extract tables from a pdfplumber page as (bbox, markdown) tuples."""
-    col_xs = detect_table_columns(page)
-    if col_xs is None:
-        return []
-    settings = {
-        'vertical_strategy':   'explicit',
-        'horizontal_strategy': 'lines',
-        'explicit_vertical_lines': col_xs,
-        'snap_tolerance': 6,
-        'join_tolerance':  6,
-        'edge_min_length': 10,
-    }
-    result = []
-    try:
-        for tobj in page.find_tables(table_settings=settings):
-            rows = tobj.extract()
-            if not rows or not any(any(c for c in row) for row in rows):
-                continue
-            # Build Markdown pipe table
-            def cell(c):
-                return str(c or "").replace("\n", " ").replace("|", "｜").strip()
-            lines = []
-            lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
-            lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
-            for row in rows[1:]:
-                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
-            result.append((tobj.bbox, "\n".join(lines)))
-    except Exception:
-        pass
-    return result
-```
+→ Implementation: see `detect_table_columns()` / `extract_tables_from_page()` in the script templates below.
 
 **Coordinate system — pdfplumber `top` → pdfminer `y_center`:**
 
 pdfplumber uses origin=top-left (`top` increases downward); pdfminer uses
-origin=bottom-left (`y` increases upward). Convert with:
+origin=bottom-left (`y` increases upward).
 
-```python
-def pdfplumber_top_to_pdfminer_y(top, page_height_pt):
-    return page_height_pt - top
-```
+→ Implementation: see `pdfplumber_top_to_pdfminer_y()` in the script templates below.
 
 **Deduplication:** after inserting a table block at its Y-position, suppress all
 `LTTextBox` elements whose `y_center` falls within the table's vertical range —
 they are already represented by the Markdown table.
 
-**Dependency:** `pdfplumber` — installed in the pipx venv at
-`~/.local/share/pipx/venvs/pdfplumber/bin/python3` if not available system-wide.
-The script must detect the correct interpreter or fall back gracefully.
+**Layout analysis loop** — extracts text blocks and figure bboxes per page, with
+`has_table` detection embedded.
 
-```python
-from pdfminer.high_level import extract_pages
-from pdfminer.layout import LAParams, LTTextBox, LTFigure
-
-laparams = LAParams(boxes_flow=0.5, char_margin=2.0)
-page_figures = {}   # {page_num: [(x0, y0, x1, y1), ...]}
-page_texts   = {}   # {page_num: [(text_block, y_center), ...]}
-
-for page_num, layout in enumerate(extract_pages(pdf_path, laparams=laparams), 1):
-    figures = []
-    texts   = []
-    page_height = layout.height
-    for el in layout:
-        if isinstance(el, LTFigure):
-            figures.append((el.x0, el.y0, el.x1, el.y1))
-        elif isinstance(el, LTTextBox):
-            t = el.get_text().strip()
-            if t:
-                y_center = (el.y0 + el.y1) / 2
-                texts.append((t, y_center))
-    page_figures[page_num] = figures
-    page_texts[page_num]   = texts
-```
+→ Implementation: see `analyse_pages()` in "Shared utilities — Text & Hybrid modes" (Phase 2).
 
 **Coordinate conversion — PDF space → PNG pixels:**
 
 PDF coordinates have their origin at the **bottom-left**; PNG pixels have theirs at
-the **top-left**. Convert with:
+the **top-left**.
 
-```python
-def pdf_bbox_to_png_crop(x0, y0, x1, y1, page_height, dpi=150):
-    """Convert a PDF LTFigure bbox to PIL crop coordinates (left, upper, right, lower)."""
-    scale  = dpi / 72.0
-    left   = int(x0 * scale)
-    upper  = int((page_height - y1) * scale)   # flip vertical axis
-    right  = int(x1 * scale)
-    lower  = int((page_height - y0) * scale)
-    # Add a small margin to capture borders
-    margin = int(4 * scale)
-    return (
-        max(0, left  - margin),
-        max(0, upper - margin),
-        right  + margin,
-        lower  + margin,
-    )
-```
+→ Implementation: see `pdf_bbox_to_png_crop()` in the Hybrid mode script template.
 
 **Reading order reconstruction:**
 
 After mixing text blocks and `[FIGURE N]` placeholders, sort all elements by their
-`y_center` in **descending** order (top of page = highest PDF y-coordinate):
+`y_center` in **descending** order (top of page = highest PDF y-coordinate).
 
-```python
-elements = []
-for text, y_center in page_texts[page_num]:
-    elements.append((y_center, 'text', text))
-for fig_idx, (x0, y0, x1, y1) in enumerate(page_figures[page_num], 1):
-    y_center_fig = (y0 + y1) / 2
-    elements.append((y_center_fig, 'figure', fig_idx))
+→ Implementation: see `assemble_page()` in the Hybrid mode script template.
 
-elements.sort(key=lambda e: e[0], reverse=True)   # top-to-bottom reading order
-```
-
----
+**Dependency:** `pdfplumber` — installed in the pipx venv at
+`~/.local/share/pipx/venvs/pdfplumber/bin/python3` if not available system-wide.
+The script must detect the correct interpreter or fall back gracefully.
 
 ## Phase 1.5 — nohup gate (hybrid mode only)
 
@@ -478,8 +346,6 @@ whether it is running inside the IDE or not.
 > ⚠️ **instruction:** when executing the script and receives exit code 2, it must **not** retry automatically. Instead, it must
 > set `CHORUS_PDF_FORCE=1` and relaunch with `nohup` — **launch the nohup command**
 > (pre-approved, no confirmation required).
-
----
 
 ## Phase 2 — Generate the extraction script
 
@@ -538,7 +404,133 @@ OUTPUT FORMAT
 - Do not add commentary outside the === PAGE === markers.
 ```
 
----
+### Shared utilities — Text & Hybrid modes
+
+The following two functions are used verbatim in both the Text and Hybrid script templates.
+Include them in the generated script when either mode is active.
+
+```python
+def detect_table_columns(page):
+    """Detect explicit vertical column separators from V-edges on this pdfplumber page.
+    Returns a sorted list of x-coordinates, or None if no table structure found."""
+    edges   = page.edges
+    v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
+    h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
+    if len(h_edges) < 2 or len(v_edges) < 1:
+        return None
+    # Cluster x-coordinates — snap duplicates within 3 pt
+    xs = sorted(set(e['x0'] for e in v_edges))
+    clustered = []
+    for x in xs:
+        if not clustered or x - clustered[-1] > 3:
+            clustered.append(x)
+    # Add left/right boundaries from the widest H-edge
+    widest = max(h_edges, key=lambda e: e['width'])
+    all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
+    return all_xs if len(all_xs) >= 2 else None
+
+
+def extract_tables_from_page(page):
+    """Extract tables from a pdfplumber page as (bbox, markdown) tuples.
+    bbox = (x0, top, x1, bottom) in pdfplumber coords."""
+    col_xs = detect_table_columns(page)
+    if col_xs is None:
+        return []
+    settings = {
+        'vertical_strategy':       'explicit',
+        'horizontal_strategy':     'lines',
+        'explicit_vertical_lines': col_xs,
+        'snap_tolerance':          6,
+        'join_tolerance':          6,
+        'edge_min_length':         10,
+    }
+
+    def cell(c):
+        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
+
+    result = []
+    try:
+        for tobj in page.find_tables(table_settings=settings):
+            rows = tobj.extract()
+            if not rows or not any(any(c for c in row) for row in rows):
+                continue
+            lines = []
+            lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
+            lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
+            for row in rows[1:]:
+                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+            result.append((tobj.bbox, "\n".join(lines)))
+    except Exception:
+        pass
+    return result
+
+
+def analyse_pages(pdf_path):
+    """Extract text blocks, figure bboxes, and vector-table markers per page.
+    Returns {page_num: {'texts': [(text, y_center, x0, x1)], 'figures': [(x0,y0,x1,y1)],
+                        'height': float, 'has_table': bool}}
+    Used verbatim in Text mode (figures checked as bool) and Hybrid mode (figures as crop targets).
+    Uses the full 7-parameter LAParams set (from the original text mode) for both modes —
+    this is intentional: the hybrid mode previously used only 2 params (boxes_flow, char_margin),
+    which was an inconsistency. The unified version applies more precise layout analysis to both.
+    """
+    try:
+        from pdfminer.high_level import extract_pages
+        from pdfminer.layout import LAParams, LTTextBox, LTFigure, LTCurve
+    except ImportError:
+        print("⛔ pdfminer.six not installed. Run: pip install pdfminer.six", file=sys.stderr)
+        sys.exit(1)
+    laparams = LAParams(
+        line_overlap=0.5, char_margin=2.0, line_margin=0.5,
+        word_margin=0.1, boxes_flow=0.5, detect_vertical=False, all_texts=False
+    )
+    result = {}
+    for page_num, layout in enumerate(extract_pages(pdf_path, laparams=laparams), 1):
+        texts, figures, curves = [], [], []
+        for el in layout:
+            if isinstance(el, LTTextBox):
+                t = el.get_text().strip()
+                if t:
+                    texts.append((t, (el.y0 + el.y1) / 2, el.x0, el.x1))
+            elif isinstance(el, LTFigure):
+                figures.append((el.x0, el.y0, el.x1, el.y1))
+            elif isinstance(el, LTCurve):
+                curves.append(el)
+        h_lines = [c for c in curves if (c.y1 - c.y0) < 3 and (c.x1 - c.x0) > 50]
+        v_lines = [c for c in curves if (c.x1 - c.x0) < 3 and (c.y1 - c.y0) > 30]
+        result[page_num] = {
+            'texts':     texts,
+            'figures':   figures,
+            'height':    layout.height,
+            'has_table': len(h_lines) >= 2 and len(v_lines) >= 1,
+        }
+    return result
+
+
+def call_claude_with_retry(payload, headers, label, timeout=300):
+    """Execute a Claude API call with exponential backoff (MAX_RETRIES attempts).
+    Returns the text content of Claude's first response block.
+    Raises RuntimeError on non-retryable HTTP errors.
+    """
+    for attempt in range(MAX_RETRIES):
+        req = urllib.request.Request(
+            API_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))["content"][0]["text"]
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            if e.code in (429, 529) and attempt < MAX_RETRIES - 1:
+                wait = 10 * (2 ** attempt)
+                print(f"  HTTP {e.code} — retrying in {wait}s ...", file=sys.stderr)
+                time.sleep(wait)
+            else:
+                raise RuntimeError(f"HTTP {e.code} on {label}: {body[:500]}")
+```
 
 ### Script template — Text mode (no flag + Claude unavailable, or forced text mode)
 
@@ -567,89 +559,8 @@ FIGURE_PLACEHOLDER = (
 )
 
 
-def analyse_pages_text(pdf_path):
-    """Extract text + detect figures and vector tables. Returns list of
-    (page_num, text_blocks, has_figure, has_table, page_height)."""
-    try:
-        from pdfminer.high_level import extract_pages as pm_extract
-        from pdfminer.layout import LAParams, LTTextBox, LTFigure, LTCurve
-    except ImportError:
-        print("⛔ pdfminer.six not installed. Run: pip install pdfminer.six", file=sys.stderr)
-        sys.exit(1)
-
-    laparams = LAParams(
-        line_overlap=0.5,
-        char_margin=2.0,
-        line_margin=0.5,
-        word_margin=0.1,
-        boxes_flow=0.5,
-        detect_vertical=False,
-        all_texts=False
-    )
-
-    result = []
-    for page_num, layout in enumerate(pm_extract(pdf_path, laparams=laparams), 1):
-        blocks     = []
-        has_figure = False
-        curves     = []
-        for el in layout:
-            if isinstance(el, LTTextBox):
-                t = el.get_text().strip()
-                if t:
-                    blocks.append((t, (el.y0 + el.y1) / 2, el.x0, el.x1))
-            elif isinstance(el, LTFigure):
-                has_figure = True
-            elif isinstance(el, LTCurve):
-                curves.append(el)
-        h_lines   = [c for c in curves if (c.y1 - c.y0) < 3 and (c.x1 - c.x0) > 50]
-        v_lines   = [c for c in curves if (c.x1 - c.x0) < 3 and (c.y1 - c.y0) > 30]
-        has_table = len(h_lines) >= 2 and len(v_lines) >= 1
-        result.append((page_num, blocks, has_figure, has_table, layout.height))
-    return result
-
-
-def detect_table_columns(page):
-    edges   = page.edges
-    v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
-    h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
-    if len(h_edges) < 2 or len(v_edges) < 1:
-        return None
-    xs = sorted(set(e['x0'] for e in v_edges))
-    clustered = []
-    for x in xs:
-        if not clustered or x - clustered[-1] > 3:
-            clustered.append(x)
-    widest = max(h_edges, key=lambda e: e['width'])
-    all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
-    return all_xs if len(all_xs) >= 2 else None
-
-
-def extract_tables_from_page(page):
-    col_xs = detect_table_columns(page)
-    if col_xs is None:
-        return []
-    settings = {
-        'vertical_strategy':       'explicit',
-        'horizontal_strategy':     'lines',
-        'explicit_vertical_lines': col_xs,
-        'snap_tolerance': 6, 'join_tolerance': 6, 'edge_min_length': 10,
-    }
-    def cell(c):
-        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
-    result = []
-    try:
-        for tobj in page.find_tables(table_settings=settings):
-            rows = tobj.extract()
-            if not rows or not any(any(c for c in row) for row in rows):
-                continue
-            lines = ["| " + " | ".join(cell(c) for c in rows[0]) + " |",
-                     "| " + " | ".join("---" for _ in rows[0]) + " |"]
-            for row in rows[1:]:
-                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
-            result.append((tobj.bbox, "\n".join(lines)))
-    except Exception:
-        pass
-    return result
+# → analyse_pages() / detect_table_columns() / extract_tables_from_page()
+#   see "Shared utilities — Text & Hybrid modes" above
 
 
 def main():
@@ -663,14 +574,17 @@ def main():
               file=sys.stderr)
 
     print(f"[chorus-pdf] Text mode — {PDF_PATH}", file=sys.stderr)
-    page_data = analyse_pages_text(PDF_PATH)
+    page_data = analyse_pages(PDF_PATH)   # → "Shared utilities — Text & Hybrid modes" above
     plumber_pdf = pdfplumber_mod.open(PDF_PATH) if HAS_PDFPLUMBER else None
 
     parts = []
     fig_pages   = 0
     total_tables = 0
 
-    for page_num, blocks, has_figure, has_table, page_height in page_data:
+    for page_num in sorted(page_data):
+        pdata = page_data[page_num]
+        blocks, has_figure, has_table, page_height = \
+            pdata['texts'], bool(pdata['figures']), pdata['has_table'], pdata['height']
         elements = []  # (y_center, content)
 
         # Vector table reconstruction
@@ -718,8 +632,6 @@ if __name__ == "__main__":
 ```
 
 > ⚠️ **Dependencies**: `pip install pdfminer.six pdfplumber` (`pdfplumber` optional — graceful fallback if absent)
-
----
 
 ### Script template — Hybrid mode (`--hybrid`)
 
@@ -790,106 +702,9 @@ FIGURES AND DIAGRAMS
 """
 
 
-# ---------------------------------------------------------------------------
 # pdfminer layout analysis — extract text blocks AND figure bboxes per page
-# ---------------------------------------------------------------------------
-
-def analyse_pages(pdf_path):
-    """Return {page_num: {'texts': [(text, y_center, x0, x1)], 'figures': [(x0,y0,x1,y1)],
-                          'height': float, 'has_table': bool}}"""
-    try:
-        from pdfminer.high_level import extract_pages
-        from pdfminer.layout import LAParams, LTTextBox, LTFigure, LTCurve
-    except ImportError:
-        print("⛔ pdfminer.six not installed. Run: pip install pdfminer.six", file=sys.stderr)
-        sys.exit(1)
-
-    laparams = LAParams(boxes_flow=0.5, char_margin=2.0)
-    result = {}
-    for page_num, layout in enumerate(extract_pages(pdf_path, laparams=laparams), 1):
-        texts   = []
-        figures = []
-        curves  = []
-        for el in layout:
-            if isinstance(el, LTTextBox):
-                t = el.get_text().strip()
-                if t:
-                    y_center = (el.y0 + el.y1) / 2
-                    texts.append((t, y_center, el.x0, el.x1))
-            elif isinstance(el, LTFigure):
-                figures.append((el.x0, el.y0, el.x1, el.y1))
-            elif isinstance(el, LTCurve):
-                curves.append(el)
-        # Detect vector table structure: ≥2 H-rules (w>50) + ≥1 V-separator (h>30)
-        h_lines = [c for c in curves if (c.y1 - c.y0) < 3 and (c.x1 - c.x0) > 50]
-        v_lines = [c for c in curves if (c.x1 - c.x0) < 3 and (c.y1 - c.y0) > 30]
-        has_table = len(h_lines) >= 2 and len(v_lines) >= 1
-        result[page_num] = {
-            'texts':     texts,
-            'figures':   figures,
-            'height':    layout.height,
-            'has_table': has_table,
-        }
-    return result
-
-
-# ---------------------------------------------------------------------------
-# pdfplumber — vector table detection and Markdown reconstruction
-# ---------------------------------------------------------------------------
-
-def detect_table_columns(page):
-    """Detect explicit vertical column separators from V-edges on this pdfplumber page.
-    Returns a sorted list of x-coordinates, or None if no table structure found."""
-    edges   = page.edges
-    v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
-    h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
-    if len(h_edges) < 2 or len(v_edges) < 1:
-        return None
-    # Cluster x-coordinates — snap duplicates within 3 pt
-    xs = sorted(set(e['x0'] for e in v_edges))
-    clustered = []
-    for x in xs:
-        if not clustered or x - clustered[-1] > 3:
-            clustered.append(x)
-    # Add left/right boundaries from the widest H-edge
-    widest = max(h_edges, key=lambda e: e['width'])
-    all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
-    return all_xs if len(all_xs) >= 2 else None
-
-
-def extract_tables_from_page(page):
-    """Extract tables from a pdfplumber page as (bbox, markdown) tuples.
-    bbox = (x0, top, x1, bottom) in pdfplumber coords."""
-    col_xs = detect_table_columns(page)
-    if col_xs is None:
-        return []
-    settings = {
-        'vertical_strategy':       'explicit',
-        'horizontal_strategy':     'lines',
-        'explicit_vertical_lines': col_xs,
-        'snap_tolerance':          6,
-        'join_tolerance':          6,
-        'edge_min_length':         10,
-    }
-
-    def cell(c):
-        return str(c or "").replace("\n", " ").replace("|", "｜").strip()
-
-    result = []
-    try:
-        for tobj in page.find_tables(table_settings=settings):
-            rows = tobj.extract()
-            if not rows or not any(any(c for c in row) for row in rows):
-                continue
-            lines = []
-            lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
-            lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
-            for row in rows[1:]:
-                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
-            result.append((tobj.bbox, "\n".join(lines)))
-    except Exception:
-        pass
-    return result
+# → analyse_pages() / detect_table_columns() / extract_tables_from_page()
+#   see "Shared utilities — Text & Hybrid modes" above
 
 
 def pdfplumber_top_to_pdfminer_y(top, page_height_pt):
@@ -979,24 +794,9 @@ def call_claude_figure(png_bytes, page_num, fig_idx):
         "anthropic-version": "2023-06-01",
         "content-type": "application/json"
     }
-    for attempt in range(MAX_RETRIES):
-        req = urllib.request.Request(
-            API_URL,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST"
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                return json.loads(resp.read().decode("utf-8"))["content"][0]["text"].strip()
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            if e.code in (429, 529) and attempt < MAX_RETRIES - 1:
-                wait = 10 * (2 ** attempt)
-                print(f"  HTTP {e.code} — retrying in {wait}s ...", file=sys.stderr)
-                time.sleep(wait)
-            else:
-                raise RuntimeError(f"HTTP {e.code} p{page_num} fig{fig_idx}: {body[:300]}")
+    label = f"p{page_num} fig{fig_idx}"
+    return call_claude_with_retry(payload, headers, label, timeout=120).strip()
+    # → call_claude_with_retry: see "Shared utilities — Text & Hybrid modes" above
 
 
 # ---------------------------------------------------------------------------
@@ -1360,7 +1160,16 @@ if __name__ == "__main__":
 > separators derived from the V-edges of the PDF. Falls back gracefully if
 > `pdfplumber` is unavailable (tables suppressed, text dumped in Y-order).
 
----
+### Shared utility — Auto & Images modes
+
+> ⚠️ **`pdftoppm` required** (Auto & Images): `sudo apt install poppler-utils`
+> ⚠️ **API key** (Auto & Images): `export ANTHROPIC_API_KEY="sk-ant-..."`
+
+```python
+def image_to_b64(path):
+    with open(path, "rb") as f:
+        return base64.standard_b64encode(f.read()).decode("utf-8")
+```
 
 ### Script template — Auto mode (`--auto`)
 
@@ -1471,9 +1280,7 @@ def render_page(pdf_path, page_num, tmpdir):
     return files[0]
 
 
-def image_to_b64(path):
-    with open(path, "rb") as f:
-        return base64.standard_b64encode(f.read()).decode("utf-8")
+# → image_to_b64() — see "Shared utility — Auto & Images modes" above
 
 
 def call_claude(pages_with_pngs):
@@ -1505,24 +1312,8 @@ def call_claude(pages_with_pngs):
         "content-type": "application/json"
     }
     label = f"{pages_with_pngs[0][0]}-{pages_with_pngs[-1][0]}"
-    for attempt in range(MAX_RETRIES):
-        req = urllib.request.Request(
-            API_URL,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST"
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                return json.loads(resp.read().decode("utf-8"))["content"][0]["text"]
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            if e.code in (429, 529) and attempt < MAX_RETRIES - 1:
-                wait = 10 * (2 ** attempt)
-                print(f"  HTTP {e.code} — retrying in {wait}s ...", file=sys.stderr)
-                time.sleep(wait)
-            else:
-                raise RuntimeError(f"HTTP {e.code} on pages {label}: {body[:500]}")
+    return call_claude_with_retry(payload, headers, label)
+    # → call_claude_with_retry: see "Shared utilities — Text & Hybrid modes" above
 
 
 def split_page_markers(text, expected_pages):
@@ -1615,12 +1406,7 @@ if __name__ == "__main__":
 ```
 
 > ⚠️ **Dependencies**: `pip install pdfminer.six pypdf`
->
-> ⚠️ **`pdftoppm` required**: `sudo apt install poppler-utils`
->
-> ⚠️ **API key**: `export ANTHROPIC_API_KEY="sk-ant-..."`
-
----
+> (pdftoppm and API key — see "Shared utility" note above)
 
 ### Script template — Images mode (`--images`)
 
@@ -1680,9 +1466,7 @@ def render_pages(pdf_path, tmpdir):
     return pages
 
 
-def image_to_b64(path):
-    with open(path, "rb") as f:
-        return base64.standard_b64encode(f.read()).decode("utf-8")
+# → image_to_b64() — see "Shared utility — Auto & Images modes" above
 
 
 def call_claude(page_paths, page_offset):
@@ -1714,24 +1498,8 @@ def call_claude(page_paths, page_offset):
         "content-type": "application/json"
     }
     label = f"{page_offset+1}-{page_offset+len(page_paths)}"
-    for attempt in range(MAX_RETRIES):
-        req = urllib.request.Request(
-            API_URL,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST"
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                return json.loads(resp.read().decode("utf-8"))["content"][0]["text"]
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            if e.code in (429, 529) and attempt < MAX_RETRIES - 1:
-                wait = 10 * (2 ** attempt)
-                print(f"  HTTP {e.code} — retrying in {wait}s ...", file=sys.stderr)
-                time.sleep(wait)
-            else:
-                raise RuntimeError(f"HTTP {e.code} on pages {label}: {body[:500]}")
+    return call_claude_with_retry(payload, headers, label)
+    # → call_claude_with_retry: see "Shared utilities — Text & Hybrid modes" above
 
 
 def main():
@@ -1772,12 +1540,7 @@ if __name__ == "__main__":
 ```
 
 > ⚠️ **Dependencies**: `pip install pypdf`
->
-> ⚠️ **`pdftoppm` required**: `sudo apt install poppler-utils`
->
-> ⚠️ **API key**: `export ANTHROPIC_API_KEY="sk-ant-..."`
-
----
+> (pdftoppm and API key — see "Shared utility" note above)
 
 ## Phase 2.5 — Cross-reference pass (hybrid mode only)
 
@@ -1792,12 +1555,7 @@ For each `[FIGURE N]` block, parse the `IDENTIFIERS: [...]` JSON line appended b
 Claude (see `FIGURE_PROMPT`). Each item is an alphanumeric code, label, callout tag,
 part number, or element ID as printed in the figure.
 
-Filtering rules applied by `parse_identifiers()`:
-- Remove entries in `_XREF_STOPWORDS` (single letters, unit abbreviations, structural-engineering stopwords)
-- Remove entries shorter than `_XREF_MIN_LEN = 2`
-- De-duplicate case-insensitively
-- Fallback: if the `IDENTIFIERS:` line is absent or malformed, scan the description
-  body with the regex `[A-Za-z][A-Za-z0-9\-_]{1,19}` and apply the same filters
+→ Implementation and filtering rules: see `parse_identifiers()` in the Hybrid script template.
 
 ### 2.5.2 — Search text occurrences
 
@@ -1858,8 +1616,6 @@ or constrain it.
 > blocks (`page_texts`) and the Claude figure descriptions to be available
 > simultaneously. It is not implemented in `--auto` or `--images` modes (those modes
 > do not retain separate text blocks after page-level vision processing).
-
----
 
 ## Phase 3 — Execute and validate
 
@@ -1923,8 +1679,6 @@ Report the sanity check results to the user before proceeding.
 | Text mode: garbled multi-column | pdfminer layout | Normal on very complex layouts — use `--auto` instead |
 | Auto mode: page miscategorised | `pypdf` image detection | Force individual pages to vision by adjusting text threshold in `classify_pages` |
 
----
-
 ## Phase 4 — Update sandbox metadata
 
 ### 4.1 Update `README.org`
@@ -1960,8 +1714,6 @@ kept for traceability.
               (or: corpus/<NNN>-<slug>-vision.md)
 ```
 
----
-
 ## Integration with chorus-feed
 
 `chorus-pdf` is a **pre-processing step**, not a replacement for `chorus-feed`.
@@ -1993,8 +1745,6 @@ If a `.txt` from `pdftotext` already exists alongside the PDF, prefer the `-text
 (text mode) or `-vision.md` (hybrid/auto/images) for `chorus-feed`.
 The `pdftotext` output can be kept for diff/audit purposes.
 
----
-
 ## Quick Reference — Naming Conventions
 
 | Artifact | Convention | Example |
@@ -2003,8 +1753,6 @@ The `pdftotext` output can be kept for diff/audit purposes.
 | Text mode output | `corpus/<NNN>-<slug>-text.txt` | `corpus/003-uk-approved-doc-a-2013-text.txt` |
 | Auto/Hybrid/Images output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-uk-approved-doc-a-2013-vision.md` |
 | Original PDF | kept as-is in `corpus/` | `corpus/002-uk-approved-doc-a-2013.pdf` |
-
----
 
 ## Troubleshooting
 
