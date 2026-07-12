@@ -52,7 +52,7 @@ L<Chorus::Engine::AIAgent>
 
 =head1 AUTHOR
 
-Christophe Ivorra E<lt>ch.ivorra@free.frE<gt>
+Christophe Ivorra E<lt>chorus@maelink.frE<gt>
 
 =head1 BUGS
 

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM debian:bookworm-slim
 
-LABEL maintainer="Christophe Ivorra <ch.ivorra@free.fr>" \
+LABEL maintainer="Christophe Ivorra <chorus@maelink.fr>" \
       description="Chorus Engine — inference engine + document extraction skills (from GitHub, branch main)"
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -11,7 +11,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     SANDBOXES=/sandboxes \
     PERL5LIB=/opt/chorus/lib \
     PATH=/opt/chorus/bin:$PATH \
-    ANTHROPIC_API_KEY=""
+    ANTHROPIC_API_KEY="" \
+    ANTHROPIC_MODEL="sonnet"
 
 # --- System packages: Perl, Python, LibreOffice headless, PDF tools, git, Node.js --
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -54,8 +55,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
         python-docx \
         openpyxl \
         beautifulsoup4 \
-        lxml \
-        anthropic
+        lxml
 
 # --- Upgrade Node.js to 22.x (required for Claude Code) ---
 RUN npm install -g n && n 22
@@ -63,11 +63,13 @@ RUN npm install -g n && n 22
 # --- Claude Code CLI (Official Anthropic, via npm) ---
 RUN npm install -g @anthropic-ai/claude-code
 
-ARG CHORUS_REF=main
+ARG CHORUS_REF=devel
 RUN git clone --branch ${CHORUS_REF} --depth 1 \
         https://github.com/civorra/Chorus.git ${CHORUS_HOME}
 
 WORKDIR ${CHORUS_HOME}
+
+RUN rm -fr .git*
 
 # Build & install (Chorus::*, Chorus::Frame, Chorus::Engine, Chorus::Expert…)
 RUN perl Makefile.PL && make && make test
@@ -119,4 +121,3 @@ BASHRC_EOF
 WORKDIR ${CHORUS_HOME}
 
 ENTRYPOINT ["/bin/bash"]
-# ENTRYPOINT ["/usr/local/bin/claude"]
