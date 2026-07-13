@@ -8,7 +8,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     CHORUS_HOME=/opt/chorus \
-    SANDBOXES=/sandboxes \
     PERL5LIB=/opt/chorus/lib \
     PATH=/opt/chorus/bin:$PATH \
     ANTHROPIC_API_KEY="" \
@@ -75,10 +74,9 @@ RUN rm -fr .git*
 RUN perl Makefile.PL && make && make test
 
 # --- Sandboxes: mounted at runtime, never baked into the image ------------
-RUN mkdir -p ${SANDBOXES}
-VOLUME ["${SANDBOXES}"]
-
-WORKDIR ${SANDBOXES}
+# RUN mkdir -p ${SANDBOXES}
+# VOLUME ["${SANDBOXES}"]
+# WORKDIR ${SANDBOXES}
 
 # --- Welcome message + usage instructions ---
 RUN cat >> /root/.bashrc << 'BASHRC_EOF'
