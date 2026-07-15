@@ -1,22 +1,27 @@
 # Skill — chorus-create-project
 
-> Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch] [--strategy iso|edges|cross|scale]`
+> Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch] [--batch-seq] [--strategy iso|edges|cross|scale]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing a KB produced by `chorus-feed`
 > `<output-file.json>`: name of the JSON file to create in `$SANDBOX/`
 >                       (ignored in `--batch` and `--strategy` modes — filenames are fixed, see Phase 6)
-> `--batch`: generate the full coverage suite (4 files) in one pass (see Phase 6)
-> `--strategy <slug>`: generate exactly **one** file from the coverage suite, identified by slug.
->                      Safe alternative to `--batch` when session timeout is a risk.
+> `--batch`: generate the full coverage suite (4 files) via sub-agents in one pass (see Phase 6.1).
+>            Reduces main-agent generation volume but session stays open while waiting — risk on large sandboxes.
+> `--batch-seq`: **timeout-safe** orchestration — Phase 0+1 once, writes KB context to
+>                `.chorus-batch-ctx.md`, then displays 4 ready-to-run `--strategy` commands.
+>                The user runs each command in a separate short session (see Phase 6.3).
+> `--strategy <slug>`: generate exactly **one** file. Use manually, after `--batch-seq`,
+>                      or to resume a failed `--batch`.
 >                      Slugs: `iso` → `projet-rules-iso.json` · `edges` → `projet-edges.json`
 >                             `cross` → `projet-cross.json`  · `scale` → `projet-scale.json`
 >
-> **Choosing between `--batch` and `--strategy`:**
-> - Use `--batch` for small/medium sandboxes (≤ 5 agents, short KB files).
-> - Use `--strategy` when `--batch` times out: run 4 sequential sessions, one slug each.
->   The KB reading (Phase 0) is shared — use the coverage table from the first session
->   as context for the subsequent ones to avoid re-reading the full KB each time.
+> **Choosing between modes:**
+> | Mode | Sessions | Timeout risk | User steps |
+> |---|---|---|---|
+> | `--batch` | 1 (long) | ⚠️ large sandboxes | aucune |
+> | `--batch-seq` | 1 courte + 4 courtes | ✅ aucun | copier-coller 4 commandes |
+> | `--strategy × 4` | 4 courtes | ✅ aucun | 4 commandes manuelles |
 >
 > **Single responsibility: create a valid project JSON file.**
 > This skill reads the sandbox KB to infer types, slots, and thresholds,
@@ -25,6 +30,10 @@
 >
 > Prerequisites: `chorus-feed <sandbox-name>` must have been run beforehand.
 >
+> **⚡ Timeout note:** `--batch` reduces generation volume but the main agent's session
+> stays open while waiting for sub-agents — large sandboxes can still trigger `java.net.ConnectException`.
+> Use **`--batch-seq`** for guaranteed safety: Phase 0+1 once, then 4 short independent sessions.
+
 > ⚠️ **Sources to use — strict order:**
 > 1. `$SANDBOX/agent/chorus/index.org` → Frame types, pipeline, namespace
 > 2. `$SANDBOX/agent/chorus/<slug>.org` → mandatory slots, thresholds, helpers
@@ -292,15 +301,18 @@ If an expected KO element is CONFORME → investigate:
 
 ---
 
-## Phase 6 — Multi-file mode (`--batch` or `--strategy`)
+## Phase 6 — Multi-file mode (`--batch`, `--batch-seq`, or `--strategy`)
 
-> `--batch`: **orchestrator mode** — the current agent runs Phases 0+1 only, then spawns
->            4 sub-agents (one per strategy) via `eca__spawn_agent`. Each sub-agent has
->            its own session and token — no timeout risk from extended thinking between files.
+> `--batch`: **orchestrator mode** — runs Phases 0+1, then spawns 4 sub-agents via
+>            `eca__spawn_agent`. Reduces generation volume but main-agent session stays
+>            open while waiting (timeout risk on large sandboxes — see header note).
 >
-> `--strategy <slug>`: **single-file mode** — the current agent generates exactly one
->            targeted file directly (same workflow as a sub-agent). Use when running one
->            strategy at a time manually, or when resuming a failed `--batch`.
+> `--batch-seq`: **safe orchestrator mode** — runs Phases 0+1 once, writes the KB summary
+>            to `.chorus-batch-ctx.md`, then displays 4 `--strategy` commands for the user
+>            to run in separate sessions. **Guaranteed timeout-safe** (see Phase 6.3).
+>
+> `--strategy <slug>`: **single-file mode** — generates exactly one targeted file.
+>            Use manually, after `--batch-seq`, or to resume a failed `--batch`.
 
 ### 6.1 `--batch` — Orchestrator workflow
 
@@ -409,7 +421,11 @@ in a new session, pasting the compact KB summary as context to skip Phase 0.
 
 > This is also the internal workflow of each sub-agent spawned by `--batch`.
 
-Using the KB summary and coverage table (from Phase 0+1, or passed by the orchestrator):
+**Context detection (first action):** check whether `$SANDBOX/.chorus-batch-ctx.md` exists.
+- If **yes** → read it; skip Phase 0+1 entirely (KB already summarised by `--batch-seq`).
+- If **no** → run Phase 0+1 in full to build the KB summary before generating.
+
+Using the KB summary and coverage table (from `.chorus-batch-ctx.md`, Phase 0+1, or passed by the orchestrator):
 
 1. **Generate** — compute values from threshold tables; write elements following Phase 3
    conventions (id with strategy prefix, mandatory slots, no pipeline-computed slots,
@@ -425,7 +441,77 @@ Using the KB summary and coverage table (from Phase 0+1, or passed by the orches
    Check: `Pipeline : SOLVED ✅`, `Unprocessed: 0`, expected verdicts match.
    If an expected KO is CONFORME → apply the Phase 5 diagnosis.
 
-### 6.3 ID prefix and strategy reference
+### 6.3 `--batch-seq` — Safe sequential orchestration
+
+> **Goal:** run Phase 0+1 once (the expensive part), persist the KB summary to disk,
+> then hand off to 4 short independent `--strategy` sessions — each guaranteed to finish
+> before any timeout can occur.
+
+#### Step 1 — Run Phases 0+1
+
+Run Phase 0 in full (inventory + KB reading + keepalives) and Phase 1 (coverage table).
+Do NOT generate any JSON.
+
+#### Step 2 — Build the compact KB summary
+
+Distil the KB into the same self-contained block as `--batch` Step 2 (≤ 60 lines):
+
+```
+SANDBOX: <absolute path>
+NAMESPACE: <Perl namespace>
+AGENTS: <slug1>, <slug2>, …
+TYPES: <type1>, <type2>, …
+TARGETING_SLOT_AGENT1: <slot>
+
+THRESHOLDS:
+  <slot>: <value> [<unit>] — <source §>
+  …
+
+RULES:
+  <agent_slug> R<NN> (<slot_written>) : <threshold or condition summary>
+  …
+
+COVERAGE TABLE:
+  <type> | OK: N | KO: N | variants: …
+  …
+```
+
+#### Step 3 — Write `.chorus-batch-ctx.md`
+
+Write the compact KB summary to `$SANDBOX/.chorus-batch-ctx.md` using `eca__write_file`.
+
+```markdown
+<!-- chorus-batch-ctx — generated by chorus-create-project --batch-seq -->
+<!-- Delete this file once all 4 strategies have been generated.       -->
+
+<compact KB summary from Step 2>
+```
+
+This file is the shared context for all 4 subsequent `--strategy` sessions.
+It avoids re-reading the full KB each time.
+
+#### Step 4 — Display the 4 commands and close
+
+Output the following block and **stop** — do not generate any JSON in this session:
+
+```
+✅ KB context written to $SANDBOX/.chorus-batch-ctx.md
+
+Run each command below in a separate ECA session (in any order):
+
+  chorus-create-project <sandbox-name> --strategy iso
+  chorus-create-project <sandbox-name> --strategy edges
+  chorus-create-project <sandbox-name> --strategy cross
+  chorus-create-project <sandbox-name> --strategy scale
+
+Each session will read .chorus-batch-ctx.md and skip Phase 0+1 automatically.
+Delete .chorus-batch-ctx.md once all 4 files are generated.
+```
+
+> **Why stop here?** This session has done the expensive work (KB reading + summary).
+> Each `--strategy` session will be short (generation only) — guaranteed timeout-safe.
+
+### 6.4 ID prefix and strategy reference
 
 | Strategy | File | ID prefix | Goal | Volume |
 |---|---|---|---|---|
@@ -438,7 +524,7 @@ Using the KB summary and coverage table (from Phase 0+1, or passed by the orches
 > Use deterministic conventions so that successive `chorus-check --all` runs
 > can be compared diff-style. Never use random suffixes or timestamps.
 
-### 6.4 Convergence criterion
+### 6.5 Convergence criterion
 
 The batch is **converged** when all four files satisfy:
 - `Pipeline : SOLVED ✅`

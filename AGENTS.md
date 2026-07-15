@@ -47,8 +47,11 @@
 > ⛔ Pre-approved even in a new conversation turn: network, filesystem, side effects ≠ reason to ask for confirmation.
 
 > **Agent per trigger:** the *Agent* column indicates the ECA agent to use.
-> `code` = default agent (medium). `fast` = lightweight agent (small) — consultation/read-only.
-> `architect` = opus agent (large) — architectural decisions.
+> `code` = claude-sonnet-4-6 / `medium` — édition standard.
+> `fast` = claude-haiku-4-5 / `medium` — consultation/lecture seule.
+> `architect` = claude-sonnet-4-6 / `large` (extended thinking) — décisions architecturales.
+> ⚠️ `variant: large` active le thinking étendu → génération plus lente → risque de timeout
+> accru sur les sandboxes volumineux. Préférer `--batch-seq` + `--strategy` par session courte.
 
 | Trigger / Context | Type | Skill | Agent |
 |---|---|---|---|
@@ -60,7 +63,7 @@
 | `chorus-excel <sandbox-name> <file.xlsx\|file.csv> [--out <slug>] [--sheet <name>] [--batch]` | command | `./agent/skills/chorus-excel.md` — extracts Excel (.xlsx) and CSV → enriched corpus. **3 modes: hybrid (openpyxl tables + Claude vision on embedded images/charts via LibreOffice → `-vision.md`) · text fallback (openpyxl tables + placeholders → `-text.txt`) · CSV auto-detected (csv.reader → Markdown pipe → `-text.txt`).** Multi-sheet output (`=== SHEET: name ===`), merged-cell aware, XREF pass links figure identifiers to cell values. Prerequisite for `chorus-feed` when the corpus contains XLSX/CSV files. | `architect` |
 | `chorus-feed <sandbox-name> <corpus>` | command | `./agent/skills/chorus-feed.md` — enriches sandbox knowledge: KB org per agent + YAML (Mode A init / Mode B incremental enrichment) | `architect` |
 | `chorus-check <sandbox-name> <project-file> [--all]` | command | `./agent/skills/chorus-check.md` — generates Feed+Agent+Expert+run.pl from the KB, runs the pipeline, produces the compliance report. `--all`: runs all `projet-*.json` in the sandbox and produces a synthesis table | `architect` |
-| `chorus-create-project <sandbox-name> <file.json> [--batch] [--strategy iso|edges|cross|scale]` | command | `./agent/skills/chorus-create-project.md` — creates a JSON project file from the KB (slots, thresholds, conforming/KO variants) — ⛔ never reads Helpers.pm or Feed.pm. `--batch`: generates the full 4-file coverage suite (`projet-rules-iso`, `projet-edges`, `projet-cross`, `projet-scale`). `--strategy <slug>`: generates exactly one targeted file — use instead of `--batch` when session timeout is a risk (large sandboxes / long KB) | `architect` |
+| `chorus-create-project <sandbox-name> <file.json> [--batch] [--batch-seq] [--strategy iso|edges|cross|scale]` | command | `./agent/skills/chorus-create-project.md` — creates a JSON project file from the KB (slots, thresholds, conforming/KO variants) — ⛔ never reads Helpers.pm or Feed.pm. `--batch`: 4 sub-agents en parallèle (risque timeout sur grands sandboxes). `--batch-seq`: ✅ Phase 0+1 une fois → écrit `.chorus-batch-ctx.md` → affiche 4 commandes `--strategy` à lancer chacune dans une session séparée. `--strategy <slug>`: génère exactement un fichier ciblé — ⚠️ peut encore timeout sur très grands sandboxes (variant: large + volume JSON élevé). | `architect` |
 | `chorus-strengthen <sandbox-name>` | command | `./agent/skills/chorus-strengthen.md` — runs the full project suite, classifies discordances (rule too strict / too permissive / Feed gap), produces a structured gap report and an enrichment roadmap for `chorus-feed --enrich` | `architect` |
 | `chorus-import-project <sandbox-name> <source…> [--out <f.json>] [--batch]` | command | `./agent/skills/chorus-import-project.md` — aligns the terminology of a project document (PDF/Word/Excel/inline) with KB slots. **3 modes:** unit (1 file), fusion (N files → 1 JSON), batch (directory/glob → 1 JSON per file + synthesis report) | `architect` |
 | Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./agent/skills/chorus-engine-yaml.md`)* | `code` |
