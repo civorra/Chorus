@@ -42,12 +42,39 @@ If no `projet-*.json` → stop:
 
 ---
 
-## Phase 1 — Run the full suite (`chorus-check --all`)
+## Phase 1 — Obtain full-suite results
 
-Execute `chorus-check <sandbox-name> --all` (fast path — no regeneration).
+### 1.1 — Check for a cached result (fast path)
+
+Before running anything, probe for a cached result file:
+
+```bash
+cat $SANDBOX/.last-check-results.json   # absent → go to 1.2
+sha256sum $SANDBOX/agent/chorus/*.org   # compute current KB hash
+```
+
+Compare the `kb_hash` field in `.last-check-results.json` against the current
+hash of `$SANDBOX/agent/chorus/*.org`:
+
+- **Match** → the KB has not changed since the last `chorus-check --all`.
+  Load the structured results directly from the file.
+  **Skip Phase 1.2 entirely** — no sub-agent is spawned, no `perl run.pl` is run.
+  Note in the gap report header: `Suite results: from cache (.last-check-results.json)`.
+
+- **No file** or **hash mismatch** → the cache is absent or stale. Go to Phase 1.2.
+
+### 1.2 — Run the full suite (fallback)
+
+Execute `chorus-check <sandbox-name> --all` (fast path — no infrastructure
+regeneration, but spawns one sub-agent per `projet-*.json`).
 
 This produces the synthesis table with CONFORME / NON_CONFORME / Unproc / Disc
-counts per project file. Capture the full output.
+counts per project file, and writes a fresh `.last-check-results.json`.
+Capture the full output.
+
+---
+
+Whether results come from cache (1.1) or a fresh run (1.2):
 
 If **all files converge** (SOLVED, 0 discordances, 0 unprocessed) → report:
 

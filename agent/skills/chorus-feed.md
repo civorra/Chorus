@@ -653,6 +653,7 @@ full regeneration:
 
 ```bash
 rm -f $SANDBOX/agent/.kb-hash
+rm -f $SANDBOX/.last-check-results.json
 ```
 
 
@@ -720,6 +721,7 @@ Update `README.org`:
 Invalidate the KB hash (see Phase 6):
 ```bash
 rm -f $SANDBOX/agent/.kb-hash
+rm -f $SANDBOX/.last-check-results.json
 ```
 
 ## Mode C — Alias Harvest (`--harvest-aliases <import-report.org>`)
@@ -794,6 +796,7 @@ If no owning slug is found for a mapping → log as unresolved and skip.
 1. Invalidate the KB hash:
 ```bash
 rm -f $SANDBOX/agent/.kb-hash
+rm -f $SANDBOX/.last-check-results.json
 ```
 
 2. Display a summary:

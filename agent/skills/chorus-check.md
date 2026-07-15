@@ -489,6 +489,49 @@ NOT CONVERGED ❌ — N discordances and/or N unprocessed across M project files
 
 If **NOT CONVERGED** → `Next step: chorus-strengthen <sandbox-name>`
 
+### 6-all.6 Persist results cache
+
+After the synthesis table and convergence verdict, always write the structured
+results to `$SANDBOX/.last-check-results.json`.
+
+This file is consumed by `chorus-strengthen` to skip re-running the full suite
+when the KB has not changed since the last `chorus-check --all`.
+
+**Format:**
+
+```json
+{
+  "kb_hash": "<content of $SANDBOX/agent/.kb-hash — verbatim>",
+  "timestamp": "<ISO-8601 UTC>",
+  "files": [
+    {
+      "file": "projet-rules-iso.json",
+      "status": "SOLVED",
+      "conforme": N,
+      "non_conforme": N,
+      "unprocessed": N,
+      "discordances": N,
+      "disc_detail": [
+        { "id": "<id>", "expected": "CONFORME",     "got": "NON_CONFORME" },
+        { "id": "<id>", "expected": "NON_CONFORME", "got": "CONFORME"     }
+      ],
+      "unproc_detail": [
+        { "id": "<id>", "type": "<type>" }
+      ]
+    }
+  ],
+  "overall_discordances": N,
+  "overall_total": N,
+  "converged": true
+}
+```
+
+- `disc_detail` and `unproc_detail` may be empty arrays when counts are 0.
+- `converged`: `true` only when all files are SOLVED, 0 discordances, 0 unprocessed.
+- This file is **never committed** (local artefact, like `.kb-hash`).
+- It is **invalidated** (deleted) by `chorus-feed` at the end of each run,
+  alongside `.kb-hash`.
+
 > **Sub-agent mode guarantee:** each sub-agent has its own IDE session and token.
 > No timeout risk regardless of pipeline complexity or number of project files.
 > Running N projects costs exactly N sub-agent spawns + N × `perl run.pl`.
