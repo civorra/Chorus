@@ -124,6 +124,10 @@ agent KB that cover the implicated rule:
 
 ## Phase 4 — Produce the gap report
 
+> **⚠️ Language rule — gap report:** all section headings, column labels, field names,
+> hypotheses, and suggested fixes in this report must be written in the **corpus language**.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
+
 Display a structured report:
 
 ```

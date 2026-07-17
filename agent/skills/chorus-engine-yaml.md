@@ -49,6 +49,14 @@ $f->delete('slot')     # delete — unregisters from %REPOSITORY
 
 `_KEY` `_PARENT_KEY` `_ISA` `_VALUE` `_DEFAULT` `_NEEDED` `_BEFORE` `_AFTER` `_REQUIRE` `_NOFRAME` `_SERIALIZE`
 
+> **⚠️ Language rule — domain slot names:** all domain slot names (i.e. all slots **except**
+> reserved system slots above and the invariant `type_element`) must be named in the **corpus language**.
+> French corpus → `montant_porteur`, `classe_bois`, `besoin_conformite`.
+> English corpus → `bearing_member`, `wood_class`, `conformance_need`.
+> This applies to `FIND`/`CHERCHER` `attribut:` values, `ACTION`/`EFFET` slot reads/writes,
+> and `PREMISES`/`PREMISSES` entries.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
+
 ---
 
 ## Engine — Rule triggering
@@ -353,6 +361,12 @@ EFFET: |
   $p->set('resultat_ok', 'OUI');
   return 1;
 ```
+
+> **⚠️ Language rule — inline comments:** all comments inside `ACTION`/`EFFET` blocks must be
+> written in the **corpus language** (English for an English corpus, French for a French corpus).
+> The two examples above illustrate this rule — the English and French blocks are mutually exclusive
+> depending on the corpus language; never mix languages within a single sandbox.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
 > **CORPUS line:** when the rule encodes a single standard article, one `CORPUS:` line suffices.
 > When the rule combines several articles, list them all:

@@ -166,6 +166,12 @@ Intermediate calculations remain as slots, not Frames.
 > causes all Frames to be silently invisible to every agent →
 > 0 elements processed, pipeline SOLVED but all entries unprocessed.
 
+> **⚠️ Language rule — slot names:** all slot names (except `type_element` and internal engine
+> slots `_ISA`, `_SELF`, `_ITEMS`, `_CONTAINER`, etc.) must be named in the **corpus language**.
+> French corpus → French slot names (`montant_porteur`, `classe_bois`, `besoin_conformite`).
+> English corpus → English slot names (`bearing_member`, `wood_class`, `conformance_need`).
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
+
 **1.3 Identify the pipeline**
 
 Order agents by data dependency:
@@ -289,6 +295,11 @@ The engine's default value (`10 000`) is a safeguard against infinite loops
 - If `fmatch` returns > 100 Frames before `grep` → reconsider B
 
 ### Phase 3 — Fill the KB per agent
+
+> **⚠️ Language rule — KB org files:** all free text in `<slug>.org` (section headings,
+> slot descriptions, rule comments, domain notes, ontology labels, pitfall descriptions)
+> must be written in the **corpus language**.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
 Create `$SANDBOX/agent/chorus/<slug>.org` from `_template.org`.
 Mandatory fill order:
@@ -544,6 +555,11 @@ The code encodes knowledge extracted from the corpus:
 **What is NOT a knowledge helper** (→ stays in `chorus-check`):
 - file parsing, database access, network calls
 - orchestration logic (loops over agents, error handling)
+
+> **⚠️ Language rule — Perl comments in `Helpers.pm`:** all comments (inline and block,
+> including `Source corpus`, `Signature`, `Called by` lines) must be written in the
+> **corpus language**.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
 #### Template `Helpers.pm`
 

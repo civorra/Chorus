@@ -194,6 +194,12 @@ the threshold in the correct direction.
 
 ## Phase 3 — Generate the JSON
 
+> **⚠️ Language rule — JSON user-facing values:** the technical structural keys (`"projet"`,
+> `"elements"`, `"id"`, `"type_element"`, `"_note_calc"`) are invariant; but all **values** that
+> carry domain meaning (`"description"` content, `"_note_calc"` annotations, any free-text string)
+> must be written in the **corpus language**.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
+
 ### Mandatory structure
 
 ```json

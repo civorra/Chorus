@@ -1463,6 +1463,13 @@ montant_porteur hauteur_libre_m     ✅          "h=2.5m"
 
 ## Phase 5 — Produce the JSON
 
+> **⚠️ Language rule — JSON annotation values:** technical structural keys (`"projet"`,
+> `"elements"`, `"id"`, `"type_element"`, `"_a_confirmer"`, `"_conflit"`, `"_incomplet"`,
+> `"_hors_perimetre"`, etc.) are invariant; but all **annotation string values**
+> (descriptions, notes, conflict messages, out-of-scope reasons) must be written in the
+> **corpus language**.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
+
 ### Single / Merge Mode — one JSON
 
 Once all ❓ items are resolved and critical gaps are filled:
@@ -1507,6 +1514,12 @@ No cross-file merging — each JSON is self-contained and can be piped independe
 
 
 ## Phase 6 — Produce the Import Report
+
+> **⚠️ Language rule — import report and thesaurus org files:** all section headings,
+> column labels, notes, gap descriptions, and out-of-scope explanations in
+> `import-report-<NNN>.org`, `align-review-<NNN>.org`, and `thesaurus.org`
+> must be written in the **corpus language**.
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
 Create `$SANDBOX/agent/import-report-<NNN>.org`:
 

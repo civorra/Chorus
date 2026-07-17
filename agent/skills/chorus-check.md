@@ -134,6 +134,15 @@ Read the `Slots de ciblage` section of the KB for the agent at position 1.
 This slot must be present on all Frames created by the Feed.
 
 
+## ⚠️ Language Rule — All Generated Perl Files
+
+> All **comments** in every generated Perl file (`Feed.pm`, `Agent/<Nom>.pm`, `Expert.pm`, `run.pl`)
+> must be written in the **corpus language** — read from `#+CORPUS_LANG` in `index.org`
+> (or inferred from the KB org content if the property is absent).
+> → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
+
+---
+
 ## Phase 2 — Generate `Feed.pm`
 
 Create `$SANDBOX/lib/<Namespace>/Feed.pm` from template **T1** (`chorus-templates.md`).
@@ -549,6 +558,7 @@ when the KB has not changed since the last `chorus-check --all`.
 > ⚠️ This checklist applies **only after generation** of Phases 1–5.
 > Do not run it on the fast path (infrastructure already present).
 
+- [ ] **Language rule:** all comments in generated Perl files match the corpus language (see `chorus-engine.md § Canonical Language Rule`)
 - [ ] `agent/.kb-hash` written after generation — contains `sha256sum` of all `agent/chorus/*.org`
 - [ ] ⛔ **`type_element` — YAML ↔ Feed alignment:** verify that the `attribut:` key in every
       `FIND`/`CHERCHER` block of every YAML rule that targets element type is named `type_element`.
