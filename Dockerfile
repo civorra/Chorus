@@ -59,6 +59,9 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 # --- Upgrade Node.js to 22.x (required for Claude Code) ---
 RUN npm install -g n && n 22
 
+# Pi Coding Agent
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+
 # --- Claude Code CLI (Official Anthropic, via npm) ---
 RUN npm install -g @anthropic-ai/claude-code
 
