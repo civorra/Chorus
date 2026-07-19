@@ -272,13 +272,24 @@ After `chorus_process`, collect results:
 
 ```
 chorus_frames_list (slot: "statut_conformite",
-                    extra_slots: ["id", "type", "raison_non_conformite", ...])
+                    extra_slots: ["id", "type", "raison_non_conformite", "_labels", ...])
 chorus_board_get   (hX, <inter-agent slot>)   ← repeat for each BOARD slot of interest
 chorus_reset                                  ← cleanup after collection
 ```
 
 Build the compliance report from the collected frame data.
 Apply the same report structure as Phase 6B (blocks 1–4 from T5).
+
+> **`_labels` — termes projet d'origine (MCP mode) :**
+> Si `_labels` est présent sur un frame (hashref `{ slot_kb → terme_projet }`),
+> afficher le terme d'origine entre guillemets après la valeur de chaque slot concerné :
+> ```
+>   section_bois                     : 45x145  ← «section»
+>   classe_bois                      : C24     ← «classe résistance»
+> ```
+> Cette règle s'applique à tous les slots affichés dans le rapport (résultats et slots
+> d'entrée). Les slots dont le nom KB est identique au terme source ne génèrent pas
+> de suffixe `←`.
 
 > **Advantages over 6B:**
 > - No `run.pl` required — infrastructure can be partially absent.

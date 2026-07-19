@@ -1,7 +1,12 @@
 # Skill — chorus-import-project
 
 > Trigger: `chorus-import-project <sandbox-name> <source…> [--out <fichier.json>] [--batch]`
-> Agent: `architect`
+> Agent: `code`
+> ⚠️ Downgraded from `architect` to `code` (claude-sonnet-4-6 / medium) — extended thinking
+> (variant: large) interacts poorly with the intra-phase keepalive protocol: the model may
+> batch all thinking before emitting tool calls, nullifying the TTL resets.
+> Standard thinking (`code`) iterates more tightly with tool calls → keepalive writes fire
+> reliably every 50 elements (Phase 2) and every 20 terms (Phase 3).
 >
 > `<sandbox-name>` : sandbox containing a KB produced by `chorus-feed`
 > `<source…>`      : one or more project sources from the engineer (see modes below)
@@ -1133,20 +1138,68 @@ secondary memory source — complementary to the thesaurus, not a substitute.
 
 ## Phase 2 — Raw Inventory of Project Elements
 
-### Keepalive checkpoint (token refresh before long thinking phases)
+### Keepalive — block-based inventory (intra-phase token refresh)
 
 **Before starting the inventory**, if the source is a filesystem file, call:
 ```bash
 wc -l "<fichier-source-extrait>"
 ```
-or, if working from inline/already-extracted text, read the directoy tree $SANDBOX/agent/
+or, if working from inline/already-extracted text, read the directory tree `$SANDBOX/agent/`
 to confirm the report directory.
 
-> **Why:** Phases 2, 3 and 4 are pure thinking phases with no tool calls.
-> On a complex project (many element types, many ambiguous terms), the combined
-> thinking time across these three phases can expire the IDE token before Phase 5
-> triggers the next tool call (JSON write). This checkpoint resets the TTL just
-> before entering the silent zone.
+Use the line count to estimate the number of elements (`N_est ≈ lines / 8`).
+
+#### Block-based inventory protocol
+
+> **Why blocks instead of a single silent pass:**
+> Phases 2, 3 and 4 were previously pure thinking phases with no tool calls.
+> On a large source (hundreds of elements, dense terminology), the combined thinking
+> time could exceed the IDE token TTL before Phase 5 writes the first file.
+> The fix is simple: **write a partial file every 50 elements** — each `eca__write_file`
+> call resets the token TTL without splitting the document or losing context.
+> The entire source is read in one pass; only the *writes* are batched.
+
+```
+BLOCK_SIZE = 50   # elements per partial write
+
+block_num  = 1
+inventory  = []   # accumulates ALL elements across all blocks
+
+For each element E identified in the source (full sequential scan):
+  Append E to inventory
+
+  If len(inventory) % BLOCK_SIZE == 0:
+    # Keepalive write — resets IDE token TTL
+    Write eca__write_file:
+      path    : $SANDBOX/agent/.import-inventory-<NNN>-blk<block_num>.org
+      content : partial inventory (last BLOCK_SIZE elements)
+    block_num += 1
+    Print: "[Phase 2] Inventory block <block_num-1> written — <len(inventory)> elements so far"
+
+# After full scan — write consolidated inventory (used by Phase 3)
+Write eca__write_file:
+  path    : $SANDBOX/agent/.import-inventory-<NNN>.org
+  content : full inventory (all elements, all blocks)
+Print: "[Phase 2] Complete inventory written — <len(inventory)> elements total"
+```
+
+**Format of each inventory entry (org):**
+
+```org
+** Element <seq>
+   :PROPERTIES:
+   :source_line: <original text from document>
+   :END:
+   - term_raw    :: <term as found>
+   - values_raw  :: <associated raw values>
+   - page_or_loc :: <page N / sheet S / block B>
+```
+
+> **Rule:** do not map at this stage — inventory first, align later.
+> Preserve the original source text in the inventory for traceability.
+> The `.import-inventory-<NNN>.org` file is the single source of truth for Phase 3.
+> Partial block files (`.import-inventory-<NNN>-blk*.org`) are transient — kept until
+> Phase 6 cleanup.
 
 Scan the source data and produce a **raw inventory**:
 an uninterpreted list of what the engineer has provided.
@@ -1215,6 +1268,58 @@ If the engineer confirms `yes`, proceed — but set `"_couverture_kb": "low"` in
 
 
 ### Alignment table
+
+#### Block-based alignment protocol (intra-phase keepalive)
+
+> **Why blocks:** the alignment phase processes every distinct term from the inventory
+> against the KB reference. On a large project this can take 10–20 minutes of thinking
+> with no tool call — enough to expire the IDE token.
+> The fix: **read the consolidated inventory file written by Phase 2** (one tool call =
+> keepalive), then **write a partial alignment file every 20 terms** — each write resets
+> the token TTL. Full context (KB + inventory) is preserved throughout; only the *writes*
+> are batched.
+
+```
+# Step 0 — reload inventory from disk (keepalive + single source of truth)
+Read eca__read_file:
+  path: $SANDBOX/agent/.import-inventory-<NNN>.org
+terms = all distinct terms extracted from the inventory
+Print: "[Phase 3] Inventory loaded — <len(terms)> distinct terms to align"
+
+BLOCK_SIZE = 20   # terms per partial write
+
+block_num  = 1
+alignment  = []   # accumulates ALL aligned terms across all blocks
+
+For each term T in terms (full sequential alignment):
+  Align T against KB reference (Phase 1.2) → produce alignment row
+  Append row to alignment
+
+  If len(alignment) % BLOCK_SIZE == 0:
+    # Keepalive write — resets IDE token TTL
+    Write eca__write_file:
+      path    : $SANDBOX/agent/.import-alignment-<NNN>-blk<block_num>.org
+      content : partial alignment table (last BLOCK_SIZE rows)
+    block_num += 1
+    Print: "[Phase 3] Alignment block <block_num-1> written — <len(alignment)> terms done"
+
+# After all terms — write consolidated alignment (used by Phase 4 and Phase 5)
+Write eca__write_file:
+  path    : $SANDBOX/agent/.import-alignment-<NNN>.org
+  content : full alignment table (all terms)
+Print: "[Phase 3] Complete alignment written — <len(alignment)> terms total"
+```
+
+> **Context integrity guarantee:** the full KB reference (Phase 1.2) and the full
+> inventory (all elements) remain in the agent's context window throughout.
+> Only the *output writes* are split into blocks — the alignment reasoning always
+> sees the complete picture. No information is lost, no cross-element context is broken.
+
+> **Partial block files** (`.import-alignment-<NNN>-blk*.org`) are transient.
+> The **consolidated file** (`.import-alignment-<NNN>.org`) is the single source of
+> truth for Phases 4 and 5. Both are cleaned up at the end of Phase 6.
+
+---
 
 This is the core phase. For each term from the raw inventory, cross-reference against
 the KB reference (Phase 1.2) and produce an alignment table:
@@ -1463,9 +1568,80 @@ montant_porteur hauteur_libre_m     ✅          "h=2.5m"
 
 ## Phase 5 — Produce the JSON
 
+### Pre-flight — reload consolidated files (keepalive + integrity check)
+
+Before generating the JSON, **read the two consolidated files** produced by Phases 2 and 3.
+Each read is a tool call that resets the IDE token TTL and guarantees the JSON is built
+from the canonical on-disk state rather than from context that may have drifted.
+
+```
+# Reload consolidated inventory (Phase 2 output)
+Read eca__read_file:
+  path: $SANDBOX/agent/.import-inventory-<NNN>.org
+→ confirms element list, ids, source lines
+
+# Reload consolidated alignment (Phase 3 output)
+Read eca__read_file:
+  path: $SANDBOX/agent/.import-alignment-<NNN>.org
+→ confirms term → slot/value mappings, confidence levels, ❓/⚠️/⬜ flags
+
+Print: "[Phase 5] Sources reloaded — <N_elements> elements / <N_terms> aligned terms"
+```
+
+> **Why reloading matters:** on a large project the agent may have spent 15–20 minutes
+> thinking across Phases 2–4. Reloading from disk ensures the JSON is derived from the
+> files that will persist in `$SANDBOX/agent/` — not from an in-context summary that
+> could have silently compressed some detail.
+
+### Construction de `_labels` (avant écriture du JSON)
+
+À partir de la table d'alignement rechargée (`.import-alignment-<NNN>.org`),
+construire pour chaque élément l'objet `_labels` selon l'algorithme suivant :
+
+```
+For each element E in the alignment table:
+  labels = {}
+
+  # 1. type_element : inclure si terme projet ≠ valeur KB
+  if alignment[E].project_term_type != alignment[E].kb_type_element:
+    labels["type_element"] = alignment[E].project_term_type
+
+  # 2. slots : inclure si terme source ≠ nom de slot KB
+  for each (project_term, slot_kb, kb_value) in alignment[E].slots:
+    if project_term != slot_kb:        # le document n'utilisait pas le nom exact du slot
+      labels[slot_kb] = project_term
+
+  # 3. N'inclure _labels dans le JSON que s'il est non vide
+  if labels:
+    E["_labels"] = labels
+```
+
+> **Règle de comparaison :** normaliser les deux termes (minuscules, underscores → espaces)
+> avant comparaison. Si après normalisation ils sont identiques, ne pas inclure dans `_labels`.
+> Exemple : `"section_bois"` (document) vs `"section_bois"` (KB) → identiques → pas de `_labels`.
+>
+> **Thésaurus hits à ✅ :** tous les slots résolus via le thésaurus ont par définition
+> subi une substitution — inclure systématiquement dans `_labels` sauf si les termes
+> normalisés sont identiques.
+
+### Post-JSON — cleanup of transient partial files
+
+After writing the final JSON (and before Phase 6), delete all transient block files:
+
+```bash
+rm -f $SANDBOX/agent/.import-inventory-<NNN>-blk*.org
+rm -f $SANDBOX/agent/.import-alignment-<NNN>-blk*.org
+```
+
+The two consolidated files (`.import-inventory-<NNN>.org` and `.import-alignment-<NNN>.org`)
+are **kept** — they serve as the audit trail for this import and are referenced by Phase 6
+(import report) and by future `chorus-import-project` runs (Phase 1.3 secondary memory).
+
+---
+
 > **⚠️ Language rule — JSON annotation values:** technical structural keys (`"projet"`,
 > `"elements"`, `"id"`, `"type_element"`, `"_a_confirmer"`, `"_conflit"`, `"_incomplet"`,
-> `"_hors_perimetre"`, etc.) are invariant; but all **annotation string values**
+> `"_hors_perimetre"`, `"_labels"`, etc.) are invariant; but all **annotation string values**
 > (descriptions, notes, conflict messages, out-of-scope reasons) must be written in the
 > **corpus language**.
 > → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
@@ -1492,6 +1668,10 @@ Once all ❓ items are resolved and critical gaps are filled:
       "id": "<id-issu-du-document>",
       "type_element": "<type_kb>",
       "<slot_1>": "<valeur>",
+      "_labels": {
+        "type_element": "<terme projet d'origine, si différent de type_kb>",
+        "<slot_1>": "<terme projet d'origine, si différent du nom de slot KB>"
+      },
       "_source_fichier": "<nom-fichier>",
       "_a_confirmer": 1,
       "_conflit": 1,
@@ -1500,6 +1680,31 @@ Once all ❓ items are resolved and critical gaps are filled:
   ]
 }
 ```
+
+> **`_labels` — règle de population :**
+> `_labels` est un objet plat `{ slot_kb → terme_projet_original }`.
+> Il est construit lors de la Phase 5 à partir de la table d'alignement (Phase 3).
+> **Seuls** les slots pour lesquels le terme projet diffère du nom de slot KB sont inclus.
+> Un slot dont le nom source est identique au slot KB (ex. `"id"`) n'est pas listé dans `_labels`.
+> Si aucun slot n'a subi de substitution terminologique, `_labels` est omis (pas de clé vide `{}`).
+>
+> **Exemple concret :**
+> ```json
+> {
+>   "id": "P1",
+>   "type_element": "montant_porteur",
+>   "section_bois": "45x145",
+>   "classe_bois": "C24",
+>   "epaisseur_mm": 200,
+>   "_labels": {
+>     "type_element": "poteau porteur",
+>     "section_bois": "section",
+>     "classe_bois": "classe résistance"
+>   }
+> }
+> ```
+> Ici `epaisseur_mm` n'a pas d'entrée dans `_labels` car le document source utilisait
+> déjà le terme `epaisseur_mm` (pas de substitution).
 
 > **`id` convention**: keep the source document identifier if available
 > (e.g. "Poteau P1", "IPE-01"), otherwise generate `<TYPE_ABREV>-<NN>`.

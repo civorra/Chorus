@@ -312,9 +312,11 @@ for my $e (@elements) {
     printf "  %s  [%s — %s]\n", $flag, $id, $type;
 
     my @res = grep { defined $e->{$_} } @slots_resultat_display;
+    my $labels = ref($e->{_labels}) eq 'HASH' ? $e->{_labels} : {};
     for my $slot (@res) {
         next if $slot eq 'raison_non_conformite';
-        printf "       %-32s : %s\n", $slot, $e->{$slot};
+        my $label_suffix = exists $labels->{$slot} ? "  ← «$labels->{$slot}»" : "";
+        printf "       %-32s : %s%s\n", $slot, $e->{$slot}, $label_suffix;
     }
     if (defined $e->{raison_non_conformite}) {
         printf "       %-32s : %s\n", '→ raison', $e->{raison_non_conformite};
