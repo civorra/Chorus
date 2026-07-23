@@ -161,6 +161,101 @@ For functional validation → 10–30 elements, all types covered.
 
 ---
 
+## Phase 1.5 — Plan inter-element relationships
+
+> **Skip condition:** if no KB org slot has a `Frame ref` or `→` annotation (see
+> `chorus-engine-infra.md §3`), skip Phase 1.5 entirely.
+> Print: `[Phase 1.5] No inter-frame relationships defined in KB — skipped.`
+
+Unlike `chorus-import-project` (which *detects* relationships from a real document),
+`chorus-create-project` *plans* relationships synthetically from the KB blueprint.
+The goal is to produce a project JSON that exercises the inter-frame navigation paths
+defined in the KB — not to represent a real project.
+
+---
+
+### Step 1.5-1 — Build the relationship blueprint
+
+Scan KB org slot dictionaries for `Frame ref` / `→` entries (same algorithm as
+`chorus-import-project` Phase 3.5-1).  Build:
+
+```
+blueprint = { source_type → { slot_name → target_type, ref_field → ref_field_name } }
+```
+
+If the blueprint is empty after scanning, skip Phase 1.5.
+
+---
+
+### Step 1.5-2 — Plan target elements
+
+For each unique `target_type` in the blueprint that is **not already in the coverage
+table**, add it now.  Minimum plan:
+
+- **1–2 target elements per target type** (enough to test distinct link targets)
+- Give them clear synthetic IDs that reflect their role: `<TTYPE>-TARGET-01`
+
+> ⚠️ Target elements are **not test elements** — they are structural anchors.
+> They still need valid mandatory slots (from their own KB catalogue entry).
+> Run the same Phase 2 computation for them (conforming only — no KO variants needed
+> for pure structural anchors unless the target type also has its own rules to test).
+
+---
+
+### Step 1.5-3 — Assign source elements to target elements
+
+For each source element planned in Phase 1, assign it to a target element:
+
+```
+Assignment table:
+| source_id        | ref_field    | target_id     |
+|------------------|--------------|---------------|
+| EL-OK-01         | <ref_field>  | TTYPE-01      |
+| EL-KO-SEC-01     | <ref_field>  | TTYPE-01      |
+| EL-OK-02         | <ref_field>  | TTYPE-02      |
+```
+
+**Assignment rules:**
+- Spread source elements across available targets to demonstrate variety
+- For `--strategy iso`: each test element gets its OWN target element
+  (maximum isolation — each `*_ref` is unique, no shared state)
+- For `--strategy scale`: target elements are shared (realistic bulk scenario)
+- All source elements must have a `*_ref` entry — do not leave any unassigned
+
+---
+
+### Step 1.5-4 — Plan backward-compatibility elements
+
+Add at least **1–2 elements per source type WITHOUT `*_ref`** to validate that rules
+use the Option A fallback (direct slot) correctly.  These elements must carry the
+direct fallback slot value explicitly in the JSON.
+
+```
+| source_id      | *_ref present? | purpose                          |
+|----------------|----------------|----------------------------------|
+| EL-NOLINK-01   | ❌ absent       | tests Option A fallback in rules |
+| EL-OK-01       | ✅ present      | tests inter-frame navigation     |
+```
+
+> This ensures the test suite covers both the new pattern (link) and the legacy
+> format (direct slot), confirming backward compatibility of every rule.
+
+---
+
+### Step 1.5 — Output: relationship plan
+
+Record the plan for use in Phase 3:
+
+```
+[Phase 1.5] Inter-element relationship plan
+  Blueprint entries : N source types → M target types
+  Target elements added to coverage : N
+  Source elements with *_ref : N
+  Backward-compat elements (no *_ref) : N
+```
+
+---
+
 ## Phase 2 — Compute values
 
 For each element, compute values **from the KB tables** — never by intuition.
@@ -231,15 +326,44 @@ the threshold in the correct direction.
 
 Generic examples: `EL-OK-01`, `EL-KO-SEC-01`, `EL-H2500-01`
 
+### Element ordering in the JSON array
+
+If Phase 1.5 identified inter-element relationships, generate elements in this order:
+
+1. **Target elements first** (e.g. building frames, parent frames) — they have no `*_ref`
+2. **Source elements with `*_ref`** — their `*_ref` fields reference IDs already in the array
+3. **Backward-compat elements** (no `*_ref`, direct fallback slot) — last
+
+This ordering ensures Feed.pm pass 1 creates targets before pass 2 resolves references.
+
 ### Slots to include
 
 For each type, include in order:
 1. `id` and `type_element` — always first
 2. Mandatory slots (extracted from the `Catalogue des Frames` KB)
 3. Targeting slot(s) for agent 1 (exact name in the KB: `Slots de ciblage` section)
-4. Optional slots relevant to the rules being exercised
-5. ⛔ Do not include system slots (`_*`), nor slots set and computed by the agents
+4. **`*_ref` fields** (if Phase 1.5 assigned a target) — e.g. `"building_ref": "TTYPE-01"`
+5. Optional slots relevant to the rules being exercised
+6. ⛔ Do not include system slots (`_*`), nor slots set and computed by the agents
    (results, statuses, qualifications) — these slots are computed by the pipeline, not supplied in the project JSON
+
+> **`*_ref` are OPTIONAL** — Feed.pm never requires them; rules use the Option A
+> fallback when absent.  Backward-compat elements (Step 1.5-4) intentionally omit `*_ref`
+> and supply the direct fallback slot instead.
+
+### `_note_calc` annotation for inter-frame cases
+
+For elements with `*_ref` fields, annotate the navigation path in `_note_calc`:
+
+```json
+"_note_calc": "building_ref → TTYPE-01 (height_m=6.0 read via inter-frame link). Wall R01: ..."
+```
+
+For backward-compat elements (no `*_ref`), annotate the fallback:
+
+```json
+"_note_calc": "No building_ref — Rule uses direct slot fallback (Option A). height_m=3.2 direct."
+```
 
 ### Slots set by Feed vs slots provided in the JSON
 
