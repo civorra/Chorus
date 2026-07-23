@@ -1,7 +1,7 @@
 # Skill — Chorus::Engine
 
 > Automatically loaded for any Perl code created or modified in `$ENGINE`.
-> Reference: report `$SESSIONS/2026-06-22-16-54-deep-analysis-engine.md`
+> Reference: report `$SESSIONS/2026-06-30-18-16-chorus2-full-reference-classes-skills.md`
 
 ---
 
@@ -16,6 +16,103 @@ All domain knowledge is split into two **authoritative** sub-skills — no dupli
 
 **For direct Perl work in `$ENGINE`** (trigger `engine-ctx` or auto Perl trigger):
 → load **both** sub-skills: `chorus-engine-yaml.md` + `chorus-engine-infra.md`
+
+---
+
+## Chorus::Engine — Rule-Firing Log (`_LOG` / `_TRACE`)
+
+> **New in v2.0.2.** Not in either sub-skill — documented here as the canonical reference.
+
+A logging wrapper is injected **inside `addrule()`** around every `_APPLY` closure.
+It fires after `_APPLY` returns a truthy value (rule fired), and is a no-op otherwise.
+
+### Activation
+
+| Mechanism | Set on | Scope | Behaviour |
+|---|---|---|---|
+| `_LOG => 1` | engine instance | all rules of this engine | Default STDERR output (see below) |
+| `_LOG => \&my_fn` | engine instance | all rules of this engine | Calls `$my_fn->($engine, $rule_id, \%opts)` |
+| `_TRACE => 1` | rule frame / `TRACE: 1` in YAML | that rule only | STDERR output, even without `_LOG` on the engine |
+
+```perl
+# Enable logging on an agent (set BEFORE or AFTER addrule — evaluated at fire time)
+$agent->set('_LOG', 1);              # default STDERR handler
+$agent->set('_LOG', \&my_handler);   # custom handler
+
+# Custom handler signature:
+sub my_handler {
+    my ($engine, $rule_id, $opts) = @_;
+    printf "fired: %s  cycle=%s\n", $rule_id, $engine->{_CYCLE};
+}
+
+# Per-rule trace (YAML):
+TRACE: 1
+
+# Per-rule trace (Perl):
+$agent->addrule( _ID => 'my-rule', _TRACE => 1, _SCOPE => ..., _APPLY => ... );
+```
+
+### Default STDERR format
+
+```
+[cycle   3]  MyAgent / check-dimensions  fired
+             scope: p=<frame-_KEY>
+```
+
+The scope line shows each variable name and the `id` slot of the bound Frame
+(falls back to `_KEY` if `id` is absent, then to the stringified scalar).
+
+### Important details
+
+- `_LOG` is read **at fire time** — setting `$agent->set('_LOG', 0)` mid-run silently
+  disables logging for all subsequent firings without touching `_RULES`.
+- `_TRACE` is captured at `addrule()` time (closure) — changing it afterwards on the
+  rule Frame has no effect.
+- The internal function `_log_fire($engine, $rule_id, \%opts, $log_target)` is not
+  exported and should not be called directly.
+
+---
+
+## Chorus::Engine — Internal counter semantics
+
+> Precision details not in either sub-skill, useful when debugging infinite loops
+> or calibrating `_MAX_CYCLES`.
+
+### `_CYCLE` and `_SUCCES` — reset on every `loop()` call
+
+Both counters are **reset to `0` at the start of every `loop()` call**:
+
+```perl
+loop => sub {
+    $SELF->{_SUCCES} = 0;   # reset each loop() call
+    $SELF->{_CYCLE}  = 0;   # reset each loop() call
+    ...
+    while ( applyrules() ) {
+        ++$SELF->{_CYCLE};   # incremented after each pass that fired ≥ 1 rule
+        ...
+    }
+}
+```
+
+- `_CYCLE` = **number of successful `applyrules()` passes in the current `loop()` call**
+  (not a cumulative counter across `loop()` calls).
+- `_SUCCES` = `1` if at least one rule fired in the **most recent `applyrules()` pass**;
+  reset to `0` at the top of every `loop()` call. `Chorus::Expert` reads
+  `$agent->_SUCCES` after `loop()` to drive `_LOCK_UNTIL_STABLE` logic.
+- The internal `$cycles` variable (used for the `_MAX_CYCLES` guard) tracks the same
+  count as `_CYCLE`, but is local — it exists only to avoid a race if `_CYCLE` were
+  modified externally.
+
+### `_KEY` is excluded from YAML scope variables
+
+Inside `applyrules()`, scope variable names are filtered:
+
+```perl
+grep { $_ ne '_KEY' } keys(%{$rule->{_SCOPE}})
+```
+
+**You cannot name a `CHERCHER:` variable `_KEY`** — it would be silently ignored.
+Reserve all `_UPPERCASE` names for system slots.
 
 ---
 
@@ -42,6 +139,46 @@ All domain knowledge is split into two **authoritative** sub-skills — no dupli
 > Additional runtime slots: `_SELF` `_ITEMS` `_CONTAINER` `_SCOPE` `_MAX_ITER` `_LOCK_UNTIL_STABLE`
 >
 > **This section is the single authoritative reference.** All skills (`chorus-feed`, `chorus-check`, `chorus-engine-yaml`, `chorus-create-project`, `chorus-import-project`, `chorus-strengthen`) defer to this rule.
+
+---
+
+## Chorus::Expert — Lesser-known behaviours
+
+> Not in `chorus-engine-infra.md` — documented here as the canonical reference.
+
+### `debug($level)` — verbose process loop tracing
+
+```perl
+my $xprt = Chorus::Expert->new();
+$xprt->debug(1);   # enable verbose STDERR output
+$xprt->debug(0);   # disable
+```
+
+When active, `process()` prints to STDERR at each key decision point:
+
+```
+Chorus::Expert - LOOPING ON AGENT Enrich NOW.
+Chorus::Expert - Agent Validate is tagged with LOCK_UNTIL_STABLE
+Chorus::Expert - None of agents [Enrich] have succeeded
+Chorus::Expert - REPLAYING AGENT Enrich NOW.
+Chorus::Expert - WILL REPLAY ALL AGENTS NOW.
+```
+
+Useful to diagnose infinite loops and unexpected LOCK_UNTIL_STABLE skips.
+
+### BOARD cleanup after `process()`
+
+`process()` **deletes** `SOLVED` and `FAILED` from the BOARD before returning:
+
+```perl
+($board->delete('SOLVED'), return 1) if $board->{SOLVED};
+($board->delete('FAILED'), return  ) if $board->{FAILED};
+```
+
+Consequence: **the same `Chorus::Expert` instance can be called again** with
+`process($new_input)` after a previous run — the BOARD is clean.
+This also means you cannot read `$board->{SOLVED}` after `process()` returns;
+test the return value of `process()` instead (`1` = solved, `undef` = failed).
 
 ---
 
