@@ -271,12 +271,31 @@ my %REF_FIELDS = (
     building_ref => 'building',   # wall → building
 );
 
+# _ISA injection (prototype catalog — Phase 3 pattern) — called in BOTH passes
+# ⚠️ Must run in pass 1 too: elements without any *_ref still need their prototypes.
+my $inject_isa = sub {
+    my ($slots) = @_;
+    return unless defined $slots->{masonry_unit_type};   # adapt slot name to your domain
+    my $spec = fselect(
+        masonry_unit_type => $slots->{masonry_unit_type},
+        masonry_material  => $slots->{masonry_material}  // '',
+        masonry_group     => $slots->{masonry_group}     // 1,
+        _from             => \@catalog,   # restrict to catalog — mandatory
+    );
+    return unless defined $spec;
+    $slots->{_ISA} = defined($slots->{_ISA})
+        ? [ ref($slots->{_ISA}) eq 'ARRAY' ? @{$slots->{_ISA}} : $slots->{_ISA}, $spec ]
+        : $spec;
+};
+
 # Pass 1 — create frames without references (targets must exist first)
 my (%frames_by_id, @deferred);
 for my $elem (@elements) {
     my $has_ref = grep { defined $elem->{$_} } keys %REF_FIELDS;
     if ($has_ref) { push @deferred, $elem; next; }
-    $frames_by_id{$elem->{id}} = Chorus::Frame->new(%$elem);
+    my %slots = %$elem;
+    $inject_isa->(\%slots);                               # ← also in pass 1
+    $frames_by_id{$elem->{id}} = Chorus::Frame->new(%slots);
 }
 
 # Pass 2 — create frames with references (pass ref at new() time)
@@ -288,6 +307,7 @@ for my $elem (@deferred) {
         $slots{$slot_name} = $frames_by_id{$ref_id}
             or die "Element '$elem->{id}': $ref_field '$ref_id' not found\n";
     }
+    $inject_isa->(\%slots);                               # ← also in pass 2
     $frames_by_id{$elem->{id}} = Chorus::Frame->new(%slots);
 }
 ```
@@ -297,15 +317,26 @@ for my $elem (@deferred) {
 > side effect.  Passing at `new()` goes through `_blessToFrameRec` which skips
 > already-blessed Frames.  Both work for read-only navigation, but `new()` is cleaner.
 
-#### YAML rules — navigation with mandatory guard
+#### YAML rules — navigation with backward-compatible fallback
+
+Two valid patterns depending on whether the link is mandatory or optional:
 
 ```perl
 # ACTION / EFFET body
-my $sup = $w->get('supports')
-    or do { warn "R05: no 'supports' link — skipped\n"; return 0 };
 
-my $h = $sup->get('height_m') // 0;   # read from linked Frame
+# ── Option A: link is OPTIONAL — fall back to direct slot (backward-compatible)
+my $sup = $w->get('supports');
+my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
+
+# ── Option B: link is MANDATORY — hard skip if absent
+my $sup = $w->get('supports')
+    or do { warn "R05: no 'supports' link on $w->{id} — skipped\n"; return 0 };
+my $h = $sup->get('height_m') // 0;
 ```
+
+> **Use Option A** when the same rule must handle both old project files (flat slots)
+> and new project files (inter-frame links).  Use Option B only when the link is
+> architecturally guaranteed and its absence is a data error.
 
 > **Never write to a linked Frame from a rule** — `$w->get('supports')->set(...)` creates
 > invisible side effects on frames processed by other rules.  Read-only navigation only.
@@ -405,8 +436,10 @@ Dynamic slot names (`"min_str_$cond"`) work with `get()` — it takes a plain st
 
 ### 3.4 Checklist — Inter-Frame
 
+- [ ] `*_ref` fields **OPTIONAL** in `%SLOTS_REQUIS` — never add them as required slots; rules fall back to direct slots when link is absent (backward-compatibility)
 - [ ] `*_ref` fields stripped from slots hash before `Chorus::Frame->new()` (`delete $slots{ref_field}`)
 - [ ] Target frame created in **pass 1** (no `*_ref` itself) — referencing frame in **pass 2**
+- [ ] `_ISA` injection (`$inject_isa`) called in **both** pass 1 and pass 2 — elements without `*_ref` still need their prototypes
 - [ ] `%frames_by_id` maintained throughout — die with informative message if target not found
 - [ ] Guards in YAML `ACTION`: `my $link = $w->get('slot') or return 0`
 - [ ] Rules **never write** to linked frames

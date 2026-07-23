@@ -206,12 +206,18 @@ Document inter-frame slots in the Frame's slot dictionary with a `→` marker:
 | _ISA            | prototype | → masonry_spec (injected by Feed.pm)     |
 ```
 
-**Add `*_ref` fields to `%SLOTS_REQUIS` in Feed.pm:**
+**`*_ref` fields are OPTIONAL — never add them to `%SLOTS_REQUIS`:**
 
 ```perl
-'buttressing_wall' => [qw(id type_element buttressing_length_m supports_ref)],
-'external_wall'    => [qw(id type_element wall_type thickness_mm height_m building_ref)],
+# ✅ CORRECT — *_ref absent from required slots (optional link)
+'buttressing_wall' => [qw(id type_element buttressing_length_m)],
+'external_wall'    => [qw(id type_element wall_type thickness_mm height_m length_m)],
 ```
+
+> ⛔ Adding `supports_ref` or `building_ref` to `%SLOTS_REQUIS` breaks backward
+> compatibility — older project files without these fields will die at load time.
+> Rules must use the Option A fallback pattern (see `chorus-engine-yaml.md §
+> Navigating a slot→Frame link`) to handle both formats.
 
 **`%REF_FIELDS` in Feed.pm — one line per link:**
 

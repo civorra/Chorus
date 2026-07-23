@@ -124,15 +124,25 @@ Agent chaining via the slot targeted in `FIND`:
 ### Navigating a slot→Frame link
 
 When a frame carries a slot that holds a reference to another Frame (Pattern A —
-structural link), navigate with `get()` and a mandatory guard:
+structural link), two patterns depending on whether the link is optional:
 
 ```yaml
 ACTION: |
-  # Guard — the link may be absent on some frame types
-  my $sup = $w->get('supports')
-      or do { warn "R05: missing 'supports' link on $w->{id}\n"; return 0 };
+  # ── Option A: link optional — fallback to direct slot (backward-compatible)
+  # Use when the same rule must work on project files with and without the link.
+  my $sup = $w->get('supports');
+  my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
+  # ... checks using $h
+  1
+```
 
-  my $h = $sup->get('height_m') // 0;   # read from the linked Frame
+```yaml
+ACTION: |
+  # ── Option B: link mandatory — hard skip if absent
+  # Use only when the link is architecturally guaranteed.
+  my $sup = $w->get('supports')
+      or do { warn "R05: no 'supports' link on $w->{id}\n"; return 0 };
+  my $h = $sup->get('height_m') // 0;
   # ... checks using $h
   1
 ```
@@ -177,7 +187,7 @@ Dynamic slot names (`"min_str_$cond"`) work with `get()` as a plain string argum
 
 ### Checklist — Inter-Frame YAML
 
-- [ ] **Guard on every `get('link')` call** — `or return 0` (or `or do { warn...; return 0 }`)
+- [ ] **Guard on every `get('link')` call** — Option A (fallback) or Option B (hard skip) — see § Navigating a slot→Frame link above
 - [ ] `$_->{link_slot}` in `filtre` is the **Frame object** — use `$_->get('link_slot')` there
       if you need to inspect the linked frame inside a `filtre` expression
 - [ ] **Never use `$_->{slot}` direct access in `filtre` for inherited slots** —
