@@ -177,17 +177,30 @@ Dynamic slot names (`"min_str_$cond"`) work with `get()` as a plain string argum
 
 ### INPUTS header convention for Frame-linked slots
 
+Replace `<link_slot>`, `<target_type>`, `<remote_slot>`, `<threshold_slot>` with your
+domain's actual slot names.
+
 ```yaml
 ##
 # INPUTS  (slots read)
-#   besoin_wall     : targeting slot
-#   supports        : Frame ref — the external_wall this wall buttresses
-#                     (resolved from supports_ref by Feed.pm at load time)
-#   supports.height_m : float — height of the supported wall (read via link)
-#   _ISA → masonry_spec prototype
-#     min_str_A / min_str_B / min_str_C : normative thresholds (inherited via _ISA)
+#   besoin_X           : targeting slot (your sandbox's targeting slot name)
+#   <link_slot>        : Frame ref — <target_type> this frame is linked to
+#                        (resolved from <link_slot>_ref by Feed.pm at load time)
+#   <link_slot>.<remote_slot> : <type> — <description> (read via inter-frame link)
+#   _ISA → <spec_type> prototype (injected by Feed.pm via fselect)
+#     <threshold_slot>_A / _B / _C : normative thresholds (inherited via _ISA)
 ##
 ```
+
+> **Example** (ADA sandbox):
+> ```yaml
+> #   besoin_wall        : targeting slot
+> #   supports           : Frame ref — external_wall this wall buttresses
+> #                        (resolved from supports_ref by Feed.pm)
+> #   supports.height_m  : float — height of supported wall (via link)
+> #   _ISA → masonry_spec prototype
+> #     min_str_A / min_str_B / min_str_C : Table 6 thresholds (via _ISA)
+> ```
 
 ### Checklist — Inter-Frame YAML
 

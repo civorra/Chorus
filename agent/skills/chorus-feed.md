@@ -195,16 +195,20 @@ another Frame for key properties.  Signs of an inter-frame relationship in the c
 
 **Notation in KB org files:**
 
-Document inter-frame slots in the Frame's slot dictionary with a `→` marker:
+Document inter-frame slots in the Frame's slot dictionary with a `→` marker.
+Replace slot names and target types with your domain's actual vocabulary:
 
 ```org
 ** Slots
-| slot            | type      | description                              |
-|-----------------+-----------+------------------------------------------|
-| supports        | Frame ref | → external_wall this wall buttresses     |
-| building        | Frame ref | → residential_building or non_residential|
-| _ISA            | prototype | → masonry_spec (injected by Feed.pm)     |
+| slot              | type      | description                                    |
+|-------------------+-----------+------------------------------------------------|
+| <link_slot>       | Frame ref | → <target_frame_type> (Pattern A structural)   |
+| <link_slot_2>     | Frame ref | → <parent_frame_type> (Pattern A structural)   |
+| _ISA              | prototype | → <spec_type> prototype (injected by Feed.pm)  |
 ```
+
+> **Example** (ADA sandbox):
+> `supports → external_wall` ; `building → residential_building` ; `_ISA → masonry_spec`
 
 **`*_ref` fields are OPTIONAL — never add them to `%SLOTS_REQUIS`:**
 

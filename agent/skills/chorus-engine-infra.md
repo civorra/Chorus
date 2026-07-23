@@ -287,7 +287,9 @@ sub load_projet {
         if ($has_ref) { push @deferred, $elem; next; }
 
         my $frame = Chorus::Frame->new(%$elem);
-        $frame->set('besoin_wall', 'Y') if $WALL_TYPES{$type};  # pre-populate targeting slot
+        # Pre-populate targeting slot(s) — adapt to your sandbox
+        # e.g. $frame->set('besoin_validation', 'Y') if $TYPED_FRAMES{$type};
+        $frame->set('besoin_X', 'Y') if $TYPED_FRAMES{$type};
         $frames_by_id{ $elem->{id} } = $frame;
         push @frames, $frame;
     }
@@ -305,7 +307,8 @@ sub load_projet {
         }
 
         my $frame = Chorus::Frame->new(%slots);
-        $frame->set('besoin_wall', 'Y') if $WALL_TYPES{$type};
+        # Pre-populate targeting slot(s) — same as pass 1
+        $frame->set('besoin_X', 'Y') if $TYPED_FRAMES{$type};
         $frames_by_id{ $elem->{id} } = $frame;
         push @frames, $frame;
     }
@@ -371,9 +374,12 @@ that come from a static catalog (e.g. masonry strength tables, section minimum t
 #### Why `_ISA` is safe for static catalogs
 
 Prototype frames are safe when they do **not** carry the targeting slot used by YAML rules
-(`besoin_X`, `needs_Y`).  Rules use `FIND: attribut: besoin_masonry` → `fmatch` only
-finds frames that have `besoin_masonry` registered.  Prototypes don't → they never
+(`besoin_X`, `needs_Y`).  Rules use `FIND: attribut: besoin_X` → `fmatch` only
+finds frames that have `besoin_X` registered.  Prototypes don't → they never
 appear in any rule scope.  ✅
+
+> **Example** (ADA sandbox): rules use `FIND: attribut: besoin_masonry` — masonry spec
+> prototypes carry no `besoin_masonry` slot → invisible to every masonry rule.
 
 #### Feed.pm — `_build_*_catalog()` + `$inject_isa` closure
 
