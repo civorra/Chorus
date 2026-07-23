@@ -172,6 +172,57 @@ Intermediate calculations remain as slots, not Frames.
 > English corpus → English slot names (`bearing_member`, `wood_class`, `conformance_need`).
 > → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
+**1.2b Identify inter-frame relationships**
+
+After identifying domain Frames, examine whether any Frame *belongs to* or *depends on*
+another Frame for key properties.  Signs of an inter-frame relationship in the corpus:
+
+- A slot on Frame A duplicates a property of Frame B (e.g. `buttressing_wall.height_m`
+  = height of the wall it buttresses — that's `external_wall.height_m`).
+- A rule would need a cross-product scope (`FIND: var1: ... var2: ...`) to relate
+  two Frame types — this always signals a missing structural link.
+- Multiple frames of type A share the same normative thresholds that come from a
+  static table indexed by `(type, material, group, …)`.
+
+**For each identified relationship, choose a pattern:**
+
+| Relationship type | Pattern | Implementation |
+|---|---|---|
+| Element A structurally belongs to / is connected to B | **slot→Frame** | `*_ref` field in JSON → resolved in Feed.pm pass 2 |
+| Multiple frames share a normative threshold catalog | **`_ISA` prototype** | `_build_*_catalog()` + `fselect` in Feed.pm |
+
+> → Full implementation guide: `chorus-engine-infra.md § 3. Inter-Frame Relationships`
+
+**Notation in KB org files:**
+
+Document inter-frame slots in the Frame's slot dictionary with a `→` marker:
+
+```org
+** Slots
+| slot            | type      | description                              |
+|-----------------+-----------+------------------------------------------|
+| supports        | Frame ref | → external_wall this wall buttresses     |
+| building        | Frame ref | → residential_building or non_residential|
+| _ISA            | prototype | → masonry_spec (injected by Feed.pm)     |
+```
+
+**Add `*_ref` fields to `%SLOTS_REQUIS` in Feed.pm:**
+
+```perl
+'buttressing_wall' => [qw(id type_element buttressing_length_m supports_ref)],
+'external_wall'    => [qw(id type_element wall_type thickness_mm height_m building_ref)],
+```
+
+**`%REF_FIELDS` in Feed.pm — one line per link:**
+
+```perl
+my %REF_FIELDS = (
+    supports_ref => 'supports',
+    building_ref => 'building',
+    # add new links here
+);
+```
+
 **1.3 Identify the pipeline**
 
 Order agents by data dependency:
