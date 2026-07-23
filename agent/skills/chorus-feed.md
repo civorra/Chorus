@@ -172,6 +172,114 @@ Intermediate calculations remain as slots, not Frames.
 > English corpus → English slot names (`bearing_member`, `wood_class`, `conformance_need`).
 > → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
+**1.2b Identify inter-frame relationships**
+
+After identifying domain Frames, examine whether any Frame *belongs to* or *depends on*
+another Frame for key properties.  Signs of an inter-frame relationship in the corpus:
+
+- A slot on Frame A duplicates a property of Frame B (e.g. `buttressing_wall.height_m`
+  = height of the wall it buttresses — that's `external_wall.height_m`).
+- A rule would need a cross-product scope (`FIND: var1: ... var2: ...`) to relate
+  two Frame types — this always signals a missing structural link.
+- Multiple frames of type A share the same normative thresholds that come from a
+  static table indexed by `(type, material, group, …)`.
+
+**For each identified relationship, choose a pattern:**
+
+| Relationship type | Pattern | Implementation |
+|---|---|---|
+| Element A structurally belongs to / is connected to B | **slot→Frame** | `*_ref` field in JSON → resolved in Feed.pm pass 2 |
+| Multiple frames share a normative threshold catalog | **`_ISA` prototype** | `_build_*_catalog()` + `fselect` in Feed.pm |
+
+> → Full implementation guide: `chorus-engine-infra.md § 3. Inter-Frame Relationships`
+
+**Notation in KB org files:**
+
+Document inter-frame slots in the Frame's slot dictionary with a `→` marker.
+Replace slot names and target types with your domain's actual vocabulary:
+
+```org
+** Slots
+| slot              | type      | description                                    |
+|-------------------+-----------+------------------------------------------------|
+| <link_slot>       | Frame ref | → <target_frame_type> (Pattern A structural)   |
+| <link_slot_2>     | Frame ref | → <parent_frame_type> (Pattern A structural)   |
+| _ISA              | prototype | → <spec_type> prototype (injected by Feed.pm)  |
+```
+
+> **Example** (ADA sandbox):
+> `supports → external_wall` ; `building → residential_building` ; `_ISA → masonry_spec`
+
+**`*_ref` fields are OPTIONAL — never add them to `%SLOTS_REQUIS`:**
+
+```perl
+# ✅ CORRECT — *_ref absent from required slots (optional link)
+'buttressing_wall' => [qw(id type_element buttressing_length_m)],
+'external_wall'    => [qw(id type_element wall_type thickness_mm height_m length_m)],
+```
+
+> ⛔ Adding `supports_ref` or `building_ref` to `%SLOTS_REQUIS` breaks backward
+> compatibility — older project files without these fields will die at load time.
+> Rules must use the Option A fallback pattern (see `chorus-engine-yaml.md §
+> Navigating a slot→Frame link`) to handle both formats.
+
+**`%REF_FIELDS` in Feed.pm — declare INSIDE `load_projet()`, before pass 1:**
+
+```perl
+sub load_projet {
+    my ($fichier) = @_;
+    # ... JSON load + SLOTS_REQUIS validation ...
+
+    my %REF_FIELDS = (       # ← inside load_projet(), not at module level
+        supports_ref => 'supports',
+        building_ref => 'building',
+        # add new links here
+    );
+    # ... pass 1 / pass 2 — see chorus-engine-infra.md §3.5 for the full skeleton
+}
+```
+
+**If Pattern B is also needed (`_ISA` prototypes):** add a `_build_*_catalog()` sub
+and a `$inject_isa` closure inside `load_projet()`, called in **both** pass 1 and
+pass 2 — see `chorus-engine-infra.md §3.2 and §3.5`.
+
+```perl
+# Pattern B addition to load_projet():
+my @catalog  = _build_spec_catalog();   # BEFORE pass 1
+my $inject_isa = sub { ... };           # captures @catalog
+# Call $inject_isa->(\%slots) in both passes
+```
+
+---
+
+> ### ⚠️ Automation scope — what is and is not automatic
+>
+> **Re-creating a sandbox from the same corpus does NOT automatically reproduce
+> inter-frame relationships.** Here is what each tool does:
+>
+> | Step | Tool | Automatic? | Condition |
+> |---|---|---|---|
+> | Detect relationships in corpus | `chorus-feed` | ✅ **yes** — if corpus signals are clear (§1.2b) | AI judgment required |
+> | Annotate KB org with `→` markers | `chorus-feed` | ✅ **yes** — follows §1.2b guidance | Depends on detection |
+> | Generate YAML rules with `$w->get('link')` | `chorus-feed` | ✅ **yes** — if KB annotated | Option A fallback pattern |
+> | Generate Feed.pm 2-pass + `%REF_FIELDS` | `chorus-check` | ✅ **yes** — if KB has `→` annotations | Depends on KB quality |
+> | Generate `_build_*_catalog()` + `$inject_isa` | `chorus-check` | 🟡 **partial** — catalog values from corpus | Normative thresholds required |
+> | Add `*_ref` fields to JSON project files | **manual** | ❌ **never automatic** | See below |
+>
+> **Why `*_ref` fields in JSON are always manual:**
+>
+> `*_ref` fields encode **project structure** — which actual wall element belongs to which
+> actual building, which buttressing wall supports which external wall.  This information
+> comes from the **project document** (drawings, BIM, specs), not from the normative
+> corpus.  `chorus-feed` and `chorus-check` work on the corpus; they cannot know which
+> specific project element is linked to which other.
+>
+> `chorus-import-project` (when aligning a real project document to the KB) is the
+> right tool to populate these fields — provided the project document contains explicit
+> element relationships.  Otherwise, the engineer or project analyst fills them manually.
+
+---
+
 **1.3 Identify the pipeline**
 
 Order agents by data dependency:

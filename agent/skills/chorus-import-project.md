@@ -1544,6 +1544,131 @@ file instead of proceeding to Phase 4 / JSON generation:
    after the engineer has validated the alignment file.
 
 
+## Phase 3.5 — Inter-Element Relationship Detection
+
+> **Prerequisite:** Phase 3 complete — `.import-alignment-<NNN>.org` lists all elements
+> with their confirmed `id` and `type_element`.
+>
+> **Skip condition:** if no KB org slot has a `Frame ref` or `→` annotation (see
+> `chorus-engine-infra.md §3`), skip Phase 3.5 entirely and go directly to Phase 4.
+> Print: `[Phase 3.5] No inter-frame relationships defined in KB — skipped.`
+
+This phase detects explicit cross-element relationships in the project document and
+generates the `*_ref` fields that Feed.pm's inter-frame mechanism requires.
+
+---
+
+### Step 3.5-1 — Build the relationship blueprint from KB
+
+Scan the KB org slot dictionaries (loaded in Phase 1) for slots whose `type` column
+contains `Frame ref` or whose description contains `→ <target_type>`.  Build:
+
+```
+blueprint = { source_type → { slot_name → target_type } }
+# Derived ref_field name: slot_name + "_ref"
+# e.g.:
+#   buttressing_wall → { supports → external_wall }     ← ref_field: supports_ref
+#   external_wall    → { building → residential_building|non_residential_building }
+#                                                        ← ref_field: building_ref
+```
+
+If the blueprint is empty after scanning, skip Phase 3.5.
+
+---
+
+### Step 3.5-2 — Scan the project document for relationship signals
+
+For each `(source_type, slot_name, target_type)` entry in the blueprint, scan
+the source document for signals that a source element is linked to a target element.
+
+**Recognised signal patterns:**
+
+| Signal type | Example | Confidence |
+|---|---|---|
+| Table column containing IDs of target type | "Building" column in a wall schedule | ✅ |
+| Explicit language of containment | "Wall EW-01, located in Building B1" | ✅ |
+| Explicit language of structural link | "BW-01 buttresses / supports EW-01" | ✅ |
+| BIM-style attributes | "Host: RES-01", "Level: FL-01" | ✅ |
+| Section/sub-section hierarchy | H2 = building, H3 = walls within it | ⚠️ |
+| Spatial co-location (same figure, same row) | EW-01 and B1 on same drawing sheet | ⚠️ |
+| No signal found | — | ❓ unresolved |
+
+---
+
+### Step 3.5-3 — Resolve target labels to element IDs
+
+For each found relationship signal, resolve the target label to a concrete `id`
+already present in `.import-alignment-<NNN>.org`:
+
+1. **Direct match** — target label equals an `id` in the alignment → ✅
+2. **Alias match** — target label matches a `_labels` alias or project term → ✅
+3. **Type-filtered guess** — only one element of the expected target type → ⚠️
+4. **Unresolved** — no match or multiple ambiguous matches → ❓
+
+⛔ **Never generate a `*_ref` pointing to an ID not in the current import.**
+⛔ **Never invent a relationship** absent from the document and not in the KB blueprint.
+
+---
+
+### Step 3.5-4 — Record findings in alignment file
+
+Append an `* Inter-Element Relationships` section to `.import-alignment-<NNN>.org`:
+
+```org
+* Inter-Element Relationships (Phase 3.5)
+  Blueprint: KB org → annotations (chorus-engine-infra.md §3)
+
+  | element_id | slot_name | ref_field    | target_id | confidence | source_signal               |
+  |------------|-----------|--------------|-----------|------------|-----------------------------|
+  | BW-01      | supports  | supports_ref | EW-01     | ✅         | "BW-01 buttresses EW-01"    |
+  | EW-01      | building  | building_ref | RES-01    | ✅         | Wall schedule, Building col |
+  | EW-02      | building  | building_ref | RES-01    | ⚠️         | Same drawing as EW-01       |
+  | IW-01      | building  | building_ref | (none)    | ❓         | No signal found in document |
+```
+
+**Confidence rules for Phase 4/5:**
+- ✅ → include `*_ref` field in JSON output (Phase 5)
+- ⚠️ → include with `_note` warning; flag for engineer review in import report
+- ❓ → omit from JSON; report as optional gap in Phase 4
+
+---
+
+### Step 3.5 Print summary
+
+```
+[Phase 3.5] Inter-element relationships detected
+  Blueprint entries : N (from KB org → annotations)
+  ✅ resolved       : N  (will generate *_ref fields)
+  ⚠️ inferred       : N  (included with warning)
+  ❓ unresolved     : N  (optional — link absent from document)
+```
+
+---
+
+### Impact on Phase 5 (JSON generation)
+
+Phase 5 must include `*_ref` fields from the Phase 3.5 section of
+`.import-alignment-<NNN>.org`:
+
+- For each element with a ✅ or ⚠️ relationship entry → add `"<ref_field>": "<target_id>"`
+- ⚠️ entries get an additional `"_note_<ref_field>": "inferred — verify"` annotation
+- ❓ entries → omit silently (optional link)
+
+```json
+{
+  "id": "EW-01",
+  "type_element": "external_wall",
+  "building_ref": "RES-01",
+  "thickness_mm": 290,
+  ...
+}
+```
+
+> Note: `*_ref` fields are OPTIONAL in `%SLOTS_REQUIS` — their absence never causes
+> Feed.pm to reject an element.  Rules use the Option A fallback pattern (direct slot
+> when no link is present).  See `chorus-engine-yaml.md § Navigating a slot→Frame link`.
+
+
 ## Phase 4 — Identify Gaps
 
 For each element, cross-reference the present slots against the KB `Catalogue des Frames`:
@@ -1564,6 +1689,7 @@ montant_porteur hauteur_libre_m     ✅          "h=2.5m"
 | Optional slot absent | Omit from JSON — the pipeline handles it |
 | Out-of-domain value (e.g. `classe_bois: "C12"`) | Report — let the engineer correct it |
 | Entire element unmappable | Include with `_incomplet: 1` — will be cleanly rejected by Feed |
+| `Frame ref` slot (❓ in Phase 3.5) | Report as optional gap — `*_ref` absent is acceptable; rules use direct-slot fallback |
 
 
 ## Phase 5 — Produce the JSON

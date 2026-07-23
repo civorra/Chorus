@@ -115,6 +115,105 @@ Agent chaining via the slot targeted in `FIND`:
 
 ---
 
+## Inter-Frame Navigation in ACTION / EFFET
+
+> **See also:** `chorus-engine-infra.md § 3. Inter-Frame Relationships` for the
+> full Feed.pm implementation (2-pass, `%REF_FIELDS`, prototype catalogs).
+> This section covers the YAML-side conventions only.
+
+### Navigating a slot→Frame link
+
+When a frame carries a slot that holds a reference to another Frame (Pattern A —
+structural link), two patterns depending on whether the link is optional:
+
+```yaml
+ACTION: |
+  # ── Option A: link optional — fallback to direct slot (backward-compatible)
+  # Use when the same rule must work on project files with and without the link.
+  # Replace 'link_slot', 'remote_slot', 'local_fallback_slot' with actual names.
+  my $linked = $w->get('link_slot');
+  my $val    = $linked
+      ? ($linked->get('remote_slot')  // 0)
+      : ($w->{local_fallback_slot}    // 0);
+  # e.g.: my $sup = $w->get('supports');
+  #       my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
+  1
+```
+
+```yaml
+ACTION: |
+  # ── Option B: link mandatory — hard skip if absent
+  # Use only when the link is architecturally guaranteed.
+  my $sup = $w->get('supports')
+      or do { warn "R05: no 'supports' link on $w->{id}\n"; return 0 };
+  my $h = $sup->get('height_m') // 0;
+  # ... checks using $h
+  1
+```
+
+> ⛔ **Never write to a linked Frame from a rule:**
+> `$w->get('supports')->set('slot', val)` creates side effects on frames
+> processed by other agents — invisible and hard to debug.  Read only.
+
+### Reading inherited thresholds via `_ISA`
+
+When a frame inherits from a prototype (Pattern B — `_ISA`), read thresholds
+directly via `get()` — the inheritance chain is traversed transparently:
+
+```yaml
+ACTION: |
+  my $cond    = $w->{masonry_condition} // 'A';
+  my $min_str = $w->get("min_str_$cond");   # traverses _ISA → prototype
+
+  unless (defined $min_str) {
+      $w->set('strength_ok', 'YES');   # no numeric minimum for this spec
+      return 1;
+  }
+  # ... comparison
+  1
+```
+
+Dynamic slot names (`"min_str_$cond"`) work with `get()` as a plain string argument.
+
+### INPUTS header convention for Frame-linked slots
+
+Replace `<link_slot>`, `<target_type>`, `<remote_slot>`, `<threshold_slot>` with your
+domain's actual slot names.
+
+```yaml
+##
+# INPUTS  (slots read)
+#   besoin_X           : targeting slot (your sandbox's targeting slot name)
+#   <link_slot>        : Frame ref — <target_type> this frame is linked to
+#                        (resolved from <link_slot>_ref by Feed.pm at load time)
+#   <link_slot>.<remote_slot> : <type> — <description> (read via inter-frame link)
+#   _ISA → <spec_type> prototype (injected by Feed.pm via fselect)
+#     <threshold_slot>_A / _B / _C : normative thresholds (inherited via _ISA)
+##
+```
+
+> **Example** (ADA sandbox):
+> ```yaml
+> #   besoin_wall        : targeting slot
+> #   supports           : Frame ref — external_wall this wall buttresses
+> #                        (resolved from supports_ref by Feed.pm)
+> #   supports.height_m  : float — height of supported wall (via link)
+> #   _ISA → masonry_spec prototype
+> #     min_str_A / min_str_B / min_str_C : Table 6 thresholds (via _ISA)
+> ```
+
+### Checklist — Inter-Frame YAML
+
+- [ ] **Guard on every `get('link')` call** — Option A (fallback) or Option B (hard skip) — see § Navigating a slot→Frame link above
+- [ ] `$_->{link_slot}` in `filtre` is the **Frame object** — use `$_->get('link_slot')` there
+      if you need to inspect the linked frame inside a `filtre` expression
+- [ ] **Never use `$_->{slot}` direct access in `filtre` for inherited slots** —
+      `$_->{slot}` only sees direct slots; use `$_->get('slot')` to traverse `_ISA`
+- [ ] `$w->get("slot_$dynamic")` — dynamic slot names work, document the possible values
+- [ ] INPUTS header: document linked Frame slots as `link.slot_name : type — meaning`
+
+---
+
 ## Complete YAML Guide
 
 > **Language rule:** use English keywords by default (`RULE`, `FIND`, `ACTION`, `PREMISES`).

@@ -236,6 +236,320 @@ sub run {
 
 ---
 
+## 3. Inter-Frame Relationships
+
+> **Authoritative reference.** This section is the canonical source for inter-frame
+> relationship patterns in Chorus sandboxes.  Findings are derived from a complete
+> reading of `Chorus::Frame` v2.0.2 source and validated in `test-11`.
+
+Two complementary patterns exist.  Choose based on the nature of the relationship.
+
+---
+
+### 3.1 Pattern A — Structural links (slot → Frame)
+
+**When to use:** a domain element *belongs to* or *is connected to* another domain element
+(e.g. `buttressing_wall → external_wall`, `wall → building`).
+
+#### JSON convention
+
+Use a `*_ref` field containing the `id` of the target element:
+
+```json
+{ "id": "BW-01", "type_element": "buttressing_wall",
+  "supports_ref": "EW-01", "buttressing_length_m": 1.0 }
+```
+
+Naming rule: `<relationship>_ref` → resolves to slot `<relationship>` on the Frame.
+
+#### Feed.pm — 2-pass + `%REF_FIELDS`
+
+> `%REF_FIELDS` and both passes go **inside `load_projet()`**, not at module level.
+> If your sandbox also uses Pattern B (`_ISA` prototypes), see §3.5 for the complete
+> skeleton combining both patterns.
+
+```perl
+sub load_projet {
+    my ($fichier) = @_;
+    # ... JSON loading and SLOTS_REQUIS validation (standard boilerplate) ...
+
+    # Declare all reference fields — one line per link.  Add here to extend.
+    my %REF_FIELDS = (
+        supports_ref => 'supports',   # e.g. buttressing_wall → external_wall
+        building_ref => 'building',   # e.g. wall → building
+    );
+
+    # Pass 1 — create frames WITHOUT *_ref fields (targets must exist first)
+    my (%frames_by_id, @frames, @deferred);
+    for my $elem (@elements) {
+        my $type    = $elem->{type_element} or next;
+        my $has_ref = grep { defined $elem->{$_} } keys %REF_FIELDS;
+        if ($has_ref) { push @deferred, $elem; next; }
+
+        my $frame = Chorus::Frame->new(%$elem);
+        # Pre-populate targeting slot(s) — adapt to your sandbox
+        # e.g. $frame->set('besoin_validation', 'Y') if $TYPED_FRAMES{$type};
+        $frame->set('besoin_X', 'Y') if $TYPED_FRAMES{$type};
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
+    }
+
+    # Pass 2 — create frames WITH *_ref fields (reference resolved at new() time)
+    for my $elem (@deferred) {
+        my $type  = $elem->{type_element};
+        my %slots = %$elem;
+
+        for my $ref_field (keys %REF_FIELDS) {
+            my $slot_name = $REF_FIELDS{$ref_field};
+            my $ref_id    = delete $slots{$ref_field} // next;
+            $slots{$slot_name} = $frames_by_id{$ref_id}
+                or die "Element '$elem->{id}': $ref_field '$ref_id' not found\n";
+        }
+
+        my $frame = Chorus::Frame->new(%slots);
+        # Pre-populate targeting slot(s) — same as pass 1
+        $frame->set('besoin_X', 'Y') if $TYPED_FRAMES{$type};
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
+    }
+
+    return @frames;
+}
+```
+
+> **⚠️ Why pass the reference at `new()` time, not via `set()` after:**
+> `set()` calls `_setSlot()` which sets `_PARENT_KEY` on the target frame — a CoW
+> side effect.  Passing at `new()` goes through `_blessToFrameRec` which skips
+> already-blessed Frames.  Both work for read-only navigation, but `new()` is cleaner.
+
+#### YAML rules — navigation with backward-compatible fallback
+
+Two valid patterns depending on whether the link is mandatory or optional:
+
+```perl
+# ACTION / EFFET body
+
+# ── Option A: link is OPTIONAL — fall back to direct slot (backward-compatible)
+my $sup = $w->get('supports');
+my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
+
+# ── Option B: link is MANDATORY — hard skip if absent
+my $sup = $w->get('supports')
+    or do { warn "R05: no 'supports' link on $w->{id} — skipped\n"; return 0 };
+my $h = $sup->get('height_m') // 0;
+```
+
+> **Use Option A** when the same rule must handle both old project files (flat slots)
+> and new project files (inter-frame links).  Use Option B only when the link is
+> architecturally guaranteed and its absence is a data error.
+
+> **Never write to a linked Frame from a rule** — `$w->get('supports')->set(...)` creates
+> invisible side effects on frames processed by other rules.  Read-only navigation only.
+
+#### What `get()` returns on a Frame-valued slot
+
+`$w->get('supports')` returns the Frame object directly when the target frame has no
+`_VALUE`/`_DEFAULT`/`_NEEDED` — which is always the case for domain frames.
+`$SELF` is managed correctly by `get()`'s push/pop stack.
+
+#### `fmatch` behaviour
+
+`$bw->set('supports', $ew)` registers `$bw` under `'supports'` in `%REPOSITORY`.
+`fmatch(slot => 'supports')` → finds buttressing_wall frames.  ✅
+The target frame (`$ew`) is NOT double-registered.
+
+---
+
+### 3.2 Pattern B — Type prototypes (`_ISA` + `fselect`)
+
+**When to use:** a set of domain frames shares normative thresholds or default values
+that come from a static catalog (e.g. masonry strength tables, section minimum tables).
+
+> ⛔ **Never use `_ISA` for structural relationships** (Pattern A use cases).
+> `_ISA` propagates ALL parent slots into `fmatch` results.  If the parent has
+> `height_m`, then `fmatch(slot => 'height_m')` returns BOTH parent AND all children —
+> silently injecting unwanted frames into every rule scope that targets `height_m`.
+> Use Pattern A (slot→Frame) for structural links.
+
+#### Why `_ISA` is safe for static catalogs
+
+Prototype frames are safe when they do **not** carry the targeting slot used by YAML rules
+(`besoin_X`, `needs_Y`).  Rules use `FIND: attribut: besoin_X` → `fmatch` only
+finds frames that have `besoin_X` registered.  Prototypes don't → they never
+appear in any rule scope.  ✅
+
+> **Example** (ADA sandbox): rules use `FIND: attribut: besoin_masonry` — masonry spec
+> prototypes carry no `besoin_masonry` slot → invisible to every masonry rule.
+
+#### Feed.pm — `_build_*_catalog()` + `$inject_isa` closure
+
+> **`@catalog` must be created ONCE, before both passes.**
+> Creating it inside a loop would re-register duplicate frames in `%REPOSITORY`.
+> The `$inject_isa` closure captures the catalog by reference.
+
+```perl
+# ── Outside or at top of load_projet() — catalog created once ────────────────
+
+# 1. Build the prototype catalog (module-level sub or inline)
+# Name the discriminator slots after YOUR domain (e.g. wood_class + treatment,
+# reaction_class + group, etc. — replace masonry_* with your actual keys).
+sub _build_spec_catalog {
+    return (
+        Chorus::Frame->new(
+            spec_key_1 => 'value_A', spec_key_2 => 'value_B', spec_key_3 => 1,
+            threshold_cond_A => 6.0, threshold_cond_B => 9.0, threshold_cond_C => 18.0,
+        ),
+        # ... one frame per combination
+    );
+}
+
+# 2. Inside load_projet(), BEFORE pass 1:
+my @catalog = _build_spec_catalog();   # created once, captured by $inject_isa
+
+# 3. $inject_isa closure — called in BOTH pass 1 and pass 2
+my $inject_isa = sub {
+    my ($slots) = @_;
+    # Replace 'spec_key_1' etc. with the actual discriminator slots for your domain
+    return unless defined $slots->{spec_key_1};
+    my $spec = fselect(
+        spec_key_1 => $slots->{spec_key_1},
+        spec_key_2 => $slots->{spec_key_2} // '',
+        spec_key_3 => $slots->{spec_key_3} // 1,
+        _from      => \@catalog,   # mandatory — restrict to catalog only
+    );
+    return unless defined $spec;
+    $slots->{_ISA} = defined($slots->{_ISA})
+        ? [ ref($slots->{_ISA}) eq 'ARRAY' ? @{$slots->{_ISA}} : $slots->{_ISA}, $spec ]
+        : $spec;
+};
+# Then in pass 1: $inject_isa->(\%slots);
+# And in pass 2: $inject_isa->(\%slots);   — see §3.5 for the full skeleton
+```
+
+> `_from => \@catalog` is mandatory — without it, `fselect` searches ALL registered
+> frames and returns unexpected matches from the domain itself.
+
+#### YAML rules — reading inherited thresholds
+
+```perl
+# ACTION body — no guard needed (get() returns undef if slot absent in inheritance chain)
+my $min_str = $w->get("min_str_$cond");   # traverses _ISA → prototype
+
+if (!defined $min_str) {
+    $w->set('strength_ok', 'YES');   # no numeric minimum for this spec
+    return 1;
+}
+```
+
+Dynamic slot names (`"min_str_$cond"`) work with `get()` — it takes a plain string.
+`$w->min_str_A` (AUTOLOAD) also works but only for static names.
+
+---
+
+### 3.3 Decision table
+
+| Situation | Pattern | Mechanism |
+|---|---|---|
+| Element A belongs to / is connected to element B | **A** | `*_ref` → slot→Frame |
+| Multiple elements share the same normative table | **B** | `_ISA` + `fselect` |
+| Default values shared across a type | **B** | `_ISA` + `_DEFAULT` |
+| Structural relationship that needs reverse lookup | **A** | slot→Frame; reverse via `fmatch(slot=>'link')` + grep |
+| Structural relationship with `_ISA` | ⛔ **never** | Pollutes all `fmatch` scopes |
+
+### 3.4 Checklist — Inter-Frame
+
+- [ ] `*_ref` fields **OPTIONAL** in `%SLOTS_REQUIS` — never add them as required slots; rules fall back to direct slots when link is absent (backward-compatibility)
+- [ ] `*_ref` fields stripped from slots hash before `Chorus::Frame->new()` (`delete $slots{ref_field}`)
+- [ ] Target frame created in **pass 1** (no `*_ref` itself) — referencing frame in **pass 2**
+- [ ] `_ISA` injection (`$inject_isa`) called in **both** pass 1 and pass 2 — elements without `*_ref` still need their prototypes
+- [ ] `%frames_by_id` maintained throughout — die with informative message if target not found
+- [ ] Guards in YAML `ACTION`: Option A (fallback) for optional links, Option B (hard skip) for mandatory — see §3.1 YAML rules
+- [ ] Rules **never write** to linked frames
+- [ ] Prototype catalog: `_from => \@catalog` in every `fselect` call
+- [ ] `@catalog` created **once before pass 1** — never inside a loop
+- [ ] Prototypes **never carry** the targeting slot (`besoin_X`) used by domain rules
+- [ ] `_ISA` set at `new()` time — never via `$f->set('_ISA', ...)`
+- [ ] INPUTS header in YAML documents linked slots: `link.slot_name : type — meaning`
+
+---
+
+### 3.5 Complete `load_projet()` skeleton — Pattern A + B combined
+
+> Reference implementation: `test-11-construction-corpus-en-pdf-inter-frames-relations`
+
+```perl
+sub load_projet {
+    my ($fichier) = @_;
+
+    # Standard: JSON load + SLOTS_REQUIS validation (not shown)
+    my @elements = ...;
+
+    # ── Pattern B: build prototype catalog ONCE, before both passes ───────────
+    my @catalog = _build_spec_catalog();   # see §3.2 for _build_*_catalog()
+
+    # ── Pattern B: $inject_isa closure — captures @catalog ────────────────────
+    my $inject_isa = sub {
+        my ($slots) = @_;
+        return unless defined $slots->{spec_key_1};   # your domain discriminator
+        my $spec = fselect(
+            spec_key_1 => $slots->{spec_key_1},
+            spec_key_2 => $slots->{spec_key_2} // '',
+            spec_key_3 => $slots->{spec_key_3} // 1,
+            _from      => \@catalog,
+        );
+        return unless defined $spec;
+        $slots->{_ISA} = defined($slots->{_ISA})
+            ? [ ref($slots->{_ISA}) eq 'ARRAY' ? @{$slots->{_ISA}} : $slots->{_ISA}, $spec ]
+            : $spec;
+    };
+
+    # ── Pattern A: *_ref → slot mapping ───────────────────────────────────────
+    my %REF_FIELDS = (
+        ref_field_1 => 'slot_name_1',   # e.g. supports_ref => 'supports'
+        ref_field_2 => 'slot_name_2',   # e.g. building_ref => 'building'
+    );
+
+    # ── Pass 1 — frames without *_ref fields ──────────────────────────────────
+    my (%frames_by_id, @frames, @deferred);
+    for my $elem (@elements) {
+        my $type    = $elem->{type_element} or next;
+        next unless $SLOTS_REQUIS{$type};
+        my $has_ref = grep { defined $elem->{$_} } keys %REF_FIELDS;
+        if ($has_ref) { push @deferred, $elem; next; }
+
+        my %slots = %$elem;
+        $inject_isa->(\%slots);                      # Pattern B — BOTH passes
+        my $frame = Chorus::Frame->new(%slots);
+        $frame->set('targeting_slot', 'Y') if $TYPED_FRAMES{$type};
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
+    }
+
+    # ── Pass 2 — frames with *_ref fields ─────────────────────────────────────
+    for my $elem (@deferred) {
+        my $type  = $elem->{type_element};
+        my %slots = %$elem;
+
+        for my $ref_field (keys %REF_FIELDS) {       # Pattern A — resolve links
+            my $slot_name = $REF_FIELDS{$ref_field};
+            my $ref_id    = delete $slots{$ref_field} // next;
+            $slots{$slot_name} = $frames_by_id{$ref_id}
+                or die "Element '$elem->{id}': $ref_field '$ref_id' not found\n";
+        }
+
+        $inject_isa->(\%slots);                      # Pattern B — BOTH passes
+        my $frame = Chorus::Frame->new(%slots);
+        $frame->set('targeting_slot', 'Y') if $TYPED_FRAMES{$type};
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
+    }
+
+    return @frames;
+}
+```
+
+---
+
 ## Checklist — Anti-Pitfalls
 
 ### ✅ Frames
