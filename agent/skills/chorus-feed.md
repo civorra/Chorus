@@ -250,6 +250,36 @@ my $inject_isa = sub { ... };           # captures @catalog
 # Call $inject_isa->(\%slots) in both passes
 ```
 
+---
+
+> ### ⚠️ Automation scope — what is and is not automatic
+>
+> **Re-creating a sandbox from the same corpus does NOT automatically reproduce
+> inter-frame relationships.** Here is what each tool does:
+>
+> | Step | Tool | Automatic? | Condition |
+> |---|---|---|---|
+> | Detect relationships in corpus | `chorus-feed` | ✅ **yes** — if corpus signals are clear (§1.2b) | AI judgment required |
+> | Annotate KB org with `→` markers | `chorus-feed` | ✅ **yes** — follows §1.2b guidance | Depends on detection |
+> | Generate YAML rules with `$w->get('link')` | `chorus-feed` | ✅ **yes** — if KB annotated | Option A fallback pattern |
+> | Generate Feed.pm 2-pass + `%REF_FIELDS` | `chorus-check` | ✅ **yes** — if KB has `→` annotations | Depends on KB quality |
+> | Generate `_build_*_catalog()` + `$inject_isa` | `chorus-check` | 🟡 **partial** — catalog values from corpus | Normative thresholds required |
+> | Add `*_ref` fields to JSON project files | **manual** | ❌ **never automatic** | See below |
+>
+> **Why `*_ref` fields in JSON are always manual:**
+>
+> `*_ref` fields encode **project structure** — which actual wall element belongs to which
+> actual building, which buttressing wall supports which external wall.  This information
+> comes from the **project document** (drawings, BIM, specs), not from the normative
+> corpus.  `chorus-feed` and `chorus-check` work on the corpus; they cannot know which
+> specific project element is linked to which other.
+>
+> `chorus-import-project` (when aligning a real project document to the KB) is the
+> right tool to populate these fields — provided the project document contains explicit
+> element relationships.  Otherwise, the engineer or project analyst fills them manually.
+
+---
+
 **1.3 Identify the pipeline**
 
 Order agents by data dependency:
