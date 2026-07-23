@@ -130,9 +130,13 @@ structural link), two patterns depending on whether the link is optional:
 ACTION: |
   # ── Option A: link optional — fallback to direct slot (backward-compatible)
   # Use when the same rule must work on project files with and without the link.
-  my $sup = $w->get('supports');
-  my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
-  # ... checks using $h
+  # Replace 'link_slot', 'remote_slot', 'local_fallback_slot' with actual names.
+  my $linked = $w->get('link_slot');
+  my $val    = $linked
+      ? ($linked->get('remote_slot')  // 0)
+      : ($w->{local_fallback_slot}    // 0);
+  # e.g.: my $sup = $w->get('supports');
+  #       my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
   1
 ```
 

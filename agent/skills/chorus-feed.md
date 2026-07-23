@@ -219,14 +219,31 @@ Document inter-frame slots in the Frame's slot dictionary with a `→` marker:
 > Rules must use the Option A fallback pattern (see `chorus-engine-yaml.md §
 > Navigating a slot→Frame link`) to handle both formats.
 
-**`%REF_FIELDS` in Feed.pm — one line per link:**
+**`%REF_FIELDS` in Feed.pm — declare INSIDE `load_projet()`, before pass 1:**
 
 ```perl
-my %REF_FIELDS = (
-    supports_ref => 'supports',
-    building_ref => 'building',
-    # add new links here
-);
+sub load_projet {
+    my ($fichier) = @_;
+    # ... JSON load + SLOTS_REQUIS validation ...
+
+    my %REF_FIELDS = (       # ← inside load_projet(), not at module level
+        supports_ref => 'supports',
+        building_ref => 'building',
+        # add new links here
+    );
+    # ... pass 1 / pass 2 — see chorus-engine-infra.md §3.5 for the full skeleton
+}
+```
+
+**If Pattern B is also needed (`_ISA` prototypes):** add a `_build_*_catalog()` sub
+and a `$inject_isa` closure inside `load_projet()`, called in **both** pass 1 and
+pass 2 — see `chorus-engine-infra.md §3.2 and §3.5`.
+
+```perl
+# Pattern B addition to load_projet():
+my @catalog  = _build_spec_catalog();   # BEFORE pass 1
+my $inject_isa = sub { ... };           # captures @catalog
+# Call $inject_isa->(\%slots) in both passes
 ```
 
 **1.3 Identify the pipeline**

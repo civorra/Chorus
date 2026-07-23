@@ -264,51 +264,53 @@ Naming rule: `<relationship>_ref` → resolves to slot `<relationship>` on the F
 
 #### Feed.pm — 2-pass + `%REF_FIELDS`
 
+> `%REF_FIELDS` and both passes go **inside `load_projet()`**, not at module level.
+> If your sandbox also uses Pattern B (`_ISA` prototypes), see §3.5 for the complete
+> skeleton combining both patterns.
+
 ```perl
-# Declare all reference fields once — add a line to extend
-my %REF_FIELDS = (
-    supports_ref => 'supports',   # buttressing_wall → external_wall
-    building_ref => 'building',   # wall → building
-);
+sub load_projet {
+    my ($fichier) = @_;
+    # ... JSON loading and SLOTS_REQUIS validation (standard boilerplate) ...
 
-# _ISA injection (prototype catalog — Phase 3 pattern) — called in BOTH passes
-# ⚠️ Must run in pass 1 too: elements without any *_ref still need their prototypes.
-my $inject_isa = sub {
-    my ($slots) = @_;
-    return unless defined $slots->{masonry_unit_type};   # adapt slot name to your domain
-    my $spec = fselect(
-        masonry_unit_type => $slots->{masonry_unit_type},
-        masonry_material  => $slots->{masonry_material}  // '',
-        masonry_group     => $slots->{masonry_group}     // 1,
-        _from             => \@catalog,   # restrict to catalog — mandatory
+    # Declare all reference fields — one line per link.  Add here to extend.
+    my %REF_FIELDS = (
+        supports_ref => 'supports',   # e.g. buttressing_wall → external_wall
+        building_ref => 'building',   # e.g. wall → building
     );
-    return unless defined $spec;
-    $slots->{_ISA} = defined($slots->{_ISA})
-        ? [ ref($slots->{_ISA}) eq 'ARRAY' ? @{$slots->{_ISA}} : $slots->{_ISA}, $spec ]
-        : $spec;
-};
 
-# Pass 1 — create frames without references (targets must exist first)
-my (%frames_by_id, @deferred);
-for my $elem (@elements) {
-    my $has_ref = grep { defined $elem->{$_} } keys %REF_FIELDS;
-    if ($has_ref) { push @deferred, $elem; next; }
-    my %slots = %$elem;
-    $inject_isa->(\%slots);                               # ← also in pass 1
-    $frames_by_id{$elem->{id}} = Chorus::Frame->new(%slots);
-}
+    # Pass 1 — create frames WITHOUT *_ref fields (targets must exist first)
+    my (%frames_by_id, @frames, @deferred);
+    for my $elem (@elements) {
+        my $type    = $elem->{type_element} or next;
+        my $has_ref = grep { defined $elem->{$_} } keys %REF_FIELDS;
+        if ($has_ref) { push @deferred, $elem; next; }
 
-# Pass 2 — create frames with references (pass ref at new() time)
-for my $elem (@deferred) {
-    my %slots = %$elem;
-    for my $ref_field (keys %REF_FIELDS) {
-        my $slot_name = $REF_FIELDS{$ref_field};
-        my $ref_id    = delete $slots{$ref_field} // next;
-        $slots{$slot_name} = $frames_by_id{$ref_id}
-            or die "Element '$elem->{id}': $ref_field '$ref_id' not found\n";
+        my $frame = Chorus::Frame->new(%$elem);
+        $frame->set('besoin_wall', 'Y') if $WALL_TYPES{$type};  # pre-populate targeting slot
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
     }
-    $inject_isa->(\%slots);                               # ← also in pass 2
-    $frames_by_id{$elem->{id}} = Chorus::Frame->new(%slots);
+
+    # Pass 2 — create frames WITH *_ref fields (reference resolved at new() time)
+    for my $elem (@deferred) {
+        my $type  = $elem->{type_element};
+        my %slots = %$elem;
+
+        for my $ref_field (keys %REF_FIELDS) {
+            my $slot_name = $REF_FIELDS{$ref_field};
+            my $ref_id    = delete $slots{$ref_field} // next;
+            $slots{$slot_name} = $frames_by_id{$ref_id}
+                or die "Element '$elem->{id}': $ref_field '$ref_id' not found\n";
+        }
+
+        my $frame = Chorus::Frame->new(%slots);
+        $frame->set('besoin_wall', 'Y') if $WALL_TYPES{$type};
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
+    }
+
+    return @frames;
 }
 ```
 
@@ -373,39 +375,53 @@ Prototype frames are safe when they do **not** carry the targeting slot used by 
 finds frames that have `besoin_masonry` registered.  Prototypes don't → they never
 appear in any rule scope.  ✅
 
-#### Feed.pm — `_build_*_catalog()` + `fselect`
+#### Feed.pm — `_build_*_catalog()` + `$inject_isa` closure
+
+> **`@catalog` must be created ONCE, before both passes.**
+> Creating it inside a loop would re-register duplicate frames in `%REPOSITORY`.
+> The `$inject_isa` closure captures the catalog by reference.
 
 ```perl
-sub _build_masonry_catalog {
+# ── Outside or at top of load_projet() — catalog created once ────────────────
+
+# 1. Build the prototype catalog (module-level sub or inline)
+# Name the discriminator slots after YOUR domain (e.g. wood_class + treatment,
+# reaction_class + group, etc. — replace masonry_* with your actual keys).
+sub _build_spec_catalog {
     return (
         Chorus::Frame->new(
-            masonry_unit_type => 'brick', masonry_material => 'clay', masonry_group => 1,
-            min_str_A =>  6.0, min_str_B =>  9.0, min_str_C => 18.0,
+            spec_key_1 => 'value_A', spec_key_2 => 'value_B', spec_key_3 => 1,
+            threshold_cond_A => 6.0, threshold_cond_B => 9.0, threshold_cond_C => 18.0,
         ),
-        Chorus::Frame->new(
-            masonry_unit_type => 'brick', masonry_material => 'clay', masonry_group => 2,
-            min_str_A =>  9.0, min_str_B => 13.0, min_str_C => 25.0,
-        ),
-        # ... full catalog
+        # ... one frame per combination
     );
 }
 
-# In load_projet(), after resolving *_ref fields (pass 2):
-my @catalog = _build_masonry_catalog();
-if (defined $slots{masonry_unit_type}) {
+# 2. Inside load_projet(), BEFORE pass 1:
+my @catalog = _build_spec_catalog();   # created once, captured by $inject_isa
+
+# 3. $inject_isa closure — called in BOTH pass 1 and pass 2
+my $inject_isa = sub {
+    my ($slots) = @_;
+    # Replace 'spec_key_1' etc. with the actual discriminator slots for your domain
+    return unless defined $slots->{spec_key_1};
     my $spec = fselect(
-        masonry_unit_type => $slots{masonry_unit_type},
-        masonry_material  => $slots{masonry_material}  // '',
-        masonry_group     => $slots{masonry_group}     // 1,
-        _from             => \@catalog,   # restrict to catalog only
+        spec_key_1 => $slots->{spec_key_1},
+        spec_key_2 => $slots->{spec_key_2} // '',
+        spec_key_3 => $slots->{spec_key_3} // 1,
+        _from      => \@catalog,   # mandatory — restrict to catalog only
     );
-    $slots{_ISA} = $spec if defined $spec;
-}
-my $frame = Chorus::Frame->new(%slots);   # _ISA injected at construction time
+    return unless defined $spec;
+    $slots->{_ISA} = defined($slots->{_ISA})
+        ? [ ref($slots->{_ISA}) eq 'ARRAY' ? @{$slots->{_ISA}} : $slots->{_ISA}, $spec ]
+        : $spec;
+};
+# Then in pass 1: $inject_isa->(\%slots);
+# And in pass 2: $inject_isa->(\%slots);   — see §3.5 for the full skeleton
 ```
 
-> `_from => \@catalog` is mandatory — without it, `fselect` searches all registered
-> frames and returns unexpected matches.
+> `_from => \@catalog` is mandatory — without it, `fselect` searches ALL registered
+> frames and returns unexpected matches from the domain itself.
 
 #### YAML rules — reading inherited thresholds
 
@@ -441,12 +457,90 @@ Dynamic slot names (`"min_str_$cond"`) work with `get()` — it takes a plain st
 - [ ] Target frame created in **pass 1** (no `*_ref` itself) — referencing frame in **pass 2**
 - [ ] `_ISA` injection (`$inject_isa`) called in **both** pass 1 and pass 2 — elements without `*_ref` still need their prototypes
 - [ ] `%frames_by_id` maintained throughout — die with informative message if target not found
-- [ ] Guards in YAML `ACTION`: `my $link = $w->get('slot') or return 0`
+- [ ] Guards in YAML `ACTION`: Option A (fallback) for optional links, Option B (hard skip) for mandatory — see §3.1 YAML rules
 - [ ] Rules **never write** to linked frames
 - [ ] Prototype catalog: `_from => \@catalog` in every `fselect` call
+- [ ] `@catalog` created **once before pass 1** — never inside a loop
 - [ ] Prototypes **never carry** the targeting slot (`besoin_X`) used by domain rules
 - [ ] `_ISA` set at `new()` time — never via `$f->set('_ISA', ...)`
 - [ ] INPUTS header in YAML documents linked slots: `link.slot_name : type — meaning`
+
+---
+
+### 3.5 Complete `load_projet()` skeleton — Pattern A + B combined
+
+> Reference implementation: `test-11-construction-corpus-en-pdf-inter-frames-relations`
+
+```perl
+sub load_projet {
+    my ($fichier) = @_;
+
+    # Standard: JSON load + SLOTS_REQUIS validation (not shown)
+    my @elements = ...;
+
+    # ── Pattern B: build prototype catalog ONCE, before both passes ───────────
+    my @catalog = _build_spec_catalog();   # see §3.2 for _build_*_catalog()
+
+    # ── Pattern B: $inject_isa closure — captures @catalog ────────────────────
+    my $inject_isa = sub {
+        my ($slots) = @_;
+        return unless defined $slots->{spec_key_1};   # your domain discriminator
+        my $spec = fselect(
+            spec_key_1 => $slots->{spec_key_1},
+            spec_key_2 => $slots->{spec_key_2} // '',
+            spec_key_3 => $slots->{spec_key_3} // 1,
+            _from      => \@catalog,
+        );
+        return unless defined $spec;
+        $slots->{_ISA} = defined($slots->{_ISA})
+            ? [ ref($slots->{_ISA}) eq 'ARRAY' ? @{$slots->{_ISA}} : $slots->{_ISA}, $spec ]
+            : $spec;
+    };
+
+    # ── Pattern A: *_ref → slot mapping ───────────────────────────────────────
+    my %REF_FIELDS = (
+        ref_field_1 => 'slot_name_1',   # e.g. supports_ref => 'supports'
+        ref_field_2 => 'slot_name_2',   # e.g. building_ref => 'building'
+    );
+
+    # ── Pass 1 — frames without *_ref fields ──────────────────────────────────
+    my (%frames_by_id, @frames, @deferred);
+    for my $elem (@elements) {
+        my $type    = $elem->{type_element} or next;
+        next unless $SLOTS_REQUIS{$type};
+        my $has_ref = grep { defined $elem->{$_} } keys %REF_FIELDS;
+        if ($has_ref) { push @deferred, $elem; next; }
+
+        my %slots = %$elem;
+        $inject_isa->(\%slots);                      # Pattern B — BOTH passes
+        my $frame = Chorus::Frame->new(%slots);
+        $frame->set('targeting_slot', 'Y') if $TYPED_FRAMES{$type};
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
+    }
+
+    # ── Pass 2 — frames with *_ref fields ─────────────────────────────────────
+    for my $elem (@deferred) {
+        my $type  = $elem->{type_element};
+        my %slots = %$elem;
+
+        for my $ref_field (keys %REF_FIELDS) {       # Pattern A — resolve links
+            my $slot_name = $REF_FIELDS{$ref_field};
+            my $ref_id    = delete $slots{$ref_field} // next;
+            $slots{$slot_name} = $frames_by_id{$ref_id}
+                or die "Element '$elem->{id}': $ref_field '$ref_id' not found\n";
+        }
+
+        $inject_isa->(\%slots);                      # Pattern B — BOTH passes
+        my $frame = Chorus::Frame->new(%slots);
+        $frame->set('targeting_slot', 'Y') if $TYPED_FRAMES{$type};
+        $frames_by_id{ $elem->{id} } = $frame;
+        push @frames, $frame;
+    }
+
+    return @frames;
+}
+```
 
 ---
 
