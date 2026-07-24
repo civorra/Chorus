@@ -70,6 +70,40 @@
 
    → The first outgoing slot is typically the targeting slot for the next agent.
 
+** BOARD — Inter-agent Communication
+   Slots written on the shared ~BOARD~ frame (accessible as ~$agent->BOARD~).
+   Use BOARD for pipeline-level flags and counters, not for domain knowledge.
+
+   | BOARD slot       | Written by      | Read by         | Description                        |
+   |------------------+-----------------+-----------------+------------------------------------|
+   | <board_slot>     | <this agent>    | <agent N+1>     | <pipeline-level flag or counter>   |
+
+   #+BEGIN_SRC perl
+   # Write to BOARD inside _APPLY:
+   $agent->BOARD->set('phase', 'enrichment');
+
+   # Read from BOARD:
+   my $phase = $agent->BOARD->phase;
+   #+END_SRC
+
+** Agent Options (Expert-level)
+   Optional flags set directly on the agent frame after construction.
+
+   - ~_LOCK_UNTIL_STABLE~ → ~'Y'~ : Expert skips this agent in the current iteration
+     if any *earlier* agent has already succeeded (~_SUCCES~ is true).
+     Typical use: a "global conformity check" agent that should run only once all
+     upstream agents have stabilised.
+     #+BEGIN_SRC perl
+     $agent->{_LOCK_UNTIL_STABLE} = 'Y';
+     #+END_SRC
+
+   - ~pause()~ / ~wakeup()~ : suspend/resume this agent's ~loop()~ from another agent's
+     rule — useful for conditional activation based on pipeline state.
+     #+BEGIN_SRC perl
+     $other_agent->pause();    # loop() becomes a no-op
+     $other_agent->wakeup();   # re-enable
+     #+END_SRC
+
 * Ontology
   Domain concepts and their relationships — used to decide which Frames to create and how to name them.
 
@@ -88,11 +122,21 @@
    | <slot_sortant>    | enum    | OK/KO/SKIP        | required    | final decision        |
    | <slot_calcule>    | num     | 0..N              | ≥ 0         | derived value         |
 
+   Optional terminal / network slots (add only if relevant):
+   - ~_TERMINAL_SLOTS~ → arrayref of slot names that must be filled for ~complete()~ to return true.
+     ex: ~_TERMINAL_SLOTS => ['slot_sortant', 'slot_calcule']~
+   - ~_ALTERNATIVES~ → arrayref of sibling prototype frames for Minsky frame-network matching via ~fselect()~.
+     ex: ~_ALTERNATIVES => [$FrameB, $FrameC]~
+     → ~fselect(prop => val, _alternatives => $FrameA)~ searches $FrameA + its _ALTERNATIVES.
+
    Inheritance (_ISA): <ParentFrameName> or ~-~
    Hooks:
    - ~_AFTER~ on ~<slot>~ → <effect: propagation to which other Frame/slot>
    - ~_NEEDED~ for ~<slot>~ → <last-resort logic / backward chaining>
    - ~_REQUIRE~ on ~<slot>~ → <validation constraint>
+   - ~_ON_DELETE~ → if-removed demon (Minsky triad); receives the deleted slot name
+     ex: ~_ON_DELETE => sub { my $slot = shift; ... }~
+     Use to cascade deletions or invalidate derived slots when a slot is removed.
 
 ** Frame: <FrameName2>
    (same structure)
@@ -107,10 +151,30 @@
   | <slot_entrant>     | FrameName1         | _APPLY read           | no             |
   | <slot_sortant>     | FrameName1         | _APPLY write          | no             |
 
+  Scope selection — quick reference:
+  #+BEGIN_SRC perl
+  # Standard: all frames having a slot
+  fmatch(slot => 'slot_ciblage')
+
+  # Multi-slot intersection (frames having ALL listed slots)
+  fmatch(slot => ['slot_a', 'slot_b'])
+
+  # Restricted search space (avoids full-registry scan on large sandboxes)
+  fmatch(slot => 'slot_ciblage', from => \@subset)
+
+  # Prototype matching (Minsky frame network) — alternative to fmatch in _SCOPE
+  # Returns the best-scoring frame given observed slot/value pairs
+  fselect(prop_a => 'valA', prop_b => 'valB')
+  fselect(prop_a => 'valA', _alternatives => $ProtoFrame)  # network-restricted
+  fselect(prop_a => 'valA', _all => 1)                     # all candidates, ranked
+  #+END_SRC
+
 * Rule Catalogue
 ** Rule: R01-<name>
    Intent    : <what the rule accomplishes in one sentence>
    Priority  : 1 (loaded first — alphabetical order of .yml files)
+   TRACE     : (optional) add ~TRACE: 1~ in the YAML file to log each firing to STDERR
+               even without ~_LOG~ on the engine — useful for targeted debugging.
 
    CHERCHER  :
    - ~var1~ → attribut: ~<slot_ciblage>~  [no filter — strategy B]
@@ -123,6 +187,12 @@
    $var1->set('<slot_sortant>', <computed value>);
    1
    #+END_SRC
+
+   Control-flow primitives available in EFFET (use sparingly — prefer convergence):
+   - ~$agent->cut()~        → exit combination loop for this rule, move to next rule
+   - ~$agent->last()~       → exit rule loop for this agent, move to next agent
+   - ~$agent->replay()~     → restart this agent from its first rule
+   - ~$agent->replay_all()~ → restart the whole Expert pipeline from agent 1
 
    Notes     : <clarifications, edge cases, dependencies>
 
@@ -146,3 +216,13 @@
   - [ ] Always end EFFET with ~1~ or a truthy expression
   - [ ] Always add EXCEPTION idempotence on the slot being set
   - [ ] The targeting slot must be set BEFORE this agent's register() call
+  - [ ] ~_MAX_CYCLES~ (default 10 000) — calibrate when the Frame volume × rule count is high:
+        ~$agent->set('_MAX_CYCLES', N)~  (set before ~loop()~ / ~process()~)
+  - [ ] ~_MAX_ITER~ on Chorus::Expert (default 10 000) — calibrate for multi-agent pipelines:
+        ~$xprt->{_MAX_ITER} = N~ (set after ~new()~, before ~process()~)
+  - [ ] ~pause()~ / ~wakeup()~ — if this agent uses these on peer agents, document which agent
+        controls activation and under what condition; missing ~wakeup()~ = silent dead pipeline
+  - [ ] ~_LOCK_UNTIL_STABLE~ — if set, this agent NEVER runs in a cycle where any earlier agent
+        has succeeded; verify that earlier agents eventually stop firing to avoid starvation
+  - [ ] ~_ON_DELETE~ demons — if a frame deletes a slot mid-pipeline, ensure the demon does not
+        trigger unwanted ~fmatch()~ side effects on other agents still in the same cycle
