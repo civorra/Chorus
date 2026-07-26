@@ -23,7 +23,7 @@
   /These slots MUST be set on the Frames BEFORE this agent becomes active./
 
 ** Chosen Strategy
-   Choose ONE of the two strategies (or combine them if justified):
+   Choose ONE of the three strategies (or combine them if justified):
 
    - *Strategy A — discriminating slot (value)*:
      a slot shared by multiple Frames, filtered by value in CHERCHER.
@@ -37,7 +37,15 @@
      → fmatch returns directly and only the relevant Frames.
      Preferred whenever the overall Frame volume is large (avoids combinatorial explosion).
 
-   Chosen strategy : <A | B | A+B>
+   - *Strategy C — prototype selection (fselect / _ALTERNATIVES)*:
+     use ~fselect(slot => value, ...)~ to find the best-matching prototype Frame
+     from a declared network (~_ALTERNATIVES~ arrayref on the seed Frame).
+     ~my $proto = fselect(type => 'masonry', _alternatives => $BaseMaterial);~
+     → returns the highest-scoring candidate; use ~_all => 1~ for a ranked list.
+     Preferred when the domain has multiple competing prototypes and the best fit
+     must be determined at runtime from observed slot values.
+
+   Chosen strategy : <A | B | C | A+B | …>
    Justification   : <why this choice for this domain>
 
 ** Targeting Slots Table
@@ -226,3 +234,5 @@
         has succeeded; verify that earlier agents eventually stop firing to avoid starvation
   - [ ] ~_ON_DELETE~ demons — if a frame deletes a slot mid-pipeline, ensure the demon does not
         trigger unwanted ~fmatch()~ side effects on other agents still in the same cycle
+  - [ ] ~fselect~ (Strategy C) scores by exact value match — ensure slot values are normalised
+        before calling it (lowercase, trim) to avoid missed matches
