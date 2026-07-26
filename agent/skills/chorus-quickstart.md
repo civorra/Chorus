@@ -132,9 +132,10 @@ chorus-import-project <sandbox-name> <source> [--out projet-import.json]
 
 - Accepts PDF, Word, Excel, CSV, or inline text.
 - Maps engineer terminology to KB slots → produces `projet-import-<NNN>.json`.
+- **Recommended next step:** run `chorus-audit-import` to validate the JSON before `chorus-check`.
 - Proceed to `chorus-check` with this file.
 
-See: `chorus-import-project.md`
+See: `chorus-import-project.md` · `chorus-audit-import.md`
 
 ---
 
