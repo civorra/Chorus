@@ -1016,6 +1016,9 @@ For each agent, apply this two-step sequence:
 | `Ontologie` | Domain concepts, synonyms, relationships (e.g. "entrait" = horizontal truss beam) |
 | `Catalogue des Frames` | Exact types (`type_element`), mandatory slots per type |
 | `Dictionnaire des slots` | Canonical names, value types, units, allowed domains |
+| `Dictionnaire des slots` — `Derived:` annotation | Slots computed at runtime via `_NEEDED` — **not required** in project JSON |
+| `Dictionnaire des slots` — `Frame ref` / `→` annotation | Inter-frame link slots — Phase 3.5 processes them; `*_ref` fields are optional |
+| `Dictionnaire des slots` — `Triggers X on Y (_AFTER)` annotation | Forward propagation — informational only; no impact on JSON content |
 
 2. **Immediately after** (no thinking between the two calls): read the directory tree $SANDBOX/rules/<slug>/
    to list the rule files for this agent.
@@ -1026,16 +1029,23 @@ For each agent, apply this two-step sequence:
 
 Build an internal **terminology reference**:
 ```
-concept_kb        → type_element / slot_kb       unit_kb     domain
-────────────────────────────────────────────────────────────────────
-montant porteur   → montant_porteur              —           —
-lisse              → lisse_basse / lisse_haute   —           to clarify
-classe résistance → classe_bois                 —           C14/C16/C18/C24/C30
-épaisseur isolant → epaisseur_mm                mm          positive integer
-conductivité λ    → classe_conductivite         —           "031"/"035"/"040"
-hauteur libre     → hauteur_libre_m             m           decimal
-section           → section_bois                —           "BxH" ex. "45x145"
+concept_kb        → type_element / slot_kb       unit_kb     domain          flags
+───────────────────────────────────────────────────────────────────────────────────
+montant porteur   → montant_porteur              —           —               —
+lisse              → lisse_basse / lisse_haute   —           to clarify      —
+classe résistance → classe_bois                 —           C14/C16/C18/C24 —
+épaisseur isolant → epaisseur_mm                mm          positive int    —
+conductivité λ    → classe_conductivite         —           "031"/"035"     —
+hauteur libre     → hauteur_libre_m             m           decimal         —
+section           → section_bois                —           "BxH"           —
+épaisseur totale  → epaisseur_totale_mm         mm          positive int    DERIVED (_NEEDED)
 ```
+
+> **`DERIVED` flag:** slots annotated `Derived:` in the KB org are computed at
+> runtime by a `_NEEDED` coderef in Feed.pm.  Mark them with a `DERIVED` flag in
+> the internal reference so Phase 4 never reports their absence as a gap.
+> A `DERIVED` slot that IS present in the project file takes precedence over the
+> computed value — include it in the JSON normally.
 
 ### 1.2b Sandbox thesaurus (highest priority source)
 
@@ -1687,6 +1697,7 @@ montant_porteur hauteur_libre_m     ✅          "h=2.5m"
 |---|---|
 | Mandatory slot absent | Ask the engineer — do not assume |
 | Optional slot absent | Omit from JSON — the pipeline handles it |
+| `Derived:` slot absent (annotated `_NEEDED` in KB org) | **Not a gap** — omit from JSON silently; Feed.pm will compute it at runtime via `_NEEDED` coderef. Do NOT ask the engineer. |
 | Out-of-domain value (e.g. `classe_bois: "C12"`) | Report — let the engineer correct it |
 | Entire element unmappable | Include with `_incomplet: 1` — will be cleanly rejected by Feed |
 | `Frame ref` slot (❓ in Phase 3.5) | Report as optional gap — `*_ref` absent is acceptable; rules use direct-slot fallback |
@@ -1887,6 +1898,21 @@ Create `$SANDBOX/agent/import-report-<NNN>.org`:
 * Out-of-scope elements (⬜)
   | id | source type_element | Recommended sandbox |
   |---|---|---|
+
+* Inter-element relationships (Phase 3.5)
+  #+BEGIN_COMMENT Generated only when the KB org contains Frame ref / → annotations #+END_COMMENT
+  Blueprint entries : N  (from KB org slot dictionary)
+  | element_id | ref_field    | target_id | confidence | signal                    | In JSON? |
+  |------------|--------------|-----------|------------|---------------------------|----------|
+  | BW-01      | supports_ref | EW-01     | ✅         | "buttresses EW-01" (p.3)  | yes      |
+  | EW-02      | building_ref | RES-01    | ⚠️         | same drawing as EW-01     | yes+note |
+  | IW-01      | building_ref | (none)    | ❓         | no signal found            | omitted  |
+
+  #+BEGIN_COMMENT
+  ✅ → included in JSON as "<ref_field>": "<target_id>"
+  ⚠️ → included with "_note_<ref_field>": "inferred — verify"
+  ❓ → omitted (optional link, engineer fills manually if needed)
+  #+END_COMMENT
 
 * Unmatched figure identifiers
   Identifiers found in figures but not mapped to any KB slot or type_element.

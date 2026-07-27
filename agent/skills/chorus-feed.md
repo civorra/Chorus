@@ -250,6 +250,110 @@ my $inject_isa = sub { ... };           # captures @catalog
 # Call $inject_isa->(\%slots) in both passes
 ```
 
+**1.2c — Control slots for advanced knowledge modeling**
+
+Beyond Pattern A and B, three Frame control slots can sharpen the generated KB when
+the corpus clearly signals their need. **Do not add them speculatively** — apply only
+when a corpus pattern explicitly motivates each one.
+
+**`_DEFAULT` — shared fallback on prototypes**
+
+When a Pattern B prototype carries a `_DEFAULT` hash, `get()` returns the fallback
+automatically if the domain Frame and its `_ISA` parent both lack the targeted slot.
+Use this for normative "applies unless otherwise specified" defaults.
+
+```perl
+# In _build_spec_catalog() — prototype with a default bending resistance
+Chorus::Frame->new(
+    classe_bois  => 'C24',
+    fm_k         => 24,         # direct value on the prototype
+    _DEFAULT     => { fm_k => 0 },  # fallback if a lookup on a derived class misses
+);
+```
+
+> **When to use:** corpus phrases such as "default value X unless drawings specify
+> otherwise", "applies if not explicitly stated".
+>
+> **Notation in KB org Slot dictionary:**
+> ```org
+> | fm_k | float | Bending resistance — default: 0 (via _DEFAULT on prototype) |
+> ```
+>
+> **Generation note:** `chorus-check` adds `_DEFAULT` to the prototype Frame literal
+> in `_build_*_catalog()`.  The KB org `Slot dictionary` must document the default
+> with a `default:` annotation so `chorus-check` can infer the value.
+
+**`_NEEDED` — backward-chaining lazy derivation**
+
+`_NEEDED` is a coderef stored on a Frame.  When `get('slot')` finds nothing in the
+Frame or its `_ISA` chain, it calls `_NEEDED` as a last resort, enabling on-demand
+computation of derived slots.
+
+```perl
+# In Feed.pm — after Frame creation, inside load_projet()
+$frame->set('_NEEDED', sub {
+    my ($slot) = @_;
+    return unless $slot eq 'epaisseur_totale_mm';   # handle only this slot
+    my @couches = @{ $SELF->get('couches') // [] };
+    return unless @couches;
+    my $total = 0;
+    $total += ($_->get('epaisseur_mm') // 0) for @couches;
+    $SELF->set('epaisseur_totale_mm', $total);   # cache via set → visible to fmatch
+    return $total;
+});
+```
+
+> **When to use:** when the corpus defines a slot as derivable from others (formulas
+> such as "= sum of", "= product of", "calculated from") and not all project files
+> will supply it explicitly.  The value is computed once on first `get()` and cached.
+>
+> **Corpus signals:** explicit derivation formulas; slots present in some project
+> files but absent in others (optional but computable).
+>
+> **Notation in KB org Slot dictionary:**
+> ```org
+> | epaisseur_totale_mm | float | Derived via _NEEDED from couches[].epaisseur_mm |
+> ```
+>
+> **Generation note:** `chorus-feed` annotates the slot with `Derived:` in the KB org.
+> `chorus-check` generates the `_NEEDED` coderef in `load_projet()` immediately after
+> Frame creation.  The derivation formula comes from the KB org annotation.
+
+**`_AFTER` — forward propagation (strict guardrails required)**
+
+`_AFTER` is a coderef called **after** `set()` modifies a slot.  It can propagate a
+change to other Frames.  Use only when the corpus explicitly states a dependency
+between Frame types ("when X changes, Y must be re-evaluated").
+
+```perl
+# In Feed.pm — after Frame creation, inside load_projet()
+# ⚠️ Always capture $SELF BEFORE any set() call on another Frame
+$frame->set('_AFTER', sub {
+    my ($slot, $new_val) = @_;
+    return unless $slot eq 'classe_conductivite';   # react only to this slot
+    my $ctx = $SELF;                                # capture BEFORE any set()
+    for my $dep (fmatch(slot => 'materiau_ref')) {
+        next unless ($dep->get('materiau_ref') // '') == $ctx;
+        $dep->set('besoin_thermique', 1);           # targeting slot for next agent
+    }
+});
+```
+
+> ⛔ **`_AFTER` is last resort — use only when ALL of the following hold:**
+> 1. The corpus explicitly states a dependency between two Frame types.
+> 2. The propagated slot is a **targeting slot** — never a result slot (would bypass
+>    idempotence guards and trigger re-processing).
+> 3. The closure never calls `set()` on the Frame that owns it (circular propagation).
+> 4. `$SELF` is captured at the very top of the closure — before any `set()`.
+>
+> **Prefer** agent ordering in the pipeline or a targeting-slot rule in `FIND` —
+> these cover the vast majority of cases without `_AFTER` complexity.
+>
+> **Notation in KB org Slot dictionary:**
+> ```org
+> | classe_conductivite | enum | Triggers besoin_thermique on dependent frames (_AFTER) |
+> ```
+
 ---
 
 > ### ⚠️ Automation scope — what is and is not automatic
@@ -265,6 +369,12 @@ my $inject_isa = sub { ... };           # captures @catalog
 > | Generate Feed.pm 2-pass + `%REF_FIELDS` | `chorus-check` | ✅ **yes** — if KB has `→` annotations | Depends on KB quality |
 > | Generate `_build_*_catalog()` + `$inject_isa` | `chorus-check` | 🟡 **partial** — catalog values from corpus | Normative thresholds required |
 > | Add `*_ref` fields to JSON project files | **manual** | ❌ **never automatic** | See below |
+> | Detect `_DEFAULT` need in corpus | `chorus-feed` | 🟡 **yes** — if corpus says "default X unless" | KB org `Slot dictionary` `default:` annotation required |
+> | Generate `_DEFAULT` on prototypes | `chorus-check` | 🟡 **partial** — reads `default:` from KB org | `chorus-feed` must annotate the slot first |
+> | Detect `_NEEDED` derivation in corpus | `chorus-feed` | 🟡 **yes** — if corpus has explicit formula | KB org `Slot dictionary` `Derived:` annotation required |
+> | Generate `_NEEDED` coderef in Feed.pm | `chorus-check` | 🟡 **partial** — reads `Derived:` from KB org | Formula must be fully specified in KB org |
+> | Detect `_AFTER` dependency in corpus | `chorus-feed` | 🟡 **yes** — only if dependency is explicit | KB org notation: `Triggers X on Y (_AFTER)` |
+> | Generate `_AFTER` hook in Feed.pm | **manual** | ❌ **never automatic** | Too risky to generate; engineer validates guardrails |
 >
 > **Why `*_ref` fields in JSON are always manual:**
 >
@@ -765,6 +875,11 @@ sub <helper2> {
 - [ ] Any helper called from an `_AFTER` or procedural slot: capture `$SELF`
       before any `set()` on another Frame (`my $ctx = $SELF; ...`)
 - [ ] ⚠️ **Org ↔ Helpers.pm parity** — see Phase 5.5 ⚠️ note; generate both from the same source.
+- [ ] ⛔ **`_NEEDED` and `_AFTER` coderefs are NOT helpers** — they belong in `load_projet()`
+      (generated by `chorus-check`), not in `Helpers.pm`. A `_NEEDED` coderef calls
+      `$SELF->set()` (side effect) — this disqualifies it from `Helpers.pm` by definition.
+      A slot annotated `Derived:` in the KB org → `_NEEDED` coderef in `load_projet()`.
+      A slot annotated `Triggers X on Y (_AFTER)` → `_AFTER` hook in `load_projet()`.
 
 ### Phase 6 — Closing
 
