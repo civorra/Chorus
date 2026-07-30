@@ -198,22 +198,13 @@ For each known type_element T:
 
 ### Step 5 — Guard coherence check
 
-For each rule with an `EXCEPTION: "defined $f->{X}"` guard:
-
-```
-If X ∉ written_slots_of_this_rule:
-  ⚠️ GUARD MISMATCH — <rule_file>
-     Guard tests '$f->{X}' but this rule does not write 'X'.
-     Written slots: [list]
-     Recommended guard: EXCEPTION: "defined $f->{<first_written_slot>}"
-     Risk: if 'X' is pre-set in the project JSON, the rule is skipped
-           and its output slots are never computed.
-```
-
-> This check would have caught the R04 bug:
-> `EXCEPTION: "defined $f->{mandatory}"` while R04 writes
-> `['article_source', 'mandatory', 'fair_compensation_required']` —
-> `mandatory` can be pre-set in cross-test scenarios, causing a silent bypass.
+> **⚠️ This step is now handled automatically by `Chorus::Engine::loadRules()`.**
+> At every `perl run.pl` execution, `loadRules()` emits a `warn` for any rule whose
+> `EXCEPTION: "defined $f->{X}"` guard slot is not among the slots written by that
+> rule's ACTION (`$f->set('X', ...)`).  No LLM action needed here — the engine
+> provides immediate feedback before Phase 1.5 is ever invoked.
+>
+> Phase 1.5 does **not** need to perform this check.
 
 ### Step 6 — Output
 
@@ -228,12 +219,11 @@ reproduction_right             │ type_element   │ titulaire (R01), article_s
 temporary_reproduction         │ type_element   │ article_source (R04), mandatory (R04), …
 …
 ─────────────────────────────────────────────────────────
-⚠️ Guard mismatches: N
-  R04: guard='mandatory', written=['article_source','mandatory','fair_compensation_required']
 ```
 
-If guard mismatches are found → **report them and stop**; do not generate `Feed.pm`
-with potentially wrong `%SLOTS_REQUIS`. Ask the user to fix the guards first.
+Guard mismatches, if any, will have already been reported to STDERR by
+`Chorus::Engine::loadRules()` during the previous pipeline run.
+Do not duplicate that check here — proceed to Phase 2.
 
 ---
 
@@ -723,11 +713,10 @@ when the KB has not changed since the last `chorus-check --all`.
       the engine loops until `_MAX_CYCLES` (warning). Check every YAML whose EFFET
       contains an `if` without `else` → return `0` when no slot is modified:
       `if (...) { ...; return 1 } 0`
-- [ ] **Guard coherence (Phase 1.5):** for every rule with `EXCEPTION: "defined $f->{X}"`,
-      X must belong to the slots **written** by that rule (`$f->set('X', ...)`).
-      A guard on a slot that may be pre-set in a project JSON (cross-test scenario) causes
-      silent bypass and leaves the rule's output slots uncomputed.
-      → Phase 1.5 reports all mismatches; fix them before regenerating `Feed.pm`.
+- [ ] **Guard coherence:** handled automatically by `Chorus::Engine::loadRules()` —
+      a `warn` is emitted at every `loadRules()` call for any rule whose `EXCEPTION`
+      guard slot is not written by that rule's ACTION.
+      No manual check needed here; review STDERR output from the previous pipeline run.
 
 
 ## Separation of concerns — summary

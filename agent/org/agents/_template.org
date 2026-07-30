@@ -236,10 +236,10 @@
   - [ ] Always add EXCEPTION idempotence on the slot being set
   - [ ] *Guard coherence*: the slot tested in ~EXCEPTION: "defined $f->{X}"~ must be a slot
         *written by this same rule* (~$f->set('X', ...)~ in its own ACTION/EFFET).
-        A guard on a slot written by a different rule, or on a slot that may be
-        legitimately pre-set in a cross-test project JSON, causes silent bypass:
-        the rule is skipped and its output slots are never computed.
-        → ~chorus-check~ Phase 1.5 detects all mismatches automatically before generating ~Feed.pm~.
+        A guard on a slot that may be legitimately pre-set in a cross-test project JSON
+        causes silent bypass: the rule is skipped and its other output slots are never computed.
+        → ~Chorus::Engine::loadRules()~ emits a ~warn~ automatically at every pipeline run
+        for any such mismatch — immediate feedback, not deferred to a ~chorus-check~ regeneration.
   - [ ] The targeting slot must be set BEFORE this agent's register() call
   - [ ] ~_MAX_CYCLES~ (default 10 000) — calibrate when the Frame volume × rule count is high:
         ~$agent->set('_MAX_CYCLES', N)~  (set before ~loop()~ / ~process()~)

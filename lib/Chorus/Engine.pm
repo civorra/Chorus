@@ -547,6 +547,52 @@ EOT
   return $res;
 }
 
+
+# _check_guard_coherence -- called by loadRules() for each parsed YAML rule.
+#
+# Verifies that the slot tested in EXCEPTION: "defined $f->{X}" is actually
+# written by the rule's ACTION/EFFET via $f->set('X', ...).
+#
+# If the guard slot is NOT among the written slots, the rule will be silently
+# bypassed whenever 'X' is pre-populated on the Frame (e.g. in a cross-test
+# project JSON), leaving the rule's other output slots uncomputed.
+#
+# Emits a warn -- never dies -- so existing pipelines are not broken.
+sub _check_guard_coherence {
+    my ($rule, $filename) = @_;
+
+    my $exception = $rule->{EXCEPTION};
+    return unless defined $exception;
+
+    # Extract guard slot from: defined $f->{X}  or  defined $var->{X}
+    my ($guard_slot) = $exception =~ /defined\s+\$\w+->\{(\w+)\}/;
+    return unless defined $guard_slot;
+
+    # Extract all slots written by: $f->set('X', ...)  or  $var->set("X", ...)
+    my $action = $rule->{EFFET} // $rule->{ACTION} // '';
+    my @written = ($action =~ /\$\w+->set\(\s*['"](\w+)['"]/g);
+    return unless @written;   # no set() calls -- cannot validate
+
+    unless (grep { $_ eq $guard_slot } @written) {
+        my $rulename = $rule->{REGLE} // $rule->{RULE} // '?';
+        my @other = grep { $_ ne $guard_slot } @written;
+        warn sprintf(
+            "[Chorus::Engine] GUARD MISMATCH in rule '%s' (%s)\n" .
+            "  EXCEPTION tests : '\$f->{%s}'\n" .
+            "  ACTION writes   : [%s]\n" .
+            "  Risk: if '%s' is pre-set in a project JSON, this rule is bypassed\n" .
+            "  and [%s] will never be computed.\n" .
+            "  Suggested fix   : EXCEPTION: \"defined \$f->{%s}\"\n",
+            $rulename, $filename,
+            $guard_slot,
+            join(', ', @written),
+            $guard_slot,
+            join(', ', @other),
+            $written[0],
+        );
+    }
+}
+
 sub loadRules {
     my ( $dir, %opts ) = @_;
 
@@ -562,9 +608,16 @@ sub loadRules {
 
         my $debug = $opts{debug} || 'NONE';
         $debug = [ $debug ] unless ref($debug) eq 'ARRAY';
-	$debug = { map { $_ => 'Y' } @$debug };
- 
-        my $code = '$SELF->addrule(' . codeRule( $SELF, readRule( file => "$dir/$_" ), debug => $debug ) . ');';
+        $debug = { map { $_ => 'Y' } @$debug };
+
+        # Parse YAML first so we can inspect the rule structure before compiling.
+        my $rule_data = readRule( file => "$dir/$_" );
+
+        # Guard coherence check: warn if EXCEPTION guard slot is not written
+        # by this rule's ACTION. See _check_guard_coherence() above.
+        _check_guard_coherence($rule_data, $_) if $rule_data;
+
+        my $code = '$SELF->addrule(' . codeRule( $SELF, $rule_data, debug => $debug ) . ');';
 
         eval $code;
 
