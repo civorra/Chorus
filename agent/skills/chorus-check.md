@@ -122,17 +122,120 @@ Extract from `index.org`:
 If the project file is provided **inline** (data pasted in the message) →
 write it to `$SANDBOX/projet.json` before continuing.
 
-### 1.2 Deduce mandatory slots
+### 1.2 Deduce input-required slots
 
-For each element type present in the project file, cross-reference with the
-`Catalogue des Frames` in the KBs to identify slots marked `obligatoire`.
-These slots will drive the Feed validation.
+For each element type present in the project file, the input-required slots
+(those that must be present in the project JSON at load time) are determined
+by **Phase 1.5** (YAML slot analysis) — not by reading the KB org.
+Phase 1.5 produces `computed_slots` (slots written by rules) from which
+`input_slots = all_known_slots − computed_slots` is derived mechanically.
+The result feeds directly into `%SLOTS_REQUIS` in Phase 2.
 
 ### 1.3 Identify the targeting slot for agent 1
 
 Read the `Slots de ciblage` section of the KB for the agent at position 1.
 This slot must be present on all Frames created by the Feed.
 
+
+## Phase 1.5 — YAML slot analysis *(full path only)*
+
+> **Purpose:** determine mechanically, from the YAML rule files themselves,
+> which slots are *written* by rules (`computed_slots`) and which must be
+> *provided* in the project JSON (`input_slots`).
+> This is the authoritative source for `%SLOTS_REQUIS` in Phase 2.
+> It also detects mismatched `EXCEPTION` guards automatically.
+
+### Step 1 — Scan all YAML files
+
+For each agent in the pipeline (from `index.org`), read every `.yml` file
+in `$SANDBOX/rules/<slug>/`.
+
+### Step 2 — Extract per-rule metadata
+
+For each `.yml` file, extract:
+
+**a) Targeted `type_element` values** — from the `FIND`/`CHERCHER` block:
+```
+filtre: "$_->{type_element} eq 'X'"          → targets: ['X']
+filtre: "... eq 'X' || ... eq 'Y'"           → targets: ['X', 'Y']
+filtre: "defined $_->{type_element}"         → targets: ALL
+(no filtre, attribut: type_element)          → targets: ALL
+```
+
+**b) Written slots** — all `$f->set('slot', ...)` calls in the `ACTION`/`EFFET` block:
+```
+regex: \$\w+->set\(\s*['"](\w+)['"]
+```
+
+**c) Guard slot** — the slot tested in `EXCEPTION: "defined $f->{X}"`:
+```
+regex: EXCEPTION:\s+"defined \$\w+->\{(\w+)\}"
+```
+
+### Step 3 — Build `computed_slots`
+
+```
+computed_slots = {}   # { type_element → Set(slot_name) }
+
+For each rule:
+  for each targeted type_element T (or ALL known types if universal):
+    computed_slots[T] += written_slots_of_this_rule
+```
+
+### Step 4 — Derive `input_slots`
+
+```
+For each known type_element T:
+  input_slots[T] = { type_element }   # targeting slot always required
+  # Add any slot that appears in FIND filtre expressions (read, never written)
+  # AND is not in computed_slots[T]:
+  + { s | s appears in filtre of any rule targeting T
+          AND s ∉ computed_slots[T] }
+```
+
+> In a sandbox where all non-`type_element` slots are rule-computed,
+> `input_slots[T] = { type_element }` for every type T.
+
+### Step 5 — Guard coherence check
+
+For each rule with an `EXCEPTION: "defined $f->{X}"` guard:
+
+```
+If X ∉ written_slots_of_this_rule:
+  ⚠️ GUARD MISMATCH — <rule_file>
+     Guard tests '$f->{X}' but this rule does not write 'X'.
+     Written slots: [list]
+     Recommended guard: EXCEPTION: "defined $f->{<first_written_slot>}"
+     Risk: if 'X' is pre-set in the project JSON, the rule is skipped
+           and its output slots are never computed.
+```
+
+> This check would have caught the R04 bug:
+> `EXCEPTION: "defined $f->{mandatory}"` while R04 writes
+> `['article_source', 'mandatory', 'fair_compensation_required']` —
+> `mandatory` can be pre-set in cross-test scenarios, causing a silent bypass.
+
+### Step 6 — Output
+
+Produce a structured slot map (used by Phase 2):
+
+```
+YAML Slot Analysis — <sandbox-name>
+─────────────────────────────────────────────────────────
+type_element                   │ input_slots    │ computed_slots (written by)
+───────────────────────────────┼────────────────┼──────────────────────────────
+reproduction_right             │ type_element   │ titulaire (R01), article_source (R01), …
+temporary_reproduction         │ type_element   │ article_source (R04), mandatory (R04), …
+…
+─────────────────────────────────────────────────────────
+⚠️ Guard mismatches: N
+  R04: guard='mandatory', written=['article_source','mandatory','fair_compensation_required']
+```
+
+If guard mismatches are found → **report them and stop**; do not generate `Feed.pm`
+with potentially wrong `%SLOTS_REQUIS`. Ask the user to fix the guards first.
+
+---
 
 ## ⚠️ Language Rule — All Generated Perl Files
 
@@ -148,7 +251,25 @@ This slot must be present on all Frames created by the Feed.
 Create `$SANDBOX/lib/<Namespace>/Feed.pm` from template **T1** (`chorus-templates.md`).
 
 **Substitutions from the KBs:**
-- `%SLOTS_REQUIS` ← `obligatoire` slots from the Catalogue des Frames of each KB
+- `%SLOTS_REQUIS` ← use **`input_slots`** from **Phase 1.5** (YAML slot analysis).
+  Phase 1.5 already computed, for each `type_element`, the exact set of slots that
+  must come from the project JSON (never written by any rule).
+
+  ```
+  For each type_element T in input_slots:
+    %SLOTS_REQUIS{T} = [ sort keys %{ input_slots{T} } ]
+  ```
+
+  > In a sandbox where all non-`type_element` slots are rule-computed, every entry
+  > is `[qw(type_element)]` — this is the expected result, not a degenerate case.
+
+  **Fallback (no YAML files yet / Phase 1.5 skipped):** read `Slots d'entrée` lines
+  from the KB org `Catalogue des Frames`. If still absent (legacy `Slots obligatoires`),
+  use that list but emit:
+  ```
+  ⚠️ Frame '<name>': using legacy 'Slots obligatoires' — run Phase 1.5 or migrate
+     to 'Slots d'entrée' / 'Slots calculés' (chorus-feed.md § Frame catalog format).
+  ```
 - agent 1 targeting slot comment ← `Slots de ciblage` section KB pos 1
 
 
@@ -576,7 +697,11 @@ when the KB has not changed since the last `chorus-check --all`.
       Then verify that `Feed.pm` creates Frames with the slot key `type_element`.
       A mismatch between YAML and Feed causes a SOLVED pipeline with all elements unprocessed.
 - [ ] `Feed.pm`: agent 1 targeting slot present in `%SLOTS_REQUIS`
-- [ ] `Feed.pm`: mandatory slot validation covers all element types in the project
+- [ ] `Feed.pm`: `%SLOTS_REQUIS` covers all element types in the project **and contains only
+  INPUT-REQUIRED slots** (targeting slot + project data slots that no rule computes).
+  ⛔ Output slots written by rules must NOT appear in `%SLOTS_REQUIS` — they will be absent
+  at load time when the project was generated by `chorus-create-project`. A type whose slots
+  are all rule-computed must have `[qw(type_element)]` as its entry.
 - [ ] `Feed.pm`: unknown types → `warn + next` (not `die`) — safety net for mixed-sandbox JSON
 - [ ] `Expert.pm`: `register()` order = `#+PIPELINE_POS` order
 - [ ] `Expert.pm`: `$xprt->{_MAX_ITER}` forced **after** `new()` (known bug: `new()` ignores its arguments)
@@ -598,6 +723,11 @@ when the KB has not changed since the last `chorus-check --all`.
       the engine loops until `_MAX_CYCLES` (warning). Check every YAML whose EFFET
       contains an `if` without `else` → return `0` when no slot is modified:
       `if (...) { ...; return 1 } 0`
+- [ ] **Guard coherence (Phase 1.5):** for every rule with `EXCEPTION: "defined $f->{X}"`,
+      X must belong to the slots **written** by that rule (`$f->set('X', ...)`).
+      A guard on a slot that may be pre-set in a project JSON (cross-test scenario) causes
+      silent bypass and leaves the rule's output slots uncomputed.
+      → Phase 1.5 reports all mismatches; fix them before regenerating `Feed.pm`.
 
 
 ## Separation of concerns — summary

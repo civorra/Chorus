@@ -450,7 +450,8 @@ For each `(identifier, snippets)` pair in `xref_entries`:
      ```org
      *** montant_porteur
          # alias: M-001 (figure label — corpus p.12)
-         Slots obligatoires : ...
+         Slots d'entrée  : type_element
+         Slots calculés  : ...
      ```
 3. If the match is uncertain (identifier appears in snippets alongside multiple
    candidate terms):
@@ -463,6 +464,45 @@ For each `(identifier, snippets)` pair in `xref_entries`:
 >
 > **Scope:** only `-vision.md` corpus files contain a XREF INDEX. `.txt` (text mode)
 > and `--auto`/`--images` outputs do not — skip this phase silently if the block is absent.
+
+#### Frame catalog format — mandatory slot classification
+
+Every Frame entry in the `Catalogue des Frames` section of a `<slug>.org` **must** use
+the three-line slot classification below. **Never use `Slots obligatoires` alone** —
+it conflates input and output slots, which causes `chorus-check` to generate a `Feed.pm`
+that rejects projects built by `chorus-create-project` (those provide only `type_element`).
+
+```org
+** <frame_name>
+   Slots d'entrée  : type_element[, <slot_b_if_project_data>]
+   Slots calculés  : <slot_x>, <slot_y>, <slot_z>   ← written by YAML rules
+   Slots optionnels: <slot_opt_a>, <slot_opt_b>
+
+   *** type_element = <value>
+       ...
+```
+
+**Classification rules:**
+
+| Category | Definition | Goes into `%SLOTS_REQUIS` ? |
+|---|---|---|
+| `Slots d'entrée` | Slots that **must** come from the project JSON. Always includes `type_element`. Include additional slots only if no YAML rule can compute them from `type_element` alone (e.g. a project measurement like `height_m`). | ✅ yes |
+| `Slots calculés` | Slots written by YAML `ACTION`/`EFFET` blocks. Never required at load time. | ❌ no |
+| `Slots optionnels` | Slots that may or may not be present; rules handle their absence gracefully. | ❌ no |
+
+> **`Slots d'entrée` for rule-only sandboxes:** in a sandbox where every non-`type_element`
+> slot is computed by rules, `Slots d'entrée` is always just `type_element`.
+> Cross-test projects (e.g. `projet-cross.json`) may pre-populate computed slots to test
+> guard interactions — `Feed.pm` accepts this because it validates only `Slots d'entrée`.
+
+> **Backward compatibility:** existing org files that still use `Slots obligatoires`
+> will cause `chorus-check` to fall back to the legacy behaviour (all listed slots
+> validated at load time). Migrate them manually by splitting into `Slots d'entrée` +
+> `Slots calculés` (see Python migration script pattern used on `scope-eu.org` and
+> `test-02`/`test-04` sandboxes). `chorus-feed --enrich` does **not** perform this
+> migration — it only adds new corpus-derived content.
+
+---
 
 ### Phase 2 — Targeting Strategy (_SCOPE)
 
@@ -527,7 +567,7 @@ Mandatory fill order:
 3. **Targeting slots** — strategy + table + pre-population contract
 4. Pipeline I/O (incoming / outgoing slots)
 5. Ontology — including `** Aliases` section (see below)
-6. Frame catalog
+6. Frame catalog — see **§ Frame catalog format** above (**`Slots d'entrée` / `Slots calculés` / `Slots optionnels`**)
 7. Slot dictionary
 8. Rule catalog
 9. **Perl Helpers** — signatures + complete business logic code
