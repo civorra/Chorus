@@ -652,7 +652,10 @@ This sub-section is read first by Phase 3 of `chorus-import-project` (highest co
 > If the source is not identifiable → document the uncertainty in a `# TODO` comment.
 
 Points to watch:
-- Idempotence: `EXCEPTION: defined $var->{<slot_pose>}` on every rule that sets a slot
+- Idempotence: `EXCEPTION: defined $var->{<slot_pose>}` on every rule that sets a slot.
+  The guard slot **must be one of the slots written by that rule's ACTION** (`$f->set('X', ...)`).
+  → `Chorus::Engine::loadRules()` emits a `warn` automatically if the guard slot is not written
+  by the rule — immediate feedback at every `perl run.pl`, not deferred to `chorus-check`.
 - Termination: document in which rule and under what condition `solved()` is called
 - Naming: `R<NN>-<slug>.yml` — alphabetical order = load order
 
@@ -789,7 +792,9 @@ YAML Checklist:
       ```
 - [ ] **`filtre` uses `$_`, not `$f`** — see `chorus-engine-yaml.md` checklist.
 - [ ] **`CONDITION` tests data presence, not conformance** — see `chorus-engine-yaml.md` checklist.
-- [ ] Every rule that sets a slot has its idempotence `EXCEPTION: defined $var->{slot_set}`
+- [ ] Every rule that sets a slot has its idempotence `EXCEPTION: defined $var->{slot_set}`.
+      The guard slot must be **written by this rule's ACTION** (`$f->set('slot_set', ...)`).
+      `Chorus::Engine::loadRules()` warns automatically if mismatched — check STDERR on first run.
 - [ ] `ACTION` ends with `1` or a truthy expression
 - [ ] ⛔ **`$f->{slot} = val` in ACTION** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
 - [ ] ⛔ **CONDITION too restrictive on `type_element`** → silently excludes Frames of other types — prefer testing slot presence → `chorus-engine §5`
