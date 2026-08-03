@@ -1047,6 +1047,22 @@ section           → section_bois                —           "BxH"           
 > A `DERIVED` slot that IS present in the project file takes precedence over the
 > computed value — include it in the JSON normally.
 
+> **`type_element` — canonical name guard:** while reading the KB, verify that
+> the element type slot is named **`type_element`** in the `Dictionnaire des slots`
+> of each `<slug>.org`. Then, immediately after reading the directory tree of
+> `$SANDBOX/rules/<slug>/`, read one representative `.yml` file and verify that its
+> `FIND`/`CHERCHER` block uses `attribut: type_element` (not `element_type`, `type`,
+> `kind`, or any variant).
+> If a mismatch is found → **stop and report** before producing any JSON:
+> ```
+> ⛔ Slot name mismatch detected:
+>    KB org uses '<found_org_name>' / YAML uses 'attribut: <found_yaml_name>'
+>    The import JSON would use "type_element" → all elements silently invisible to the pipeline.
+>    Fix: rename to `type_element` in the KB org (Slot dictionary), all YAML rules,
+>    and any existing project JSON files before proceeding.
+>    (See chorus-feed.md § Naming Conventions and chorus-engine-yaml.md § YAML Rules checklist)
+> ```
+
 ### 1.2b Sandbox thesaurus (highest priority source)
 
 If `$SANDBOX/agent/thesaurus.org` exists, **read it immediately after Phase 1.2**,

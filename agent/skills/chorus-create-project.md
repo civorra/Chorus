@@ -176,14 +176,18 @@ defined in the KB — not to represent a real project.
 
 ### Step 1.5-1 — Build the relationship blueprint
 
-Scan KB org slot dictionaries for `Frame ref` / `→` entries (same algorithm as
-`chorus-import-project` Phase 3.5-1).  Build:
+Scan the KB org slot dictionaries (already loaded in Phase 0) for slots whose
+`type` column contains `Frame ref` or whose description contains `→ <target_type>`.
+Build:
 
 ```
-blueprint = { source_type → { slot_name → target_type, ref_field → ref_field_name } }
+blueprint = { source_type → { slot_name → target_type, ref_field → slot_name + "_ref" } }
+# e.g.:
+#   buttressing_wall → { supports → external_wall,   ref_field: supports_ref }
+#   external_wall    → { building → residential_building, ref_field: building_ref }
 ```
 
-If the blueprint is empty after scanning, skip Phase 1.5.
+If the blueprint is empty after scanning all slug.org files, skip Phase 1.5.
 
 ---
 
