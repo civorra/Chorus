@@ -476,6 +476,212 @@ EFFET: |
 
 ---
 
+## Advanced Mechanisms — See also
+
+For advanced patterns using procedural slots (_AFTER, _BEFORE, _NEEDED, _REQUIRE),
+prototype selection (fselect), and inheritance modes, see **`chorus-frame-advanced.md`**.
+
+This section covers the most important cases:
+
+- **§ fselect — Prototype Selection** — scoring-based Frame matching for Pattern B (_ISA via prototypes)
+- **§ _TERMINAL_SLOTS / complete()** — Frame validation before pipeline execution
+- **§ Inheritance Modes N vs Z** — default behavior and implications for _DEFAULT/_NEEDED resolution
+
+---
+
+## fselect — Prototype Selection (Pattern B)
+
+> See also: `chorus-frame-advanced.md § fselect`.
+
+**Use case:** Select the best-matching Frame from a catalog of prototypes based on observed properties.
+This implements Minsky's frame-selection mechanism for domain diagnosis.
+
+### Basic syntax
+
+```perl
+# Best match (highest score)
+my $proto = fselect(wood_class => 'oak', hardness => 'high');
+
+# All candidates ranked by descending score
+my @ranked = fselect(wood_class => 'oak', _all => 1);
+
+# Restrict to a prototype and its declared _ALTERNATIVES (frame network)
+my $proto = fselect(wood_class => 'oak', _alternatives => $Bird);
+
+# Restrict search space to a subset of Frames
+my $proto = fselect(wood_class => 'oak', _from => \@candidates);
+
+# Accept zero-score matches
+my @all = fselect(wood_class => 'oak', _all => 1, _min => 0);
+```
+
+### Pattern B in Feed.pm — Automatic _ISA injection
+
+When `chorus-feed` builds a project Frame from JSON, it calls `fselect` to find
+the best-matching prototype from a static catalog and injects it via `_ISA`:
+
+```perl
+# In chorus-check → Feed.pm load_projet()
+my $proto = fselect(
+    wood_class => $project_frame->{wood_class},
+    treatment  => $project_frame->{treatment},
+    _from      => \@normatif_catalog
+);
+$project_frame->set('_ISA', $proto) if $proto;
+```
+
+Result: the project Frame inherits all normative thresholds from its matched prototype.
+
+### Scoring rules
+
+For each candidate Frame in the pool:
+- **+1 point** for each slot where the Frame provides the slot AND the resolved value matches the observation
+- **Score < 1** (no matches): excluded by default (pass `_min => 0` to include)
+- **Best candidate** returned by default; use `_all => 1` to get all ranked candidates
+
+### Common pitfall — unreachable prototypes
+
+If all prototypes score 0, the Frame inherits nothing. To debug:
+
+```perl
+# Log the scores for all candidates
+my @ranked = fselect(wood_class => 'oak', _all => 1, _min => 0);
+for my $proto (@ranked) {
+    my $score = ...;  # score not directly accessible — check by re-running with test values
+    print "Proto " . $proto->get('id') . " scored $score\n";
+}
+```
+
+---
+
+## _TERMINAL_SLOTS / complete() — Frame Validation
+
+> See also: `chorus-frame-advanced.md § _TERMINAL_SLOTS / complete()`.
+
+**Use case:** Declare which slots must contain actual data (`_VALUE`) for a Frame
+to be considered "complete" in the sense of Minsky's frame model.
+Used to validate that a project Frame has been sufficiently populated before execution.
+
+### Basic syntax
+
+Declare terminal slots on a prototype:
+
+```perl
+my $proto = Chorus::Frame->new(
+    _TERMINAL_SLOTS => ['color', 'size', 'weight'],
+);
+```
+
+Check if an instance is complete:
+
+```perl
+my $instance = Chorus::Frame->new(
+    _ISA   => $proto,
+    color  => 'red',
+    size   => 'large',
+    weight => '500g',
+);
+
+if ($instance->complete) {
+    print "Frame is complete\n";
+} else {
+    print "Frame is incomplete — missing a terminal slot\n";
+}
+```
+
+### In chorus-check
+
+Before calling `$expert->process()`, validate all project Frames:
+
+```perl
+# In run.pl or chorus-check generated code
+for my $elem (@$elements) {
+    unless ($elem->complete) {
+        warn "Element " . $elem->get('id') . " is incomplete\n";
+        next;  # skip or die, depending on policy
+    }
+}
+my $ok = $expert->process($input);
+```
+
+---
+
+## Inheritance Modes — N vs Z
+
+> See also: `chorus-frame-advanced.md § Inheritance Modes (N vs Z)`.
+
+Chorus supports two modes for resolving `_VALUE`, `_DEFAULT`, and `_NEEDED` across the inheritance tree.
+The default is **Mode N**.
+
+### Mode N (Default) — Breadth-first per valuation key
+
+Each key is searched across the **entire inheritance tree** before moving to the next key:
+
+```
+1. Look for _VALUE on (Frame, Frame._ISA, Frame._ISA._ISA, ...)
+2. If not found, look for _DEFAULT on the same tree
+3. If not found, look for _NEEDED on the same tree
+4. If still not found, return the Frame itself
+```
+
+**Example:**
+
+```perl
+Frame A:
+  ├─ _VALUE = 'v1'
+
+Frame B (_ISA => A):
+  ├─ _DEFAULT = 'v2'
+
+Frame C (_ISA => B):
+  (no _VALUE, _DEFAULT, _NEEDED)
+
+C->get('slot') [Mode N]:
+  1. search _VALUE: C (no), B (no), A (yes!) → return 'v1'
+```
+
+### Mode Z — Full sequence per frame
+
+Each Frame tests the **full sequence** (`_VALUE → _DEFAULT → _NEEDED`) before descending to parents:
+
+```
+1. On Frame: _VALUE? _DEFAULT? _NEEDED?
+2. If all absent, on Frame._ISA: _VALUE? _DEFAULT? _NEEDED?
+3. Continue up the chain
+```
+
+**Example (same Frame structure):**
+
+```perl
+C->get('slot') [Mode Z]:
+  1. on C: _VALUE? (no) _DEFAULT? (no) _NEEDED? (no)
+  2. on B: _VALUE? (no) _DEFAULT? (yes!) → return 'v2'
+```
+
+Note the difference: **Mode N returns 'v1', Mode Z returns 'v2'** from the same Frame tree.
+
+### Switching modes
+
+```perl
+Chorus::Frame::setMode(GET => 'N');   # Mode N (default)
+Chorus::Frame::setMode(GET => 'Z');   # Mode Z
+Chorus::Frame::setMode('N');          # short form
+```
+
+The mode is a **global setting** — affects all Frame `get()` calls in the application.
+
+### When to use Mode Z
+
+**Mode Z** is useful when:
+- You have **multi-level prototypes** where each level adds a new _DEFAULT
+- You want **shallower defaults** (nearest ancestor) to take precedence
+- You're implementing a **DSL** where each Frame layer defines its own defaults
+
+**Default (Mode N)** is suitable for most use cases — it prioritizes finding the _VALUE
+across the full tree before falling back to _DEFAULT.
+
+---
+
 ## Checklist — Anti-Pitfalls
 
 ### ✅ YAML Rules

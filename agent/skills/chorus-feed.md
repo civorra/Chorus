@@ -354,6 +354,50 @@ $frame->set('_AFTER', sub {
 > | classe_conductivite | enum | Triggers besoin_thermique on dependent frames (_AFTER) |
 > ```
 
+**`_BEFORE` — Pre-write normalization hook**
+
+`_BEFORE` is a coderef called **before** a slot value is written (before validation).
+Use for normalizing or sanitizing input values.
+
+```perl
+# In Feed.pm — after Frame creation
+$frame->set('_BEFORE', sub {
+    my ($new_val) = @_;
+    return unless $slot eq 'classe_bois';
+    # Normalize case
+    return uc($new_val);  # return normalized value
+});
+```
+
+> **When to use:** the corpus defines data that arrives in inconsistent formats
+> (e.g., "Oak" vs "oak" vs "OAK") and normalization is idempotent.
+>
+> **Notation in KB org:** rarely needed — defaults to none unless corpus explicitly
+> shows normalization rules.
+
+**`_REQUIRE` — Validation hook (blocks write)**
+
+`_REQUIRE` is a coderef called to validate a new value **before** storage.
+Return the constant `REQUIRE_FAILED` (value: `-1`) to **abort** the write.
+
+```perl
+# In Feed.pm — after Frame creation
+$frame->set('_REQUIRE', sub {
+    my ($new_val) = @_;
+    return -1 if (defined $new_val) and $new_val < 0;  # reject negative
+    return 1;  # allow write
+});
+```
+
+> **When to use:** the corpus defines domain constraints (minimum/maximum, non-empty,
+> enum values) that **must never** be violated.
+>
+> **Notation in KB org:** rarely needed — defaults to none unless corpus explicitly
+> states hard constraints (e.g., "must be positive", "must be one of: A, B, C").
+>
+> **See also:** `chorus-frame-advanced.md § Procedural Slots — $SELF Capture Rules`
+> for full details on lifecycle order and $SELF capture.
+
 ---
 
 > ### ⚠️ Automation scope — what is and is not automatic

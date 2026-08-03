@@ -263,6 +263,84 @@ Create `$SANDBOX/lib/<Namespace>/Feed.pm` from template **T1** (`chorus-template
 - agent 1 targeting slot comment ← `Slots de ciblage` section KB pos 1
 
 
+## Phase 2.5 — Generate procedural slot coderefs (_NEEDED, _AFTER) in Feed.pm
+
+> See also: `chorus-feed.md § Procedural Slots`, `chorus-frame-advanced.md § Procedural Slots — $SELF Capture Rules`
+
+Inside the `load_projet()` subroutine generated in Phase 2, after Frame creation,
+inject coderefs for procedural slots annotated in the KB org:
+
+### _NEEDED — Lazy derivation
+
+**Detect:** KB org `Slot dictionary` entries marked with `Derived:` annotation
+
+```org
+| epaisseur_totale_mm | float | Derived via _NEEDED from couches[].epaisseur_mm |
+```
+
+**Generate** (inside `load_projet()`, after Frame creation):
+
+```perl
+# For each Frame with Derived slots, inject _NEEDED
+$frame->set('_NEEDED', sub {
+    # Derivation formula from KB org annotation
+    # E.g.: sum of array elements
+    my @items = @{ $SELF->get('items') // [] };
+    my $total = 0;
+    $total += ($_->get('value') // 0) for @items;
+    return $total;
+});
+```
+
+**Rules:**
+- `_NEEDED` must be a **pure function** — no side effects, no Engine calls
+- Formula comes from **KB org** annotation (e.g., "sum of X", "product of Y")
+- Result is **not cached** — every `get()` re-evaluates; use explicit `set()` if needed
+- Never return inside `_NEEDED` — use idiomatic return at the end
+
+### _AFTER — Forward propagation (guardrails enforced)
+
+**Detect:** KB org `Slot dictionary` entries marked with `Triggers X on Y (_AFTER)` notation
+
+```org
+| classe_conductivite | enum | Triggers besoin_thermique on dependent frames (_AFTER) |
+```
+
+**Generate** (inside `load_projet()`, after Frame creation):
+
+```perl
+# ⚠️ Only for slots that trigger propagation to other Frames
+$frame->set('_AFTER', sub {
+    my ($slot, $new_val) = @_;
+    return unless $slot eq 'classe_conductivite';
+    my $ctx = $SELF;  # capture BEFORE any set() on another Frame
+    
+    # Find dependent Frames
+    for my $dependent (fmatch(slot => 'materiau_ref')) {
+        next unless ($dependent->get('materiau_ref') // '') == $ctx;
+        $dependent->set('besoin_thermique', 1);  # targeting slot
+    }
+});
+```
+
+**Rules:**
+- **Never auto-generate** `_AFTER` — too risky for business logic. Document in KB org only.
+- If human reviewer approves: manually add the closure to Feed.pm after `chorus-check` generation.
+- Always capture `$SELF` before any `set()` on another Frame
+- Only write **targeting slots** (never result slots) — maintain idempotence
+- Include a `return unless $slot eq '...'` guard to limit scope
+
+**Automation decision table:**
+
+| Component | Responsibility | Automatic? | Notes |
+|---|---|---|---|
+| Detect `Derived:` annotation | `chorus-feed` | ✅ yes | KB org marks slots as derivable |
+| Detect `Triggers` notation | `chorus-feed` | ✅ yes | KB org marks propagation dependencies |
+| Generate `_NEEDED` coderef | `chorus-check` | 🟠 partial | Formula from KB org; code structure automatic |
+| Generate `_AFTER` coderef | `chorus-check` | ❌ no | Too risky; requires human validation |
+
+---
+
 ## Phase 3 — Generate Agent modules
 
 For each agent in the index, create `$SANDBOX/lib/<Namespace>/Agent/<Nom>.pm`
