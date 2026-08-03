@@ -305,7 +305,12 @@ $frame->set('_NEEDED', sub {
 
 > **When to use:** when the corpus defines a slot as derivable from others (formulas
 > such as "= sum of", "= product of", "calculated from") and not all project files
-> will supply it explicitly.  The value is computed once on first `get()` and cached.
+> will supply it explicitly.
+>
+> ⚠️ **`_NEEDED` is NOT automatically cached** — every `get()` re-evaluates the coderef.
+> The explicit `$SELF->set(...)` in the example above IS the cache mechanism: once the
+> slot is written via `set()`, subsequent `get()` calls find `_VALUE` and skip `_NEEDED`.
+> Without that `set()` call, each `get()` recomputes from scratch (costly + not visible to `fmatch`).
 >
 > **Corpus signals:** explicit derivation formulas; slots present in some project
 > files but absent in others (optional but computable).
@@ -362,8 +367,8 @@ Use for normalizing or sanitizing input values.
 ```perl
 # In Feed.pm — after Frame creation
 $frame->set('_BEFORE', sub {
-    my ($new_val) = @_;
-    return unless $slot eq 'classe_bois';
+    my ($slot, $new_val) = @_;
+    return $new_val unless $slot eq 'classe_bois';   # only normalize this slot
     # Normalize case
     return uc($new_val);  # return normalized value
 });
@@ -396,7 +401,20 @@ $frame->set('_REQUIRE', sub {
 > states hard constraints (e.g., "must be positive", "must be one of: A, B, C").
 >
 > **See also:** `chorus-frame-advanced.md § Procedural Slots — $SELF Capture Rules`
-> for full details on lifecycle order and $SELF capture.
+> for full details on $SELF capture and inheritance interactions.
+
+**Hooks lifecycle order** — when `$frame->set('slot', $val)` is called:
+
+```
+_REQUIRE($slot, $val)  → return -1 to abort write, anything else to allow
+_BEFORE($slot, $val)   → return normalized value to store
+[slot written to _VALUE + %REPOSITORY updated]
+_AFTER($slot, $val)    → forward propagation to other Frames
+```
+
+> If `_REQUIRE` returns `-1`, neither `_BEFORE` nor `_AFTER` fires.
+> `_BEFORE` fires before validation is complete — return the (possibly modified) value,
+> not a boolean.
 
 ---
 

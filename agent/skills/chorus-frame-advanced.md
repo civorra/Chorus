@@ -304,9 +304,13 @@ _NEEDED => sub {
 
 **Critical limitations:**
 
-1. **Not cached** — every `get()` re-evaluates `_NEEDED`. Use explicit `set()` if computation is expensive.
-2. **No access to Engine** — `_NEEDED` runs on a Frame context, not in an Engine context.
-   You **cannot** call `fmatch()`, `$SELF->solved()`, etc. from `_NEEDED`.
+1. **Not cached** — every `get()` re-evaluates `_NEEDED`. Use explicit `set()` if computation is
+   expensive (cache the result by calling `$SELF->set('slot', $computed)` before returning).
+2. **Engine methods unavailable** — `$SELF` in `_NEEDED` is a data Frame, not an Engine Frame.
+   You **cannot** call `$SELF->solved()`, `cut()`, `replay()`, etc. from `_NEEDED`.
+   `fmatch()` **can** be called (it is a `Chorus::Frame` utility, not an Engine method), but
+   carries two risks: re-evaluation cost on every `get()` (see point 1), and circular dependency
+   if the queried Frames also trigger `_NEEDED` that in turn reads back this Frame.
 3. **Local to Frame** — `_NEEDED` cannot traverse outside its Frame; use `_AFTER` on a *previous* slot
    to trigger cross-Frame propagation.
 

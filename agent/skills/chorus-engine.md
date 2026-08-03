@@ -136,7 +136,8 @@ Reserve all `_UPPERCASE` names for system slots.
 > The only exceptions are: Perl reserved words, CPAN module names, fixed DSL keys (`attribut`, `filtre`), and internal engine slot names — these always remain in English regardless of the corpus language.
 > Full list of reserved system slots (from `chorus-engine-yaml.md § Reserved system slots`):
 > `_KEY` `_PARENT_KEY` `_ISA` `_VALUE` `_DEFAULT` `_NEEDED` `_BEFORE` `_AFTER` `_REQUIRE` `_NOFRAME` `_SERIALIZE`
-> Additional runtime slots: `_SELF` `_ITEMS` `_CONTAINER` `_SCOPE` `_MAX_ITER` `_LOCK_UNTIL_STABLE`
+> Additional runtime slots (`_SELF` `_ITEMS` `_CONTAINER` `_SCOPE` `_MAX_ITER` `_LOCK_UNTIL_STABLE`):
+> → see `chorus-engine-yaml.md § Reserved system slots` (already loaded in this context).
 >
 > **This section is the single authoritative reference.** All skills (`chorus-feed`, `chorus-check`, `chorus-engine-yaml`, `chorus-create-project`, `chorus-import-project`, `chorus-strengthen`) defer to this rule.
 
