@@ -97,10 +97,15 @@
 ** Agent Options (Expert-level)
    Optional flags set directly on the agent frame after construction.
 
-   - ~_LOCK_UNTIL_STABLE~ → ~'Y'~ : Expert skips this agent in the current iteration
-     if any *earlier* agent has already succeeded (~_SUCCES~ is true).
-     Typical use: a "global conformity check" agent that should run only once all
-     upstream agents have stabilised.
+   - ~_LOCK_UNTIL_STABLE~ → ~'Y'~ : Expert skips this agent in the current outer-loop pass
+     if any *earlier* agent fired at least one rule in its last ~loop()~ call (~_SUCCES = 1~).
+     The agent is NOT permanently locked — it runs in the next outer-loop pass once all
+     earlier agents have fully converged (~_SUCCES = 0~ = last ~applyrules()~ pass fired nothing).
+     Typical use: a "global conformity check" that runs only after all upstream agents have
+     fully stabilised.
+     ⚠ ~_SUCCES~ is reset at the *start* of every ~loop()~ call and reflects the LAST
+       ~applyrules()~ pass only — "any earlier agent succeeded" ≠ "all have ever fired";
+       it means "at least one earlier agent's last pass was still active in this iteration".
      #+BEGIN_SRC perl
      $agent->{_LOCK_UNTIL_STABLE} = 'Y';
      #+END_SRC
@@ -118,6 +123,28 @@
   - Concept A  → Frame ~NameFrameA~ with slots [x, y, z]
   - Concept B  → derives from A (_ISA => $NameFrameA)
   - Relation A↔B → cross-slot on A ~→ b_ref~ or _AFTER hook on slot ~x~
+
+  Patterns for inter-Frame relations — choose the most fitting:
+
+  - *Simple prototype (~_ISA~)*:
+    ~ChildFrame → _ISA => $ParentFrame~
+    Inherits defaults, normative thresholds and ~_NEEDED~ computations from the parent.
+    Use when a concept is a strict specialisation of another.
+
+  - *Frame network (~_ALTERNATIVES~ + ~fselect~)*:
+    Declare siblings on the seed Frame: ~_ALTERNATIVES => [$ProtoB, $ProtoC]~
+    Select at runtime: ~fselect(prop => val, _alternatives => $ProtoA)~
+    Use when the domain has multiple competing prototypes resolved by observed data at runtime.
+
+  - *Forward propagation (~_AFTER~)*:
+    Slot ~X~ on ~FrameA~ → ~_AFTER~ updates slot ~Y~ (same or other Frame).
+    ~_AFTER => { X => sub { my $ctx = $SELF; $other->set('Y', $ctx->get('X') * factor) } }~
+    Use for derived computations that must cascade on every write.
+
+  - *Cross-Frame reference (reference slot)*:
+    Slot ~b_ref~ on ~FrameA~ → points to a ~FrameB~ instance (set by Feed.pm or earlier agent).
+    Navigate with ~$a->{b_ref}->get('slot')~ or via ~_AFTER~ on the referencing slot.
+    Use to model relationships between independent Frame types.
 
 * Frame Catalogue
 ** Frame: <FrameName1>
@@ -150,12 +177,27 @@
 
    Inheritance (_ISA): <ParentFrameName> or ~-~
    Hooks:
+   - ~_BEFORE~ on ~<slot>~ → <normalize/sanitize value before storage>
    - ~_AFTER~ on ~<slot>~ → <effect: propagation to which other Frame/slot>
-   - ~_NEEDED~ for ~<slot>~ → <last-resort logic / backward chaining>
-   - ~_REQUIRE~ on ~<slot>~ → <validation constraint>
+     ⚠ if calls ~set()~ on another Frame: capture ~my $ctx = $SELF;~ first
+       (~$SELF~ changes inside a nested ~set()~ — see chorus-frame-advanced.md §Procedural Slots)
+   - ~_NEEDED~ for ~<slot>~ → <lazy computation invoked by ~get()~; NOT cached — see Pitfalls>
+   - ~_REQUIRE~ on ~<slot>~ → <validation constraint — return ~-1~ to block the write>
    - ~_ON_DELETE~ → if-removed demon (Minsky triad); receives the deleted slot name
      ex: ~_ON_DELETE => sub { my $slot = shift; ... }~
      Use to cascade deletions or invalidate derived slots when a slot is removed.
+
+   Valuation chain — ~get()~ resolution order (Mode N, default):
+   #+BEGIN_EXAMPLE
+   1. _VALUE   — direct value (set via set() or constructor)
+   2. _DEFAULT — normative default (inherited from prototype, if any)
+   3. _NEEDED  — lazy coderef (re-evaluated on every get(), NOT cached)
+   #+END_EXAMPLE
+   Document non-trivial cases here (omit if all slots are plain values):
+   - ~_DEFAULT~ on ~<slot>~ → <normative default value> (Source: §N — <corpus reference>)
+     ex: ~_DEFAULT => { service_class => 1 }~  # absent = class 1 per norm §2.3.1.3
+   - ~_NEEDED~ for ~<slot>~ → <derivation logic / backward-chain trigger>
+     ex: ~_NEEDED => { kmod => sub { estimate_kmod($SELF->{service_class}) } }~
 
 ** Frame: <FrameName2>
    (same structure)
@@ -212,6 +254,10 @@
    - ~$agent->last()~       → exit rule loop for this agent, move to next agent
    - ~$agent->replay()~     → restart this agent from its first rule
    - ~$agent->replay_all()~ → restart the whole Expert pipeline from agent 1
+     ⚠ *cost*: O(frames × rules × agents) — all agents restart from scratch.
+     On large pipelines (5+ agents, 200+ Frames), a frequently-firing rule calling
+     ~replay_all()~ can turn a 2-second run into a timeout.
+     Prefer ~replay()~ (restarts current agent only) whenever possible.
 
    Notes     : <clarifications, edge cases, dependencies>
 
@@ -251,5 +297,9 @@
         has succeeded; verify that earlier agents eventually stop firing to avoid starvation
   - [ ] ~_ON_DELETE~ demons — if a frame deletes a slot mid-pipeline, ensure the demon does not
         trigger unwanted ~fmatch()~ side effects on other agents still in the same cycle
+  - [ ] ~_NEEDED~ is *not cached* — every ~get()~ on a ~_NEEDED~ slot re-evaluates the coderef.
+        For expensive computations, cache the result explicitly:
+        ~$SELF->set('slot', $computed)~ inside the ~_NEEDED~ sub (converts the slot from
+        ~_NEEDED~ to ~_VALUE~ after first evaluation — subsequent ~get()~ calls are O(1)).
   - [ ] ~fselect~ (Strategy C) scores by exact value match — ensure slot values are normalised
         before calling it (lowercase, trim) to avoid missed matches
