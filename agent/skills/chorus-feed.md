@@ -1078,7 +1078,82 @@ user can immediately see what was covered and what remains.
 Used **only** when `--enrich` is present in the command.
 `<sandbox-name>` must exist and contain a KB.
 
+### ⚠️ WIP checkpoint check — mandatory first step
+
+**Before anything else**, check for a leftover WIP file from a previous incomplete pass:
+
+```bash
+WIP="$SANDBOXES/<sandbox-name>/.chorus-wip.md"
+```
+
+| File present? | Action |
+|---|---|
+| **No** → normal | Proceed to Phase B0 |
+| **Yes** → previous pass incomplete | Display warning and stop |
+
+If `.chorus-wip.md` exists, display:
+
+```
+⚠️  chorus-feed --enrich interrupted — previous pass incomplete
+    Sandbox : <sandbox-name>
+    WIP file: $SANDBOX/.chorus-wip.md
+
+    A previous --enrich pass was started but never completed (Phase B4.5 was
+    not reached — README.org coverage report may be missing or inconsistent).
+
+    Contents of .chorus-wip.md:
+    ──────────────────────────────────────────────────────
+    <display file content>
+    ──────────────────────────────────────────────────────
+
+    Options:
+      1. Fix manually: run Phase B4.5 on the previous corpus, then delete
+         .chorus-wip.md, then re-run chorus-feed --enrich for the new corpus.
+      2. Override: add --force to skip this check and start a new pass
+         (the old WIP file will be overwritten — previous pass remains unfinished).
+
+    Recommended: option 1 — ensure KB consistency before proceeding.
+```
+
+**`--force` override:** if the user explicitly passed `--force` alongside `--enrich`,
+overwrite the existing WIP file and proceed to Phase B0 without stopping.
+
+> **Why this check exists:** the chunking rule (≤ 2 files per turn) splits Mode B
+> across multiple conversation turns. If a session ends between turns, the KB can be
+> left in a partially consistent state (YAMLs generated but KB org not updated, or
+> README coverage report missing). The WIP file is the only reliable signal that a
+> previous pass did not reach completion.
+
 ### Phase B0 — Read existing KB
+
+**Step 0 — Create WIP checkpoint file**
+
+Before reading any KB file, write `.chorus-wip.md` in the sandbox root:
+
+```markdown
+# chorus-feed WIP checkpoint
+sandbox: <sandbox-name>
+corpus: <corpus-filename>
+started: <YYYY-MM-DD>
+mode: B
+status: IN_PROGRESS
+
+## What this means
+A chorus-feed --enrich pass was started but has not yet completed Phase B4.5
+(README.org coverage delta report). If this file is still present after the
+session ends, the KB may be partially consistent:
+- YAML rules and/or Helpers.pm may have been written without the README being updated.
+- The * Coverage section of README.org may be missing or refer to sections not yet created.
+
+## How to recover
+1. Manually execute Phase B4.5 for the corpus listed above.
+2. Verify README.org * Coverage is complete and coherent.
+3. Delete this file once Phase B4.5 is confirmed complete.
+```
+
+> **One write, no further updates.** This file is written once at the start and
+> deleted once at the very end (Phase B4.5 Step 5). It is never updated between phases —
+> updating it per phase would re-introduce the same timeout risk it is designed to detect.
 
 1. Read `agent/chorus/index.org` → current pipeline, known agents
 2. Read each `agent/chorus/<slug>.org` → Slot dictionary, Rule catalog
@@ -1244,6 +1319,26 @@ If `N_remaining == 0` → display instead:
    No further --enrich pass needed.
    Next: chorus-strengthen <sandbox-name> to verify rule quality.
 ```
+
+**Step 5 — Delete WIP checkpoint file**
+
+Phase B4.5 is now complete. Delete the WIP file to signal successful completion:
+
+```bash
+rm -f "$SANDBOXES/<sandbox-name>/.chorus-wip.md"
+```
+
+Display confirmation:
+```
+🔓 WIP checkpoint cleared — $SANDBOX/.chorus-wip.md deleted.
+   This --enrich pass is fully complete (Phase B4.5 reached).
+```
+
+> **Why deletion is the completion signal:** the WIP file is written at the very
+> start (Phase B0 Step 0) and deleted only here, at the very end. Its absence
+> is the only reliable proof that a pass completed without interruption.
+> Any crash, timeout, or session end between B0 and B4.5 Step 5 leaves the file
+> in place — making the next `--enrich` invocation immediately aware of the gap.
 
 > **Convergence criterion:** the `--enrich` loop converges when the
 > `⏭ Deferred` list reaches 0. This is the only reliable signal that
