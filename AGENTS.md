@@ -46,9 +46,34 @@ and leaves the sandbox in a partially consistent state if the operation is inter
 mid-way (KB org missing while YAMLs already exist, README not updated, etc.).
 Incremental writes make each step independently verifiable and recoverable.
 
-**WIP marker:** for multi-step operations spanning several writes, use a
-`.chorus-wip.md` file in the sandbox root as an in-progress signal — written at the
-start of the operation, deleted on successful completion. See `chorus-feed.md § WIP checkpoint`.
+## `.chorus-wip.md` — in-progress marker convention
+
+For any multi-step operation that spans several writes (e.g. `chorus-feed --enrich`:
+KB org + YAML rules + Helpers.pm + README), a `.chorus-wip.md` file **must** be
+created in the sandbox root at the very start and deleted only on full completion.
+
+| Event | Action |
+|---|---|
+| Start of multi-step operation | **Create** `$SANDBOX/.chorus-wip.md` |
+| All artefacts written + README updated | **Delete** `$SANDBOX/.chorus-wip.md` |
+| File still present at next invocation | Previous operation incomplete — **stop and warn** |
+
+**`.chorus-wip.md` is never committed** (it is a transient signal, like a lock file).
+Add it to `.gitignore` if not already excluded by the `sandboxes/` ignore rule.
+
+The file content should identify the interrupted operation:
+```markdown
+# chorus-feed WIP checkpoint
+sandbox: <name>
+corpus: <filename>
+started: <YYYY-MM-DD>
+status: IN_PROGRESS
+```
+
+> Presence = incomplete. Absence = clean state.
+> A coding agent encountering this file must not delete it silently —
+> it must surface the interruption and let the user decide how to recover.
+> Full protocol: `chorus-feed.md § WIP checkpoint check`.
 
 ## ⛔ `agent/` — commit rules
 
