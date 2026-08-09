@@ -3,7 +3,7 @@ use strict;
 use warnings;
 
 use FindBin qw($Bin);
-use lib "$Bin/../../Engine/lib";   # Chorus::Engine, Frame, Expert, Collection
+use lib "$Bin/../../lib";           # Chorus::Engine, Frame, Expert, Collection
 use lib "$Bin/lib";                 # KDIGO::*
 
 use KDIGO::CKD::Feed   qw(load_projet);
