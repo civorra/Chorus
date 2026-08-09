@@ -1285,6 +1285,24 @@ Replace the `* Coverage` block with the updated version:
    #+END_EXAMPLE
 ```
 
+> ⛔ **Règle d'édition atomique — bloc `* Coverage` :**
+> Cette étape est **un seul appel `eca__edit_file`** ciblant le bloc `* Coverage`
+> en entier — depuis la ligne `* Coverage` jusqu'à la fin du fichier (ou jusqu'au
+> prochain heading `*` de même niveau si le README en a un après).
+> **Ne jamais découper en plusieurs édits ciblant des sous-headings**
+> (`** ⏭ Deferred`, `** Next step`, etc.) : une fois du contenu inséré, ces
+> sous-headings peuvent apparaître plusieurs fois dans le fichier, et
+> `eca__edit_file` sans `all_occurrences: true` remplace silencieusement la
+> **première** occurrence — qui peut être au milieu du bloc qu'on vient d'écrire,
+> tronquant tout ce qui suit.
+>
+> **Pattern correct :**
+> `original_content` = le bloc `* Coverage` existant depuis son heading jusqu'à
+> la fin du fichier (lu via `eca__read_file` juste avant l'édit).
+> `new_content` = le bloc `* Coverage` complet et mis à jour, du heading à la
+> dernière ligne.
+> **Un seul appel, un seul remplacement, aucun édit de suivi sur le même bloc.**
+
 **Step 4 — Display the delta summary to the user**
 
 ```
