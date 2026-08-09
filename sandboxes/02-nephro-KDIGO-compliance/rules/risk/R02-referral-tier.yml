@@ -1,0 +1,49 @@
+##
+# RULE: R02-referral-tier
+# AGENT: KDIGO::CKD::Agent::Risk  (pos. 2 / 4)
+# CORPUS: §2.2 — KDIGO 2024 CKD Guideline
+#   Recommendation 2.2.1 + Practice Points 2.2.1–2.2.3
+#   §5.1 — Referral to specialist kidney care services
+#
+# PURPOSE
+#   Assigns the referral tier based on the GFR category and kidney failure risk
+#   score thresholds defined in KDIGO 2024:
+#     - 2-year KFR > 40%  → "krt_preparation" (modality education, vascular access)
+#     - 2-year KFR > 10%  → "multidisciplinary" (MDT care timing)
+#     - 5-year KFR 3–5%   → "nephrology" (referral consideration)
+#     - G4/G5 without score → "nephrology" by default
+#     - Otherwise          → "primary_care"
+#
+# INPUTS  (slots read)
+#   besoin_risk                 : targeting slot — set by staging R03
+#   ckd_g_category              : str — GFR category
+#   kidney_failure_risk_2y_pct  : float — optional (validated risk equation)
+#   kidney_failure_risk_5y_pct  : float — optional (validated risk equation)
+#
+# OUTPUTS (slots written)
+#   referral_tier : str — one of: primary_care, nephrology, multidisciplinary, krt_preparation
+#
+# HELPERS
+#   referral_tier_from_risk($g, $kfr_2y, $kfr_5y) → str
+#
+# GUARD — EXCEPTION: defined $p->{referral_tier}
+#   Idempotence — fires only once per patient.
+##
+RULE: referral-tier
+FIND:
+  p:
+    attribut: besoin_risk
+EXCEPTION: defined $p->{referral_tier}
+ACTION: |
+  # Read G category — required
+  my $g = $p->{ckd_g_category} // '';
+  return 0 unless $g;
+
+  # Kidney failure risk scores — optional; helper handles undef gracefully
+  my $kfr_2y = $p->get('kidney_failure_risk_2y_pct');
+  my $kfr_5y = $p->get('kidney_failure_risk_5y_pct');
+
+  # Assign referral tier from risk thresholds (§2.2.1 PP 2.2.1–2.2.3)
+  my $tier = referral_tier_from_risk($g, $kfr_2y, $kfr_5y);
+  $p->set('referral_tier', $tier);
+  1

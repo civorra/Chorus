@@ -1,0 +1,202 @@
+#+TITLE: Introduction — Sandbox 02-nephro-KDIGO-compliance
+#+AUTHOR: Chorus / ECA
+#+DATE: 2025-08-09
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t
+
+* Sandbox overview
+
+This sandbox implements a *KDIGO 2024 CKD* (Chronic Kidney Disease) guideline
+compliance pipeline using the Chorus inference engine (Perl).
+
+It covers G/A staging, risk assessment, treatment verification
+(RASi, SGLT2i, MRA, statin, BP, GLP-1RA, antiplatelet, NOAC, lifestyle)
+and special care alerts (KRT planning, gadolinium safety, drug dosing review).
+
+** Pipeline (4 agents)
+
+| Pos | Agent     | Slug      | Primary role                                     |
+|-----+-----------+-----------+--------------------------------------------------|
+|   1 | Staging   | staging   | G/A categories, G×A stage, chronicity            |
+|   2 | Risk      | risk      | Monitoring frequency, referral tier              |
+|   3 | Treatment | treatment | Per-therapy compliance check                     |
+|   4 | Care      | care      | Special alerts + =overall_compliance= verdict    |
+
+Perl namespace: =KDIGO::CKD=
+
+* Converting a patient record into a =project.json= file
+
+** Expected format
+
+A =project.json= is an array of elements, each representing one patient.
+Each element contains only *input slots* — the raw clinical data that the
+pipeline cannot compute on its own.
+All result slots (staging, therapy compliance, final verdict…) are computed
+by the YAML rules and must never appear in the input JSON.
+
+#+BEGIN_SRC json
+{
+  "projet": "<project-name>",
+  "elements": [
+    {
+      "id": "<unique-id>",
+      "type_element": "patient",
+      "egfr_ml_min": 52,
+      "acr_mg_g": 60,
+      "age_years": 55,
+      "has_diabetes": 0,
+      ...
+    }
+  ]
+}
+#+END_SRC
+
+** Required input slots (patient)
+
+| Category          | Slots                                                                         |
+|-------------------+-------------------------------------------------------------------------------|
+| Lab values        | =egfr_ml_min=, =acr_mg_g=, =serum_potassium_meq_l=                           |
+| Demographics      | =age_years=, =ckd_duration_months=                                            |
+| Comorbidities     | =has_diabetes=, =has_heart_failure=, =has_established_ascvd=,                 |
+|                   | =has_atrial_fibrillation=, =has_symptomatic_hyperuricemia=                    |
+| Current treatment | =is_on_rasi=, =is_on_sglt2i=, =is_on_statin=, =is_on_mra=, =is_on_glp1ra=,  |
+|                   | =is_on_aspirin=, =is_on_warfarin=, =is_on_noac=                               |
+| Measurements      | =systolic_bp_mmhg=, =physical_activity_min_w=,                                |
+|                   | =protein_intake_g_kg_d=, =sodium_intake_g_d=                                  |
+| Special flags     | =needs_gadolinium=, =takes_narrow_ti_drug=, =kidney_failure_risk_2y_pct=      |
+
+** Conversion pathways
+
+*** A — Structured form (manual)
+A clinician fills in a form aligned on these slots.
+A Python/JS script generates the JSON from the answers.
+Simplest approach for a clinical pilot.
+
+*** B — =chorus-import-project= (semi-automated extraction)
+Takes a source document (PDF/Word consultation report, lab results…)
+and aligns its terminology with KB slots.
+
+#+BEGIN_SRC
+chorus-import-project 02-nephro-KDIGO-compliance patient-report.pdf
+#+END_SRC
+
+The agent identifies values in the text, proposes a mapping, and produces the JSON.
+An audit step can then review ambiguous extractions:
+
+#+BEGIN_SRC
+chorus-audit-import 02-nephro-KDIGO-compliance extracted-project.json
+#+END_SRC
+
+*** C — EMR/EHR export (automated)
+If the patient record lives in a hospital information system, a connector can
+export the relevant fields directly in the expected JSON format
+(e.g. FHIR → KB slot mapping).
+Most scalable approach; requires integration work.
+
+* What =chorus-check= tells you about a patient
+
+The output of =chorus-check= is a *KDIGO 2024 guideline compliance audit*,
+structured in 4 layers matching the 4 pipeline agents.
+
+** Layer 1 — Staging
+
+Computed from eGFR and ACR:
+
+| Slot                   | Meaning                                                          |
+|------------------------+------------------------------------------------------------------|
+| =ckd_g_category=       | Kidney function severity: G1 to G5                              |
+| =ckd_a_category=       | Albuminuria level: A1 to A3                                      |
+| =ckd_stage=            | Combined G×A stage (e.g. =G3aA2=)                               |
+| =chronicity_confirmed= | CKD confirmed if duration ≥ 3 months: =confirmed= / =unclear=   |
+
+#+BEGIN_QUOTE
+These values replace manual staging, which is error-prone at threshold boundaries.
+#+END_QUOTE
+
+** Layer 2 — Risk
+
+| Slot                  | Meaning                                                                    |
+|-----------------------+----------------------------------------------------------------------------|
+| =monitoring_per_year= | Recommended monitoring frequency: 1 to 4×/year                            |
+| =referral_tier=       | Level of care: =primary_care= / =nephrology= /                             |
+|                       | =multidisciplinary= / =krt_preparation=                                    |
+
+#+BEGIN_QUOTE
+The clinician immediately knows whether the patient's follow-up matches the
+right level of intensity and specialist involvement.
+#+END_QUOTE
+
+** Layer 3 — Treatment
+
+For each therapeutic class, two pieces of information:
+- *Indicated?*: =yes= / =no= / =mandatory= / =suggested= / =NA=
+- *Prescribed compliantly?*: =OUI= / =NON= / =NA=
+
+Classes covered:
+
+| Slot                                          | Treatment / measure                         |
+|-----------------------------------------------+---------------------------------------------|
+| =rasi_indicated= / =_compliant=               | RAAS inhibitors (ACEi / ARB)                |
+| =sglt2i_indicated= / =_compliant=             | SGLT2 inhibitors (empagliflozin, dapagliflozin…) |
+| =mra_indicated= / =_compliant=                | Mineralocorticoid receptor antagonists      |
+| =statin_indicated= / =_compliant=             | Statins                                     |
+| =bp_target_compliant=                         | Blood pressure target (< 120 mmHg systolic) |
+| =glp1ra_indicated= / =_compliant=             | GLP-1 receptor agonists (informational)     |
+| =lifestyle_activity_ok=                       | Physical activity ≥ 150 min/week            |
+| =protein_intake_ok=                           | Protein intake ≤ 0.8 g/kg/day               |
+| =sodium_intake_ok=                            | Sodium intake < 2 g/day                     |
+| =antiplatelet_indicated= / =_compliant=       | Antiplatelet therapy                        |
+| =noac_preferred=                              | NOAC preferred over VKA in AF + CKD         |
+| =hyperkalemia_dietary_flag=                   | Hyperkalemia: dietary restriction flag      |
+| =uric_acid_lowering_indicated= / =_compliant= | Urate-lowering therapy if symptomatic       |
+
+#+BEGIN_QUOTE
+This is the core of the audit: "is this patient receiving the treatments that
+KDIGO 2024 recommends — no more, no less?"
+#+END_QUOTE
+
+** Layer 4 — Care (final verdict)
+
+Safety alerts and overall verdict:
+
+| Slot                      | Meaning                                                     |
+|---------------------------+-------------------------------------------------------------|
+| =krt_planning_flag=       | Initiate kidney replacement therapy planning? =OK= / =PLAN= |
+| =gadolinium_safe=         | Gadolinium safe for imaging? =NA= / =NON=                   |
+| =drug_dosing_review_flag= | Drug dosing review needed: =ROUTINE= / =URGENT=             |
+| =metabolic_acidosis_flag= | Metabolic acidosis alert                                    |
+| =overall_compliance=      | Final verdict: =COMPLIANT= / =PARTIAL= / =NON_COMPLIANT=    |
+
+#+BEGIN_QUOTE
+These flags are concrete, actionable safety signals for the consultation.
+#+END_QUOTE
+
+** Functional summary
+
+#+BEGIN_QUOTE
+=chorus-check= transforms a set of raw clinical measurements into a *guideline
+compliance report*: the clinician sees at a glance which treatments are indicated,
+which are missing, what level of follow-up is required, and which safety alerts
+are active — all computed reproducibly from the KDIGO 2024 guidelines.
+#+END_QUOTE
+
+It is a *guideline-driven clinical decision support tool*, not a diagnostic
+instrument: it does not determine whether a patient has CKD, but whether their
+management is consistent with what the guidelines recommend for their situation.
+
+* Example output — =project-01.json=
+
+14 validation patients (7 compliant, 5 partial, 2 non-compliant, 2 threshold edge cases).
+
+#+BEGIN_SRC
+  Compliant      : 7 / 14  (50%)
+  Non-compliant  : 7 / 14
+  Unprocessed    : 0 / 14
+  Pipeline       : SOLVED ✅  — CONVERGED (0 discordances)
+#+END_SRC
+
+Test case coverage:
+- Staging G1–G5 × A1–A3, threshold edge cases (eGFR=45/60, ACR=30/299)
+- Missing RASi, SGLT2i, MRA, statin, BP target, NOAC (isolated KO cases)
+- Multi-defect case (RASi + statin both absent)
+- Special flags: gadolinium G4, KRT planning G5, hyperkalemia G4/G5

@@ -1,0 +1,168 @@
+#+TITLE: Agent Care — KDIGO CKD Care Model & Drug Stewardship
+#+AGENT: KDIGO::CKD::Agent::Care
+#+PIPELINE_POS: 4
+#+RULES_DIR: rules/care/
+
+* Domain
+  This agent handles Chapter 4 (medication management and drug stewardship) and
+  Chapter 5 (optimal models of care) of the KDIGO 2024 Clinical Practice Guideline.
+
+  Responsibilities:
+  - Contrast media safety checks (§4.4.1.2, §4.4.2.1)
+  - KRT (kidney replacement therapy) planning trigger when eGFR <15–20 or 2-year KFR >40% (§5.4.3)
+  - Atrial fibrillation anticoagulation check: NOACs preferred for CKD G1–G4 (§3.16.1)
+  - Metabolic acidosis treatment check when bicarbonate <18 mmol/l (§3.10.1)
+  - Terminal rule: =solved()= once all checks complete
+
+  Functional dependencies: requires =besoin_care= from Treatment agent (pos. 3).
+
+* Targeting Slots                                                        :SCOPE:
+
+** Chosen Strategy
+   Strategy B — presence slot =besoin_care= set by Treatment agent R09.
+
+   Chosen strategy : B
+   Justification   : same rationale as upstream agents; presence slot ensures
+                     only fully processed patients reach this agent.
+
+** Targeting Slots Table
+   | Slot        | Strategy | Set by                         | Value / condition  |
+   |-------------+----------+--------------------------------+--------------------|
+   | besoin_care | B        | treatment R09-sodium-besoin-care| existence suffices |
+
+** Pre-Population Contract
+   Patients must carry =besoin_care= (set by Treatment R09), =ckd_g_category=,
+   =egfr_ml_min=, and optional slots: =has_atrial_fibrillation=, =serum_bicarbonate_mmol_l=,
+   =kidney_failure_risk_2y_pct=, =is_on_noac=, =is_on_warfarin=.
+
+* Pipeline — I/O Contract
+** Incoming Slots (FIND / fmatch)
+   | Slot                       | Frame(s) | Set by        | Description                              |
+   |----------------------------+----------+---------------+------------------------------------------|
+   | besoin_care                | patient  | treatment R09 | Targeting slot                           |
+   | ckd_g_category             | patient  | staging R01   | GFR category                             |
+   | egfr_ml_min                | patient  | project JSON  | Current eGFR                             |
+   | kidney_failure_risk_2y_pct | patient  | project JSON  | 2-year KFR % (optional)                  |
+   | has_atrial_fibrillation    | patient  | project JSON  | Boolean — AF present (optional)          |
+   | is_on_noac                 | patient  | project JSON  | Boolean — on NOAC (optional)             |
+   | is_on_warfarin             | patient  | project JSON  | Boolean — on warfarin/VKA (optional)     |
+   | serum_bicarbonate_mmol_l   | patient  | project JSON  | Serum bicarbonate mmol/l (optional)      |
+   | needs_iv_contrast          | patient  | project JSON  | Boolean — IV contrast planned (optional) |
+   | needs_gadolinium            | patient  | project JSON  | Boolean — gadolinium MRI planned (opt.)  |
+   | takes_narrow_ti_drug        | patient  | project JSON  | Boolean — on drugs with narrow therapeutic index (opt.) |
+
+** Outgoing Slots (set by this agent)
+   | Slot                    | Frame(s) | Type / values     | Description                                     |
+   |-------------------------+----------+-------------------+-------------------------------------------------|
+   | noac_preferred          | patient  | "OUI"|"NON"|"NA"  | NOACs vs VKA check for AF (§3.16.1)             |
+   | metabolic_acidosis_flag | patient  | "TREAT"|"OK"|"NA" | Bicarbonate <18 → TREAT (§3.10.1)               |
+   | krt_planning_flag       | patient  | "PLAN"|"OK"|"NA"  | KRT planning triggered at eGFR<15-20 (§5.4.3)  |
+   | gadolinium_safe         | patient  | "OUI"|"NON"|"NA"  | Gadolinium group II/III check for G4-G5         |
+   | overall_compliance      | patient  | str               | Summary compliance label                        |
+   | drug_dosing_review_flag | patient  | "NARROW_TI"|"ROUTINE"|"NA" | High-accuracy GFR needed for narrow TI drugs (§4.2.3) |
+
+** BOARD — Inter-agent Communication
+   No BOARD slots used by this agent.
+
+* Ontology
+  Single Frame type: =patient=. No inter-Frame relationships.
+
+** Aliases
+   Sources: KDIGO 2024 §3.10, §3.16, §4.2, §4.4, §5.4.
+   | Canonical KB form             | Project-side variants                          | Source              |
+   |-------------------------------+------------------------------------------------+---------------------|
+   | has_atrial_fibrillation       | af, atrial_fib, has_af, atrial_fibrillation    | corpus §3.16        |
+   | is_on_noac                    | on_noac, noac_prescribed, anticoagulated_noac  | corpus §3.16.1      |
+   | is_on_warfarin                | on_warfarin, on_vka, warfarin_prescribed        | corpus §3.16.1      |
+   | serum_bicarbonate_mmol_l      | hco3, bicarbonate, serum_hco3_mmol             | corpus §3.10.1      |
+   | needs_iv_contrast             | iv_contrast_planned, contrast_imaging          | corpus §4.4.1       |
+   | needs_gadolinium              | gadolinium_mri, mri_gadolinium                 | corpus §4.4.2       |
+   | kidney_failure_risk_2y_pct    | kfr_2yr, kf_risk_2y                           | corpus §2.2, §5.4.3 |
+   | takes_narrow_ti_drug          | narrow_ti, narrow_therapeutic_index, drug_narrow_ti | corpus §4.2.3  |
+
+* Frame Catalogue
+** patient
+   Role: patient with completed staging, risk assessment and treatment compliance checks.
+
+   Slots d'entrée  : besoin_care, ckd_g_category
+   Slots calculés  : noac_preferred, metabolic_acidosis_flag, krt_planning_flag,
+                     gadolinium_safe, drug_dosing_review_flag, overall_compliance
+   Slots optionnels: egfr_ml_min, kidney_failure_risk_2y_pct, has_atrial_fibrillation,
+                     is_on_noac, is_on_warfarin, serum_bicarbonate_mmol_l,
+                     needs_iv_contrast, needs_gadolinium, takes_narrow_ti_drug
+
+   Inheritance (_ISA): —
+   Hooks: none
+
+* Slot Dictionary
+  | Slot                       | Frame(s) | Role                          | fmatch target? |
+  |----------------------------+----------+-------------------------------+----------------|
+  | besoin_care                | patient  | _SCOPE targeting (Strategy B) | yes            |
+  | ckd_g_category             | patient  | _APPLY read                   | no             |
+  | egfr_ml_min                | patient  | _APPLY read                   | no             |
+  | kidney_failure_risk_2y_pct | patient  | _APPLY read                   | no             |
+  | has_atrial_fibrillation    | patient  | _APPLY read                   | no             |
+  | is_on_noac                 | patient  | _APPLY read                   | no             |
+  | is_on_warfarin             | patient  | _APPLY read                   | no             |
+  | serum_bicarbonate_mmol_l   | patient  | _APPLY read                   | no             |
+  | needs_iv_contrast          | patient  | _APPLY read                   | no             |
+  | needs_gadolinium           | patient  | _APPLY read                   | no             |
+  | takes_narrow_ti_drug       | patient  | _APPLY read                   | no             |
+  | noac_preferred             | patient  | _APPLY write                  | no             |
+  | metabolic_acidosis_flag    | patient  | _APPLY write                  | no             |
+  | krt_planning_flag          | patient  | _APPLY write                  | no             |
+  | gadolinium_safe            | patient  | _APPLY write                  | no             |
+  | drug_dosing_review_flag    | patient  | _APPLY write                  | no             |
+  | overall_compliance         | patient  | _APPLY write                  | no             |
+
+* Rule Catalogue
+** Rule: R01-contrast-media
+   Intent    : Check gadolinium contrast safety for G4–G5 patients (§4.4.2.1).
+   CORPUS    : §4.4.2 — KDIGO 2024 — Gadolinium-containing contrast media (PP 4.4.2.1)
+   EXCEPTION : =defined $p->{gadolinium_safe}=
+
+** Rule: R02-krt-planning
+   Intent    : Trigger KRT planning flag when eGFR <15–20 or 2-year KFR >40% (§5.4.3).
+   CORPUS    : §5.4.3 — KDIGO 2024 — PP 5.4.3 — Timing KRT preparation
+   EXCEPTION : =defined $p->{krt_planning_flag}=
+
+** Rule: R04-drug-dosing-flag
+   Intent    : Flag patients requiring high-accuracy GFR measurement for drug dosing
+               when they are on narrow therapeutic index (TI) drugs (§4.2.3).
+               PP 4.2.3: use cystatin C-based or measured GFR for narrow TI drugs
+               or when eGFRcr may be unreliable.
+   CORPUS    : §4.2 — KDIGO 2024 — Dose adjustments by level of GFR (PP 4.2.1–4.2.5)
+   FIND      :
+   - =p= → attribut: =besoin_care= (Strategy B)
+   EXCEPTION : =defined $p->{drug_dosing_review_flag}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $g             = $p->{ckd_g_category} // '';
+   my $narrow_ti     = $p->get('takes_narrow_ti_drug') // 0;
+   # PP 4.2.3: narrow TI drugs + G3-G5 → cystatin C or mGFR for higher accuracy
+   if ($narrow_ti && $g =~ /^G(3|4|5)/) {
+       $p->set('drug_dosing_review_flag', 'NARROW_TI');   # high-accuracy GFR needed
+   } elsif (!$g) {
+       $p->set('drug_dosing_review_flag', 'NA');
+   } else {
+       $p->set('drug_dosing_review_flag', 'ROUTINE');     # standard eGFRcr sufficient
+   }
+   1
+   #+END_SRC
+
+** Rule: R03-termination
+   Intent    : Once all care model checks are complete, compute overall compliance
+               and call =solved()= to terminate the pipeline.
+   CORPUS    : §5 — KDIGO 2024 — Pipeline termination
+   EXCEPTION : =defined $p->{overall_compliance}=
+
+* Perl Helpers
+  No numeric normative tables needed for this agent — logic is directly in YAML actions.
+
+* Constraints & Pitfalls
+  _MAX_CYCLES recommended: N_patients × 3_rules × 1_agent × 10
+
+  - [ ] R03 termination: =overall_compliance= is set as a simple label based on presence of NON slots
+  - [ ] Gadolinium check applies only when =needs_gadolinium= is present and is truthy; absent → NA
+  - [ ] KRT planning: eGFR <15 is a soft threshold — actual dialysis initiation depends on symptoms (§5.4.2)
+  - [ ] §3.16.1 NOAC rule: applies to CKD G1–G4 only; G5 excluded (use caution at G4–G5, PP 3.16.2)

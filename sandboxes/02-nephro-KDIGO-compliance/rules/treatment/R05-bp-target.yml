@@ -1,0 +1,40 @@
+##
+# RULE: R05-bp-target
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.4 — KDIGO 2024 CKD Guideline
+#   Recommendation 3.4.1 (2B) — Blood pressure control
+#
+# PURPOSE
+#   Checks whether the adult CKD patient with high BP meets the KDIGO 2024
+#   target of SBP < 120 mmHg (standardized office measurement, when tolerated).
+#   If systolic_bp_mmhg is absent → result is "NA" (no data).
+#
+# INPUTS  (slots read)
+#   besoin_treatment  : targeting slot
+#   systolic_bp_mmhg  : float (optional)
+#
+# OUTPUTS (slots written)
+#   bp_target_compliant : "OUI"|"NON"|"NA"
+#
+# GUARD — EXCEPTION: defined $p->{bp_target_compliant}
+##
+RULE: bp-target
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{bp_target_compliant}
+ACTION: |
+  # Read systolic BP — skip gracefully if absent
+  my $sbp = $p->get('systolic_bp_mmhg');
+  if (!defined $sbp) {
+      $p->set('bp_target_compliant', 'NA');   # no measurement → NA
+      return 1;
+  }
+
+  # Check SBP target < 120 mmHg (§3.4.1 — Rec 3.4.1 2B)
+  if ($sbp < 120) {
+      $p->set('bp_target_compliant', 'OUI');
+  } else {
+      $p->set('bp_target_compliant', 'NON');
+  }
+  1

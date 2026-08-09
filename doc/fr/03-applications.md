@@ -178,9 +178,15 @@ La KB est mise à jour de façon incrémentale. L'infrastructure est régénér�
 ## Par où commencer ?
 
 **Explorer un pipeline existant :**
-Le sandbox `sandboxes/demo_en` contient la chaîne complète — corpus, KB org,
-règles YAML, infrastructure Perl.
-Lancer `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` pour voir le rapport en direct.
+Deux sandboxes prêts à l'emploi sont inclus dans le dépôt :
+
+- `sandboxes/01-demo_en` — conformité ossature bois (EC5/RE2020/Réglementation incendie).
+  Lancer `perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json` pour voir le rapport en direct.
+  Agents : `qualification` · `domain` · `fire` · `compliance`.
+
+- `sandboxes/02-nephro-KDIGO-compliance` — conformité de prise en charge MRC (recommandations KDIGO 2024).
+  Lancer `perl sandboxes/02-nephro-KDIGO-compliance/run.pl sandboxes/02-nephro-KDIGO-compliance/project-01.json`.
+  Agents : `staging` · `risk` · `treatment` · `care`. Voir `INTRO_FR.org` dans le sandbox pour une présentation fonctionnelle.
 
 **Comprendre la chaîne assistée par IA :**
 Voir la section *« Couplage avec un agent IA — l'architecture assistée par IA »* dans
@@ -188,6 +194,6 @@ Voir la section *« Couplage avec un agent IA — l'architecture assistée par I
 
 **Démarrer sur un nouveau domaine :**
 Commencer par `chorus-pdf` sur le corpus, puis `chorus-feed` pour extraire
-la connaissance. La KB org produite (`eca/agents/*.org`) est le point de
+la connaissance. La KB org produite (`agent/chorus/*.org`) est le point de
 contrôle où un expert du domaine valide ce qu'un agent IA a compris avant de générer
 le code.

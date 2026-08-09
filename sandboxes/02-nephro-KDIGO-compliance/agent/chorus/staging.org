@@ -1,0 +1,207 @@
+#+TITLE: Agent Staging — KDIGO CKD Classification
+#+AGENT: KDIGO::CKD::Agent::Staging
+#+PIPELINE_POS: 1
+#+RULES_DIR: rules/staging/
+
+* Domain
+  This agent classifies patients according to the CKD staging system defined in the
+  KDIGO 2024 Clinical Practice Guideline (Chapter 1).
+
+  Responsibilities:
+  - Assign the GFR category (G1–G5) from eGFR in ml/min per 1.73 m²
+  - Assign the albuminuria category (A1–A3) from urine ACR in mg/g
+  - Set the combined CKD stage (e.g., "G3aA2") for downstream agents
+  - Set the targeting slot =besoin_risk= to activate the Risk agent
+
+  Functional dependencies: none (first agent in pipeline — acts on raw patient data).
+
+* Targeting Slots                                                        :SCOPE:
+
+** Chosen Strategy
+   Strategy A — discriminating slot (value):
+   all patient Frames carry =type_element= = "patient".
+   Since the total number of patient Frames in a typical project file is small
+   (< 50), Strategy A with a discriminating filter on =type_element= is efficient.
+
+   Chosen strategy : A
+   Justification   : single Frame type ("patient"), small volume per project; no
+                     presence slot needed for the initial agent in the pipeline.
+
+** Targeting Slots Table
+   | Slot         | Strategy | Set by                    | Value / condition    |
+   |--------------+----------+---------------------------+----------------------|
+   | type_element | A        | project JSON (Feed.pm)    | eq "patient"         |
+
+** Pre-Population Contract
+   All patient Frames must carry =type_element= = "patient" from the project JSON.
+   Without this, =_SCOPE= returns an empty list and no rules fire.
+
+* Pipeline — I/O Contract
+** Incoming Slots (FIND / fmatch)
+   | Slot                  | Frame(s) | Set by       | Description                               |
+   |-----------------------+----------+--------------+-------------------------------------------|
+   | type_element          | patient  | project JSON | Discriminating slot; value must be "patient" |
+   | egfr_ml_min           | patient  | project JSON | eGFR in ml/min per 1.73 m²                |
+   | acr_mg_g              | patient  | project JSON | Urine albumin-to-creatinine ratio in mg/g |
+   | ckd_duration_months   | patient  | project JSON | Duration of kidney abnormality in months (optional) |
+
+** Outgoing Slots (set by this agent)
+   | Slot                 | Frame(s) | Type / values                              | Description                         |
+   |----------------------+----------+--------------------------------------------+-------------------------------------|
+   | ckd_g_category       | patient  | "G1"–"G5b"                                 | GFR category per KDIGO 2024 §1.1.2  |
+   | ckd_a_category       | patient  | "A1"–"A3"                                  | Albuminuria category §1.3           |
+   | ckd_stage            | patient  | str (e.g. "G3aA2")                         | Combined stage for reporting        |
+   | chronicity_confirmed | patient  | "confirmed"|"unconfirmed"|"unknown"        | §1.1.3 — chronicity check           |
+   | besoin_risk          | patient  | 1 (presence)                               | Targeting slot for Agent Risk       |
+
+** BOARD — Inter-agent Communication
+   No BOARD slots used by this agent.
+
+* Ontology
+  Single Frame type: =patient=.
+  No inter-Frame relationships — all data resides on the patient Frame.
+
+** Aliases
+   Sources: KDIGO 2024 CKD Guideline §1.1.2, §1.1.3, §1.3.1 — GFR, chronicity and albuminuria definitions.
+   | Canonical KB form (slot / type_element value) | Project-side variants                              | Source                                |
+   |-----------------------------------------------+----------------------------------------------------+---------------------------------------|
+   | type_element "patient"                        | case, subject, record, encounter                   | corpus §1.1 — Detection and evaluation |
+   | egfr_ml_min                                   | eGFR, egfr, GFR, glomerular_filtration_rate        | corpus §1.2 — Evaluation of GFR       |
+   | acr_mg_g                                      | ACR, albumin_creatinine_ratio, urine_ACR, acr_mg_g | corpus §1.3 — Evaluation of albuminuria |
+   | ckd_g_category                                | GFR_category, G_category, GFR_stage                | corpus §1.1.2                         |
+   | ckd_a_category                                | albuminuria_category, A_category, alb_stage        | corpus §1.3                           |
+   | ckd_duration_months                           | duration_months, ckd_months, months_ckd            | corpus §1.1.3 — Evaluation of chronicity |
+   | chronicity_confirmed                          | is_chronic, chronic_confirmed, ckd_chronicity      | corpus §1.1.3 PP 1.1.3.1              |
+
+* Frame Catalogue
+** patient
+   Role: represents a CKD patient case to be evaluated for guideline compliance.
+
+   | Slot                 | Type    | Possible values                         | Description                            |
+   |----------------------+---------+-----------------------------------------+----------------------------------------|
+   | type_element         | str     | "patient"                               | Discriminating slot — mandatory        |
+   | egfr_ml_min          | float   | 0..200                                  | eGFR in ml/min per 1.73 m²             |
+   | acr_mg_g             | float   | 0..∞                                    | Urine ACR in mg/g                      |
+   | ckd_duration_months  | float   | 0..∞                                    | Optional — duration of kidney disease  |
+   | ckd_g_category       | enum    | G1, G2, G3a, G3b, G4, G5               | Computed — GFR category                |
+   | ckd_a_category       | enum    | A1, A2, A3                              | Computed — albuminuria category        |
+   | ckd_stage            | str     | e.g. "G3aA2"                            | Computed — combined stage              |
+   | chronicity_confirmed | enum    | "confirmed", "unconfirmed", "unknown"   | Computed — §1.1.3 chronicity check     |
+   | besoin_risk          | flag    | 1 or undef                              | Computed — targeting slot for Agent Risk |
+
+   Slots d'entrée  : type_element, egfr_ml_min, acr_mg_g
+   Slots calculés  : ckd_g_category, ckd_a_category, ckd_stage, chronicity_confirmed, besoin_risk
+   Slots optionnels: ckd_duration_months
+
+   Inheritance (_ISA): —
+   Hooks: none
+
+* Slot Dictionary
+  | Slot                 | Frame(s) | Role                         | fmatch target? |
+  |----------------------+----------+------------------------------+----------------|
+  | type_element         | patient  | _SCOPE targeting (Strategy A)| yes            |
+  | egfr_ml_min          | patient  | _APPLY read                  | no             |
+  | acr_mg_g             | patient  | _APPLY read                  | no             |
+  | ckd_duration_months  | patient  | _APPLY read (optional)       | no             |
+  | ckd_g_category       | patient  | _APPLY write                 | no             |
+  | ckd_a_category       | patient  | _APPLY write                 | no             |
+  | ckd_stage            | patient  | _APPLY write                 | no             |
+  | chronicity_confirmed | patient  | _APPLY write                 | no             |
+  | besoin_risk          | patient  | _APPLY write — next targeting| yes            |
+
+* Rule Catalogue
+** Rule: R01-assign-g-category
+   Intent    : Assign the KDIGO GFR category (G1–G5b) based on =egfr_ml_min=.
+   CORPUS    : §1.1.2 — KDIGO 2024 — Methods for staging of CKD (GFR categories)
+   FIND      :
+   - =p= → attribut: =type_element=, filtre: ='$_->{type_element} eq "patient"'=
+   EXCEPTION : =defined $p->{ckd_g_category}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $egfr = $p->get('egfr_ml_min');
+   return 0 unless defined $egfr;
+   my $cat = egfr_to_g_category($egfr);
+   $p->set('ckd_g_category', $cat);
+   1
+   #+END_SRC
+
+** Rule: R02-assign-a-category
+   Intent    : Assign the KDIGO albuminuria category (A1–A3) based on =acr_mg_g=.
+   CORPUS    : §1.3 — KDIGO 2024 — Evaluation of albuminuria (A categories)
+   FIND      :
+   - =p= → attribut: =type_element=, filtre: ='$_->{type_element} eq "patient"'=
+   EXCEPTION : =defined $p->{ckd_a_category}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $acr = $p->get('acr_mg_g');
+   return 0 unless defined $acr;
+   my $cat = acr_to_a_category($acr);
+   $p->set('ckd_a_category', $cat);
+   1
+   #+END_SRC
+
+** Rule: R03-set-besoin-risk
+   Intent    : Once G and A categories are assigned, set =besoin_risk= to activate
+               the Risk agent. Also compose the combined CKD stage string.
+   CORPUS    : §1.1.2 — KDIGO 2024 — CGA staging system
+   FIND      :
+   - =p= → attribut: =type_element=, filtre: ='$_->{type_element} eq "patient"'=
+   CONDITION : =defined $p->{ckd_g_category} && defined $p->{ckd_a_category}=
+   EXCEPTION : =defined $p->{besoin_risk}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $stage = $p->{ckd_g_category} . $p->{ckd_a_category};
+   $p->set('ckd_stage', $stage);
+   $p->set('besoin_risk', 1);
+   1
+   #+END_SRC
+
+** Rule: R04-chronicity
+   Intent    : Check chronicity of CKD by verifying that =ckd_duration_months= ≥ 3 months (§1.1.3).
+               Sets =chronicity_confirmed= based on available data.
+               Informational — does not block pipeline progression.
+   CORPUS    : §1.1.3 — KDIGO 2024 — Evaluation of chronicity (PP 1.1.3.1, PP 1.1.3.2)
+   FIND      :
+   - =p= → attribut: =type_element=, filtre: ='$_->{type_element} eq "patient"'=
+   EXCEPTION : =defined $p->{chronicity_confirmed}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $dur = $p->get('ckd_duration_months');
+   if (!defined $dur) {
+       $p->set('chronicity_confirmed', 'unknown');     # no duration data
+   } elsif ($dur >= 3) {
+       $p->set('chronicity_confirmed', 'confirmed');   # PP 1.1.3.1: ≥ 3 months
+   } else {
+       $p->set('chronicity_confirmed', 'unconfirmed'); # PP 1.1.3.2: may be AKI/AKD
+   }
+   1
+   #+END_SRC
+
+* Perl Helpers
+** egfr_to_g_category
+   Signature   : =sub egfr_to_g_category($egfr_ml_min) → $category_str=
+   Description : Maps eGFR value (ml/min per 1.73 m²) to KDIGO GFR category G1–G5.
+   Called by   : R01-assign-g-category
+   Exported    : yes
+   Notes       : G3 is split into G3a (45–59) and G3b (30–44).
+                 Thresholds: ≥90=G1, 60–89=G2, 45–59=G3a, 30–44=G3b, 15–29=G4, <15=G5.
+
+** acr_to_a_category
+   Signature   : =sub acr_to_a_category($acr_mg_g) → $category_str=
+   Description : Maps urine ACR (mg/g) to KDIGO albuminuria category A1–A3.
+   Called by   : R02-assign-a-category
+   Exported    : yes
+   Notes       : <30=A1 (normal to mildly increased), 30–299=A2 (moderately increased),
+                 ≥300=A3 (severely increased).
+                 Source corpus: §1.3 — Evaluation of albuminuria.
+
+* Constraints & Pitfalls
+  _MAX_CYCLES recommended: N_patients × 3_rules × 1_agent × 10 = 30 × N_patients
+  (typical project: ~10–30 patients → 300–900 cycles; default 10 000 is sufficient)
+
+  - [ ] =type_element= slot is mandatory and must equal exactly "patient" (case-sensitive)
+  - [ ] =egfr_ml_min= and =acr_mg_g= must be numeric (float); undef → R01/R02 return 0 silently
+  - [ ] R03 depends on R01 and R02 both having fired — ensured by CONDITION guard
+  - [ ] =ckd_stage= is a composed string (e.g. "G3aA2") — never test equality in downstream
+        rules; always test =ckd_g_category= and =ckd_a_category= individually
+  - [ ] G3 split: eGFR 45–59 → G3a, 30–44 → G3b — important for statin / treatment rules

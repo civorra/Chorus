@@ -1,0 +1,203 @@
+#+TITLE: Introduction — Sandbox 02-nephro-KDIGO-compliance
+#+AUTHOR: Chorus / ECA
+#+DATE: 2025-08-09
+#+LANGUAGE: fr
+#+OPTIONS: toc:2 num:t
+
+* Présentation du sandbox
+
+Ce sandbox implémente un pipeline de conformité aux recommandations *KDIGO 2024 CKD*
+(Chronic Kidney Disease) à l'aide du moteur Chorus (Perl).
+
+Il couvre le staging G/A, l'évaluation du risque, la vérification des traitements
+(RASi, SGLT2i, MRA, statine, BP, GLP-1RA, antiplatelet, NOAC, hygiène de vie)
+et les alertes de soins spéciaux (KRT, gadolinium, posologies).
+
+** Pipeline (4 agents)
+
+| Pos | Agent             | Slug      | Rôle principal                                   |
+|-----+-------------------+-----------+--------------------------------------------------|
+|   1 | Staging           | staging   | Catégories G/A, stade G×A, chronicité            |
+|   2 | Risk              | risk      | Fréquence de suivi, niveau d'orientation         |
+|   3 | Treatment         | treatment | Conformité de chaque classe thérapeutique        |
+|   4 | Care              | care      | Alertes spéciales + verdict =overall_compliance= |
+
+Namespace Perl : =KDIGO::CKD=
+
+* Convertir un dossier patient en =project.json=
+
+** Format attendu
+
+Un =project.json= est un tableau d'éléments, chacun représentant un patient.
+Chaque élément contient uniquement les *slots d'entrée* — les données cliniques
+brutes que le pipeline ne peut pas calculer lui-même.
+Tous les slots de résultat (staging, conformité thérapeutique, verdict final…)
+sont calculés par les règles YAML et ne figurent jamais dans le JSON d'entrée.
+
+#+BEGIN_SRC json
+{
+  "projet": "<nom-du-projet>",
+  "elements": [
+    {
+      "id": "<identifiant-unique>",
+      "type_element": "patient",
+      "egfr_ml_min": 52,
+      "acr_mg_g": 60,
+      "age_years": 55,
+      "has_diabetes": 0,
+      ...
+    }
+  ]
+}
+#+END_SRC
+
+** Slots d'entrée requis (patient)
+
+| Catégorie        | Slots                                                                          |
+|------------------+--------------------------------------------------------------------------------|
+| Biologie         | =egfr_ml_min=, =acr_mg_g=, =serum_potassium_meq_l=                            |
+| Démographie      | =age_years=, =ckd_duration_months=                                             |
+| Comorbidités     | =has_diabetes=, =has_heart_failure=, =has_established_ascvd=,                  |
+|                  | =has_atrial_fibrillation=, =has_symptomatic_hyperuricemia=                     |
+| Traitements      | =is_on_rasi=, =is_on_sglt2i=, =is_on_statin=, =is_on_mra=, =is_on_glp1ra=,   |
+|                  | =is_on_aspirin=, =is_on_warfarin=, =is_on_noac=                                |
+| Mesures          | =systolic_bp_mmhg=, =physical_activity_min_w=,                                 |
+|                  | =protein_intake_g_kg_d=, =sodium_intake_g_d=                                   |
+| Indicateurs spéc | =needs_gadolinium=, =takes_narrow_ti_drug=, =kidney_failure_risk_2y_pct=       |
+
+** Voies de conversion
+
+*** A — Formulaire structuré (voie manuelle)
+Un clinicien renseigne un formulaire aligné sur ces slots.
+Un script Python/JS génère le JSON à partir des réponses.
+Voie la plus simple pour un pilote clinique.
+
+*** B — =chorus-import-project= (extraction semi-automatique)
+Prend en entrée un document source (compte-rendu PDF/Word, bilan biologique…)
+et aligne la terminologie du document avec les slots de la KB.
+
+#+BEGIN_SRC
+chorus-import-project 02-nephro-KDIGO-compliance mon-compte-rendu-patient.pdf
+#+END_SRC
+
+L'agent identifie les valeurs dans le texte, propose un mapping et produit le JSON.
+Un audit peut ensuite vérifier les extractions ambiguës :
+
+#+BEGIN_SRC
+chorus-audit-import 02-nephro-KDIGO-compliance projet-extrait.json
+#+END_SRC
+
+*** C — Export DPI/EMR (voie automatisée)
+Si le dossier patient est dans un SIH, un connecteur exporte directement
+les champs correspondants vers le format JSON attendu
+(ex. mapping FHIR → slots KB).
+Voie la plus scalable, nécessite un travail d'intégration.
+
+* Ce que =chorus-check= dit fonctionnellement d'un patient
+
+La sortie de =chorus-check= est un *audit de conformité aux recommandations KDIGO 2024*,
+structuré en 4 couches correspondant aux 4 agents du pipeline.
+
+** Couche 1 — Staging
+
+Calculé à partir de l'eGFR et de l'ACR :
+
+| Slot                   | Signification                                              |
+|------------------------+------------------------------------------------------------|
+| =ckd_g_category=       | Sévérité de l'atteinte rénale : G1 à G5                   |
+| =ckd_a_category=       | Niveau d'albuminurie : A1 à A3                            |
+| =ckd_stage=            | Combinaison G×A (ex. =G3aA2=)                             |
+| =chronicity_confirmed= | MRC confirmée si durée ≥ 3 mois : =confirmed= / =unclear= |
+
+#+BEGIN_QUOTE
+Ces valeurs remplacent une cotation manuelle sujette à erreur de seuil.
+#+END_QUOTE
+
+** Couche 2 — Risk
+
+| Slot                  | Signification                                                              |
+|-----------------------+----------------------------------------------------------------------------|
+| =monitoring_per_year= | Fréquence de surveillance recommandée : 1 à 4×/an                         |
+| =referral_tier=       | Niveau de prise en charge : =primary_care= / =nephrology= /               |
+|                       | =multidisciplinary= / =krt_preparation=                                    |
+
+#+BEGIN_QUOTE
+Le médecin sait immédiatement si le suivi du patient est au bon niveau
+d'intensité et d'expertise.
+#+END_QUOTE
+
+** Couche 3 — Treatment
+
+Pour chaque classe thérapeutique, deux informations :
+- *Indiquée ?* : =yes= / =no= / =mandatory= / =suggested= / =NA=
+- *Prescrite conformément ?* : =OUI= / =NON= / =NA=
+
+Classes couvertes :
+
+| Slot                          | Traitement / mesure                          |
+|-------------------------------+----------------------------------------------|
+| =rasi_indicated= / =_compliant=   | Inhibiteurs du SRAA (IEC/ARA2)           |
+| =sglt2i_indicated= / =_compliant= | iSGLT2 (empagliflozine, dapagliflozine…) |
+| =mra_indicated= / =_compliant=    | Antagonistes des récepteurs des minéralocorticoïdes |
+| =statin_indicated= / =_compliant= | Statines                                 |
+| =bp_target_compliant=         | Objectif tensionnel (< 120 mmHg systolique)  |
+| =glp1ra_indicated= / =_compliant= | Analogues du GLP-1 (informatif)          |
+| =lifestyle_activity_ok=       | Activité physique ≥ 150 min/sem              |
+| =protein_intake_ok=           | Apport protéique ≤ 0,8 g/kg/j               |
+| =sodium_intake_ok=            | Apport sodé < 2 g/j                          |
+| =antiplatelet_indicated= / =_compliant= | Antiplaquettaires                  |
+| =noac_preferred=              | NOAC préféré aux AVK si FA + CKD             |
+| =hyperkalemia_dietary_flag=   | Hyperkaliémie : restriction alimentaire      |
+| =uric_acid_lowering_indicated= / =_compliant= | Hypouricémiants si hyperuricémie symptomatique |
+
+#+BEGIN_QUOTE
+C'est le cœur de l'audit : "ce patient reçoit-il les traitements que KDIGO 2024
+préconise, ni plus ni moins ?"
+#+END_QUOTE
+
+** Couche 4 — Care (verdict final)
+
+Signaux de vigilance et verdict global :
+
+| Slot                      | Signification                                           |
+|---------------------------+---------------------------------------------------------|
+| =krt_planning_flag=       | Préparer la thérapie de remplacement rénal ? =OK= / =PLAN= |
+| =gadolinium_safe=         | Gadolinium sûr pour l'imagerie ? =NA= / =NON=           |
+| =drug_dosing_review_flag= | Révision des posologies : =ROUTINE= / =URGENT=          |
+| =metabolic_acidosis_flag= | Alerte acidose métabolique                              |
+| =overall_compliance=      | Verdict final : =COMPLIANT= / =PARTIAL= / =NON_COMPLIANT= |
+
+#+BEGIN_QUOTE
+Ces flags sont des alertes de sécurité concrètes, actionnables en consultation.
+#+END_QUOTE
+
+** Résumé fonctionnel
+
+#+BEGIN_QUOTE
+=chorus-check= transforme un jeu de mesures cliniques brutes en un *rapport de
+conformité aux recommandations* : le médecin voit en un coup d'œil quels
+traitements sont indiqués, lesquels manquent, quel niveau de suivi s'impose,
+et quelles alertes de sécurité sont actives — le tout calculé de façon
+reproductible à partir des guidelines KDIGO 2024.
+#+END_QUOTE
+
+C'est un *assistant de décision clinique guideline-driven*, pas un outil de
+diagnostic : il ne juge pas si le patient a une MRC, mais si sa prise en charge
+est conforme à ce que les recommandations préconisent pour sa situation.
+
+* Exemple de résultat — =project-01.json=
+
+14 patients de validation (6 cas conformes, 5 partiels, 2 non conformes, 1 cas limites/edge).
+
+#+BEGIN_SRC
+  Compliant      : 7 / 14  (50%)
+  Non-compliant  : 7 / 14
+  Unprocessed    : 0 / 14
+  Pipeline       : SOLVED ✅  — CONVERGED (0 discordances)
+#+END_SRC
+
+Couverture des cas de test :
+- Staging G1–G5 × A1–A3, cas limites de seuil (eGFR=45/60, ACR=30/299)
+- RASi, SGLT2i, MRA, statine, BP, NOAC manquants (cas KO isolés)
+- Cas multi-défauts (RASi + statine absents simultanément)
+- Signaux spéciaux : gadolinium G4, KRT planning G5, hyperkaliémie G4/G5

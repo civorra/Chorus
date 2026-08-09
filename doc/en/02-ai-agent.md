@@ -87,7 +87,7 @@ chorus-excel ref-tables.xlsx      → corpus/003-ref-tables-text.txt
 chorus-feed my-sandbox corpus/
     → identifies specialities → agents
     → designs the slot ontology
-    → writes agent/agents/<speciality>.org (KB per agent)
+    → writes agent/chorus/<speciality>.org (KB per agent)
     → generates rules/<speciality>/R01-xxx.yml … (YAML rules)
     → generates lib/MyApp/Agent/<Speciality>/Helpers.pm (normative tables)
 
@@ -118,7 +118,7 @@ standard.pdf
 corpus/
     │ chorus-feed
     ▼
-agent/agents/*.org  ←──── domain expert reads, corrects, refines
+agent/chorus/*.org  ←──── domain expert reads, corrects, refines
 rules/**/*.yml
 lib/**/Helpers.pm
     │ chorus-check
@@ -152,7 +152,7 @@ from the corpus. Not a single line written by hand.
 > `chorus-create-project`, `chorus-import-project`) are versioned in
 > `$ENGINE/agent/skills/` and documented in the repository.
 
-> **Explore the demo sandbox:** the `sandboxes/demo_en` sandbox illustrates
+> **Explore the demo sandbox:** the `sandboxes/01-demo_en` sandbox illustrates
 > concretely what the pipeline produces. At the start, it contained only a
 > single file — the raw corpus:
 >
@@ -165,7 +165,7 @@ from the corpus. Not a single line written by hand.
 > `Agent/*.pm`, `Expert.pm`, `run.pl`. You can run the pipeline as-is:
 >
 > ```sh
-> perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
+> perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json
 > ```
 >
 > or start from the corpus alone and replay `chorus-feed` + `chorus-check` to

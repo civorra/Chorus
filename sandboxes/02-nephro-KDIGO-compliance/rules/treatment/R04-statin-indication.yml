@@ -1,0 +1,65 @@
+##
+# RULE: R04-statin-indication
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.15.1 — KDIGO 2024 CKD Guideline
+#   Recommendations 3.15.1.1–3.15.1.3 — Lipid management: statin therapy
+#
+# PURPOSE
+#   Determines whether statin therapy is indicated per the three KDIGO lipid recs:
+#   Rec 3.15.1.1 (1A): adults ≥ 50y + eGFR < 60 (G3a–G5) → indicated
+#   Rec 3.15.1.2 (1B): adults ≥ 50y + eGFR ≥ 60 (G1–G2) → indicated
+#   Rec 3.15.1.3 (2A): adults 18–49y + (coronary disease OR T2D OR stroke OR 10yr risk >10%)
+#   Checks compliance if is_on_statin is available.
+#
+# INPUTS  (slots read)
+#   besoin_treatment      : targeting slot
+#   ckd_g_category        : str
+#   age_years             : float (optional)
+#   has_diabetes          : bool (optional)
+#   has_cvd               : bool (optional — known coronary disease / prior stroke)
+#   cvd_10yr_risk_pct     : float (optional — 10-year coronary event risk %)
+#   is_on_statin          : bool (optional)
+#
+# OUTPUTS (slots written)
+#   statin_indicated : "yes"|"no"
+#   statin_compliant : "OUI"|"NON"|"NA"
+#
+# HELPERS
+#   statin_indicated($age, $g, $has_diabetes, $has_cvd, $risk_10y) → "yes"|"no"
+#
+# GUARD — EXCEPTION: defined $p->{statin_indicated}
+##
+RULE: statin-indication
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{statin_indicated}
+ACTION: |
+  # GFR category required
+  my $g = $p->{ckd_g_category} // '';
+  return 0 unless $g;
+
+  # Optional demographic and clinical slots
+  my $age      = $p->get('age_years');
+  my $has_dm   = $p->get('has_diabetes')    // 0;
+  my $has_cvd  = $p->get('has_cvd')         // 0;
+  my $risk_10y = $p->get('cvd_10yr_risk_pct');   # optional
+
+  # Determine indication via helper (§3.15.1.1–3.15.1.3)
+  my $indicated = statin_indicated($age, $g, $has_dm, $has_cvd, $risk_10y);
+  $p->set('statin_indicated', $indicated);
+
+  # Check compliance
+  if ($indicated eq 'yes') {
+      my $on_statin = $p->get('is_on_statin');
+      if (!defined $on_statin) {
+          $p->set('statin_compliant', 'NA');
+      } elsif ($on_statin) {
+          $p->set('statin_compliant', 'OUI');
+      } else {
+          $p->set('statin_compliant', 'NON');
+      }
+  } else {
+      $p->set('statin_compliant', 'NA');
+  }
+  1

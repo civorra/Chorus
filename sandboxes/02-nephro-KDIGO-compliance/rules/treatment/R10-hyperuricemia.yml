@@ -1,0 +1,54 @@
+##
+# RULE: R10-hyperuricemia
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.14 — KDIGO 2024 CKD Guideline
+#   Recommendation 3.14.1 (1C) — Symptomatic hyperuricemia: offer uric acid-lowering
+#   Recommendation 3.14.2 (2D) — Asymptomatic hyperuricemia: do NOT lower to delay CKD
+#
+# PURPOSE
+#   Uric acid-lowering indication check: sets uric_acid_lowering_indicated = "yes"
+#   when symptomatic hyperuricemia (gout) is confirmed (Rec 3.14.1 — 1C),
+#   "no" when asymptomatic or absent (Rec 3.14.2 — 1C: no benefit for CKD delay).
+#   Note: xanthine oxidase inhibitors preferred over uricosurics (PP 3.14.2).
+#
+# INPUTS  (slots read)
+#   besoin_treatment              : targeting slot
+#   has_symptomatic_hyperuricemia : bool (optional) — gout / symptomatic
+#   is_on_uric_acid_lowering      : bool (optional) — on allopurinol/febuxostat
+#
+# OUTPUTS (slots written)
+#   uric_acid_lowering_indicated : "yes"|"no"
+#     - "yes" : symptomatic hyperuricemia confirmed (Rec 3.14.1)
+#     - "no"  : asymptomatic or no data (Rec 3.14.2 — do not treat proactively)
+#   uric_acid_lowering_compliant : "OUI"|"NON"|"NA"
+#
+# GUARD — EXCEPTION: defined $p->{uric_acid_lowering_indicated}
+##
+RULE: hyperuricemia
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{uric_acid_lowering_indicated}
+ACTION: |
+  # Read symptomatic hyperuricemia/gout flag (Rec 3.14.1 — 1C)
+  my $symptomatic = $p->get('has_symptomatic_hyperuricemia') // 0;
+
+  if ($symptomatic) {
+      # Rec 3.14.1 (1C): symptomatic hyperuricemia → offer uric acid-lowering
+      $p->set('uric_acid_lowering_indicated', 'yes');
+
+      # Check compliance — only when prescription data is available
+      my $on_ual = $p->get('is_on_uric_acid_lowering');
+      if (!defined $on_ual) {
+          $p->set('uric_acid_lowering_compliant', 'NA');  # no prescription data
+      } elsif ($on_ual) {
+          $p->set('uric_acid_lowering_compliant', 'OUI'); # correctly prescribed
+      } else {
+          $p->set('uric_acid_lowering_compliant', 'NON'); # indicated but not prescribed
+      }
+  } else {
+      # Rec 3.14.2 (2D): asymptomatic or no data — treatment NOT recommended for CKD delay
+      $p->set('uric_acid_lowering_indicated', 'no');
+      $p->set('uric_acid_lowering_compliant', 'NA');       # not applicable
+  }
+  1

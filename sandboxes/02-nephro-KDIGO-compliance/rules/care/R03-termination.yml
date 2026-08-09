@@ -1,0 +1,65 @@
+##
+# RULE: R03-termination
+# AGENT: KDIGO::CKD::Agent::Care  (pos. 4 / 4)
+# CORPUS: §5 — KDIGO 2024 CKD Guideline — Pipeline termination
+#
+# PURPOSE
+#   Terminal rule: once all care model checks are complete (krt_planning_flag set),
+#   computes an overall_compliance summary label and calls solved() to stop the pipeline.
+#
+#   overall_compliance values:
+#     "COMPLIANT"     — no NON results on any treatment compliance slot
+#     "PARTIAL"       — at least one NON among rasi/sglt2i/mra/statin/bp/noac
+#     "NON_COMPLIANT" — majority of checked slots are NON
+#     "INSUFFICIENT_DATA" — all compliance slots are NA (no prescription data provided)
+#
+# INPUTS  (slots read)
+#   besoin_care         : targeting slot
+#   krt_planning_flag   : str — set by R02
+#   rasi_compliant      : str — set by treatment R01
+#   sglt2i_compliant    : str — set by treatment R02
+#   mra_compliant       : str — set by treatment R03
+#   statin_compliant    : str — set by treatment R04
+#   bp_target_compliant : str — set by treatment R05
+#   noac_preferred      : str — set by care R01
+#
+# OUTPUTS (slots written)
+#   overall_compliance : str — summary label
+#
+# TERMINAL: solved
+# GUARD — EXCEPTION: defined $p->{overall_compliance}
+##
+RULE: overall-compliance
+FIND:
+  p:
+    attribut: besoin_care
+CONDITION: defined $p->{krt_planning_flag}
+EXCEPTION: defined $p->{overall_compliance}
+ACTION: |
+  # Collect compliance results from upstream agents
+  my @checks = map { $p->get($_) // 'NA' } qw(
+      rasi_compliant
+      sglt2i_compliant
+      mra_compliant
+      statin_compliant
+      bp_target_compliant
+      noac_preferred
+  );
+
+  my $non_count = scalar grep { $_ eq 'NON' } @checks;
+  my $oui_count = scalar grep { $_ eq 'OUI' } @checks;
+  my $na_count  = scalar grep { $_ eq 'NA'  } @checks;
+
+  my $label;
+  if ($na_count == scalar @checks) {
+      $label = 'INSUFFICIENT_DATA';   # no prescription data available
+  } elsif ($non_count == 0) {
+      $label = 'COMPLIANT';           # all checked slots pass or are NA
+  } elsif ($non_count > $oui_count) {
+      $label = 'NON_COMPLIANT';       # majority failing
+  } else {
+      $label = 'PARTIAL';             # some failing, some passing
+  }
+
+  $p->set('overall_compliance', $label);
+  1

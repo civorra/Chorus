@@ -1,0 +1,70 @@
+##
+# RULE: R01-contrast-media
+# AGENT: KDIGO::CKD::Agent::Care  (pos. 4 / 4)
+# CORPUS: §4.4.2 — KDIGO 2024 CKD Guideline
+#   Practice Point 4.4.2.1 — Gadolinium-containing contrast media
+#   §3.16 — Atrial fibrillation anticoagulation (Rec 3.16.1)
+#
+# PURPOSE
+#   Checks two care model items:
+#   1. Gadolinium flag (§4.4.2.1): sets gadolinium_flag = "ACR_GROUP_II_III_REQUIRED"
+#      when G4-G5 + needs_gadolinium; "NA" otherwise.
+#   2. Anticoagulation check (§3.16.1): sets noac_compliance = "OUI"|"NON"|"NA"
+#      for AF patients in G1-G4; NOAC preferred over VKA (Rec 3.16.1 — 1C).
+#      G5 excluded (insufficient evidence — PP 3.16.2).
+#
+# INPUTS  (slots read)
+#   besoin_care              : targeting slot
+#   ckd_g_category           : str — GFR category
+#   egfr_ml_min              : float (optional)
+#   needs_gadolinium         : bool (optional)
+#   has_atrial_fibrillation  : bool (optional)
+#   is_on_noac               : bool (optional)
+#   is_on_warfarin           : bool (optional)
+#
+# OUTPUTS (slots written)
+#   gadolinium_safe : "OUI"|"NON"|"NA"
+#   noac_preferred  : "OUI"|"NON"|"NA"
+#
+# GUARD — EXCEPTION: defined $p->{gadolinium_safe}
+##
+RULE: contrast-media
+FIND:
+  p:
+    attribut: besoin_care
+EXCEPTION: defined $p->{gadolinium_safe}
+ACTION: |
+  my $g    = $p->{ckd_g_category} // '';
+  my $egfr = $p->get('egfr_ml_min');
+
+  # --- Gadolinium safety check (§4.4.2.1) ---
+  my $needs_gad = $p->get('needs_gadolinium') // 0;
+  if ($needs_gad && ($g eq 'G4' || $g eq 'G5')) {
+      # Requires ACR group II/III agents — cannot verify automatically
+      # Flag as "NON" to prompt clinical review
+      $p->set('gadolinium_safe', 'NON');
+  } elsif ($needs_gad) {
+      $p->set('gadolinium_safe', 'OUI');   # G1–G3: lower risk; standard agents acceptable
+  } else {
+      $p->set('gadolinium_safe', 'NA');    # no gadolinium planned
+  }
+
+  # --- AF anticoagulation: NOAC vs warfarin (§3.16.1) ---
+  unless (defined $p->{noac_preferred}) {
+      my $has_af = $p->get('has_atrial_fibrillation') // 0;
+      if ($has_af && $g ne 'G5') {
+          # G1–G4 with AF: NOACs recommended (Rec 3.16.1 1C)
+          my $on_noac    = $p->get('is_on_noac')    // 0;
+          my $on_warfarin = $p->get('is_on_warfarin') // 0;
+          if ($on_noac) {
+              $p->set('noac_preferred', 'OUI');    # correct — on NOAC
+          } elsif ($on_warfarin) {
+              $p->set('noac_preferred', 'NON');    # on VKA → should switch to NOAC
+          } else {
+              $p->set('noac_preferred', 'NA');     # AF present but no anticoagulation data
+          }
+      } else {
+          $p->set('noac_preferred', 'NA');         # no AF or G5
+      }
+  }
+  1

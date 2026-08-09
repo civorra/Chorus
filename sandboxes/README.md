@@ -42,16 +42,34 @@ sandboxes/
     README.org       ← sandbox notes
 ```
 
-## Example sandbox
+## Example sandboxes
 
-`demo_en` — timber-frame construction compliance (English)
-against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501-1.
+### `01-demo_en` — Timber-frame construction compliance (English)
+
+Standards: BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501-1.
 
 ```bash
-perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
+perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json
 ```
 
 Agents: `qualification` · `domain` · `fire` · `compliance`
+
+### `02-nephro-KDIGO-compliance` — CKD guideline compliance (English/French)
+
+Standards: KDIGO 2024 CKD Clinical Practice Guideline.
+
+Validates CKD patient management against KDIGO 2024 recommendations:
+G/A staging, monitoring frequency, referral tier, per-therapy compliance
+(RASi, SGLT2i, MRA, statin, BP target, GLP-1RA, lifestyle) and special
+care alerts (KRT planning, gadolinium safety, drug dosing review).
+
+```bash
+perl sandboxes/02-nephro-KDIGO-compliance/run.pl sandboxes/02-nephro-KDIGO-compliance/project-01.json
+```
+
+Agents: `staging` · `risk` · `treatment` · `care` — Namespace: `KDIGO::CKD`
+
+See `INTRO_EN.org` / `INTRO_FR.org` in the sandbox for a functional overview.
 
 ## Notes
 

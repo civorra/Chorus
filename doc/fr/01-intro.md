@@ -86,8 +86,8 @@ Niveaux 1 et 2 : **100 % autonomes** — Perl pur, aucune dépendance externe.
 Le niveau 3 ajoute un agent IA comme outil de *développement* uniquement ; le
 pipeline généré tourne comme un pipeline de niveau 1, sans agent IA ni réseau.
 
-> **Point de départ :** `sandboxes/demo_en` est entièrement fonctionnel sans agent IA :
-> `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`
+> **Point de départ :** `sandboxes/01-demo_en` est entièrement fonctionnel sans agent IA :
+> `perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json`
 
 ---
 

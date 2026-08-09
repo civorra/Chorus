@@ -1,0 +1,64 @@
+##
+# RULE: R02-sglt2i-indication
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.7 — KDIGO 2024 CKD Guideline
+#   Recommendations 3.7.1–3.7.3 — SGLT2 inhibitors
+#
+# PURPOSE
+#   Determines whether SGLT2i is indicated (and at what strength) and whether
+#   the patient is receiving it. Sets sglt2i_indicated and sglt2i_compliant.
+#   Rec 3.7.1 (1A): T2D + CKD + eGFR ≥ 20 → "mandatory"
+#   Rec 3.7.2 (1A): eGFR ≥ 20 + ACR ≥ 200 → "mandatory"
+#   Rec 3.7.2 (1A): heart failure (any ACR) → "mandatory"
+#   Rec 3.7.3 (2B): eGFR 20–45 + ACR < 200 → "suggested"
+#
+# INPUTS  (slots read)
+#   besoin_treatment  : targeting slot
+#   egfr_ml_min       : float
+#   acr_mg_g          : float
+#   has_diabetes      : bool (optional)
+#   has_heart_failure : bool (optional)
+#   is_on_sglt2i      : bool (optional — project data)
+#
+# OUTPUTS (slots written)
+#   sglt2i_indicated : "mandatory"|"suggested"|"no"
+#   sglt2i_compliant : "OUI"|"NON"|"NA"
+#
+# HELPERS
+#   sglt2i_indicated($egfr, $acr, $has_diabetes, $has_hf) → str
+#
+# GUARD — EXCEPTION: defined $p->{sglt2i_indicated}
+##
+RULE: sglt2i-indication
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{sglt2i_indicated}
+ACTION: |
+  # Read slots — eGFR and ACR are needed; skip if both absent
+  my $egfr = $p->get('egfr_ml_min');
+  my $acr  = $p->get('acr_mg_g');
+  return 0 unless defined $egfr;   # eGFR required for SGLT2i indication
+
+  my $has_dm = $p->get('has_diabetes')      // 0;
+  my $has_hf = $p->get('has_heart_failure') // 0;
+  my $acr_val = defined $acr ? $acr : 0;   # treat missing ACR as 0 (conservative)
+
+  # Determine indication tier via helper (§3.7.1–3.7.3)
+  my $tier = sglt2i_indicated($egfr, $acr_val, $has_dm, $has_hf);
+  $p->set('sglt2i_indicated', $tier);
+
+  # Check compliance — "mandatory" or "suggested" require prescription data
+  if ($tier ne 'no') {
+      my $on_sglt2i = $p->get('is_on_sglt2i');
+      if (!defined $on_sglt2i) {
+          $p->set('sglt2i_compliant', 'NA');
+      } elsif ($on_sglt2i) {
+          $p->set('sglt2i_compliant', 'OUI');
+      } else {
+          $p->set('sglt2i_compliant', 'NON');   # indicated but not prescribed
+      }
+  } else {
+      $p->set('sglt2i_compliant', 'NA');
+  }
+  1

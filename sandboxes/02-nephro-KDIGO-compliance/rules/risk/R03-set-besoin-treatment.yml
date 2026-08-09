@@ -1,0 +1,32 @@
+##
+# RULE: R03-set-besoin-treatment
+# AGENT: KDIGO::CKD::Agent::Risk  (pos. 2 / 4)
+# CORPUS: §2 — KDIGO 2024 CKD Guideline — Pipeline continuation
+#
+# PURPOSE
+#   Once monitoring frequency and referral tier are both assigned, activates
+#   the Treatment agent by setting besoin_treatment on the patient Frame.
+#   This is the implicit slot pipeline mechanism — Treatment agent finds only
+#   patients processed by Risk.
+#
+# INPUTS  (slots read)
+#   besoin_risk          : targeting slot
+#   monitoring_per_year  : int — set by R01
+#   referral_tier        : str — set by R02
+#
+# OUTPUTS (slots written)
+#   besoin_treatment : 1 — targeting slot for Agent Treatment (pos. 3)
+#
+# GUARD — EXCEPTION: defined $p->{besoin_treatment}
+#   Idempotence — fires only once per patient.
+##
+RULE: set-besoin-treatment
+FIND:
+  p:
+    attribut: besoin_risk
+CONDITION: defined $p->{monitoring_per_year} && defined $p->{referral_tier}
+EXCEPTION: defined $p->{besoin_treatment}
+ACTION: |
+  # Set targeting slot for Agent Treatment (pos. 3)
+  $p->set('besoin_treatment', 1);
+  1

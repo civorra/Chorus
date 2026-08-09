@@ -1,0 +1,376 @@
+#+TITLE: Agent Treatment — KDIGO CKD Treatment Compliance
+#+AGENT: KDIGO::CKD::Agent::Treatment
+#+PIPELINE_POS: 3
+#+RULES_DIR: rules/treatment/
+
+* Domain
+  This agent checks compliance with treatment recommendations for CKD patients
+  defined in Chapter 3 of the KDIGO 2024 Clinical Practice Guideline.
+
+  Responsibilities:
+  - RASi indication and compliance (§3.6)
+  - SGLT2 inhibitor indication and compliance (§3.7)
+  - Nonsteroidal MRA indication and compliance (§3.8)
+  - GLP-1 RA indication and compliance (§3.9)
+  - Statin indication and compliance (§3.15.1)
+  - Blood pressure target compliance (§3.4.1: SBP <120 mmHg)
+  - GLP-1 RA for T2D not at target (§3.9.1)
+  - Physical activity compliance (§3.2.2.1: ≥150 min/week)
+  - Protein intake compliance (§3.3.1.1: 0.8 g/kg/d for G3–G5)
+  - Sodium intake compliance (§3.3.2.1: <2 g/day)
+  - Metabolic acidosis treatment (§3.10.1: bicarbonate <18 mmol/l)
+  - Set targeting slot =besoin_care= for the Care agent
+
+  Functional dependencies: requires =besoin_treatment=, =ckd_g_category=,
+  =ckd_a_category= from earlier agents.
+
+* Targeting Slots                                                        :SCOPE:
+
+** Chosen Strategy
+   Strategy B — presence slot =besoin_treatment= set by Risk agent R03.
+
+   Chosen strategy : B
+   Justification   : same as Risk agent — scalable for large populations.
+
+** Targeting Slots Table
+   | Slot              | Strategy | Set by                           | Value / condition |
+   |-------------------+----------+----------------------------------+-------------------|
+   | besoin_treatment  | B        | risk R03-set-besoin-treatment.yml| existence suffices |
+
+** Pre-Population Contract
+   Patients must carry =besoin_treatment= (from Risk), =ckd_g_category= and =ckd_a_category=.
+
+* Pipeline — I/O Contract
+** Incoming Slots (FIND / fmatch)
+   | Slot                    | Frame(s) | Set by        | Description                                |
+   |-------------------------+----------+---------------+--------------------------------------------|
+   | besoin_treatment        | patient  | risk R03      | Targeting slot                             |
+   | ckd_g_category          | patient  | staging R01   | GFR category                               |
+   | ckd_a_category          | patient  | staging R02   | Albuminuria category                       |
+   | has_diabetes            | patient  | project JSON  | Boolean — type 2 diabetes                 |
+   | has_heart_failure       | patient  | project JSON  | Boolean — heart failure                   |
+   | age_years               | patient  | project JSON  | Age in years                              |
+   | egfr_ml_min             | patient  | project JSON  | Current eGFR                              |
+   | acr_mg_g                | patient  | project JSON  | Current ACR                               |
+   | systolic_bp_mmhg        | patient  | project JSON  | Systolic BP (optional)                    |
+   | is_on_rasi              | patient  | project JSON  | Boolean — patient already on RASi         |
+   | is_on_sglt2i            | patient  | project JSON  | Boolean — patient on SGLT2i               |
+   | is_on_mra               | patient  | project JSON  | Boolean — on nonsteroidal MRA             |
+   | is_on_glp1ra            | patient  | project JSON  | Boolean — on GLP-1 RA                    |
+   | is_on_statin            | patient  | project JSON  | Boolean — on statin                       |
+   | serum_potassium_meq_l       | patient  | project JSON  | Serum K+ in mEq/L (optional — for MRA and hyperkalemia check) |
+   | protein_intake_g_kg_d       | patient  | project JSON  | Daily protein intake (optional)                               |
+   | sodium_intake_g_d           | patient  | project JSON  | Daily sodium intake (optional)                                |
+   | physical_activity_min_w     | patient  | project JSON  | Physical activity minutes/week (optional)                     |
+   | serum_bicarbonate_mmol_l    | patient  | project JSON  | Serum bicarbonate (optional)                                  |
+   | has_symptomatic_hyperuricemia | patient | project JSON | Boolean — symptomatic hyperuricemia / gout (optional)        |
+   | is_on_uric_acid_lowering    | patient  | project JSON  | Boolean — on uric acid-lowering therapy (optional)           |
+   | has_established_ascvd       | patient  | project JSON  | Boolean — established ischemic cardiovascular disease (optional) |
+   | is_on_aspirin               | patient  | project JSON  | Boolean — on low-dose aspirin (optional)                     |
+
+** Outgoing Slots (set by this agent)
+   | Slot                  | Frame(s) | Type / values     | Description                                      |
+   |-----------------------+----------+-------------------+--------------------------------------------------|
+   | rasi_indicated        | patient  | "yes"|"no"        | RASi indicated per §3.6                          |
+   | rasi_compliant        | patient  | "OUI"|"NON"|"NA"  | Compliance: OUI=prescribed, NON=missing, NA=not needed |
+   | sglt2i_indicated      | patient  | "mandatory"|"suggested"|"no" | SGLT2i indication tier per §3.7    |
+   | sglt2i_compliant      | patient  | "OUI"|"NON"|"NA"  | SGLT2i compliance                               |
+   | mra_indicated         | patient  | "yes"|"no"        | Nonsteroidal MRA indicated per §3.8              |
+   | mra_compliant         | patient  | "OUI"|"NON"|"NA"  | MRA compliance                                  |
+   | glp1ra_indicated      | patient  | "yes"|"no"        | GLP-1 RA indicated per §3.9                     |
+   | glp1ra_compliant      | patient  | "OUI"|"NON"|"NA"  | GLP-1 RA compliance                             |
+   | statin_indicated      | patient  | "yes"|"no"        | Statin indicated per §3.15.1                     |
+   | statin_compliant      | patient  | "OUI"|"NON"|"NA"  | Statin compliance                               |
+   | bp_target_compliant          | patient  | "OUI"|"NON"|"NA"  | BP <120 mmHg compliance (§3.4.1)                        |
+   | lifestyle_activity_ok        | patient  | "OUI"|"NON"|"NA"  | ≥150 min/week physical activity (§3.2.2.1)              |
+   | protein_intake_ok            | patient  | "OUI"|"NON"|"NA"  | Protein intake compliance (§3.3.1.1)                     |
+   | sodium_intake_ok             | patient  | "OUI"|"NON"|"NA"  | Sodium <2g/day compliance (§3.3.2.1)                     |
+   | uric_acid_lowering_indicated | patient  | "yes"|"no"|"NA"   | Uric acid-lowering therapy indicated (§3.14)            |
+   | uric_acid_lowering_compliant | patient  | "OUI"|"NON"|"NA"  | Compliance with uric acid-lowering therapy (§3.14.1)    |
+   | antiplatelet_indicated       | patient  | "yes"|"no"        | Aspirin for secondary prevention (§3.15.2.1)            |
+   | antiplatelet_compliant       | patient  | "OUI"|"NON"|"NA"  | Compliance with antiplatelet therapy (§3.15.2.1)        |
+   | hyperkalemia_dietary_flag    | patient  | "ADVISE"|"OK"|"NA"| Dietary K restriction for G3-G5 + K+≥5.0 (§3.11.5.2)  |
+   | besoin_care                  | patient  | 1 (presence)      | Targeting slot for Agent Care                           |
+
+** BOARD — Inter-agent Communication
+   No BOARD slots used by this agent.
+
+* Ontology
+  Single Frame type: =patient=. No inter-Frame relationships.
+
+** Aliases
+   Sources: KDIGO 2024 §3.2, §3.3, §3.4, §3.6, §3.7, §3.8, §3.9, §3.11, §3.14, §3.15.
+   | Canonical KB form                   | Project-side variants                              | Source                    |
+   |-------------------------------------+----------------------------------------------------+---------------------------|
+   | is_on_rasi                          | on_rasi, rasi_prescribed, acei_or_arb              | corpus §3.6               |
+   | is_on_sglt2i                        | on_sglt2i, sglt2i_prescribed, sglt2                | corpus §3.7               |
+   | is_on_mra                           | on_mra, mra_prescribed, nonsteroidal_mra           | corpus §3.8               |
+   | is_on_glp1ra                        | on_glp1ra, glp1_prescribed, glp1ra                 | corpus §3.9               |
+   | is_on_statin                        | on_statin, statin_prescribed, taking_statin        | corpus §3.15.1            |
+   | has_diabetes                        | diabetes, t2d, type2_diabetes, has_t2d             | corpus §3.6, §3.7         |
+   | has_heart_failure                   | heart_failure, hf, cardiac_failure                 | corpus §3.7               |
+   | systolic_bp_mmhg                    | sbp, sbp_mmhg, systolic_blood_pressure             | corpus §3.4.1             |
+   | physical_activity_min_w             | pa_min_week, activity_minutes, exercise_min_week   | corpus §3.2.2.1           |
+   | protein_intake_g_kg_d               | protein_g_kg, daily_protein, protein_intake        | corpus §3.3.1.1           |
+   | sodium_intake_g_d                   | na_intake_g, sodium_g_day, salt_intake_g           | corpus §3.3.2.1           |
+   | serum_bicarbonate_mmol_l            | hco3_mmol, bicarbonate_mmol, serum_hco3            | corpus §3.10.1            |
+   | has_symptomatic_hyperuricemia       | symptomatic_gout, gout_active, hyperuricemia_symptomatic | corpus §3.14        |
+   | is_on_uric_acid_lowering            | uric_acid_therapy, on_allopurinol, on_febuxostat   | corpus §3.14.1            |
+   | has_established_ascvd               | established_cvd, known_ascvd, ischemic_cvd, has_cvd | corpus §3.15.2.1        |
+   | is_on_aspirin                       | on_aspirin, aspirin_prescribed, taking_aspirin     | corpus §3.15.2            |
+
+* Frame Catalogue
+** patient
+   Role: patient with completed staging and risk assessment, now checked for treatment compliance.
+
+   Slots d'entrée  : besoin_treatment, ckd_g_category, ckd_a_category
+   Slots calculés  : rasi_indicated, rasi_compliant, sglt2i_indicated, sglt2i_compliant,
+                     mra_indicated, mra_compliant, glp1ra_indicated, glp1ra_compliant,
+                     statin_indicated, statin_compliant, bp_target_compliant,
+                     lifestyle_activity_ok, protein_intake_ok, sodium_intake_ok,
+                     uric_acid_lowering_indicated, uric_acid_lowering_compliant,
+                     antiplatelet_indicated, antiplatelet_compliant,
+                     hyperkalemia_dietary_flag, besoin_care
+   Slots optionnels: has_diabetes, has_heart_failure, age_years, egfr_ml_min, acr_mg_g,
+                     systolic_bp_mmhg, is_on_rasi, is_on_sglt2i, is_on_mra, is_on_glp1ra,
+                     is_on_statin, serum_potassium_meq_l, protein_intake_g_kg_d,
+                     sodium_intake_g_d, physical_activity_min_w, serum_bicarbonate_mmol_l,
+                     has_symptomatic_hyperuricemia, is_on_uric_acid_lowering,
+                     has_established_ascvd, is_on_aspirin
+
+   Inheritance (_ISA): —
+   Hooks: none
+
+* Slot Dictionary
+  | Slot                    | Frame(s) | Role                          | fmatch target? |
+  |-------------------------+----------+-------------------------------+----------------|
+  | besoin_treatment        | patient  | _SCOPE targeting (Strategy B) | yes            |
+  | ckd_g_category          | patient  | _APPLY read                   | no             |
+  | ckd_a_category          | patient  | _APPLY read                   | no             |
+  | has_diabetes            | patient  | _APPLY read                   | no             |
+  | has_heart_failure       | patient  | _APPLY read                   | no             |
+  | age_years               | patient  | _APPLY read                   | no             |
+  | egfr_ml_min             | patient  | _APPLY read                   | no             |
+  | acr_mg_g                | patient  | _APPLY read                   | no             |
+  | systolic_bp_mmhg        | patient  | _APPLY read                   | no             |
+  | is_on_rasi              | patient  | _APPLY read                   | no             |
+  | is_on_sglt2i            | patient  | _APPLY read                   | no             |
+  | is_on_mra               | patient  | _APPLY read                   | no             |
+  | is_on_glp1ra            | patient  | _APPLY read                   | no             |
+  | is_on_statin            | patient  | _APPLY read                   | no             |
+  | serum_potassium_meq_l   | patient  | _APPLY read                   | no             |
+  | protein_intake_g_kg_d   | patient  | _APPLY read                   | no             |
+  | sodium_intake_g_d       | patient  | _APPLY read                   | no             |
+  | physical_activity_min_w | patient  | _APPLY read                   | no             |
+  | serum_bicarbonate_mmol_l| patient  | _APPLY read                   | no             |
+  | rasi_indicated          | patient  | _APPLY write                  | no             |
+  | rasi_compliant          | patient  | _APPLY write                  | no             |
+  | sglt2i_indicated        | patient  | _APPLY write                  | no             |
+  | sglt2i_compliant        | patient  | _APPLY write                  | no             |
+  | mra_indicated           | patient  | _APPLY write                  | no             |
+  | mra_compliant           | patient  | _APPLY write                  | no             |
+  | glp1ra_indicated        | patient  | _APPLY write                  | no             |
+  | glp1ra_compliant        | patient  | _APPLY write                  | no             |
+  | statin_indicated        | patient  | _APPLY write                  | no             |
+  | statin_compliant        | patient  | _APPLY write                  | no             |
+  | bp_target_compliant     | patient  | _APPLY write                  | no             |
+  | lifestyle_activity_ok   | patient  | _APPLY write                  | no             |
+  | protein_intake_ok       | patient  | _APPLY write                  | no             |
+  | sodium_intake_ok             | patient  | _APPLY write                  | no             |
+  | has_symptomatic_hyperuricemia| patient  | _APPLY read                   | no             |
+  | is_on_uric_acid_lowering     | patient  | _APPLY read                   | no             |
+  | has_established_ascvd        | patient  | _APPLY read                   | no             |
+  | is_on_aspirin                | patient  | _APPLY read                   | no             |
+  | uric_acid_lowering_indicated | patient  | _APPLY write                  | no             |
+  | uric_acid_lowering_compliant | patient  | _APPLY write                  | no             |
+  | antiplatelet_indicated       | patient  | _APPLY write                  | no             |
+  | antiplatelet_compliant       | patient  | _APPLY write                  | no             |
+  | hyperkalemia_dietary_flag    | patient  | _APPLY write                  | no             |
+  | besoin_care                  | patient  | _APPLY write — next targeting | yes            |
+
+* Rule Catalogue
+** Rule: R01-rasi-indication
+   Intent    : Determine RASi indication and compliance per §3.6.1–3.6.3.
+   CORPUS    : §3.6 — KDIGO 2024 — Renin-angiotensin system inhibitors (Rec. 3.6.1–3.6.3)
+   EXCEPTION : =defined $p->{rasi_indicated}=
+
+** Rule: R02-sglt2i-indication
+   Intent    : Determine SGLT2i indication tier and compliance per §3.7.1–3.7.3.
+   CORPUS    : §3.7 — KDIGO 2024 — SGLT2 inhibitors (Rec. 3.7.1–3.7.3)
+   EXCEPTION : =defined $p->{sglt2i_indicated}=
+
+** Rule: R03-mra-indication
+   Intent    : Determine nonsteroidal MRA indication and compliance per §3.8.1.
+   CORPUS    : §3.8 — KDIGO 2024 — Mineralocorticoid receptor antagonists
+   EXCEPTION : =defined $p->{mra_indicated}=
+
+** Rule: R04-statin-indication
+   Intent    : Determine statin indication per age and GFR category (§3.15.1.1–3.15.1.3).
+   CORPUS    : §3.15.1 — KDIGO 2024 — Lipid management
+   EXCEPTION : =defined $p->{statin_indicated}=
+
+** Rule: R05-bp-target
+   Intent    : Check if systolic BP <120 mmHg target is met (§3.4.1).
+   CORPUS    : §3.4 — KDIGO 2024 — Blood pressure control (Rec. 3.4.1)
+   EXCEPTION : =defined $p->{bp_target_compliant}=
+
+** Rule: R06-glp1ra-indication
+   Intent    : Check GLP-1 RA indication for T2D not at glycemic target (§3.9.1).
+   CORPUS    : §3.9 — KDIGO 2024 — GLP-1 receptor agonists
+   EXCEPTION : =defined $p->{glp1ra_indicated}=
+
+** Rule: R07-lifestyle-activity
+   Intent    : Check if physical activity ≥150 min/week (§3.2.2.1).
+   CORPUS    : §3.2.2 — KDIGO 2024 — Physical activity (Rec. 3.2.2.1)
+   EXCEPTION : =defined $p->{lifestyle_activity_ok}=
+
+** Rule: R08-protein-intake
+   Intent    : Check protein intake ≤0.8 g/kg/d for CKD G3–G5 (§3.3.1.1).
+   CORPUS    : §3.3.1 — KDIGO 2024 — Protein intake (Rec. 3.3.1.1)
+   EXCEPTION : =defined $p->{protein_intake_ok}=
+
+** Rule: R09-sodium-besoin-care
+   Intent    : Check sodium <2g/day (§3.3.2.1), then set =besoin_care= once all treatment
+               checks (R01-R12) are complete.
+   CORPUS    : §3.3.2 — KDIGO 2024 — Sodium intake (Rec. 3.3.2.1)
+   CONDITION : all core treatment slots set (rasi_indicated, sglt2i_indicated, statin_indicated,
+               uric_acid_lowering_indicated, antiplatelet_indicated, hyperkalemia_dietary_flag)
+   EXCEPTION : =defined $p->{besoin_care}=
+
+** Rule: R10-hyperuricemia
+   Intent    : Determine uric acid-lowering therapy indication per §3.14.
+               Rec 3.14.1 (1C): symptomatic hyperuricemia/gout → offer treatment.
+               Rec 3.14.2 (2D): asymptomatic hyperuricemia → do NOT lower to delay CKD.
+   CORPUS    : §3.14 — KDIGO 2024 — Hyperuricemia (Rec. 3.14.1, 3.14.2)
+   FIND      :
+   - =p= → attribut: =besoin_treatment= (Strategy B)
+   EXCEPTION : =defined $p->{uric_acid_lowering_indicated}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $symptomatic = $p->get('has_symptomatic_hyperuricemia') // 0;
+   if ($symptomatic) {
+       $p->set('uric_acid_lowering_indicated', 'yes');   # Rec 3.14.1 (1C)
+       my $on_ual = $p->get('is_on_uric_acid_lowering');
+       if (!defined $on_ual) {
+           $p->set('uric_acid_lowering_compliant', 'NA');
+       } elsif ($on_ual) {
+           $p->set('uric_acid_lowering_compliant', 'OUI');
+       } else {
+           $p->set('uric_acid_lowering_compliant', 'NON');  # indicated but not prescribed
+       }
+   } else {
+       $p->set('uric_acid_lowering_indicated', 'no');    # Rec 3.14.2 or not applicable
+       $p->set('uric_acid_lowering_compliant', 'NA');
+   }
+   1
+   #+END_SRC
+
+** Rule: R11-antiplatelet
+   Intent    : Check low-dose aspirin indication for secondary cardiovascular prevention (§3.15.2.1).
+               Rec 3.15.2.1 (1C): established ischemic CVD → aspirin for secondary prevention.
+   CORPUS    : §3.15.2 — KDIGO 2024 — Antiplatelet therapy (Rec. 3.15.2.1 1C)
+   FIND      :
+   - =p= → attribut: =besoin_treatment= (Strategy B)
+   EXCEPTION : =defined $p->{antiplatelet_indicated}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $has_ascvd = $p->get('has_established_ascvd') // 0;
+   if ($has_ascvd) {
+       $p->set('antiplatelet_indicated', 'yes');   # Rec 3.15.2.1 (1C) secondary prevention
+       my $on_asp = $p->get('is_on_aspirin');
+       if (!defined $on_asp) {
+           $p->set('antiplatelet_compliant', 'NA');
+       } elsif ($on_asp) {
+           $p->set('antiplatelet_compliant', 'OUI');
+       } else {
+           $p->set('antiplatelet_compliant', 'NON');  # secondary prevention aspirin missing
+       }
+   } else {
+       $p->set('antiplatelet_indicated', 'no');
+       $p->set('antiplatelet_compliant', 'NA');
+   }
+   1
+   #+END_SRC
+
+** Rule: R12-hyperkalemia-diet
+   Intent    : Flag dietary potassium restriction advice for G3-G5 patients with elevated K+
+               per §3.11.5.2 (PP 3.11.5.2).
+               K+ ≥ 5.0 mEq/L in CKD G3–G5 → recommend limiting high-potassium foods.
+   CORPUS    : §3.11.5 — KDIGO 2024 — Hyperkalemia dietary considerations (PP 3.11.5.2)
+   FIND      :
+   - =p= → attribut: =besoin_treatment= (Strategy B)
+   EXCEPTION : =defined $p->{hyperkalemia_dietary_flag}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $g = $p->{ckd_g_category} // '';
+   my $k = $p->get('serum_potassium_meq_l');
+   # PP 3.11.5.2: applies to G3–G5 patients
+   if ($g =~ /^G(3|4|5)/ && defined $k && $k >= 5.0) {
+       $p->set('hyperkalemia_dietary_flag', 'ADVISE');  # limit high-K foods (PP 3.11.5.2)
+   } elsif (!$g) {
+       $p->set('hyperkalemia_dietary_flag', 'NA');       # no staging data
+   } else {
+       $p->set('hyperkalemia_dietary_flag', 'OK');       # G1-G2 or K+ normal/absent
+   }
+   1
+   #+END_SRC
+
+* Perl Helpers
+** rasi_indicated
+   Signature   : =sub rasi_indicated($g, $a, $has_diabetes) → "yes"|"no"=
+   Description : Returns "yes" if RASi is indicated per §3.6.1–3.6.3.
+                 A3 without diabetes (G1–G4) → Rec. 3.6.1 (1B) → "yes"
+                 A2 without diabetes (G1–G4) → Rec. 3.6.2 (2C) → "yes"
+                 A2 or A3 with diabetes (G1–G4) → Rec. 3.6.3 (1B) → "yes"
+                 G5 → exclude (kidney failure, not covered)
+                 Otherwise → "no"
+   Called by   : R01-rasi-indication
+   Exported    : yes
+
+** sglt2i_indicated
+   Signature   : =sub sglt2i_indicated($egfr, $acr, $has_diabetes, $has_hf) → "mandatory"|"suggested"|"no"=
+   Description : §3.7.1 → T2D + eGFR≥20 → "mandatory" (1A)
+                 §3.7.2 → eGFR≥20 + ACR≥200 → "mandatory" (1A)
+                 §3.7.2 → heart failure → "mandatory" (1A)
+                 §3.7.3 → eGFR 20–45 + ACR<200 → "suggested" (2B)
+                 Otherwise → "no"
+   Called by   : R02-sglt2i-indication
+   Exported    : yes
+
+** mra_indicated
+   Signature   : =sub mra_indicated($egfr, $acr, $has_diabetes, $k_meq) → "yes"|"no"=
+   Description : §3.8.1 → T2D + eGFR>25 + normal K (<5.0 meq/L) + ACR>30 despite RASi → "yes"
+                 Otherwise → "no" (K undef → treated as normal if no hyperkalemia known)
+   Called by   : R03-mra-indication
+   Exported    : yes
+
+** statin_indicated
+   Signature   : =sub statin_indicated($age, $g, $has_diabetes, $has_cvd, $risk_10y_pct) → "yes"|"no"=
+   Description : §3.15.1.1 → ≥50y + eGFR<60 (G3a–G5) → "yes" (1A)
+                 §3.15.1.2 → ≥50y + eGFR≥60 (G1–G2) → "yes" (1B)
+                 §3.15.1.3 → 18–49y + (known coronary disease OR T2D OR prior stroke OR 10yr risk >10%) → "yes" (2A)
+                 Otherwise → "no"
+   Called by   : R04-statin-indication
+   Exported    : yes
+
+* Constraints & Pitfalls
+  _MAX_CYCLES recommended: N_patients × 12_rules × 1_agent × 10
+
+  - [ ] All rules except R09 use the same FIND (=besoin_treatment=) — alphabetical load order
+        ensures R01 fires before R09; no explicit dependency ordering needed
+  - [ ] R09 CONDITION updated: waits for =uric_acid_lowering_indicated=, =antiplatelet_indicated=,
+        =hyperkalemia_dietary_flag= in addition to the original slots — ensures R10-R12 fire first
+  - [ ] When =is_on_rasi= is undef (not in JSON), rasi_compliant is set to "NA" (data absent)
+  - [ ] G5 patients: RASi may be reduced/stopped at eGFR<15 (PP 3.6.5) — R01 sets "NA" for G5
+  - [ ] SGLT2i: once started, may continue even if eGFR drops below 20 (PP 3.7.1) — R02 checks
+        current initiation indication only, not continuation
+  - [ ] MRA: §3.8 specifies nonsteroidal MRA only; steroidal MRA (spironolactone) not covered here
+  - [ ] Statin rule: 10-year CVD risk is optional — without it, §3.15.1.3 check skipped for 18-49y
+  - [ ] BP rule: only applicable to adults with high BP — if =systolic_bp_mmhg= absent → "NA"
+  - [ ] Lifestyle rules: if optional slots absent → result = "NA" (no data), not NON
+  - [ ] R10 hyperuricemia: =has_symptomatic_hyperuricemia= absent → no treatment indicated (Rec 3.14.2)
+        Do not flag asymptomatic hyperuricemia — guideline explicitly recommends AGAINST treatment
+  - [ ] R11 antiplatelet: =has_established_ascvd= absent → antiplatelet_indicated = "no" (no data)
+        Primary prevention aspirin is NOT covered — §3.15.2.1 is secondary prevention only
+  - [ ] R12 hyperkalemia: fires for ALL patients; G1-G2 or missing K+ → "OK"; G3-G5 + K+≥5.0 → "ADVISE"
+        PP 3.11.5.2 is a Practice Point (no GRADE) — advisory flag, not a hard compliance breach

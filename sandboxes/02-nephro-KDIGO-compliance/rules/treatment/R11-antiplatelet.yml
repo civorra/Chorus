@@ -1,0 +1,53 @@
+##
+# RULE: R11-antiplatelet
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.15.2 — KDIGO 2024 CKD Guideline
+#   Recommendation 3.15.2.1 (1C) — Antiplatelet therapy for secondary prevention
+#
+# PURPOSE
+#   Secondary CVD prevention check: sets antiplatelet_indicated = "yes"
+#   when established ASCVD is present (Rec 3.15.2.1 — 1C), "no" otherwise.
+#   Scope: secondary prevention only — primary prevention not covered.
+#   Note: P2Y12 inhibitors as aspirin alternative not modelled here.
+#
+# INPUTS  (slots read)
+#   besoin_treatment       : targeting slot
+#   has_established_ascvd  : bool (optional) — established ischemic CVD history
+#   is_on_aspirin          : bool (optional) — on low-dose aspirin
+#
+# OUTPUTS (slots written)
+#   antiplatelet_indicated : "yes"|"no"
+#     - "yes" : established ASCVD → secondary prevention aspirin indicated (Rec 3.15.2.1)
+#     - "no"  : no established ASCVD or no data
+#   antiplatelet_compliant : "OUI"|"NON"|"NA"
+#
+# GUARD — EXCEPTION: defined $p->{antiplatelet_indicated}
+##
+RULE: antiplatelet
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{antiplatelet_indicated}
+ACTION: |
+  # Check for established ischemic cardiovascular disease (Rec 3.15.2.1 — 1C)
+  my $has_ascvd = $p->get('has_established_ascvd') // 0;
+
+  if ($has_ascvd) {
+      # Rec 3.15.2.1 (1C): secondary prevention aspirin indicated
+      $p->set('antiplatelet_indicated', 'yes');
+
+      # Check compliance — only when prescription data is available
+      my $on_asp = $p->get('is_on_aspirin');
+      if (!defined $on_asp) {
+          $p->set('antiplatelet_compliant', 'NA');  # no prescription data
+      } elsif ($on_asp) {
+          $p->set('antiplatelet_compliant', 'OUI'); # correctly prescribed
+      } else {
+          $p->set('antiplatelet_compliant', 'NON'); # secondary prevention aspirin missing
+      }
+  } else {
+      # No established ASCVD or data absent — primary prevention not covered (§3.15.2)
+      $p->set('antiplatelet_indicated', 'no');
+      $p->set('antiplatelet_compliant', 'NA');       # not applicable
+  }
+  1

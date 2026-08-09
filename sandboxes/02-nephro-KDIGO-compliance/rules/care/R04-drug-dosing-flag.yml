@@ -1,0 +1,48 @@
+##
+# RULE: R04-drug-dosing-flag
+# AGENT: KDIGO::CKD::Agent::Care  (pos. 4 / 4)
+# CORPUS: §4.2 — KDIGO 2024 CKD Guideline
+#   Practice Points 4.2.1–4.2.5 — Dose adjustments by level of GFR
+#
+# PURPOSE
+#   Drug dosing review flag: sets drug_dosing_review_flag = "NARROW_TI"
+#   when G3-G5 + narrow therapeutic index drug detected (PP 4.2.3),
+#   "ROUTINE" otherwise, "NA" if GFR category absent.
+#   Scope: narrow TI + advanced CKD = highest-priority dosing review (§4.2).
+#
+# INPUTS  (slots read)
+#   besoin_care          : targeting slot
+#   ckd_g_category       : str — GFR category (from Staging)
+#   takes_narrow_ti_drug : bool (optional) — patient on narrow therapeutic index drug(s)
+#
+# OUTPUTS (slots written)
+#   drug_dosing_review_flag : "NARROW_TI" | "ROUTINE" | "NA"
+#     - "NARROW_TI" : G3-G5 + narrow TI drug → use cystatin C or mGFR (PP 4.2.3)
+#     - "ROUTINE"   : standard eGFRcr sufficient for drug dosing
+#     - "NA"        : no GFR category data
+#
+# GUARD — EXCEPTION: defined $p->{drug_dosing_review_flag}
+##
+RULE: drug-dosing-flag
+FIND:
+  p:
+    attribut: besoin_care
+EXCEPTION: defined $p->{drug_dosing_review_flag}
+ACTION: |
+  my $g         = $p->{ckd_g_category} // '';
+  my $narrow_ti = $p->get('takes_narrow_ti_drug') // 0;
+
+  if (!$g) {
+      # No GFR category — cannot assess dosing requirements
+      $p->set('drug_dosing_review_flag', 'NA');
+      return 1;
+  }
+
+  # PP 4.2.3: narrow TI drugs + G3-G5 → high-accuracy GFR measurement needed
+  if ($narrow_ti && $g =~ /^G(3|4|5)/) {
+      $p->set('drug_dosing_review_flag', 'NARROW_TI');   # cystatin C or mGFR recommended
+  } else {
+      # G1-G2, or no narrow TI drug → standard eGFRcr equation sufficient (PP 4.2.2)
+      $p->set('drug_dosing_review_flag', 'ROUTINE');
+  }
+  1

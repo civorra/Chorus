@@ -1,0 +1,52 @@
+##
+# RULE: R06-glp1ra-indication
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.9 — KDIGO 2024 CKD Guideline
+#   Recommendation 3.9.1 (1B) — GLP-1 receptor agonists
+#
+# PURPOSE
+#   GLP-1 RA indication flag: sets glp1ra_indicated = "yes" when T2D + SGLT2i
+#   non-compliant (proxy for inadequate glycemic control on first-line agents),
+#   "no" otherwise (Rec 3.9.1 — 1B).
+#   Note: full glycemic target data rarely available in project JSON — SGLT2i
+#   compliance used as conservative proxy.
+#
+# INPUTS  (slots read)
+#   besoin_treatment  : targeting slot
+#   has_diabetes      : bool (optional)
+#   sglt2i_compliant  : str (set by R02 — "OUI"|"NON"|"NA")
+#   is_on_glp1ra      : bool (optional)
+#
+# OUTPUTS (slots written)
+#   glp1ra_indicated : "yes"|"no"
+#   glp1ra_compliant : "OUI"|"NON"|"NA"
+#
+# GUARD — EXCEPTION: defined $p->{glp1ra_indicated}
+##
+RULE: glp1ra-indication
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{glp1ra_indicated}
+ACTION: |
+  my $has_dm         = $p->get('has_diabetes')      // 0;
+  my $sglt2i_status  = $p->get('sglt2i_compliant')  // 'NA';
+
+  # GLP-1 RA indicated for T2D when SGLT2i is not received (§3.9.1)
+  # Conservative approach: indicated if T2D present and no SGLT2i
+  if ($has_dm && $sglt2i_status eq 'NON') {
+      $p->set('glp1ra_indicated', 'yes');
+      my $on_glp1ra = $p->get('is_on_glp1ra');
+      if (!defined $on_glp1ra) {
+          $p->set('glp1ra_compliant', 'NA');
+      } elsif ($on_glp1ra) {
+          $p->set('glp1ra_compliant', 'OUI');
+      } else {
+          $p->set('glp1ra_compliant', 'NON');
+      }
+  } else {
+      # No T2D or SGLT2i already on board → not indicated via this rule
+      $p->set('glp1ra_indicated', 'no');
+      $p->set('glp1ra_compliant', 'NA');
+  }
+  1

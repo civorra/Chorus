@@ -1,0 +1,58 @@
+##
+# RULE: R02-krt-planning
+# AGENT: KDIGO::CKD::Agent::Care  (pos. 4 / 4)
+# CORPUS: §5.4.3 — KDIGO 2024 CKD Guideline
+#   Practice Point 5.4.3 — Timing of preemptive transplantation / dialysis access planning
+#   §3.10.1 — Metabolic acidosis treatment threshold
+#
+# PURPOSE
+#   Two checks:
+#   1. KRT planning (§5.4.3): flag patients who need KRT preparation when eGFR <15–20
+#      or 2-year kidney failure risk >40%.
+#   2. Metabolic acidosis (§3.10.1): flag treatment need when serum bicarbonate <18 mmol/l.
+#
+# INPUTS  (slots read)
+#   besoin_care                 : targeting slot
+#   egfr_ml_min                 : float (optional)
+#   kidney_failure_risk_2y_pct  : float (optional)
+#   serum_bicarbonate_mmol_l    : float (optional)
+#
+# OUTPUTS (slots written)
+#   krt_planning_flag       : "PLAN"|"OK"|"NA"
+#   metabolic_acidosis_flag : "TREAT"|"OK"|"NA"
+#
+# GUARD — EXCEPTION: defined $p->{krt_planning_flag}
+##
+RULE: krt-planning
+FIND:
+  p:
+    attribut: besoin_care
+EXCEPTION: defined $p->{krt_planning_flag}
+ACTION: |
+  # --- KRT planning trigger (§5.4.3) ---
+  my $egfr   = $p->get('egfr_ml_min');
+  my $kfr_2y = $p->get('kidney_failure_risk_2y_pct');
+
+  my $krt_needed = 0;
+  $krt_needed = 1 if defined $egfr   && $egfr   < 20;   # eGFR < 15–20 threshold
+  $krt_needed = 1 if defined $kfr_2y && $kfr_2y > 40;   # 2-year KFR >40% (PP 2.2.3)
+
+  if (defined $egfr || defined $kfr_2y) {
+      $p->set('krt_planning_flag', $krt_needed ? 'PLAN' : 'OK');
+  } else {
+      $p->set('krt_planning_flag', 'NA');   # no eGFR or KFR score provided
+  }
+
+  # --- Metabolic acidosis check (§3.10.1 — PP 3.10.1) ---
+  unless (defined $p->{metabolic_acidosis_flag}) {
+      my $hco3 = $p->get('serum_bicarbonate_mmol_l');
+      if (!defined $hco3) {
+          $p->set('metabolic_acidosis_flag', 'NA');
+      } elsif ($hco3 < 18) {
+          # Serum bicarbonate < 18 mmol/l — treatment indicated (§3.10.1)
+          $p->set('metabolic_acidosis_flag', 'TREAT');
+      } else {
+          $p->set('metabolic_acidosis_flag', 'OK');
+      }
+  }
+  1

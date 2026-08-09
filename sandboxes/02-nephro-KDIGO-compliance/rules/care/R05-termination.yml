@@ -1,0 +1,33 @@
+##
+# RULE: R05-termination
+# AGENT: KDIGO::CKD::Agent::Care  (pos. 4 / 4)
+# CORPUS: §5 — KDIGO 2024 CKD Guideline — Pipeline termination
+#
+# PURPOSE
+#   Terminal rule using the YAML EXCEPTION + fmatch pattern (MCP-compatible).
+#   Fires only when ALL patient Frames with besoin_care have overall_compliance set.
+#   TERMINAL: solved signals the Expert to stop the pipeline.
+#
+#   This rule was added by chorus-check to fix R03-termination.yml which used
+#   TERMINAL: solved with a per-patient EXCEPTION guard — this caused the pipeline
+#   to terminate after processing only the first patient (design bug for multi-patient
+#   projects). R03 was patched to compute overall_compliance per patient (no TERMINAL);
+#   this rule provides the correct global termination using the fmatch EXCEPTION pattern.
+#
+# INPUTS  (slots read)
+#   besoin_care        : targeting slot (binds to any processed patient)
+#   overall_compliance : result slot — checked globally via fmatch
+#
+# GUARD — EXCEPTION (global fmatch):
+#   Skip as long as any patient Frame lacks overall_compliance.
+#   Fire (and terminate) only when ALL patients have been processed.
+#
+# TERMINAL: solved
+##
+RULE: termination
+TERMINAL: solved
+FIND:
+  dummy:
+    attribut: besoin_care
+EXCEPTION: scalar(grep { !defined $_->{overall_compliance} } Chorus::Frame::fmatch(slot => 'besoin_care')) > 0
+ACTION: "1"

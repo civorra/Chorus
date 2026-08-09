@@ -1,0 +1,59 @@
+##
+# RULE: R09-sodium-besoin-care
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.3.2 — KDIGO 2024 CKD Guideline
+#   Recommendation 3.3.2.1 (2C) — Sodium intake
+#   Pipeline: activates Agent Care
+#
+# PURPOSE
+#   Two roles:
+#   1. Checks sodium intake < 2 g/day (§3.3.2.1) for adults with CKD.
+#      If sodium_intake_g_d is absent → "NA".
+#   2. Once ALL treatment checks are complete (R01-R12), activates Agent Care via besoin_care.
+#      CONDITION guards ensure R10-hyperuricemia, R11-antiplatelet, R12-hyperkalemia-diet
+#      all fire before besoin_care is set.
+#
+# INPUTS  (slots read)
+#   besoin_treatment              : targeting slot
+#   sodium_intake_g_d             : float (optional)
+#   rasi_indicated                : str — set by R01
+#   sglt2i_indicated              : str — set by R02
+#   statin_indicated              : str — set by R04
+#   uric_acid_lowering_indicated  : str — set by R10
+#   antiplatelet_indicated        : str — set by R11
+#   hyperkalemia_dietary_flag     : str — set by R12
+#
+# OUTPUTS (slots written)
+#   sodium_intake_ok : "OUI"|"NON"|"NA"
+#   besoin_care      : 1 — targeting slot for Agent Care (pos. 4)
+#
+# GUARD — EXCEPTION: defined $p->{besoin_care}
+##
+RULE: sodium-besoin-care
+FIND:
+  p:
+    attribut: besoin_treatment
+CONDITION: |
+  defined $p->{rasi_indicated} &&
+  defined $p->{sglt2i_indicated} &&
+  defined $p->{statin_indicated} &&
+  defined $p->{uric_acid_lowering_indicated} &&
+  defined $p->{antiplatelet_indicated} &&
+  defined $p->{hyperkalemia_dietary_flag}
+EXCEPTION: defined $p->{besoin_care}
+ACTION: |
+  # Check sodium intake < 2 g/day (§3.3.2.1 — Rec 3.3.2.1 2C)
+  unless (defined $p->{sodium_intake_ok}) {
+      my $na = $p->get('sodium_intake_g_d');
+      if (!defined $na) {
+          $p->set('sodium_intake_ok', 'NA');
+      } elsif ($na < 2.0) {
+          $p->set('sodium_intake_ok', 'OUI');
+      } else {
+          $p->set('sodium_intake_ok', 'NON');   # exceeds 2 g/day threshold
+      }
+  }
+
+  # Activate Agent Care (pos. 4) — all core treatment checks done
+  $p->set('besoin_care', 1);
+  1

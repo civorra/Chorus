@@ -1,0 +1,40 @@
+##
+# RULE: R07-lifestyle-activity
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.2.2 — KDIGO 2024 CKD Guideline
+#   Recommendation 3.2.2.1 (1D) — Physical activity
+#
+# PURPOSE
+#   Physical activity compliance check: sets activity_compliant = "OUI" when
+#   physical_activity_min_w ≥ 150 min/week (threshold — Rec 3.2.2.1 — 1D),
+#   "NON" when below threshold, "NA" when slot absent.
+#
+# INPUTS  (slots read)
+#   besoin_treatment         : targeting slot
+#   physical_activity_min_w  : float — minutes per week (optional)
+#
+# OUTPUTS (slots written)
+#   lifestyle_activity_ok : "OUI"|"NON"|"NA"
+#
+# GUARD — EXCEPTION: defined $p->{lifestyle_activity_ok}
+##
+RULE: lifestyle-activity
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{lifestyle_activity_ok}
+ACTION: |
+  # Read physical activity — absent → NA
+  my $pa = $p->get('physical_activity_min_w');
+  if (!defined $pa) {
+      $p->set('lifestyle_activity_ok', 'NA');
+      return 1;
+  }
+
+  # Check ≥ 150 min/week (§3.2.2.1 — Rec 3.2.2.1 1D)
+  if ($pa >= 150) {
+      $p->set('lifestyle_activity_ok', 'OUI');
+  } else {
+      $p->set('lifestyle_activity_ok', 'NON');
+  }
+  1

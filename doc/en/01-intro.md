@@ -87,8 +87,8 @@ Level 3 adds an AI agent as a *development* tool only — a pipeline generated a
 level 3 runs exactly like one written by hand at level 1, without an AI agent or
 network.
 
-> **Starting point:** `sandboxes/demo_en` is fully functional without an AI agent:
-> `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json`
+> **Starting point:** `sandboxes/01-demo_en` is fully functional without an AI agent:
+> `perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json`
 
 ---
 

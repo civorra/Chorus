@@ -1,0 +1,37 @@
+##
+# RULE: R03-set-besoin-risk
+# AGENT: KDIGO::CKD::Agent::Staging  (pos. 1 / 4)
+# CORPUS: §1.1.2 — KDIGO 2024 CKD Guideline — CGA staging system
+#
+# PURPOSE
+#   Once both the GFR category and albuminuria category are assigned,
+#   composes the combined CKD stage string (e.g., "G3aA2") and sets
+#   besoin_risk to activate the Risk agent downstream.
+#
+# INPUTS  (slots read)
+#   type_element    : discriminating slot — value "patient"
+#   ckd_g_category  : set by R01 — GFR category
+#   ckd_a_category  : set by R02 — albuminuria category
+#
+# OUTPUTS (slots written)
+#   ckd_stage    : str — combined stage e.g. "G3aA2"
+#   besoin_risk  : 1 — targeting slot for Agent Risk
+#
+# GUARD — EXCEPTION: defined $p->{besoin_risk}
+#   Idempotence — fires only once per patient.
+##
+RULE: set-besoin-risk
+FIND:
+  p:
+    attribut: type_element
+    filtre: '$_->{type_element} eq "patient"'
+CONDITION: defined $p->{ckd_g_category} && defined $p->{ckd_a_category}
+EXCEPTION: defined $p->{besoin_risk}
+ACTION: |
+  # Compose combined CKD stage string (CGA system §1.1.2)
+  my $stage = $p->{ckd_g_category} . $p->{ckd_a_category};
+  $p->set('ckd_stage', $stage);
+
+  # Set targeting slot for Agent Risk (pos. 2)
+  $p->set('besoin_risk', 1);
+  1

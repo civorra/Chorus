@@ -90,7 +90,7 @@ chorus-excel tableaux-ref.xlsx    → corpus/003-tableaux-text.txt
 chorus-feed mon-sandbox corpus/
     → identifie les spécialités → agents
     → conçoit l'ontologie de slots
-    → écrit agent/agents/<specialite>.org (KB par agent)
+    → écrit agent/chorus/<specialite>.org (KB par agent)
     → génère rules/<specialite>/R01-xxx.yml … (règles YAML)
     → génère lib/MonApp/Agent/<Specialite>/Helpers.pm (tables normatives)
 
@@ -122,7 +122,7 @@ norme.pdf
 corpus/
     │ chorus-feed
     ▼
-agent/agents/*.org  ←──── l'expert du domaine lit, corrige, affine
+agent/chorus/*.org  ←──── l'expert du domaine lit, corrige, affine
 rules/**/*.yml
 lib/**/Helpers.pm
     │ chorus-check
@@ -156,7 +156,7 @@ générée par un agent IA depuis le corpus. Aucune ligne écrite à la main.
 > `chorus-create-project`, `chorus-import-project`) sont versionnés dans
 > `$ENGINE/agent/skills/` et documentés dans le dépôt.
 
-> **Explorer le sandbox de démo :** le sandbox `sandboxes/demo_en` illustre
+> **Explorer le sandbox de démo :** le sandbox `sandboxes/01-demo_en` illustre
 > concrètement ce que produit le pipeline. À l'origine, il ne contenait qu'un
 > seul fichier — le corpus brut :
 >
@@ -170,7 +170,7 @@ générée par un agent IA depuis le corpus. Aucune ligne écrite à la main.
 > tel quel :
 >
 > ```sh
-> perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
+> perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json
 > ```
 >
 > ou repartir du corpus seul et rejouer `chorus-feed` + `chorus-check` pour voir

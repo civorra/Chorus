@@ -182,9 +182,15 @@ The KB is updated incrementally. The infrastructure is regenerated.
 ## How to get started?
 
 **Explore an existing pipeline:**
-The `sandboxes/demo_en` sandbox contains the complete chain — corpus, org KB,
-YAML rules, and Perl infrastructure.
-Run `perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` to see the report live.
+Two ready-to-run sandboxes are included in the repository:
+
+- `sandboxes/01-demo_en` — timber-frame construction compliance (EC5/Building Regulations).
+  Run `perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json` to see the report live.
+  Agents: `qualification` · `domain` · `fire` · `compliance`.
+
+- `sandboxes/02-nephro-KDIGO-compliance` — CKD patient management compliance (KDIGO 2024 guideline).
+  Run `perl sandboxes/02-nephro-KDIGO-compliance/run.pl sandboxes/02-nephro-KDIGO-compliance/project-01.json`.
+  Agents: `staging` · `risk` · `treatment` · `care`. See `INTRO_EN.org` in the sandbox for a functional overview.
 
 **Understand the AI-assisted chain:**
 See the section *"Coupling with an AI agent — the AI-assisted architecture"* in

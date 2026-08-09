@@ -40,7 +40,7 @@ generically. An AI agent is also needed when the normative corpus changes.
                                      │
                                      ▼
                       ┌─────────────────────────────────┐
-                      │  agent/agents/<slug>.org  (KB)  │
+                      │  agent/chorus/<slug>.org  (KB)  │
                       │  rules/<slug>/R<NN>-xxx.yml     │
                       │  lib/…/Agent/<Slug>/Helpers.pm  │
                       └──────────────┬──────────────────┘
@@ -260,8 +260,8 @@ Used for a new sandbox or a fresh start. Creates the full sandbox structure:
 ```
 <sandbox-name>/
   corpus/001-<slug>.txt        ← the corpus
-  agent/agents/<slug>.org      ← KB per agent (ontology, slots, rules, helpers)
-  agent/agents/index.org       ← pipeline index
+  agent/chorus/<slug>.org      ← KB per agent (ontology, slots, rules, helpers)
+  agent/chorus/index.org       ← pipeline index
   rules/<slug>/R<NN>-xxx.yml   ← YAML inference rules
   lib/…/Agent/<Slug>/Helpers.pm ← normative tables (extracted from corpus)
   README.org
@@ -308,7 +308,7 @@ chorus-check <sandbox-name> project.json
 Or, to review what was generated before running:
 ```
 # Open the KB in your editor
-agent/agents/<slug>.org
+agent/chorus/<slug>.org
 ```
 
 ---
@@ -422,8 +422,8 @@ This is useful for:
 
 ### What the AI agent reads
 
-1. `agent/agents/index.org` — Frame types, pipeline, namespace
-2. `agent/agents/<slug>.org` — mandatory slots, thresholds, valid value domains
+1. `agent/chorus/index.org` — Frame types, pipeline, namespace
+2. `agent/chorus/<slug>.org` — mandatory slots, thresholds, valid value domains
 3. Any existing `project-*.json` in the sandbox — reference format
 
 > ⚠️ `chorus-create-project` never reads `Helpers.pm`, `Feed.pm`, or any
@@ -551,8 +551,8 @@ domains the Chorus pipeline expects.
 
 ### What the AI agent reads
 
-1. `agent/agents/index.org` — Frame types, pipeline, namespace
-2. `agent/agents/<slug>.org` — slot names, value domains, mandatory/optional
+1. `agent/chorus/index.org` — Frame types, pipeline, namespace
+2. `agent/chorus/<slug>.org` — slot names, value domains, mandatory/optional
 3. `agent/thesaurus.org` (if present) — validated project terminology from previous imports *(highest priority)*
 4. Previous `agent/import-report-*.org` — past alignment decisions (secondary — skipped if covered by thesaurus)
 
@@ -587,8 +587,8 @@ chorus-pdf my-sandbox corpus/standard.pdf --auto
 
 # 2. Build the knowledge base
 chorus-feed my-sandbox corpus/001-standard-vision.md
-#   → agent/agents/*.org, rules/**/*.yml, lib/.../Helpers.pm
-#   ← domain expert reviews and corrects agent/agents/*.org
+#   → agent/chorus/*.org, rules/**/*.yml, lib/.../Helpers.pm
+#   ← domain expert reviews and corrects agent/chorus/*.org
 
 # 3. Generate infrastructure and run
 chorus-check my-sandbox project.json
@@ -678,11 +678,14 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # LLM vision (--auto and --images)
 
 ### Explore the sandbox without an AI agent
 
-The `sandboxes/demo_en` sandbox contains the complete output of the chain —
+Two ready-to-run sandboxes are included in the repository. The `sandboxes/01-demo_en`
+sandbox (timber-frame construction) contains the complete output of the chain —
 corpus, org KB, YAML rules, Perl infrastructure. Running
-`perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json` shows the result live
-using the pre-built project JSON included in the sandbox. To adapt to a new
-project, an AI agent is required.
+`perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json` shows the result live.
+The `sandboxes/02-nephro-KDIGO-compliance` sandbox (CKD patient management, KDIGO 2024)
+is a second fully generated example — run it with
+`perl sandboxes/02-nephro-KDIGO-compliance/run.pl sandboxes/02-nephro-KDIGO-compliance/project-01.json`.
+To adapt either sandbox to a new project, an AI agent is required.
 
 ---
 
@@ -693,7 +696,7 @@ project, an AI agent is required.
 | `chorus-pdf` | PDF file | `corpus/<NNN>-<slug>-text.txt` or `-vision.md` | `pdfminer.six`; API key for `--hybrid`/`--auto`/`--images` |
 | `chorus-word` | `.docx` file | `corpus/<NNN>-<slug>-vision.md` or `-text.txt` | `python-docx`; API key for hybrid mode |
 | `chorus-excel` | `.xlsx` or `.csv` file | `corpus/<NNN>-<slug>-vision.md` or `-text.txt` | `openpyxl`; API key for hybrid mode |
-| `chorus-feed` | `.txt` or `.md` corpus | `agent/agents/*.org`, YAML rules, `Helpers.pm` | — |
+| `chorus-feed` | `.txt` or `.md` corpus | `agent/chorus/*.org`, YAML rules, `Helpers.pm` | — |
 | `chorus-check` | project JSON (or `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + report | `chorus-feed` run first |
 | `chorus-create-project` | *(KB only)* | project JSON or 4-file coverage suite (`--batch`) | `chorus-feed` run first |
 | `chorus-import-project` | engineer document | aligned project JSON + import report | `chorus-feed` run first |

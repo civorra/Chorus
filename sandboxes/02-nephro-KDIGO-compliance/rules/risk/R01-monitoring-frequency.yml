@@ -1,0 +1,41 @@
+##
+# RULE: R01-monitoring-frequency
+# AGENT: KDIGO::CKD::Agent::Risk  (pos. 2 / 4)
+# CORPUS: §2.1 — KDIGO 2024 CKD Guideline
+#   Practice Points 2.1.1–2.1.2 — Monitoring for progression of CKD
+#
+# PURPOSE
+#   Assigns the recommended number of annual monitoring visits for a CKD patient
+#   based on their G+A stage, using the KDIGO 2024 monitoring frequency heat-map.
+#   Higher GFR categories (G4-G5) and higher albuminuria categories (A3) require
+#   more frequent monitoring.
+#
+# INPUTS  (slots read)
+#   besoin_risk      : targeting slot — set by staging R03
+#   ckd_g_category   : str — GFR category (G1–G5)
+#   ckd_a_category   : str — albuminuria category (A1–A3)
+#
+# OUTPUTS (slots written)
+#   monitoring_per_year : int — recommended monitoring visits per year (1–4)
+#
+# HELPERS
+#   monitoring_frequency_per_year($g, $a) → int
+#
+# GUARD — EXCEPTION: defined $p->{monitoring_per_year}
+#   Idempotence — fires only once per patient.
+##
+RULE: monitoring-frequency
+FIND:
+  p:
+    attribut: besoin_risk
+EXCEPTION: defined $p->{monitoring_per_year}
+ACTION: |
+  # Read G and A categories — both required
+  my $g = $p->{ckd_g_category} // '';
+  my $a = $p->{ckd_a_category} // '';
+  return 0 unless $g && $a;
+
+  # Assign monitoring frequency from KDIGO 2024 §2.1 heat-map
+  my $freq = monitoring_frequency_per_year($g, $a);
+  $p->set('monitoring_per_year', $freq);
+  1

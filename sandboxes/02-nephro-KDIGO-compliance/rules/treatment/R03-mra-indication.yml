@@ -1,0 +1,65 @@
+##
+# RULE: R03-mra-indication
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.8 — KDIGO 2024 CKD Guideline
+#   Recommendation 3.8.1 — Nonsteroidal mineralocorticoid receptor antagonists
+#
+# PURPOSE
+#   Determines whether a nonsteroidal MRA is indicated and checks compliance.
+#   Rec 3.8.1 (2A): T2D + eGFR > 25 + normal K+ + ACR > 30 + already on RASi
+#   → indicated.
+#   Normal serum potassium: < 5.0 mEq/L (if not measured → treat as normal,
+#   since the rule is a clinical suggestion, not a hard block).
+#
+# INPUTS  (slots read)
+#   besoin_treatment      : targeting slot
+#   egfr_ml_min           : float
+#   acr_mg_g              : float
+#   has_diabetes          : bool (optional)
+#   serum_potassium_meq_l : float (optional — for hyperkalemia check)
+#   is_on_rasi            : bool (optional)
+#   is_on_mra             : bool (optional)
+#
+# OUTPUTS (slots written)
+#   mra_indicated : "yes"|"no"
+#   mra_compliant : "OUI"|"NON"|"NA"
+#
+# HELPERS
+#   mra_indicated($egfr, $acr, $has_diabetes, $k_meq) → "yes"|"no"
+#
+# GUARD — EXCEPTION: defined $p->{mra_indicated}
+##
+RULE: mra-indication
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{mra_indicated}
+ACTION: |
+  # Read required slots
+  my $egfr   = $p->get('egfr_ml_min');
+  my $acr    = $p->get('acr_mg_g');
+  my $has_dm = $p->get('has_diabetes') // 0;
+  my $k      = $p->get('serum_potassium_meq_l');   # optional
+
+  return 0 unless defined $egfr;   # eGFR required for threshold check
+
+  my $acr_val = defined $acr ? $acr : 0;
+
+  # Determine indication via helper (§3.8.1)
+  my $indicated = mra_indicated($egfr, $acr_val, $has_dm, $k);
+  $p->set('mra_indicated', $indicated);
+
+  # Check compliance
+  if ($indicated eq 'yes') {
+      my $on_mra = $p->get('is_on_mra');
+      if (!defined $on_mra) {
+          $p->set('mra_compliant', 'NA');
+      } elsif ($on_mra) {
+          $p->set('mra_compliant', 'OUI');
+      } else {
+          $p->set('mra_compliant', 'NON');
+      }
+  } else {
+      $p->set('mra_compliant', 'NA');
+  }
+  1

@@ -1,0 +1,21 @@
+#+TITLE: Pipeline — 02-nephro-KDIGO-compliance
+
+* Pipeline global
+  | Pos | Agent (module Perl)           | Slug      | KB                         | Statut |
+  |-----+-------------------------------+-----------+----------------------------+--------|
+  |   1 | KDIGO::CKD::Agent::Staging    | staging   | agent/chorus/staging.org   | draft  |
+  |   2 | KDIGO::CKD::Agent::Risk       | risk      | agent/chorus/risk.org      | -      |
+  |   3 | KDIGO::CKD::Agent::Treatment  | treatment | agent/chorus/treatment.org | -      |
+  |   4 | KDIGO::CKD::Agent::Care       | care      | agent/chorus/care.org      | -      |
+
+* Pipeline consistency
+  - Agent 1 (staging) targeting slot : =type_element= = "patient" — set by project JSON (Feed.pm)
+  - Agent 2 (risk) targeting slot    : =besoin_risk= — set by staging R03-set-besoin-risk.yml
+  - Agent 3 (treatment) targeting    : =besoin_treatment= — set by risk (last rule)
+  - Agent 4 (care) targeting         : =besoin_care= — set by treatment (last rule)
+  - Termination agent                : Care, pos 4 → R03-termination.yml → solved()
+
+* Integrated corpus
+  | Num | Fichier                                                              | Agents affected |
+  |-----+----------------------------------------------------------------------+-----------------|
+  | 013 | corpus/013-KDIGO-2024-CKD-Guideline-Executive-Summary-vision-clean.md | all (init)      |

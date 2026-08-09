@@ -1,0 +1,61 @@
+##
+# RULE: R01-rasi-indication
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.6 — KDIGO 2024 CKD Guideline
+#   Recommendations 3.6.1–3.6.4 — Renin-angiotensin system inhibitors
+#
+# PURPOSE
+#   Determines whether RASi (ACEi or ARB) is indicated and whether the patient
+#   is currently receiving it. Sets rasi_indicated and rasi_compliant.
+#   Rec 3.6.1 (1B): G1–G4 + A3 without diabetes → indicated
+#   Rec 3.6.2 (2C): G1–G4 + A2 without diabetes → indicated
+#   Rec 3.6.3 (1B): G1–G4 + A2/A3 with diabetes → indicated
+#   G5: RASi may be reduced (PP 3.6.5) — not flagged as mandatory here
+#
+# INPUTS  (slots read)
+#   besoin_treatment  : targeting slot
+#   ckd_g_category    : str — GFR category
+#   ckd_a_category    : str — albuminuria category
+#   has_diabetes      : bool — optional
+#   is_on_rasi        : bool — optional (project data)
+#
+# OUTPUTS (slots written)
+#   rasi_indicated : "yes"|"no"
+#   rasi_compliant : "OUI"|"NON"|"NA"  (NA = no data or not applicable)
+#
+# HELPERS
+#   rasi_indicated($g, $a, $has_diabetes) → "yes"|"no"
+#
+# GUARD — EXCEPTION: defined $p->{rasi_indicated}
+##
+RULE: rasi-indication
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{rasi_indicated}
+ACTION: |
+  # Read required slots
+  my $g = $p->{ckd_g_category} // '';
+  my $a = $p->{ckd_a_category} // '';
+  return 0 unless $g && $a;
+
+  my $has_dm = $p->get('has_diabetes') // 0;
+
+  # Determine indication via helper (§3.6.1–3.6.3)
+  my $indicated = rasi_indicated($g, $a, $has_dm);
+  $p->set('rasi_indicated', $indicated);
+
+  # Check compliance — only when prescription data is available
+  if ($indicated eq 'yes') {
+      my $on_rasi = $p->get('is_on_rasi');
+      if (!defined $on_rasi) {
+          $p->set('rasi_compliant', 'NA');   # no prescription data in project
+      } elsif ($on_rasi) {
+          $p->set('rasi_compliant', 'OUI');
+      } else {
+          $p->set('rasi_compliant', 'NON');  # indicated but not prescribed
+      }
+  } else {
+      $p->set('rasi_compliant', 'NA');       # not indicated → compliance not applicable
+  }
+  1

@@ -1,0 +1,50 @@
+##
+# RULE: R12-hyperkalemia-diet
+# AGENT: KDIGO::CKD::Agent::Treatment  (pos. 3 / 4)
+# CORPUS: §3.11.5 — KDIGO 2024 CKD Guideline
+#   Practice Point 3.11.5.2 — Dietary potassium restriction in CKD G3–G5
+#
+# PURPOSE
+#   Dietary potassium flag: sets hyperkalemia_dietary_flag = "ADVISE" when
+#   G3-G5 + serum K+ ≥ 5.0 mEq/L (PP 3.11.5.2), "OK" when K+ normal,
+#   "NA" when data absent. Advisory flag — no formal GRADE grading (Practice Point).
+#   Note: emergent hyperkalemia management (pharmacologic + dietitian) addressed
+#   separately by PP 3.11.5.1 — out of scope here.
+#
+# INPUTS  (slots read)
+#   besoin_treatment       : targeting slot
+#   ckd_g_category         : str — GFR category (from Staging)
+#   serum_potassium_meq_l  : float (optional) — serum K+ in mEq/L
+#
+# OUTPUTS (slots written)
+#   hyperkalemia_dietary_flag : "ADVISE" | "OK" | "NA"
+#     - "ADVISE" : G3–G5 + K+ ≥ 5.0 mEq/L → limit high-K foods (PP 3.11.5.2)
+#     - "OK"     : G1–G2 or K+ < 5.0 (no immediate concern)
+#     - "NA"     : no GFR category data
+#
+# GUARD — EXCEPTION: defined $p->{hyperkalemia_dietary_flag}
+##
+RULE: hyperkalemia-diet
+FIND:
+  p:
+    attribut: besoin_treatment
+EXCEPTION: defined $p->{hyperkalemia_dietary_flag}
+ACTION: |
+  my $g = $p->{ckd_g_category} // '';
+  my $k = $p->get('serum_potassium_meq_l');
+
+  if (!$g) {
+      # No staging data available — cannot assess
+      $p->set('hyperkalemia_dietary_flag', 'NA');
+      return 1;
+  }
+
+  # PP 3.11.5.2: applies to CKD G3–G5 with elevated potassium
+  if ($g =~ /^G(3|4|5)/ && defined $k && $k >= 5.0) {
+      # G3-G5 + hyperkalemia → advise limiting high-bioavailability K foods
+      $p->set('hyperkalemia_dietary_flag', 'ADVISE');
+  } else {
+      # G1-G2 or K+ normal/absent → no immediate dietary K concern
+      $p->set('hyperkalemia_dietary_flag', 'OK');
+  }
+  1

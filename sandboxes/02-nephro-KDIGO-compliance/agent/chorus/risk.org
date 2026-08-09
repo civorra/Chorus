@@ -1,0 +1,224 @@
+#+TITLE: Agent Risk — KDIGO CKD Risk Assessment
+#+AGENT: KDIGO::CKD::Agent::Risk
+#+PIPELINE_POS: 2
+#+RULES_DIR: rules/risk/
+
+* Domain
+  This agent performs risk assessment and monitoring guidance for CKD patients,
+  based on Chapter 2 of the KDIGO 2024 Clinical Practice Guideline.
+
+  Responsibilities:
+  - Determine monitoring frequency (annual lab visits per year) from G+A stage
+  - Assign the referral tier from kidney failure risk thresholds (§2.2)
+  - Flag significant eGFR change (>20%) or ACR doubling when historical data available
+  - Set the targeting slot =besoin_treatment= for the Treatment agent
+
+  Functional dependencies: requires =ckd_g_category=, =ckd_a_category= and =besoin_risk=
+  set by Agent Staging (pos. 1).
+
+* Targeting Slots                                                        :SCOPE:
+
+** Chosen Strategy
+   Strategy B — presence slot:
+   =besoin_risk= is set exclusively by Agent Staging on patients that have been staged.
+   This avoids re-scanning all patients and guarantees the agent only sees
+   properly staged patients.
+
+   Chosen strategy : B
+   Justification   : presence slot =besoin_risk= set by upstream agent; volume may
+                     grow (population screening context) so Strategy B is more scalable.
+
+** Targeting Slots Table
+   | Slot        | Strategy | Set by                              | Value / condition |
+   |-------------+----------+-------------------------------------+-------------------|
+   | besoin_risk | B        | staging R03-set-besoin-risk.yml     | existence suffices |
+
+** Pre-Population Contract
+   All patient Frames processed by this agent must carry:
+   - =besoin_risk= = 1 — set by Staging R03
+   - =ckd_g_category= — set by Staging R01
+   - =ckd_a_category= — set by Staging R02
+
+* Pipeline — I/O Contract
+** Incoming Slots (FIND / fmatch)
+   | Slot                       | Frame(s) | Set by                 | Description                               |
+   |----------------------------+----------+------------------------+-------------------------------------------|
+   | besoin_risk                | patient  | staging R03            | Targeting slot                            |
+   | ckd_g_category             | patient  | staging R01            | GFR category G1–G5                        |
+   | ckd_a_category             | patient  | staging R02            | Albuminuria category A1–A3                |
+   | kidney_failure_risk_2y_pct | patient  | project JSON (optional)| 2-year kidney failure risk % (validated equation) |
+   | kidney_failure_risk_5y_pct | patient  | project JSON (optional)| 5-year kidney failure risk % (validated equation) |
+   | prev_egfr_ml_min           | patient  | project JSON (optional)| Previous eGFR for change detection       |
+   | egfr_ml_min                | patient  | project JSON           | Current eGFR                             |
+   | prev_acr_mg_g              | patient  | project JSON (optional)| Previous ACR for doubling detection       |
+   | acr_mg_g                   | patient  | project JSON           | Current ACR                              |
+
+** Outgoing Slots (set by this agent)
+   | Slot                   | Frame(s) | Type / values                                     | Description                                  |
+   |------------------------+----------+---------------------------------------------------+----------------------------------------------|
+   | monitoring_per_year    | patient  | 1, 2, 3, 4                                        | Recommended lab monitoring visits per year   |
+   | referral_tier          | patient  | "primary_care", "nephrology", "multidisciplinary", "krt_preparation" | Referral level |
+   | egfr_change_flag       | patient  | "significant" or undef                            | Set if eGFR change >20% detected            |
+   | acr_doubling_flag      | patient  | "significant" or undef                            | Set if ACR doubled                          |
+   | besoin_treatment       | patient  | 1 (presence)                                      | Targeting slot for Treatment agent          |
+
+** BOARD — Inter-agent Communication
+   No BOARD slots used by this agent.
+
+* Ontology
+  Single Frame type: =patient=. No inter-Frame relationships.
+
+** Aliases
+   Sources: KDIGO 2024 §2.1, §2.2, §5.1 — risk assessment and referral thresholds.
+   | Canonical KB form (slot / type_element value)  | Project-side variants                             | Source                              |
+   |------------------------------------------------+---------------------------------------------------+-------------------------------------|
+   | kidney_failure_risk_2y_pct                     | kfr_2yr, kf_risk_2y, ckd_risk_2y                 | corpus §2.2 — Risk prediction       |
+   | kidney_failure_risk_5y_pct                     | kfr_5yr, kf_risk_5y, ckd_risk_5y                 | corpus §2.2 — Risk prediction       |
+   | monitoring_per_year                            | monitoring_frequency, visits_per_year             | corpus §2.1 — Monitoring overview   |
+   | referral_tier                                  | care_level, referral_level, care_tier             | corpus §2.2, §5.1                   |
+   | prev_egfr_ml_min                               | previous_egfr, baseline_egfr, egfr_prior          | corpus §2.1.3                       |
+   | prev_acr_mg_g                                  | previous_acr, baseline_acr, acr_prior             | corpus §2.1.5                       |
+
+* Frame Catalogue
+** patient
+   Role: patient with completed staging, now assessed for risk and monitoring needs.
+
+   | Slot                       | Type  | Possible values                                                | Description                        |
+   |----------------------------+-------+----------------------------------------------------------------+------------------------------------|
+   | besoin_risk                | flag  | 1                                                              | Targeting slot (from staging)      |
+   | ckd_g_category             | enum  | G1, G2, G3a, G3b, G4, G5                                      | From staging agent                 |
+   | ckd_a_category             | enum  | A1, A2, A3                                                     | From staging agent                 |
+   | kidney_failure_risk_2y_pct | float | 0–100                                                          | Optional — from validated equation |
+   | kidney_failure_risk_5y_pct | float | 0–100                                                          | Optional — from validated equation |
+   | prev_egfr_ml_min           | float | 0–200                                                          | Optional — previous eGFR           |
+   | prev_acr_mg_g              | float | 0–∞                                                            | Optional — previous ACR            |
+   | monitoring_per_year        | int   | 1, 2, 3, 4                                                     | Computed — visits per year         |
+   | referral_tier              | enum  | primary_care, nephrology, multidisciplinary, krt_preparation   | Computed — care level              |
+   | egfr_change_flag           | str   | "significant"                                                  | Computed — optional flag           |
+   | acr_doubling_flag          | str   | "significant"                                                  | Computed — optional flag           |
+   | besoin_treatment           | flag  | 1                                                              | Targeting slot for treatment agent |
+
+   Slots d'entrée  : besoin_risk, ckd_g_category, ckd_a_category
+   Slots calculés  : monitoring_per_year, referral_tier, egfr_change_flag, acr_doubling_flag, besoin_treatment
+   Slots optionnels: kidney_failure_risk_2y_pct, kidney_failure_risk_5y_pct, prev_egfr_ml_min, prev_acr_mg_g
+
+   Inheritance (_ISA): —
+   Hooks: none
+
+* Slot Dictionary
+  | Slot                       | Frame(s) | Role                            | fmatch target? |
+  |----------------------------+----------+---------------------------------+----------------|
+  | besoin_risk                | patient  | _SCOPE targeting (Strategy B)   | yes            |
+  | ckd_g_category             | patient  | _APPLY read                     | no             |
+  | ckd_a_category             | patient  | _APPLY read                     | no             |
+  | kidney_failure_risk_2y_pct | patient  | _APPLY read (optional)          | no             |
+  | kidney_failure_risk_5y_pct | patient  | _APPLY read (optional)          | no             |
+  | prev_egfr_ml_min           | patient  | _APPLY read (optional)          | no             |
+  | prev_acr_mg_g              | patient  | _APPLY read (optional)          | no             |
+  | egfr_ml_min                | patient  | _APPLY read (for change calc)   | no             |
+  | acr_mg_g                   | patient  | _APPLY read (for change calc)   | no             |
+  | monitoring_per_year        | patient  | _APPLY write                    | no             |
+  | referral_tier              | patient  | _APPLY write                    | no             |
+  | egfr_change_flag           | patient  | _APPLY write (optional)         | no             |
+  | acr_doubling_flag          | patient  | _APPLY write (optional)         | no             |
+  | besoin_treatment           | patient  | _APPLY write — next targeting   | yes            |
+
+* Rule Catalogue
+** Rule: R01-monitoring-frequency
+   Intent    : Assign recommended monitoring frequency (visits/year) based on G+A CKD stage.
+   CORPUS    : §2.1 — KDIGO 2024 — Monitoring for progression (Practice Points 2.1.1–2.1.2)
+   FIND      :
+   - =p= → attribut: =besoin_risk= (Strategy B — no filter)
+   EXCEPTION : =defined $p->{monitoring_per_year}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $g = $p->{ckd_g_category} // '';
+   my $a = $p->{ckd_a_category} // '';
+   return 0 unless $g && $a;
+   my $freq = monitoring_frequency_per_year($g, $a);
+   $p->set('monitoring_per_year', $freq);
+   1
+   #+END_SRC
+
+** Rule: R02-referral-tier
+   Intent    : Assign the referral tier based on GFR category and kidney failure risk thresholds.
+   CORPUS    : §2.2.1 + PP 2.2.1–2.2.3 — KDIGO 2024 — Risk prediction and referral thresholds
+   FIND      :
+   - =p= → attribut: =besoin_risk= (Strategy B — no filter)
+   EXCEPTION : =defined $p->{referral_tier}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $g        = $p->{ckd_g_category} // '';
+   my $kfr_2y   = $p->get('kidney_failure_risk_2y_pct');
+   my $kfr_5y   = $p->get('kidney_failure_risk_5y_pct');
+   my $tier = referral_tier_from_risk($g, $kfr_2y, $kfr_5y);
+   $p->set('referral_tier', $tier);
+   1
+   #+END_SRC
+
+** Rule: R02b-egfr-change-check
+   Intent    : Flag significant eGFR change (>20%) when historical data is available (§2.1.3).
+   CORPUS    : §2.1.3 — KDIGO 2024 — Practice Point 2.1.3
+   FIND      :
+   - =p= → attribut: =besoin_risk= (Strategy B)
+   CONDITION : =defined $p->{prev_egfr_ml_min} && defined $p->{egfr_ml_min}=
+   EXCEPTION : =defined $p->{egfr_change_flag}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   my $prev = $p->{prev_egfr_ml_min};
+   my $curr = $p->{egfr_ml_min};
+   return 0 unless $prev > 0;   # avoid division by zero
+   my $change_pct = abs($curr - $prev) / $prev * 100;
+   if ($change_pct > 20) {
+       $p->set('egfr_change_flag', 'significant');
+   } else {
+       $p->set('egfr_change_flag', 'stable');
+   }
+   1
+   #+END_SRC
+
+** Rule: R03-set-besoin-treatment
+   Intent    : Once risk assessment is complete, activate the Treatment agent.
+   CORPUS    : §2 — KDIGO 2024 — Pipeline continuation
+   FIND      :
+   - =p= → attribut: =besoin_risk= (Strategy B)
+   CONDITION : =defined $p->{monitoring_per_year} && defined $p->{referral_tier}=
+   EXCEPTION : =defined $p->{besoin_treatment}=
+   ACTION    :
+   #+BEGIN_SRC perl
+   # Set targeting slot for Agent Treatment (pos. 3)
+   $p->set('besoin_treatment', 1);
+   1
+   #+END_SRC
+
+* Perl Helpers
+** monitoring_frequency_per_year
+   Signature   : =sub monitoring_frequency_per_year($g_category, $a_category) → $int=
+   Description : Returns the recommended number of monitoring visits per year based
+                 on the GFR category and albuminuria category, per KDIGO 2024 §2.1 heat-map.
+   Called by   : R01-monitoring-frequency
+   Exported    : yes
+   Notes       : The KDIGO monitoring frequency table (§2.1):
+                 G1/G2 A1 → 1/year; G1/G2 A2 → 1/year; G1/G2 A3 → 2/year
+                 G3a A1 → 1/year; G3a A2 → 1/year; G3a A3 → 2/year
+                 G3b A1 → 2/year; G3b A2 → 2/year; G3b A3 → 3/year
+                 G4 A1 → 3/year; G4 A2 → 3/year; G4 A3 → 4/year
+                 G5 → 4+/year (specialist care, not captured here → returns 4)
+
+** referral_tier_from_risk
+   Signature   : =sub referral_tier_from_risk($g, $kfr_2y, $kfr_5y) → $tier_str=
+   Description : Determines referral tier per §2.2.1 PP 2.2.1–2.2.3 and §5.1:
+                 "krt_preparation"  — 2-year KFR >40%
+                 "multidisciplinary" — 2-year KFR >10%
+                 "nephrology"        — 5-year KFR 3–5% OR G4/G5
+                 "primary_care"      — otherwise
+   Called by   : R02-referral-tier
+   Exported    : yes
+
+* Constraints & Pitfalls
+  _MAX_CYCLES recommended: N_patients × 4_rules × 1_agent × 10
+
+  - [ ] =monitoring_frequency_per_year= table covers adults; pediatric corrections needed with =is_child= slot
+  - [ ] R02 referral tier falls back to =primary_care= when no KFR score is available — acceptable for initial assessment
+  - [ ] R02b (eGFR change) fires only when =prev_egfr_ml_min= is present; no slot set = no flag (not an error)
+  - [ ] R03 depends on R01 AND R02 having fired — ensured by CONDITION guard (both slots must be defined)
