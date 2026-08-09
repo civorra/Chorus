@@ -427,12 +427,17 @@ def detect_table_columns(page):
         # Fallback: no explicit edges, return None and let pdfplumber auto-detect
         return None
     
-    # Cluster x-coordinates — snap duplicates within 3 pt
-    xs = sorted(set(e['x0'] for e in v_edges))
-    clustered = []
-    for x in xs:
-        if not clustered or x - clustered[-1] > 3:
-            clustered.append(x)
+         # Cluster x-coordinates — snap duplicates within 3 pt
+         # **Threshold: 3pt minimum spacing between clusters**
+         # **Rationale:** V-edge detection often produces multiple edges for the same
+         #   logical column boundary (rendering artifacts, PDF compression). Clustering
+         #   merges these duplicates; 3pt is tight enough to avoid merging distinct
+         #   columns in typical PDFs, but loose enough to handle rendering noise.
+         xs = sorted(set(e['x0'] for e in v_edges))
+         clustered = []
+         for x in xs:
+             if not clustered or x - clustered[-1] > 3:
+                 clustered.append(x)
     
     # Add left/right boundaries from the widest H-edge
     widest = max(h_edges, key=lambda e: e['width'])
@@ -445,8 +450,16 @@ def extract_tables_from_page(page):
     """Extract tables from a pdfplumber page as (bbox, markdown) tuples.
     bbox = (x0, top, x1, bottom) in pdfplumber coords.
     
-    Tries explicit vertical lines first, then falls back to automatic detection
-    if edges are unavailable or if explicit extraction yields no results.
+    Two-strategy approach:
+    1. **Explicit Strategy** (if column edges detected): Uses pdfplumber's explicit
+       vertical column boundaries with snap_tolerance=3 for strict clustering.
+       Sensitive to PDF rendering quality; may over-fragment on complex layouts.
+    2. **Fallback (Auto-detect)**: If explicit fails, attempt line-based edge detection.
+       More robust to rendering artifacts but less precise on dense matrices.
+    
+    The quality_check() function (including Filter 3: >40% empty cell detection)
+    ensures that over-fragmented extractions from Strategy 1 are rejected, triggering
+    Strategy 2 as a safety net. This allows robustness without sacrificing precision.
     """
     col_xs = detect_table_columns(page)
     
@@ -454,26 +467,50 @@ def extract_tables_from_page(page):
         return str(c or "").replace("\n", " ").replace("|", "｜").strip()
 
     def quality_check(rows):
-        """Return True if table extraction appears high-quality, False to discard."""
+        """Return True if table extraction appears high-quality, False to discard.
+        
+        Four independent filters are applied; any single filter failure causes rejection:
+        - Filter 0: Single-column numbered lists (>30% cells > 100 chars)
+        - Filter 1: Overly sparse/mis-detected (>55% empty cells)
+        - Filter 2: Garbled/misaligned columns (>30% short lowercase fragments)
+        - Filter 3: Over-fragmentation from explicit strategy (>40% empty in multi-col)
+        """
         if not rows or not any(any(c for c in row) for row in rows):
             return False
-        
-        # Filter 0: Reject single-column tables with long text blocks
-        # These are typically numbered lists or formatted text blocks, not data tables.
-        if len(rows[0]) == 1:
-            long_texts = sum(1 for row in rows for c in row
-                            if c and len(str(c).strip()) > 100)
-            if long_texts > len(rows) * 0.3:  # >30% long-text cells = likely a list
-                return False
         
         total_cells = sum(len(row) for row in rows)
         empty_cells = sum(1 for row in rows for c in row if not str(c or "").strip())
         
-        # Filter 1: >55% empty cells = sparse/mis-detected
+        # Filter 0: Reject single-column tables with long text blocks
+        # **Threshold: >30% cells with >100 chars**
+        # **Rationale:** Single-column layouts with many long text blocks are almost always
+        #   numbered lists or formatted text, not data tables. Multi-column tables with
+        #   long cells (e.g., descriptive columns) are allowed.
+        # **Example:** "Top 10 Takeaways" (10×1 list) rejected; risk matrix (37×9) with
+        #   long header cells allowed.
+        if len(rows[0]) == 1:
+            long_texts = sum(1 for row in rows for c in row
+                            if c and len(str(c).strip()) > 100)
+            if total_cells > 0 and long_texts / total_cells > 0.30:
+                return False
+        
+        # Filter 1: Reject overly sparse or mis-detected tables
+        # **Threshold: >55% empty cells**
+        # **Rationale:** High empty-cell ratio indicates either pdfplumber mis-aligned
+        #   column boundaries (common with dense layouts) or truly sparse data that
+        #   shouldn't be presented as a table.
+        # **Example:** Fragmented 71×12 extraction from 37×9 original may exceed this
+        #   (depends on pdfplumber edge detection quality).
         if total_cells > 0 and empty_cells / total_cells > 0.55:
             return False
         
-        # Filter 2: >30% short lowercase fragments = garbled columns
+        # Filter 2: Reject garbled/misaligned columns
+        # **Threshold: >30% of non-empty cells are short (<20 chars) lowercase fragments**
+        # **Rationale:** When pdfplumber's column boundaries cut through words, individual
+        #   characters or short lowercase fragments appear. This typically means the
+        #   vertical_strategy='explicit' or 'lines' mis-detected column edges.
+        # **Example:** A cell containing just "ard" from "Standard" or "infarct" split
+        #   across two cells.
         non_empty_cells = [str(c or "").strip() for row in rows for c in row
                            if str(c or "").strip()]
         if non_empty_cells:
@@ -481,6 +518,18 @@ def extract_tables_from_page(page):
                             if len(t) < 20 and t and t[0].islower())
             if fragments / len(non_empty_cells) > 0.30:
                 return False
+        
+        # Filter 3: Reject over-fragmentation from explicit column detection
+        # **Threshold: multi-column table with >40% empty cells**
+        # **Rationale:** When vertical_strategy='explicit' with snap_tolerance=3,
+        #   overly strict column detection can split cells across too many columns,
+        #   creating a sparse matrix. This filter triggers fallback to auto-detect.
+        #   Single-column tables (Filter 0) and very sparse tables (Filter 1, >55%)
+        #   are handled separately.
+        # **Example:** KDIGO Figure 4 (37×9 original) mis-extracted as 71×12 with many
+        #   empty cells → rejected → fallback auto-detect produces correct 37×9.
+        if len(rows[0]) > 1 and total_cells > 0 and empty_cells / total_cells > 0.40:
+            return False
         
         return True
 
@@ -503,6 +552,10 @@ def extract_tables_from_page(page):
                 'vertical_strategy':       'explicit',
                 'horizontal_strategy':     'lines',
                 'explicit_vertical_lines': col_xs,
+                'snap_tolerance':          3,  # Strict clustering (3pt threshold) avoids
+                                               # over-fragmentation while still capturing
+                                               # well-spaced column edges. Balanced tradeoff
+                                               # vs. the original 6pt (fragmented) or 0 (tight).
             }
             for tobj in page.find_tables(table_settings=settings):
                 rows = tobj.extract()
