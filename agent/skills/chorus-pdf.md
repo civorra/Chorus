@@ -874,12 +874,19 @@ FIGURES AND DIAGRAMS
     [END FIGURE <N>]
     IDENTIFIERS: ["<id1>", "<id2>", ...]
 - If there is no caption visible, assign [FIGURE ?] and describe anyway.
-- For IDENTIFIERS: list every alphanumeric code, label, designation or identifier
-  visible in the figure (callout tags, part numbers, zone codes, element IDs,
-  article references, dimension labels with letters). Use the exact string as printed.
-  Exclude purely numeric values (dimensions, measurements), single letters used as
-  generic variables, and common stopwords. Output valid JSON array on a single line
-  immediately after [END FIGURE <N>]. Output [] if no identifiers found.
+- For IDENTIFIERS: list ONLY structured technical or domain codes that function as
+  identifiers in the document: classification codes (G1, G2, G3a, A1, A2),
+  drug/therapy abbreviations (SGLT2i, RASi, GLP-1RA, ACEi, ARB, MRA, T2D, NOAC),
+  risk-level labels used as keys (Low, Moderate, High, VeryHigh), element IDs,
+  callout tags, part numbers, zone codes, article references (EC5, DTU, NF-EN…).
+  Do NOT include: ordinary English or French descriptive words (blue, series,
+  showing, representing, stages, left, right, upper, lower, arrow, line, color…),
+  generic anatomical terms, author names, or any word that is merely descriptive
+  rather than a structured code. Use the exact string as printed.
+  Exclude purely numeric values (dimensions, measurements) and single letters.
+  Output valid JSON array on a single line immediately after [END FIGURE <N>].
+  Output [] for purely illustrative figures (icons, silhouettes, flow diagrams
+  without alphanumeric codes, decorative elements).
 - Do not add text outside the [FIGURE] ... [END FIGURE] block and IDENTIFIERS line.
 - Use UTF-8. Preserve all special characters (±, ≤, ≥, ×, °, ², ³, …).
 """
@@ -1073,28 +1080,22 @@ def parse_identifiers(description: str) -> list:
     """Extract the IDENTIFIERS JSON array from a [FIGURE] description block.
 
     Returns a de-duplicated, filtered list of identifier strings.
-    Falls back to regex extraction if the JSON line is absent or malformed.
+    No fallback regex: if Claude returns [] for an illustrative figure,
+    we honour that and produce no XREF noise for that figure.
     """
-    ids = []
-
-    # 1. Try the structured IDENTIFIERS: [...] line
+    # Parse the structured IDENTIFIERS: [...] line produced by Claude
     m = re.search(r'^IDENTIFIERS:\s*(\[.*?\])\s*$', description, re.MULTILINE)
-    if m:
-        try:
-            raw = json.loads(m.group(1))
-            ids = [str(x).strip() for x in raw if str(x).strip()]
-        except json.JSONDecodeError:
-            pass
+    if not m:
+        return []
+    try:
+        raw = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return []
 
-    # 2. Fallback: scan the description for plausible identifiers
-    #    Pattern: 2+ chars, at least one letter, mix of letters/digits/hyphens
-    if not ids:
-        ids = re.findall(r'\b([A-Za-z][A-Za-z0-9\-_]{1,19})\b', description)
-
-    # 3. Filter
+    # Filter: stopwords, minimum length, deduplication
     seen = set()
     result = []
-    for ident in ids:
+    for ident in (str(x).strip() for x in raw if str(x).strip()):
         if ident in _XREF_STOPWORDS:
             continue
         if len(ident) < _XREF_MIN_LEN:
