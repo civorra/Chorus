@@ -414,74 +414,121 @@ Include them in the generated script when either mode is active.
 ```python
 def detect_table_columns(page):
     """Detect explicit vertical column separators from V-edges on this pdfplumber page.
-    Returns a sorted list of x-coordinates, or None if no table structure found."""
+    Returns a sorted list of x-coordinates, or None if no table structure found.
+    
+    Falls back to basic edge detection if page.edges is empty (some PDFs don't expose
+    edges reliably). In that case, attempt to infer columns from table content cells.
+    """
     edges   = page.edges
     v_edges = [e for e in edges if e['orientation'] == 'v' and e['height'] > 30]
     h_edges = [e for e in edges if e['orientation'] == 'h' and e['width']  > 50]
+    
     if len(h_edges) < 2 or len(v_edges) < 1:
+        # Fallback: no explicit edges, return None and let pdfplumber auto-detect
         return None
+    
     # Cluster x-coordinates — snap duplicates within 3 pt
     xs = sorted(set(e['x0'] for e in v_edges))
     clustered = []
     for x in xs:
         if not clustered or x - clustered[-1] > 3:
             clustered.append(x)
+    
     # Add left/right boundaries from the widest H-edge
     widest = max(h_edges, key=lambda e: e['width'])
     all_xs = sorted(set([widest['x0']] + clustered + [widest['x1']]))
+    
     return all_xs if len(all_xs) >= 2 else None
 
 
 def extract_tables_from_page(page):
     """Extract tables from a pdfplumber page as (bbox, markdown) tuples.
-    bbox = (x0, top, x1, bottom) in pdfplumber coords."""
+    bbox = (x0, top, x1, bottom) in pdfplumber coords.
+    
+    Tries explicit vertical lines first, then falls back to automatic detection
+    if edges are unavailable or if explicit extraction yields no results.
+    """
     col_xs = detect_table_columns(page)
-    if col_xs is None:
-        return []
-    settings = {
-        'vertical_strategy':       'explicit',
-        'horizontal_strategy':     'lines',
-        'explicit_vertical_lines': col_xs,
-        'snap_tolerance':          6,
-        'join_tolerance':          6,
-        'edge_min_length':         10,
-    }
-
+    
     def cell(c):
         return str(c or "").replace("\n", " ").replace("|", "｜").strip()
 
+    def quality_check(rows):
+        """Return True if table extraction appears high-quality, False to discard."""
+        if not rows or not any(any(c for c in row) for row in rows):
+            return False
+        
+        # Filter 0: Reject single-column tables with long text blocks
+        # These are typically numbered lists or formatted text blocks, not data tables.
+        if len(rows[0]) == 1:
+            long_texts = sum(1 for row in rows for c in row
+                            if c and len(str(c).strip()) > 100)
+            if long_texts > len(rows) * 0.3:  # >30% long-text cells = likely a list
+                return False
+        
+        total_cells = sum(len(row) for row in rows)
+        empty_cells = sum(1 for row in rows for c in row if not str(c or "").strip())
+        
+        # Filter 1: >55% empty cells = sparse/mis-detected
+        if total_cells > 0 and empty_cells / total_cells > 0.55:
+            return False
+        
+        # Filter 2: >30% short lowercase fragments = garbled columns
+        non_empty_cells = [str(c or "").strip() for row in rows for c in row
+                           if str(c or "").strip()]
+        if non_empty_cells:
+            fragments = sum(1 for t in non_empty_cells
+                            if len(t) < 20 and t and t[0].islower())
+            if fragments / len(non_empty_cells) > 0.30:
+                return False
+        
+        return True
+
+    def format_table(rows):
+        """Format extracted rows as Markdown pipe table."""
+        if not rows:
+            return None
+        lines = []
+        lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
+        lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
+        for row in rows[1:]:
+            lines.append("| " + " | ".join(cell(c) for c in row) + " |")
+        return "\n".join(lines)
+
     result = []
     try:
-        for tobj in page.find_tables(table_settings=settings):
-            rows = tobj.extract()
-            if not rows or not any(any(c for c in row) for row in rows):
-                continue
-            # Quality check: reject low-quality table extractions.
-            # Two independent filters — either one is enough to discard a table:
-            #   1. >55% empty cells: sparse/mis-detected structure.
-            #   2. >30% of non-empty cells are short word fragments starting with
-            #      a lowercase letter: pdfplumber column boundaries cut through
-            #      words (garbled multi-column layout or dense risk matrix).
-            # Better to let pdfminer output the text naturally than insert charabia.
-            total_cells = sum(len(row) for row in rows)
-            empty_cells = sum(1 for row in rows for c in row if not str(c or "").strip())
-            if total_cells > 0 and empty_cells / total_cells > 0.55:
-                continue
-            non_empty_cells = [str(c or "").strip() for row in rows for c in row
-                               if str(c or "").strip()]
-            if non_empty_cells:
-                fragments = sum(1 for t in non_empty_cells
-                                if len(t) < 20 and t[0].islower())
-                if fragments / len(non_empty_cells) > 0.30:
-                    continue
-            lines = []
-            lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
-            lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
-            for row in rows[1:]:
-                lines.append("| " + " | ".join(cell(c) for c in row) + " |")
-            result.append((tobj.bbox, "\n".join(lines)))
-    except Exception:
+        # Strategy 1: Explicit vertical lines (if detected)
+        if col_xs:
+            settings = {
+                'vertical_strategy':       'explicit',
+                'horizontal_strategy':     'lines',
+                'explicit_vertical_lines': col_xs,
+            }
+            for tobj in page.find_tables(table_settings=settings):
+                rows = tobj.extract()
+                if quality_check(rows):
+                    md = format_table(rows)
+                    if md:
+                        result.append((tobj.bbox, md))
+        
+        # Strategy 2: Fallback to automatic detection if no explicit lines
+        # or if explicit extraction yielded nothing
+        if not result:
+            settings = {
+                'vertical_strategy':       'lines',
+                'horizontal_strategy':     'lines',
+            }
+            for tobj in page.find_tables(table_settings=settings):
+                rows = tobj.extract()
+                if quality_check(rows):
+                    md = format_table(rows)
+                    if md:
+                        result.append((tobj.bbox, md))
+    
+    except Exception as e:
+        # Graceful fallback on any pdfplumber error
         pass
+    
     return result
 
 
@@ -493,6 +540,11 @@ def analyse_pages(pdf_path):
     Uses the full 7-parameter LAParams set (from the original text mode) for both modes —
     this is intentional: the hybrid mode previously used only 2 params (boxes_flow, char_margin),
     which was an inconsistency. The unified version applies more precise layout analysis to both.
+    
+    Table detection heuristic: A table is detected if we find ≥2 horizontally-aligned
+    H-lines (same x0 ±10pt and x1 ±10pt, spaced ≥3pt vertically) AND ≥2 V-lines that
+    cross all H-lines. This is more lenient than requiring ≥3 aligned H-lines, catching
+    simple 2-row tables while still avoiding false positives on scattered lines.
     """
     try:
         from pdfminer.high_level import extract_pages
@@ -516,23 +568,36 @@ def analyse_pages(pdf_path):
                 figures.append((el.x0, el.y0, el.x1, el.y1))
             elif isinstance(el, LTCurve):
                 curves.append(el)
+        
         h_lines = [c for c in curves if (c.y1 - c.y0) < 3 and (c.x1 - c.x0) > 50]
         v_lines = [c for c in curves if (c.x1 - c.x0) < 3 and (c.y1 - c.y0) > 30]
-        # Robust table detection: require ≥3 H-lines sharing a consistent horizontal
-        # span (same x0 ±10pt and x1 ±10pt) + ≥1 V-line within that span.
-        # Avoids false positives on flowcharts whose H-segments have varying widths
-        # and scattered positions.
+        
+        # Enhanced table detection:
+        # Require ≥2 horizontally-aligned H-lines (stricter matching) AND ≥2 V-lines
+        # crossing them. More lenient than the original ≥3 requirement.
         _has_table = False
-        if len(h_lines) >= 3 and len(v_lines) >= 1:
+        if len(h_lines) >= 2 and len(v_lines) >= 2:
             for base in h_lines:
+                # Find H-lines aligned with this baseline
                 aligned = [h for h in h_lines
                            if abs(h.x0 - base.x0) <= 10 and abs(h.x1 - base.x1) <= 10]
-                if len(aligned) >= 3:
-                    v_in_span = [v for v in v_lines
-                                 if base.x0 - 5 <= (v.x0 + v.x1) / 2 <= base.x1 + 5]
-                    if v_in_span:
-                        _has_table = True
-                        break
+                
+                # Need at least 2 aligned lines spaced at least 3 pts apart
+                if len(aligned) >= 2:
+                    # Check if they're vertically separated (not the same line twice)
+                    aligned_sorted = sorted(aligned, key=lambda h: h.y0)
+                    min_spacing = min(aligned_sorted[i+1].y0 - aligned_sorted[i].y1
+                                     for i in range(len(aligned_sorted) - 1))
+                    if min_spacing >= 3:
+                        # Now check if V-lines cross all H-lines
+                        h_x_span = (min(h.x0 for h in aligned), max(h.x1 for h in aligned))
+                        v_crossing = [v for v in v_lines
+                                     if h_x_span[0] - 5 <= (v.x0 + v.x1) / 2 <= h_x_span[1] + 5]
+                        
+                        if len(v_crossing) >= 2:
+                            _has_table = True
+                            break
+        
         result[page_num] = {
             'texts':     texts,
             'figures':   figures,
@@ -875,43 +940,60 @@ def assemble_page(page_num, page_data, figure_descriptions, table_entries=None):
     figure_descriptions : {fig_idx: description_text}
     table_entries       : list of (plumber_bbox, markdown_string)
                           bbox = (x0, top, x1, bottom) in pdfplumber coords
+    
+    Tables are inserted with their original Y-position, and text blocks that overlap
+    with table bounding boxes (2D: X ± margin and Y range) are suppressed to avoid
+    duplication. Reading order is preserved: elements sorted top-to-bottom.
     """
     if table_entries is None:
         table_entries = []
 
-    elements = []   # (y_center, kind, content, x0, x1)
+    elements = []   # (y_center, kind, content, x0, x1, y0, y1)
 
+    # Add text blocks
     for text, y_center, x0, x1 in page_data['texts']:
-        elements.append((y_center, 'text', text, x0, x1))
+        elements.append((y_center, 'text', text, x0, x1, None, None))
 
+    # Add figures
     for fig_idx, (fx0, fy0, fx1, fy1) in enumerate(page_data['figures'], 1):
         y_center_fig = (fy0 + fy1) / 2
         desc = figure_descriptions.get(fig_idx, f"[FIGURE {fig_idx} — description unavailable]")
-        elements.append((y_center_fig, 'figure', desc, fx0, fx1))
+        elements.append((y_center_fig, 'figure', desc, fx0, fx1, fy0, fy1))
 
-    # Insert table blocks + record their Y-ranges for text deduplication
-    table_y_ranges = []
+    # Add table blocks + build Y-ranges for text deduplication
+    table_y_ranges = []  # (x0, y_min, x1, y_max) in pdfminer coords
     page_height_pt = page_data['height']
+    
     for (tx0, t_top, tx1, t_bottom), md in table_entries:
+        # Convert pdfplumber coords (top-left origin) to pdfminer (bottom-left)
         y_min_pm = pdfplumber_top_to_pdfminer_y(t_bottom, page_height_pt)
         y_max_pm = pdfplumber_top_to_pdfminer_y(t_top,    page_height_pt)
         y_center_pm = (y_min_pm + y_max_pm) / 2
-        table_y_ranges.append((y_min_pm, y_max_pm))
-        elements.append((y_center_pm, 'table', md, tx0, tx1))
+        
+        table_y_ranges.append((tx0, y_min_pm, tx1, y_max_pm))
+        elements.append((y_center_pm, 'table', md, tx0, tx1, y_min_pm, y_max_pm))
 
-    # Suppress text blocks whose y_center falls inside a table bounding box
-    def is_inside_table(y_center):
-        return any(y_min <= y_center <= y_max for (y_min, y_max) in table_y_ranges)
+    # Suppress text blocks whose (x_center, y) falls inside a table bounding box (2D collision)
+    def is_inside_table(x_center, y_center):
+        for (tb_x0, tb_y_min, tb_x1, tb_y_max) in table_y_ranges:
+            if (tb_x0 - 5 <= x_center <= tb_x1 + 5 and 
+                tb_y_min <= y_center <= tb_y_max):
+                return True
+        return False
 
-    filtered = [
-        el for el in elements
-        if not (el[1] == 'text' and is_inside_table(el[0]))
-    ]
+    filtered = []
+    for el in elements:
+        y_center, kind, content, x0, x1, y0, y1 = el
+        if kind == 'text':
+            x_center = (x0 + x1) / 2
+            if is_inside_table(x_center, y_center):
+                continue  # Skip text inside table
+        filtered.append(el)
 
     # Sort top-to-bottom (highest PDF y first)
     filtered.sort(key=lambda e: e[0], reverse=True)
 
-    blocks = [content for (_, _, content, _, _) in filtered]
+    blocks = [content for (_, _, content, _, _, _, _) in filtered]
     body   = "\n\n".join(blocks)
     return f"=== PAGE {page_num} ===\n{body}\n=== END PAGE {page_num} ==="
 
@@ -1108,6 +1190,9 @@ def main():
     print(f"[chorus-pdf]   → {total} pages, {n_with_fig} with figures, "
           f"{n_figs} figure(s), {n_with_tbl} page(s) with tables",
           file=sys.stderr)
+    if n_with_tbl > 0:
+        print(f"[chorus-pdf]   → vector tables will be reconstructed via pdfplumber",
+              file=sys.stderr)
 
     # --- nohup gate -----------------------------------------------------------
     NOHUP_THRESHOLD = 15
