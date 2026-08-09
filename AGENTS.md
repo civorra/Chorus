@@ -9,12 +9,19 @@
 |---|---|
 | `$ENGINE` | `.` — repository root |
 | `$SKILLS` | `./agent/skills/` — versioned ECA skills |
-| `KB` | `./agent/org/` — Chorus Knowledge Base (versioned) |
+| `KB` | `./agent/org/` — Chorus Knowledge Base templates + pipeline index (versioned in git) |
 | `$SANDBOXES` | `./sandboxes/` — user sandbox working area (not committed) |
 
 > **Override:** if `$SANDBOXES` is redefined in a parent `AGENTS.md`,
 > that definition takes precedence over this default. All skills use `$SANDBOXES` as the
 > canonical sandbox root — never hardcode a parent directory path in a skill.
+
+> **Two distinct KB locations:**
+> `./agent/org/` (this repo) contains versioned KB **templates** and the pipeline index —
+> used by skills at generation time.
+> An optional external KB (`../eca/kb/` or equivalent) may exist outside the repo as an
+> unversioned ECA knowledge base (pitfalls, architecture notes, component docs).
+> Skills always reference `./agent/org/`; the external KB is tool-specific and optional.
 
 ## Project
 
@@ -22,6 +29,26 @@
 - **CPAN modules:** `Chorus::Expert`, `Chorus::Engine`, `Chorus::Frame`
 - **Tracker:** `rt.cpan.org`, queues `Chorus-Expert` / `Chorus-Frame`
 - **Commits:** conventional format (`type: message`) — no `eca.dev` footer, no `Co-Authored-By`
+
+## Incremental generation — multi-artefact operations
+
+When generating multiple artefacts for a sandbox (KB org files, YAML rules,
+Helpers.pm, README updates), **write them incrementally** rather than all at once.
+
+| Artefact type | Max per operation |
+|---|---|
+| `<slug>.org` (KB agent) / `Helpers.pm` | **1 file** — these require dense reasoning |
+| YAML rules (`rules/<slug>/R<NN>-*.yml`) | **3 files** if ≤ 80 lines each · **2** if ≤ 120 lines · **1** if > 120 lines |
+| `README.org` / `index.org` | bundleable with 1 lightweight artefact if ≤ 50 lines |
+
+**Rationale:** generating many artefacts in a single operation risks context truncation
+and leaves the sandbox in a partially consistent state if the operation is interrupted
+mid-way (KB org missing while YAMLs already exist, README not updated, etc.).
+Incremental writes make each step independently verifiable and recoverable.
+
+**WIP marker:** for multi-step operations spanning several writes, use a
+`.chorus-wip.md` file in the sandbox root as an in-progress signal — written at the
+start of the operation, deleted on successful completion. See `chorus-feed.md § WIP checkpoint`.
 
 ## ⛔ `agent/` — commit rules
 
