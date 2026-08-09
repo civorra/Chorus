@@ -802,18 +802,25 @@ ACTION: |
 ```
 
 **When to use `TERMINAL` vs `$SELF->solved()` in ACTION:**
-- `TERMINAL: solved` — the rule fires on ONE Frame and that alone is sufficient to terminate
+- `TERMINAL: solved` — the rule fires and that alone is sufficient to terminate.
+  ⚠️ **Multi-patient pipelines:** `TERMINAL: solved` fires immediately after the **first matching
+  Frame** is processed. Never place `TERMINAL: solved` on a per-patient computation rule — the
+  pipeline would stop after treating only the first patient.
+  → For multi-patient pipelines, always use the **two-rule pattern** described below.
 - `$SELF->solved()` in ACTION — when the rule must check a condition before concluding.
   ⚠️ `$agent` is **not** available in a YAML ACTION (error `Global symbol "$agent"`) —
   use **exclusively `$SELF`** for flow control in ACTIONs.
 
-> ⚠️ **Critical antipattern — YAML termination + global fmatch = infinite loop:**
-> A YAML rule with a global `fmatch` in the ACTION (without an `EXCEPTION` covering the final slot)
-> never converges: it fires on every Frame, returns 0 indefinitely, and
-> `applyrules()` can never conclude. `_MAX_CYCLES` will be reached on every run.
+> ⚠️ **fmatch in YAML — where it is safe and where it is not:**
+>
+> | Location | Effect | Verdict |
+> |---|---|---|
+> | `fmatch` in **ACTION** | Rule fires on every Frame, returns 0 indefinitely → `_MAX_CYCLES` reached | ⛔ infinite loop |
+> | `fmatch` in **EXCEPTION** | Rule is simply *skipped* when pending Frames exist; fires only when all done | ✅ safe |
+>
+> **⛔ ANTIPATTERN — `fmatch` in ACTION → guaranteed infinite loop:**
 >
 > ```yaml
-> # ⛔ ANTIPATTERN — guaranteed infinite loop
 > RULE: termination
 > FIND:
 >   p:
@@ -825,9 +832,37 @@ ACTION: |
 >   0
 > ```
 >
-> **Solution**: global termination rule → **pure Perl `addrule()`** in the shell Agent,
-> with `$agent` captured in a closure (see `chorus-check.md`, Phase 3, termination rule).
-> Never code a termination via global `fmatch` in a YAML.
+> **✅ Preferred pattern — two-rule split (MCP-compatible):**
+>
+> For the last agent of a multi-patient pipeline, always generate **two rules**:
+>
+> ```yaml
+> # Rule A — per-Frame computation (no TERMINAL)
+> RULE: compute-final-result
+> FIND:
+>   p:
+>     attribut: <targeting_slot>
+> CONDITION: defined $p->{<prerequisite_slot>}
+> EXCEPTION: defined $p->{<result_slot>}
+> ACTION: |
+>   # ... compute $result ...
+>   $p->set('<result_slot>', $result);
+>   1
+>
+> # Rule B — global termination (EXCEPTION fmatch + TERMINAL: solved)
+> # Fires only when ALL Frames have <result_slot> set.
+> RULE: termination
+> TERMINAL: solved
+> FIND:
+>   dummy:
+>     attribut: <targeting_slot>
+> EXCEPTION: scalar(grep { !defined $_->{<result_slot>} } Chorus::Frame::fmatch(slot => '<targeting_slot>')) > 0
+> ACTION: "1"
+> ```
+>
+> This pattern is loaded by `loadRules()` and is fully MCP-compatible.
+> `addrule()` (pure Perl) is a valid fallback but is invisible to MCP mode — prefer the YAML pattern above.
+> See `chorus-check.md § Phase 3` for the canonical reference.
 
 **When to document `PREMISES`:**
 Always document if the agent is likely to use `reorder()` to
@@ -863,7 +898,8 @@ YAML Checklist:
 - [ ] ⛔ **Conditional ACTION without `else`** → returns `1` even when nothing modified → infinite loop at scale — always `return 1` inside the `if`, `0` as fallback → `chorus-engine §5`
 - [ ] Use `|` (block scalar) for multi-line `ACTION` — never `>`
 - [ ] Files named `R<NN>-<slug>.yml` (alphabetical = load order)
-- [ ] ⛔ **Termination via global `fmatch` in YAML** → guaranteed infinite loop — use pure Perl `addrule()` instead (see `chorus-check.md` Phase 3)
+- [ ] ⛔ **`fmatch` in YAML ACTION** → guaranteed infinite loop — use the two-rule pattern (Rule A: per-Frame computation, Rule B: EXCEPTION fmatch + TERMINAL: solved + ACTION: "1") or pure Perl `addrule()` as fallback (see `chorus-check.md` Phase 3)
+- [ ] ⛔ **`TERMINAL: solved` on a per-Frame computation rule in multi-patient pipelines** → pipeline stops after the first patient — split into Rule A (computation, no TERMINAL) + Rule B (global termination via EXCEPTION fmatch)
 - [ ] If `PREMISES` present: consistent with the KB `Slot dictionary`
 
 ### Phase 5.5 — Generate Perl Helpers
