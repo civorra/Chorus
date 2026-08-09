@@ -262,7 +262,9 @@ tables as **vectors** (`LTCurve` elements — thin lines forming cell borders), 
 `LTFigure` or embedded images. Standard pdfminer text extraction silently discards the
 table structure and dumps cell contents in Y-order, mixing columns.
 
-**Detection heuristic** — applied during `analyse_pages` on every page: ≥2 horizontal `LTCurve` elements (width > 50) + ≥1 vertical (height > 30) → `has_table = True`.
+**Detection heuristic** — applied during `analyse_pages` on every page:
+≥3 H-lines (`LTCurve`, width > 50) sharing a **consistent horizontal span** (same x0 ±10pt AND same x1 ±10pt) + ≥1 V-line (`LTCurve`, height > 30) whose X center falls within that span → `has_table = True`.
+This avoids false positives on flowcharts, whose H-segments have varying widths and scattered positions.
 → Implementation: see `analyse_pages()` in "Shared utilities — Text & Hybrid modes" (Phase 2).
 
 Store `has_table` in the `analyse_pages` result so that the assembly phase knows
@@ -454,6 +456,24 @@ def extract_tables_from_page(page):
             rows = tobj.extract()
             if not rows or not any(any(c for c in row) for row in rows):
                 continue
+            # Quality check: reject low-quality table extractions.
+            # Two independent filters — either one is enough to discard a table:
+            #   1. >55% empty cells: sparse/mis-detected structure.
+            #   2. >30% of non-empty cells are short word fragments starting with
+            #      a lowercase letter: pdfplumber column boundaries cut through
+            #      words (garbled multi-column layout or dense risk matrix).
+            # Better to let pdfminer output the text naturally than insert charabia.
+            total_cells = sum(len(row) for row in rows)
+            empty_cells = sum(1 for row in rows for c in row if not str(c or "").strip())
+            if total_cells > 0 and empty_cells / total_cells > 0.55:
+                continue
+            non_empty_cells = [str(c or "").strip() for row in rows for c in row
+                               if str(c or "").strip()]
+            if non_empty_cells:
+                fragments = sum(1 for t in non_empty_cells
+                                if len(t) < 20 and t[0].islower())
+                if fragments / len(non_empty_cells) > 0.30:
+                    continue
             lines = []
             lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
             lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
@@ -498,11 +518,26 @@ def analyse_pages(pdf_path):
                 curves.append(el)
         h_lines = [c for c in curves if (c.y1 - c.y0) < 3 and (c.x1 - c.x0) > 50]
         v_lines = [c for c in curves if (c.x1 - c.x0) < 3 and (c.y1 - c.y0) > 30]
+        # Robust table detection: require ≥3 H-lines sharing a consistent horizontal
+        # span (same x0 ±10pt and x1 ±10pt) + ≥1 V-line within that span.
+        # Avoids false positives on flowcharts whose H-segments have varying widths
+        # and scattered positions.
+        _has_table = False
+        if len(h_lines) >= 3 and len(v_lines) >= 1:
+            for base in h_lines:
+                aligned = [h for h in h_lines
+                           if abs(h.x0 - base.x0) <= 10 and abs(h.x1 - base.x1) <= 10]
+                if len(aligned) >= 3:
+                    v_in_span = [v for v in v_lines
+                                 if base.x0 - 5 <= (v.x0 + v.x1) / 2 <= base.x1 + 5]
+                    if v_in_span:
+                        _has_table = True
+                        break
         result[page_num] = {
             'texts':     texts,
             'figures':   figures,
             'height':    layout.height,
-            'has_table': len(h_lines) >= 2 and len(v_lines) >= 1,
+            'has_table': _has_table,
         }
     return result
 
@@ -550,6 +585,17 @@ Output  : <output-md-path>    (e.g. corpus/003-uk-approved-doc-a-2013-text.md)
 import sys
 import os
 
+# --- pdfplumber interpreter bootstrap ---
+# If pdfplumber is not importable by the current interpreter, re-exec transparently
+# with the dedicated pipx venv where it is installed.
+try:
+    import pdfplumber as _chk; del _chk
+except ImportError:
+    _pipx_py = os.path.expanduser("~/.local/share/pipx/venvs/pdfplumber/bin/python3")
+    if os.path.exists(_pipx_py) and sys.executable != _pipx_py:
+        os.execv(_pipx_py, [_pipx_py] + sys.argv)
+    # else: pdfplumber genuinely absent — graceful fallback will apply later
+
 PDF_PATH    = "<input-pdf-path>"
 OUTPUT_PATH = "<output-md-path>"
 
@@ -588,20 +634,28 @@ def main():
         elements = []  # (y_center, content)
 
         # Vector table reconstruction
-        table_y_ranges = []
+        table_bboxes = []  # (tb_x0, tb_y_min, tb_x1, tb_y_max) in pdfminer coords
         if plumber_pdf and has_table:
             table_entries = extract_tables_from_page(plumber_pdf.pages[page_num - 1])
             for (tx0, t_top, tx1, t_bottom), md in table_entries:
                 y_min = page_height - t_bottom
                 y_max = page_height - t_top
                 y_c   = (y_min + y_max) / 2
-                table_y_ranges.append((y_min, y_max))
+                table_bboxes.append((tx0, y_min, tx1, y_max))
                 elements.append((y_c, md))
                 total_tables += 1
 
-        # Text blocks — suppressed if inside a table bbox
+        # Text blocks — suppressed only if inside a table bbox (2D: X center + Y).
+        # Y-only suppression causes false deduplication when a table occupies only
+        # part of the page width (e.g. a risk matrix on the right while text flows
+        # on the left at the same Y coordinates).
         for (text, y_center, x0, x1) in blocks:
-            if any(y_min <= y_center <= y_max for (y_min, y_max) in table_y_ranges):
+            x_center = (x0 + x1) / 2
+            in_table = any(
+                tb_x0 - 5 <= x_center <= tb_x1 + 5 and tb_y_min <= y_center <= tb_y_max
+                for (tb_x0, tb_y_min, tb_x1, tb_y_max) in table_bboxes
+            )
+            if in_table:
                 continue
             elements.append((y_center, text))
 
@@ -665,6 +719,17 @@ import urllib.request
 import urllib.error
 import os
 import io
+
+# --- pdfplumber interpreter bootstrap ---
+# If pdfplumber is not importable by the current interpreter, re-exec transparently
+# with the dedicated pipx venv where it is installed.
+try:
+    import pdfplumber as _chk; del _chk
+except ImportError:
+    _pipx_py = os.path.expanduser("~/.local/share/pipx/venvs/pdfplumber/bin/python3")
+    if os.path.exists(_pipx_py) and sys.executable != _pipx_py:
+        os.execv(_pipx_py, [_pipx_py] + sys.argv)
+    # else: pdfplumber genuinely absent — graceful fallback will apply later
 
 PDF_PATH    = "<input-pdf-path>"
 OUTPUT_PATH = "<output-md-path>"
