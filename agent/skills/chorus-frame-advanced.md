@@ -16,6 +16,7 @@
 | **[fselect](#fselect--prototype-selection)** | Scoring-based prototype matching | 🟡 Medium |
 | **[_TERMINAL_SLOTS / complete()](#_terminal_slots--frame-validation)** | Frame completeness validation | 🟢 Low |
 | **[Procedural Slots — $SELF Capture](#procedural-slots--self-capture-rules)** | _AFTER, _BEFORE, _NEEDED with context | 🔴 High |
+| **[get('a b c') vs ->a->b->c](#get-path-vs-autoload)** | $SELF et `_NEEDED` diffèrent selon le style d'accès | 🔴 High |
 | **[Inheritance Modes N/Z](#inheritance-modes--n-vs-z)** | Valuation order across inheritance | 🟡 Medium |
 | **[Copy-on-Write (CoW)](#copy-on-write-cow)** | Safe mutation of shared Frames | 🟢 Low |
 | **[_ALTERNATIVES — Frame Networks](#_alternatives--frame-networks-minsky)** | Sibling prototype fallback | 🟡 Medium |
@@ -227,7 +228,7 @@ Receives the new value as argument.
 ```perl
 _AFTER => sub {
     my ($new_value) = @_;
-    # $SELF = Frame that owns this slot
+    # $SELF = Frame on which set() was originally called (not necessarily the frame that defines this slot)
     ...
 }
 ```
@@ -263,7 +264,7 @@ Receives the new value as argument.
 ```perl
 _BEFORE => sub {
     my ($new_value) = @_;
-    # $SELF = Frame that owns this slot
+    # $SELF = Frame on which set() was originally called (not necessarily the frame that defines this slot)
     ...
 }
 ```
@@ -296,7 +297,8 @@ Called when `get()` is invoked on a slot but neither `_VALUE` nor `_DEFAULT` is 
 
 ```perl
 _NEEDED => sub {
-    # $SELF = Frame that owns this slot
+    # $SELF = Frame on which get() was originally called
+    # (see §get-path-vs-autoload below — $SELF differs between get('a b') and ->a->b)
     my $computed = SomeHelper->derive($SELF->{other_slot});
     return $computed;
 }
@@ -330,6 +332,69 @@ my $score = $f->get('sofa_score');  # calls _NEEDED, returns 0
 $f->set('lac_base', 15);
 my $score2 = $f->get('sofa_score');  # calls _NEEDED again, returns 3
 ```
+
+### ⚠️ get('a b c') vs ->a->b->c — Two radically different $SELF semantics {#get-path-vs-autoload}
+
+These two access forms look equivalent but produce **different `$SELF`** inside procedural
+slots, and differ in **whether `_NEEDED` fires on intermediate steps**.
+
+#### How `get()` manages `$SELF` (source: `Frame.pm`)
+
+`get()` calls `pushself($frame)` **once** at entry and `popself()` at exit.
+The internal path traversal (`_getN` / `_getZ`) navigates recursively
+**without ever updating `$SELF`**.  So `$SELF` remains the frame on which
+`get()` was originally called — regardless of how deep the path goes.
+
+For intermediate steps, `_getN` uses `_inherited($this, $step)` which returns
+the **raw slot value** (the sub-Frame object), without going through `_value_N`.
+This means **`_NEEDED` is NOT evaluated on intermediate steps** of a path.
+
+#### Comparison table
+
+| | `$f->get('foo bar baz')` | `$f->foo->bar->baz` |
+|---|---|---|
+| Number of `get()` calls | **1** | **3** (one per AUTOLOAD) |
+| `$SELF` when `baz`'s `_NEEDED` fires | **`$f`** (root frame) | **the frame returned by `->bar`** |
+| `_NEEDED` evaluated on `foo` and `bar`? | ❌ No — raw sub-frame used | ✅ Yes — each step goes through `get()` |
+
+#### Concrete example
+
+```perl
+my $baz_frame = Chorus::Frame->new(
+    _NEEDED => sub { "owner=${\ref($SELF)}, key=" . ($SELF->{_KEY} // '?') },
+);
+
+my $bar_frame = Chorus::Frame->new( baz => $baz_frame );
+my $foo_frame = Chorus::Frame->new( bar => $bar_frame );
+my $f         = Chorus::Frame->new( foo => $foo_frame );
+
+# Path form — one get() call, $SELF = $f throughout
+my $v1 = $f->get('foo bar baz');   # $SELF inside _NEEDED = $f
+
+# Chained form — three get() calls, $SELF updated at each step
+my $v2 = $f->foo->bar->baz;       # $SELF inside _NEEDED = $bar_frame
+```
+
+#### Practical rules
+
+- **Use `get('a b c')`** when the procedural slot needs to refer to the **root Frame**
+  (e.g. a sub-frame slot computing from the top-level object's other slots).
+- **Use `->a->b->c`** when each step must be resolved via its own `_NEEDED` / `_DEFAULT`
+  logic, and the procedural slot for `c` must refer to the **immediate owning frame**.
+- **Never mix the two styles** for the same path inside a rule or helper without
+  consciously choosing which `$SELF` semantics you need.
+- **In `_AFTER` / `_BEFORE`**: `$SELF` is the frame on which `set()` was originally
+  called — same rule applies (it is NOT necessarily the frame that defines the hook,
+  if inheritance is involved).
+
+#### Impact on inheritance
+
+If `baz` is defined on a **parent frame** (via `_ISA`) and accessed with `get('foo bar baz')`,
+`$SELF` is still `$f` — not the parent that owns `baz`.
+With `->foo->bar->baz`, `$SELF` is the frame on which `->baz` is called (which may itself
+have inherited `baz` — `$SELF` is still the receiver, not the declaring ancestor).
+
+---
 
 ### Lifecycle order in set()
 
