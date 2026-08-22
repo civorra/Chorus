@@ -33,7 +33,7 @@ RULE: overall-compliance
 FIND:
   p:
     attribut: besoin_care
-CONDITION: defined $p->{krt_planning_flag}
+CONDITION: defined $p->get('krt_planning_flag')
 EXCEPTION: defined $p->{overall_compliance}
 ACTION: |
   # Collect compliance results from upstream agents

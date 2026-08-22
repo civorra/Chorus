@@ -44,7 +44,7 @@ ACTION: |
   }
 
   # --- Metabolic acidosis check (§3.10.1 — PP 3.10.1) ---
-  unless (defined $p->{metabolic_acidosis_flag}) {
+  unless (defined $p->get('metabolic_acidosis_flag')) {
       my $hco3 = $p->get('serum_bicarbonate_mmol_l');
       if (!defined $hco3) {
           $p->set('metabolic_acidosis_flag', 'NA');

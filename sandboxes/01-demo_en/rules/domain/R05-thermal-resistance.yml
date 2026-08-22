@@ -32,17 +32,17 @@ FIND:
   f:
     attribut: needs_domain
 EXCEPTION: defined $f->{frame_ok}
-CONDITION: "($f->{type_element}//'') eq 'insulation' && defined $f->{insulation_thick} && defined $f->{insulation_lambda} && defined $f->{climate_zone}"
+CONDITION: "($f->get('type_element')//'') eq 'insulation' && defined $f->get('insulation_thick') && defined $f->get('insulation_lambda') && defined $f->get('climate_zone')"
 ACTION: |
   # §4.1 — R = thickness_mm / (1000 × lambda)
-  my $R     = $f->{insulation_thick} / (1000 * $f->{insulation_lambda});
-  my $R_min = thermal_r_min($f->{climate_zone});
+  my $R     = $f->get('insulation_thick') / (1000 * $f->get('insulation_lambda'));
+  my $R_min = thermal_r_min($f->get('climate_zone'));
 
   if ($R < $R_min) {
     $f->set('frame_ok', 'NO');
     $f->set('domain_note',
       sprintf("Thermal R = %.2f m²·K/W < R_min = %.1f (zone %s §4.1)",
-        $R, $R_min, $f->{climate_zone}));
+        $R, $R_min, $f->get('climate_zone')));
     $f->set('needs_fire', 1);   # propagate to Fire even on domain rejection
     $f->delete('needs_domain');
     return 1;

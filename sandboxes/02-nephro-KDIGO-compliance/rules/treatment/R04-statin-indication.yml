@@ -36,7 +36,7 @@ FIND:
 EXCEPTION: defined $p->{statin_indicated}
 ACTION: |
   # GFR category required
-  my $g = $p->{ckd_g_category} // '';
+  my $g = $p->get('ckd_g_category') // '';
   return 0 unless $g;
 
   # Optional demographic and clinical slots

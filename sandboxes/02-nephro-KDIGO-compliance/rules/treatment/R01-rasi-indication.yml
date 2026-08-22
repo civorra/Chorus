@@ -35,8 +35,8 @@ FIND:
 EXCEPTION: defined $p->{rasi_indicated}
 ACTION: |
   # Read required slots
-  my $g = $p->{ckd_g_category} // '';
-  my $a = $p->{ckd_a_category} // '';
+  my $g = $p->get('ckd_g_category') // '';
+  my $a = $p->get('ckd_a_category') // '';
   return 0 unless $g && $a;
 
   my $has_dm = $p->get('has_diabetes') // 0;

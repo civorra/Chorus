@@ -31,16 +31,16 @@ FIND:
   f:
     attribut: needs_qualify
 EXCEPTION: defined $f->{qualified}
-CONDITION: "defined $f->{strength_class} && defined $f->{type_element}"
+CONDITION: "defined $f->get('strength_class') && defined $f->get('type_element')"
 ACTION: |
   # Look up minimum required class for this element type
-  my $required = min_strength_class($f->{type_element});
+  my $required = min_strength_class($f->get('type_element'));
 
   # Element type not covered by §2.1 (e.g. insulation) → skip silently
   return 0 unless defined $required;
 
   # §2.1 — check class rank
-  unless (strength_class_ok($f->{strength_class}, $required)) {
+  unless (strength_class_ok($f->get('strength_class'), $required)) {
     $f->set('qualified', 'NO');
     $f->set('rejection_reason',
       "Strength class $f->{strength_class} below required $required for $f->{type_element} (§2.1)");

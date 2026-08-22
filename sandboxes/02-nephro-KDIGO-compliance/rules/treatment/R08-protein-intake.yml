@@ -28,7 +28,7 @@ FIND:
 EXCEPTION: defined $p->{protein_intake_ok}
 ACTION: |
   # Only applicable for CKD G3–G5 (§3.3.1.1)
-  my $g = $p->{ckd_g_category} // '';
+  my $g = $p->get('ckd_g_category') // '';
   unless ($g =~ /^G(3|4|5)/) {
       $p->set('protein_intake_ok', 'NA');   # G1/G2 → not applicable
       return 1;

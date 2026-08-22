@@ -24,12 +24,12 @@ RULE: set-besoin-risk
 FIND:
   p:
     attribut: type_element
-    filtre: '$_->{type_element} eq "patient"'
-CONDITION: defined $p->{ckd_g_category} && defined $p->{ckd_a_category}
+    filtre: '$_->get("type_element") eq "patient"'
+CONDITION: defined $p->get('ckd_g_category') && defined $p->get('ckd_a_category')
 EXCEPTION: defined $p->{besoin_risk}
 ACTION: |
   # Compose combined CKD stage string (CGA system §1.1.2)
-  my $stage = $p->{ckd_g_category} . $p->{ckd_a_category};
+  my $stage = $p->get('ckd_g_category') . $p->get('ckd_a_category');
   $p->set('ckd_stage', $stage);
 
   # Set targeting slot for Agent Risk (pos. 2)

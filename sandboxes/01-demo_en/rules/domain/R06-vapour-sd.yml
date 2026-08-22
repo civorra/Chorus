@@ -30,16 +30,16 @@ FIND:
   f:
     attribut: needs_domain
 EXCEPTION: defined $f->{frame_ok}
-CONDITION: "($f->{type_element}//'') eq 'vapour_control_layer' && defined $f->{vcl_sd_value} && defined $f->{service_class}"
+CONDITION: "($f->get('type_element')//'') eq 'vapour_control_layer' && defined $f->get('vcl_sd_value') && defined $f->get('service_class')"
 ACTION: |
   # §4.2 — Sd must be >= minimum for declared service class
-  my $sd_min = vcl_sd_min($f->{service_class});
+  my $sd_min = vcl_sd_min($f->get('service_class'));
 
-  if ($f->{vcl_sd_value} < $sd_min) {
+  if ($f->get('vcl_sd_value') < $sd_min) {
     $f->set('frame_ok', 'NO');
     $f->set('domain_note',
       sprintf("VCL Sd = %.1f m < Sd_min = %.0f m (service class %d §4.2)",
-        $f->{vcl_sd_value}, $sd_min, $f->{service_class}));
+        $f->get('vcl_sd_value'), $sd_min, $f->get('service_class')));
     $f->set('needs_fire', 1);   # propagate to Fire even on domain rejection
     $f->delete('needs_domain');
     return 1;

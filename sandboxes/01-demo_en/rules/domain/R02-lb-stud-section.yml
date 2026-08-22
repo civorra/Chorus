@@ -32,20 +32,20 @@ FIND:
   f:
     attribut: needs_domain
 EXCEPTION: defined $f->{frame_ok}
-CONDITION: "($f->{type_element}//'') eq 'load_bearing_stud' && defined $f->{section_b_mm} && defined $f->{section_h_mm}"
+CONDITION: "($f->get('type_element')//'') eq 'load_bearing_stud' && defined $f->get('section_b_mm') && defined $f->get('section_h_mm')"
 ACTION: |
   # Look up minimum section from §3.2 table
   my ($b_min, $h_min) = lb_stud_section_min(
-    $f->{clear_height_mm} // 0,
-    $f->{stud_spacing_mm} // 400
+    $f->get('clear_height_mm') // 0,
+    $f->get('stud_spacing_mm') // 400
   );
 
   # §3.2 — section compliant if b >= b_min AND h >= h_min
-  if ($f->{section_b_mm} < $b_min || $f->{section_h_mm} < $h_min) {
+  if ($f->get('section_b_mm') < $b_min || $f->get('section_h_mm') < $h_min) {
     $f->set('frame_ok', 'NO');
     $f->set('domain_note',
       sprintf("LB stud section %d×%d mm < min %d×%d mm (§3.2 BS EN 1995-1-1 §5.2)",
-        $f->{section_b_mm}, $f->{section_h_mm}, $b_min, $h_min));
+        $f->get('section_b_mm'), $f->get('section_h_mm'), $b_min, $h_min));
     $f->set('needs_fire', 1);   # propagate to Fire even on domain rejection
     $f->delete('needs_domain');
     return 1;

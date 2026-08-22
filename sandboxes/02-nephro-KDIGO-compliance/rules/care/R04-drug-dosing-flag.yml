@@ -29,7 +29,7 @@ FIND:
     attribut: besoin_care
 EXCEPTION: defined $p->{drug_dosing_review_flag}
 ACTION: |
-  my $g         = $p->{ckd_g_category} // '';
+  my $g         = $p->get('ckd_g_category') // '';
   my $narrow_ti = $p->get('takes_narrow_ti_drug') // 0;
 
   if (!$g) {

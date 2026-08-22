@@ -24,7 +24,7 @@ RULE: assign-g-category
 FIND:
   p:
     attribut: type_element
-    filtre: '$_->{type_element} eq "patient"'
+    filtre: '$_->get("type_element") eq "patient"'
 EXCEPTION: defined $p->{ckd_g_category}
 ACTION: |
   # Read eGFR — skip silently if absent

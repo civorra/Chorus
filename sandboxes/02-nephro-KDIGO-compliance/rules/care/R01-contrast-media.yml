@@ -34,7 +34,7 @@ FIND:
     attribut: besoin_care
 EXCEPTION: defined $p->{gadolinium_safe}
 ACTION: |
-  my $g    = $p->{ckd_g_category} // '';
+  my $g    = $p->get('ckd_g_category') // '';
   my $egfr = $p->get('egfr_ml_min');
 
   # --- Gadolinium safety check (§4.4.2.1) ---
@@ -50,7 +50,7 @@ ACTION: |
   }
 
   # --- AF anticoagulation: NOAC vs warfarin (§3.16.1) ---
-  unless (defined $p->{noac_preferred}) {
+  unless (defined $p->get('noac_preferred')) {
       my $has_af = $p->get('has_atrial_fibrillation') // 0;
       if ($has_af && $g ne 'G5') {
           # G1–G4 with AF: NOACs recommended (Rec 3.16.1 1C)

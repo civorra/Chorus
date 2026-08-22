@@ -30,7 +30,7 @@ FIND:
     attribut: besoin_treatment
 EXCEPTION: defined $p->{hyperkalemia_dietary_flag}
 ACTION: |
-  my $g = $p->{ckd_g_category} // '';
+  my $g = $p->get('ckd_g_category') // '';
   my $k = $p->get('serum_potassium_meq_l');
 
   if (!$g) {

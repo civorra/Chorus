@@ -34,16 +34,16 @@ FIND:
   p:
     attribut: besoin_treatment
 CONDITION: |
-  defined $p->{rasi_indicated} &&
-  defined $p->{sglt2i_indicated} &&
-  defined $p->{statin_indicated} &&
-  defined $p->{uric_acid_lowering_indicated} &&
-  defined $p->{antiplatelet_indicated} &&
-  defined $p->{hyperkalemia_dietary_flag}
+  defined $p->get('rasi_indicated') &&
+  defined $p->get('sglt2i_indicated') &&
+  defined $p->get('statin_indicated') &&
+  defined $p->get('uric_acid_lowering_indicated') &&
+  defined $p->get('antiplatelet_indicated') &&
+  defined $p->get('hyperkalemia_dietary_flag')
 EXCEPTION: defined $p->{besoin_care}
 ACTION: |
   # Check sodium intake < 2 g/day (§3.3.2.1 — Rec 3.3.2.1 2C)
-  unless (defined $p->{sodium_intake_ok}) {
+  unless (defined $p->get('sodium_intake_ok')) {
       my $na = $p->get('sodium_intake_g_d');
       if (!defined $na) {
           $p->set('sodium_intake_ok', 'NA');

@@ -31,8 +31,8 @@ FIND:
 EXCEPTION: defined $p->{monitoring_per_year}
 ACTION: |
   # Read G and A categories — both required
-  my $g = $p->{ckd_g_category} // '';
-  my $a = $p->{ckd_a_category} // '';
+  my $g = $p->get('ckd_g_category') // '';
+  my $a = $p->get('ckd_a_category') // '';
   return 0 unless $g && $a;
 
   # Assign monitoring frequency from KDIGO 2024 §2.1 heat-map

@@ -36,28 +36,28 @@ FIND:
     attribut: needs_compliance
 EXCEPTION: defined $f->{compliance_status}
 ACTION: |
-  my $type     = $f->{type_element} // '';
+  my $type     = $f->get('type_element') // '';
   my @failures;
 
   # §6.1a — all elements: must be qualified
   push @failures, "not qualified (§6.1a)"
-    unless ($f->{qualified} // '') eq 'YES';
+    unless ($f->get('qualified') // '') eq 'YES';
 
   # §6.1b — structural elements: geometry compliance required
   if ($type =~ /^(load_bearing_stud|sole_plate|top_plate)$/) {
     push @failures, "frame geometry non-compliant (§6.1b)"
-      unless ($f->{frame_ok} // '') eq 'YES';
+      unless ($f->get('frame_ok') // '') eq 'YES';
   }
 
   # §6.1c — thermal/vapour elements: thermal compliance required
   if ($type =~ /^(insulation|vapour_control_layer)$/) {
     push @failures, "thermal/vapour performance non-compliant (§6.1c)"
-      unless ($f->{frame_ok} // '') eq 'YES';
+      unless ($f->get('frame_ok') // '') eq 'YES';
   }
 
   # §6.1d — all elements: fire compliance required (REI 30 min applies universally)
   push @failures, "fire non-compliant (§6.1d)"
-    unless ($f->{fire_ok} // '') eq 'YES';
+    unless ($f->get('fire_ok') // '') eq 'YES';
 
   # Write final compliance verdict
   if (@failures) {

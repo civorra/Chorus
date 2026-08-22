@@ -26,10 +26,10 @@ FIND:
   f:
     attribut: needs_domain
 EXCEPTION: defined $f->{frame_ok}
-CONDITION: "($f->{type_element}//'') eq 'load_bearing_stud' && defined $f->{has_splice}"
+CONDITION: "($f->get('type_element')//'') eq 'load_bearing_stud' && defined $f->get('has_splice')"
 ACTION: |
   # §3.4 — longitudinal splice on LB stud is a structural non-conformity
-  if ($f->{has_splice}) {
+  if ($f->get('has_splice')) {
     $f->set('frame_ok', 'NO');
     $f->set('domain_note',
       "Load-bearing stud has longitudinal splice — structural non-conformity (§3.4 BS EN 1995-1-1 §5.4)");

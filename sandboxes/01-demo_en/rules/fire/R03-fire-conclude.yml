@@ -33,15 +33,15 @@ FIND:
     attribut: needs_fire
 EXCEPTION: defined $f->{fire_ok}
 ACTION: |
-  my $required_rei = rei_required($f->{collective} // 0);
+  my $required_rei = rei_required($f->get('collective') // 0);
   my $pb_min       = pb_thickness_min($required_rei);
 
   # §5.3 — plasterboard thickness check (only if slot is present)
-  if (defined $f->{pb_thickness_mm} && $f->{pb_thickness_mm} < $pb_min) {
+  if (defined $f->get('pb_thickness_mm') && $f->get('pb_thickness_mm') < $pb_min) {
     $f->set('fire_ok', 'NO');
     $f->set('fire_note',
       sprintf("Plasterboard %.1f mm < %.1f mm required for REI %d (§5.3 Part B §B3)",
-        $f->{pb_thickness_mm}, $pb_min, $required_rei));
+        $f->get('pb_thickness_mm'), $pb_min, $required_rei));
   } else {
     # All fire checks passed (or no fire-specific data → default YES)
     $f->set('fire_ok', 'YES');

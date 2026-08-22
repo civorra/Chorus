@@ -25,9 +25,9 @@ FIND:
   f:
     attribut: needs_qualify
 EXCEPTION: defined $f->{qualified}
-CONDITION: "defined $f->{moisture_content}"
+CONDITION: "defined $f->get('moisture_content')"
 ACTION: |
-  my $mc = $f->{moisture_content};
+  my $mc = $f->get('moisture_content');
 
   # §2.2 — moisture must be within [10%, 18%]
   if ($mc < 10 || $mc > 18) {

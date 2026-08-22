@@ -24,7 +24,7 @@ RULE: assign-a-category
 FIND:
   p:
     attribut: type_element
-    filtre: '$_->{type_element} eq "patient"'
+    filtre: '$_->get("type_element") eq "patient"'
 EXCEPTION: defined $p->{ckd_a_category}
 ACTION: |
   # Read ACR — skip silently if absent

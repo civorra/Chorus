@@ -36,7 +36,7 @@ FIND:
 EXCEPTION: defined $p->{referral_tier}
 ACTION: |
   # Read G category — required
-  my $g = $p->{ckd_g_category} // '';
+  my $g = $p->get('ckd_g_category') // '';
   return 0 unless $g;
 
   # Kidney failure risk scores — optional; helper handles undef gracefully

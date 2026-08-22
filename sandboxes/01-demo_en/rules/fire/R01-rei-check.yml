@@ -30,16 +30,16 @@ FIND:
   f:
     attribut: needs_fire
 EXCEPTION: defined $f->{fire_ok}
-CONDITION: "defined $f->{fire_resistance_period}"
+CONDITION: "defined $f->get('fire_resistance_period')"
 ACTION: |
   # §5.1 — required REI depends on occupancy type
-  my $required_rei = rei_required($f->{collective} // 0);
+  my $required_rei = rei_required($f->get('collective') // 0);
 
-  if ($f->{fire_resistance_period} < $required_rei) {
+  if ($f->get('fire_resistance_period') < $required_rei) {
     $f->set('fire_ok', 'NO');
     $f->set('fire_note',
       sprintf("REI %d < required REI %d (§5.1 Building Regs Part B)",
-        $f->{fire_resistance_period}, $required_rei));
+        $f->get('fire_resistance_period'), $required_rei));
 
     # Always trigger compliance agent (even for fire failures)
     $f->set('needs_compliance', 1);

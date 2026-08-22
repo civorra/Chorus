@@ -25,9 +25,9 @@ FIND:
   f:
     attribut: needs_domain
 EXCEPTION: defined $f->{frame_ok}
-CONDITION: "($f->{type_element}//'') =~ /stud/ && defined $f->{stud_spacing_mm}"
+CONDITION: "($f->get('type_element')//'') =~ /stud/ && defined $f->get('stud_spacing_mm')"
 ACTION: |
-  my $sp = $f->{stud_spacing_mm};
+  my $sp = $f->get('stud_spacing_mm');
 
   # §3.1 — spacing must be in [300, 600] mm
   if ($sp < 300 || $sp > 600) {

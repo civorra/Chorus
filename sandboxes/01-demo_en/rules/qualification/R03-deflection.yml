@@ -26,17 +26,17 @@ FIND:
   f:
     attribut: needs_qualify
 EXCEPTION: defined $f->{qualified}
-CONDITION: "defined $f->{deflection_mm} && defined $f->{span_mm} && $f->{span_mm} > 0"
+CONDITION: "defined $f->get('deflection_mm') && defined $f->get('span_mm') && $f->get('span_mm') > 0"
 ACTION: |
   # §2.3 — allowable deflection = L/300, minimum 5 mm over 2 m span
-  my $limit = $f->{span_mm} / 300;
+  my $limit = $f->get('span_mm') / 300;
   $limit = 5 if $limit < 5;
 
-  if ($f->{deflection_mm} > $limit) {
+  if ($f->get('deflection_mm') > $limit) {
     $f->set('qualified', 'NO');
     $f->set('rejection_reason',
       sprintf("Deflection %.1f mm exceeds L/300 = %.1f mm (§2.3 EC5 §7.2)",
-        $f->{deflection_mm}, $limit));
+        $f->get('deflection_mm'), $limit));
     $f->set('needs_domain', 1);   # propagate through pipeline even on rejection
     $f->delete('needs_qualify');
     return 1;

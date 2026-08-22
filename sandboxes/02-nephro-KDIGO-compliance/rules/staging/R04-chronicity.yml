@@ -26,7 +26,7 @@ RULE: chronicity
 FIND:
   p:
     attribut: type_element
-    filtre: '$_->{type_element} eq "patient"'
+    filtre: '$_->get("type_element") eq "patient"'
 EXCEPTION: defined $p->{chronicity_confirmed}
 ACTION: |
   # Read optional duration slot (PP 1.1.3.1: 3-month minimum)

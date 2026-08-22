@@ -31,21 +31,21 @@ FIND:
   f:
     attribut: needs_fire
 EXCEPTION: defined $f->{fire_ok}
-CONDITION: "defined $f->{reaction_class} || defined $f->{surface_mass_kg_m2}"
+CONDITION: "defined $f->get('reaction_class') || defined $f->get('surface_mass_kg_m2')"
 ACTION: |
   my $ok   = 1;
   my $note = '';
 
   # §5.2 — reaction class must be A1 or A2 minimum
-  if (defined $f->{reaction_class} && !reaction_class_ok($f->{reaction_class})) {
+  if (defined $f->get('reaction_class') && !reaction_class_ok($f->get('reaction_class'))) {
     $ok   = 0;
     $note = "Reaction class $f->{reaction_class} < A2 minimum (§5.2 BS EN 13501-1)";
   }
 
   # §5.2 — surface mass must be >= 8 kg/m²
-  if ($ok && defined $f->{surface_mass_kg_m2} && $f->{surface_mass_kg_m2} < 8) {
+  if ($ok && defined $f->get('surface_mass_kg_m2') && $f->get('surface_mass_kg_m2') < 8) {
     $ok   = 0;
-    $note = sprintf("Surface mass %.1f kg/m² < 8 kg/m² minimum (§5.2)", $f->{surface_mass_kg_m2});
+    $note = sprintf("Surface mass %.1f kg/m² < 8 kg/m² minimum (§5.2)", $f->get('surface_mass_kg_m2'));
   }
 
   unless ($ok) {
