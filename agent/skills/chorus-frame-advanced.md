@@ -377,14 +377,25 @@ my $v2 = $f->foo->bar->baz;       # $SELF inside _NEEDED = $bar_frame
 
 #### Practical rules
 
-- **Use `get('a b c')`** when the procedural slot needs to refer to the **root Frame**
-  (e.g. a sub-frame slot computing from the top-level object's other slots).
-- **Use `->a->b->c`** when each step must be resolved via its own `_NEEDED` / `_DEFAULT`
-  logic, and the procedural slot for `c` must refer to the **immediate owning frame**.
-- **Never mix the two styles** for the same path inside a rule or helper without
-  consciously choosing which `$SELF` semantics you need.
-- **In `_AFTER` / `_BEFORE`**: `$SELF` is the frame on which `set()` was originally
-  called — same rule applies (it is NOT necessarily the frame that defines the hook,
+> **✅ In YAML rules (`EFFET`, `CONDITION`, `EXCEPTION`) and Helpers (`Helpers.pm`):
+> always prefer `$var->get('foo bar baz')` over `$var->foo->bar->baz`.**
+>
+> In those contexts, `$var` is the Frame injected by the rule engine (from `_SCOPE`).
+> Using the path form guarantees that **`$SELF` remains that Frame throughout the
+> traversal** — which is exactly what any `_NEEDED` or `_DEFAULT` coderef in the
+> sub-frame tree expects when it refers back to the domain object.
+> The chained form silently shifts `$SELF` to a sub-frame at each step, which
+> breaks any coderef that reads `$SELF->some_top_level_slot`.
+
+- **Use `get('a b c')`** (preferred) when a procedural slot anywhere in the path needs
+  to refer to the **root Frame** — the domain object as seen by the rule.
+- **Use `->a->b->c`** only when each intermediate step must trigger its own `_NEEDED`
+  evaluation (i.e. the intermediate slot is itself computed, not a stored sub-Frame),
+  AND you are certain no `_NEEDED` / `_DEFAULT` in the chain reads `$SELF`.
+- **Never mix the two styles** for the same path without consciously choosing which
+  `$SELF` semantics you need.
+- **In `_AFTER` / `_BEFORE`**: `$SELF` is the Frame on which `set()` was originally
+  called — same rule applies (it is NOT necessarily the frame that defines the hook
   if inheritance is involved).
 
 #### Impact on inheritance
