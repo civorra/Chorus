@@ -103,8 +103,8 @@ sub load_projet {
     
     # Find best-matching prototype
     my $proto = fselect(
-        type_element => $frame->{type_element},
-        wood_class   => $frame->{wood_class},
+        type_element => $frame->get('type_element'),
+        wood_class   => $frame->get('wood_class'),
         _from        => \@CATALOG_PROTOTYPES
     );
     
@@ -299,7 +299,8 @@ Called when `get()` is invoked on a slot but neither `_VALUE` nor `_DEFAULT` is 
 _NEEDED => sub {
     # $SELF = Frame on which get() was originally called
     # (see §get-path-vs-autoload below — $SELF differs between get('a b') and ->a->b)
-    my $computed = SomeHelper->derive($SELF->{other_slot});
+    # ✅ Use get() — $SELF->{other_slot} would miss _DEFAULT / _NEEDED / _ISA inheritance
+    my $computed = SomeHelper->derive($SELF->get('other_slot'));
     return $computed;
 }
 ```
@@ -404,6 +405,98 @@ If `baz` is defined on a **parent frame** (via `_ISA`) and accessed with `get('f
 `$SELF` is still `$f` — not the parent that owns `baz`.
 With `->foo->bar->baz`, `$SELF` is the frame on which `->baz` is called (which may itself
 have inherited `baz` — `$SELF` is still the receiver, not the declaring ancestor).
+
+---
+
+### `$f->{slot}` vs `$f->get('slot')` — Read semantics {#hash-vs-get-reads}
+
+> **Rule:** always use `$f->get('slot')` (or `$f->slot` via AUTOLOAD) for domain slot reads
+> in ACTION/EFFET, CONDITION, Helpers.pm, and procedural slots (`_NEEDED`, `_AFTER`).
+> `$f->{slot}` direct hash access is only acceptable in the three specific contexts listed below.
+
+#### Why the difference matters
+
+`Chorus::Frame` objects are blessed hashrefs. Their internal slot storage is:
+
+| How slot was set | Raw storage in hash | `$f->{slot}` returns | `$f->get('slot')` returns |
+|---|---|---|---|
+| `new(slot => $val)` or `set('slot', $scalar)` | `$f->{slot} = $scalar` | `$scalar` ✅ | `$scalar` ✅ |
+| `set('slot', { _DEFAULT => $val })` | `$f->{slot} = { _DEFAULT => $val }` | hashref ❌ | `$val` ✅ |
+| `set('slot', sub { ... })` (`_NEEDED`) | `$f->{slot} = sub { ... }` | coderef ❌ | result of call ✅ |
+| Slot **only on `_ISA` parent** (inherited) | key absent from frame | `undef` ❌ | traverses `_ISA` ✅ |
+
+**`$f->{slot}` works by coincidence** for plain scalar slots — it silently breaks as soon as a
+prototype provides `_DEFAULT`, a slot is lazy (`_NEEDED`), or the value lives on an `_ISA` parent.
+The bug is silent: no error, just wrong or missing values in computed results.
+
+#### Three legitimate uses of `$f->{slot}` for reads
+
+**① EXCEPTION idempotence guards — intentionally different semantics**
+
+```perl
+EXCEPTION: defined $f->{slot_pose}   # ✅ intentional: tests "_VALUE explicitly written by set()"
+```
+
+`defined $f->{slot_pose}` = has `set()` been called on THIS frame for this slot?
+`defined $f->get('slot_pose')` = is there ANY value, including inherited `_DEFAULT`?
+
+For idempotence, we want the first form: if a prototype provides `_DEFAULT => 'pending'`,
+the rule must still fire to compute and write the actual `_VALUE`. Using `->get()` would
+block it silently — the rule would never fire, `_VALUE` would never be written.
+
+> ⚠️ **Limit:** if the result slot lives ONLY on the `_ISA` parent (e.g. injected in prototype
+> construction), `$f->{slot}` is always `undef` → guard always passes → rule fires on every cycle.
+> In that case, add a CONDITION to route by `type_element` before the EXCEPTION fires.
+
+**② `run.pl` display/reporting loop**
+
+```perl
+# In run.pl — $e iterates over @elements, all slots written by rules as plain scalars
+printf "statut : %s\n", $e->{statut_conformite} // '(unprocessed)';
+```
+
+Rules always write result slots as plain scalars via `set()` → direct hash access is safe here.
+No `_DEFAULT`/`_NEEDED` in result slots; performance is not critical.
+
+**③ Internal Engine system slots**
+
+```perl
+$SELF->{_KEY}     # internal Frame identity — not a domain slot
+$SELF->{_CYCLE}   # Engine counter — stored directly by the engine internals
+```
+
+System slots (`_KEY`, `_PARENT_KEY`, `_CYCLE`, etc.) are stored directly by the engine — not
+wrapped in `_VALUE`/`_DEFAULT`. `$f->{_KEY}` is correct for these.
+
+#### Pattern — correct reads in generated code
+
+```perl
+# ❌ WRONG — bypasses _DEFAULT, _NEEDED, _ISA inheritance
+my $type = $p->{type_element};
+my $val  = $w->{height_m} // 0;
+my $cond = $f->{masonry_condition} // 'A';  # if _DEFAULT => 'A' on prototype → hashref, not 'A'
+my $r    = SomeHelper->compute($SELF->{input_slot});  # inside _NEEDED: no chain traversal
+
+# ✅ CORRECT — full valuation chain
+my $type = $p->get('type_element');
+my $val  = $w->get('height_m') // 0;
+my $cond = $f->get('masonry_condition') // 'A';
+my $r    = SomeHelper->compute($SELF->get('input_slot'));
+```
+
+#### Quick decision table
+
+| Context | Form to use | Reason |
+|---|---|---|
+| ACTION / EFFET — read slot | `$f->get('slot')` | Full valuation chain |
+| CONDITION — test slot presence | `defined $f->get('slot')` | Traverses _ISA + _DEFAULT |
+| EXCEPTION — idempotence guard | `defined $f->{slot}` | Tests "_VALUE set by rule" only |
+| Helpers.pm — slot argument | `$f->get('slot')` | Caller may have _DEFAULT/_NEEDED |
+| `_NEEDED` coderef — read via `$SELF` | `$SELF->get('slot')` | Traverses own _ISA chain |
+| `_AFTER` coderef — read captured `$ctx` | `$ctx->get('slot')` | Same rule |
+| `fselect()` arguments | `$frame->get('slot')` | Slot may come from prototype |
+| `run.pl` display | `$e->{slot}` | Result slots are plain scalars |
+| Engine system slots | `$SELF->{_KEY}` etc. | Not domain slots, stored directly |
 
 ---
 

@@ -331,7 +331,7 @@ Two valid patterns depending on whether the link is mandatory or optional:
 
 # ── Option A: link is OPTIONAL — fall back to direct slot (backward-compatible)
 my $sup = $w->get('supports');
-my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
+my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->get('height_m') // 0);
 
 # ── Option B: link is MANDATORY — hard skip if absent
 my $sup = $w->get('supports')

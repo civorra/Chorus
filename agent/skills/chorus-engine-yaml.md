@@ -39,11 +39,23 @@ my @r = fmatch(slot => 'couleur', from => \@subset);      # restricted search sp
 ### Reading and writing slots
 
 ```perl
-$f->get('slot')        # read — traverses inheritance chain
-$f->slot               # shorthand read
+$f->get('slot')        # read — traverses inheritance chain (_VALUE → _DEFAULT → _NEEDED → _ISA)
+$f->slot               # shorthand read (AUTOLOAD — equivalent to get())
 $f->set('slot', $val)  # write — registers in %REPOSITORY → visible to fmatch
 $f->delete('slot')     # delete — unregisters from %REPOSITORY
 ```
+
+> ⛔ **READS — golden rule:** always use `$f->get('slot')` or `$f->slot` in ACTION/EFFET,
+> CONDITION, Helpers.pm, and procedural slots (`_NEEDED`, `_AFTER`).
+> **Never** use `$f->{slot}` for reads in those contexts — it bypasses `_DEFAULT`, `_NEEDED`,
+> and `_ISA` inheritance, producing silently wrong values whenever a prototype is involved.
+>
+> **Three legitimate exceptions for `$f->{slot}` reads:**
+> 1. `EXCEPTION: defined $f->{slot}` — idempotence guard (intentional: tests "_VALUE set by set()", not "_DEFAULT exists")
+> 2. `run.pl` display — result slots are plain scalars written by rules
+> 3. Engine system slots (`$SELF->{_KEY}`, `$agent->{_CYCLE}`) — not domain slots
+>
+> → Full semantics and decision table: `chorus-frame-advanced.md § $f->{slot} vs $f->get('slot') — Read semantics`
 
 ### Reserved system slots — never use as domain slot names
 
@@ -140,8 +152,8 @@ ACTION: |
   # Use when the same rule must work on project files with and without the link.
   # Replace 'link_slot', 'remote_slot', 'local_fallback_slot' with actual names.
   # Path form keeps $SELF = $w when remote_slot's _NEEDED fires.
-  my $val = $w->get('link_slot remote_slot') // $w->{local_fallback_slot} // 0;
-  # e.g.: my $h = $w->get('supports height_m') // $w->{height_m} // 0;
+  my $val = $w->get('link_slot remote_slot') // $w->get('local_fallback_slot') // 0;
+  # e.g.: my $h = $w->get('supports height_m') // $w->get('height_m') // 0;
   1
 ```
 
@@ -169,7 +181,7 @@ directly via `get()` — the inheritance chain is traversed transparently:
 
 ```yaml
 ACTION: |
-  my $cond    = $w->{masonry_condition} // 'A';
+  my $cond    = $w->get('masonry_condition') // 'A';   # ✅ get() — _DEFAULT on prototype is common here
   my $min_str = $w->get("min_str_$cond");   # traverses _ISA → prototype
 
   unless (defined $min_str) {
@@ -306,7 +318,7 @@ ACTION: "$frame->increase; 1"
 
 # Multi-line (use | not >)
 ACTION: |
-  my $W = $p->{width} * $p->{height} ** 2 / 6;
+  my $W = $p->get('width') * $p->get('height') ** 2 / 6;
   $p->set('sigma_m', $M / $W);
   1
 
@@ -434,7 +446,7 @@ ACTION: |
   return 0 unless defined $val;      # slot absent → frame out of scope, skip silently
 
   # Normative check — §4.2
-  my $min = _min_required($p->{element_type});
+  my $min = _min_required($p->get('element_type'));
   return 0 unless defined $min;      # element type not covered by this rule → skip
 
   # Write result
@@ -455,7 +467,7 @@ EFFET: |
   return 0 unless defined $val;      # slot absent → frame hors scope, ignoré silencieusement
 
   # Vérification normative — §4.2
-  my $min = _seuil_min($p->{type_element});
+  my $min = _seuil_min($p->get('type_element'));
   return 0 unless defined $min;      # type non couvert par cette règle → ignoré
 
   # Écriture du résultat
@@ -530,8 +542,8 @@ the best-matching prototype from a static catalog and injects it via `_ISA`:
 ```perl
 # In chorus-check → Feed.pm load_projet()
 my $proto = fselect(
-    wood_class => $project_frame->{wood_class},
-    treatment  => $project_frame->{treatment},
+    wood_class => $project_frame->get('wood_class'),
+    treatment  => $project_frame->get('treatment'),
     _from      => \@normatif_catalog
 );
 $project_frame->set('_ISA', $proto) if $proto;
@@ -702,35 +714,42 @@ across the full tree before falling back to _DEFAULT.
 - [ ] **Header present** — every generated rule starts with the structured comment header (§ Rule Documentation Standard). Language matches the corpus (English or French).
 - [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that justifies the rule. If the source is unknown → `# CORPUS: TODO — source not identified in corpus`.
 - [ ] **Always** end `ACTION` with a truthy value (`1` or truthy expression)
-- [ ] **`filtre` in `FIND`: always use `$_`, never `$f`** — `$f` (scope variable) is only defined inside `ACTION`/`EFFET`. Using `$f->` in `filtre` causes a compilation crash (`Global symbol "$f"`). Use `$_->{slot}` or `$_->get('slot')`.
+- [ ] **`filtre` in `FIND`: always use `$_`, never `$f`** — `$f` (scope variable) is only defined inside `ACTION`/`EFFET`. Using `$f->` in `filtre` causes a compilation crash (`Global symbol "$f"`).
+      **Prefer `$_->get('slot')` over `$_->{slot}`** — `$_->{slot}` only sees directly-stored scalars; it misses `_DEFAULT` on prototypes and slots inherited via `_ISA`.
+      `$_->{slot}` is acceptable only for `type_element` (always a direct scalar from `Feed.pm → new(%$json_hash)`) or slots guaranteed to be plain scalars written by the current rule.
 - [ ] **Multi-level slot access in `ACTION`/`EFFET`: prefer `$var->get('a b c')` over `$var->a->b->c`** —
       `get('a b c')` is **one** call: `$SELF` stays the rule-Frame (`$var`) throughout the traversal.
       The chained form `->a->b->c` makes **three** AUTOLOAD calls: `$SELF` shifts to each
       intermediate sub-frame, silently breaking any `_NEEDED` or `_DEFAULT` coderef that
       reads `$SELF` to reach the top-level domain object.
       → See `chorus-frame-advanced.md § get('a b c') vs ->a->b->c`.
-- [ ] **`CONDITION` must test data presence, not conformance** — a CONDITION that tests a business result (e.g. `$f->{result} eq 'OK'` or a Helper call returning a pass/fail value) silently blocks all non-conforming Frames: the rule never fires on them, so no slot is ever set → downstream agents never see those Frames → silent pipeline gap. Always restrict `CONDITION` to testing slot presence (`defined $f->{slot}`), type routing (`$f->{type} eq '...'`), or the existence of prerequisite computed slots. Move the conformance test into `ACTION`/`EFFET`, which sets the `_ok` slot to `'OUI'` or `'NON'`.
+- [ ] **`CONDITION` must test data presence, not conformance** — a CONDITION that tests a business result (e.g. `$f->get('result') eq 'OK'` or a Helper call returning a pass/fail value) silently blocks all non-conforming Frames: the rule never fires on them, so no slot is ever set → downstream agents never see those Frames → silent pipeline gap. Always restrict `CONDITION` to testing slot presence (`defined $f->get('slot')`), type routing (`$f->get('type') eq '...'`), or the existence of prerequisite computed slots. Move the conformance test into `ACTION`/`EFFET`, which sets the `_ok` slot to `'OUI'` or `'NON'`.
       ```yaml
       # ⛔ WRONG — non-conforming Frames silently skipped; slot never set
       CONDITION: |
-        SomeHelper->is_valid($f->{val}, SomeHelper->min_required($f->{type}))
-      # ✅ CORRECT — always fires when data is present
-      CONDITION: "defined $f->{val} && defined $f->{type}"
+        SomeHelper->is_valid($f->get('val'), SomeHelper->min_required($f->get('type')))
+      # ✅ CORRECT — always fires when data is present; get() traverses _ISA and _DEFAULT
+      CONDITION: "defined $f->get('val') && defined $f->get('type')"
       # ACTION then computes and sets 'result_ok' to 'OUI' or 'NON'
       ```
 - [ ] **Conditional ACTION without `else`**: if the `if` modifies nothing and returns `1` → infinite loop until `_MAX_CYCLES`.
       ```yaml
       # ⛔ WRONG — infinite loop if condition never true
       ACTION: |
-        if ($p->{val} > 5) { $p->set('flag', 'KO') }
+        if ($p->get('val') > 5) { $p->set('flag', 'KO') }
         1
       # ✅ CORRECT
       ACTION: |
-        if ($p->{val} > 5) { $p->set('flag', 'KO'); return 1 }
+        if ($p->get('val') > 5) { $p->set('flag', 'KO'); return 1 }
         0
       ```
       > Invisible on a sandbox (6 frames), critical at real scale (300 frames × 40 rules).
-- [ ] **Always** add `EXCEPTION: defined $var->{slot_pose}` for idempotence
+- [ ] **Always** add `EXCEPTION: defined $var->{slot_pose}` for idempotence —
+      ⚠️ **`$var->{slot}` is intentional here** (not a bug, unlike reads in ACTION).
+      It tests "has `set()` explicitly written this slot on this Frame?" — not "does any value exist?".
+      Using `$var->get('slot')` would also block the rule when a prototype `_DEFAULT` provides a value,
+      meaning the rule would never compute and write the actual `_VALUE`. Keep `$var->{slot}` in
+      EXCEPTION guards; use `$var->get('slot')` everywhere else.
 - [ ] Use `|` (block scalar) for multi-line `ACTION`, never `>`
 - [ ] Name files `R01-`, `R02-` to control loading order
 - [ ] `filtre` in `FIND` to narrow scope **before** `_APPLY`
@@ -744,6 +763,22 @@ across the full tree before falling back to _DEFAULT.
       # ✅ CORRECT
       $f->set('besoin_conformite', 1);
       ```
+- [ ] ⛔ **Never `$f->{slot}` for READS in ACTION/EFFET/CONDITION or Helpers.pm** — use `$f->get('slot')` or `$f->slot`.
+      `$f->{slot}` bypasses the full valuation chain: no `_DEFAULT`, no `_NEEDED`, no `_ISA` traversal.
+      Works by coincidence for plain scalar slots, silently wrong for prototyped/lazy/inherited slots.
+      ```perl
+      # ⛔ WRONG — misses _DEFAULT on prototype, _NEEDED, inherited slots
+      my $type = $p->{type_element};
+      my $val  = $w->{height_m} // 0;
+      my $cond = $f->{masonry_condition} // 'A';   # _DEFAULT => 'A' on prototype → gets hashref
+      # ✅ CORRECT — full valuation chain
+      my $type = $p->get('type_element');
+      my $val  = $w->get('height_m') // 0;
+      my $cond = $f->get('masonry_condition') // 'A';
+      ```
+      **Legitimate exceptions:** EXCEPTION idempotence guards (`defined $f->{slot}` — intentional, see above),
+      `run.pl` display (result slots are plain scalars), and Engine system slots (`$SELF->{_KEY}`, etc.).
+      → Full decision table: `chorus-frame-advanced.md § $f->{slot} vs $f->get('slot') — Read semantics`
 - [ ] Never use `delete $f->{slot}` — use `$f->delete('slot')`
 - [ ] Never name a domain slot with a `_UPPERCASE` prefix (reserved for the system)
 - [ ] In `_AFTER`: capture `$SELF` **before** any call to `set()` on another Frame:
