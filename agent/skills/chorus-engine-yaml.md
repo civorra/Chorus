@@ -124,19 +124,24 @@ Agent chaining via the slot targeted in `FIND`:
 ### Navigating a slot→Frame link
 
 When a frame carries a slot that holds a reference to another Frame (Pattern A —
-structural link), two patterns depending on whether the link is optional:
+structural link), two patterns depending on whether the link is optional.
+
+> **`$SELF` rule for inter-frame reads:**
+> Always use `$w->get('link_slot remote_slot')` (path form) rather than
+> `$w->get('link_slot')->get('remote_slot')` (chained form).
+> The path form keeps `$SELF = $w` throughout — any `_NEEDED` or `_DEFAULT`
+> coderef on `remote_slot` that reads `$SELF` will correctly see the rule-Frame.
+> The chained form shifts `$SELF` to the linked sub-frame after the first `get()`.
+> → Full explanation: `chorus-frame-advanced.md § get('a b c') vs ->a->b->c`
 
 ```yaml
 ACTION: |
   # ── Option A: link optional — fallback to direct slot (backward-compatible)
   # Use when the same rule must work on project files with and without the link.
   # Replace 'link_slot', 'remote_slot', 'local_fallback_slot' with actual names.
-  my $linked = $w->get('link_slot');
-  my $val    = $linked
-      ? ($linked->get('remote_slot')  // 0)
-      : ($w->{local_fallback_slot}    // 0);
-  # e.g.: my $sup = $w->get('supports');
-  #       my $h   = $sup ? ($sup->get('height_m') // 0) : ($w->{height_m} // 0);
+  # Path form keeps $SELF = $w when remote_slot's _NEEDED fires.
+  my $val = $w->get('link_slot remote_slot') // $w->{local_fallback_slot} // 0;
+  # e.g.: my $h = $w->get('supports height_m') // $w->{height_m} // 0;
   1
 ```
 
@@ -144,9 +149,11 @@ ACTION: |
 ACTION: |
   # ── Option B: link mandatory — hard skip if absent
   # Use only when the link is architecturally guaranteed.
-  my $sup = $w->get('supports')
-      or do { warn "R05: no 'supports' link on $w->{id}\n"; return 0 };
-  my $h = $sup->get('height_m') // 0;
+  my $h = $w->get('supports height_m');
+  unless (defined $h) {
+      warn "R05: no 'supports' or missing 'height_m' on $w->{id}\n";
+      return 0;
+  }
   # ... checks using $h
   1
 ```
@@ -696,6 +703,12 @@ across the full tree before falling back to _DEFAULT.
 - [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that justifies the rule. If the source is unknown → `# CORPUS: TODO — source not identified in corpus`.
 - [ ] **Always** end `ACTION` with a truthy value (`1` or truthy expression)
 - [ ] **`filtre` in `FIND`: always use `$_`, never `$f`** — `$f` (scope variable) is only defined inside `ACTION`/`EFFET`. Using `$f->` in `filtre` causes a compilation crash (`Global symbol "$f"`). Use `$_->{slot}` or `$_->get('slot')`.
+- [ ] **Multi-level slot access in `ACTION`/`EFFET`: prefer `$var->get('a b c')` over `$var->a->b->c`** —
+      `get('a b c')` is **one** call: `$SELF` stays the rule-Frame (`$var`) throughout the traversal.
+      The chained form `->a->b->c` makes **three** AUTOLOAD calls: `$SELF` shifts to each
+      intermediate sub-frame, silently breaking any `_NEEDED` or `_DEFAULT` coderef that
+      reads `$SELF` to reach the top-level domain object.
+      → See `chorus-frame-advanced.md § get('a b c') vs ->a->b->c`.
 - [ ] **`CONDITION` must test data presence, not conformance** — a CONDITION that tests a business result (e.g. `$f->{result} eq 'OK'` or a Helper call returning a pass/fail value) silently blocks all non-conforming Frames: the rule never fires on them, so no slot is ever set → downstream agents never see those Frames → silent pipeline gap. Always restrict `CONDITION` to testing slot presence (`defined $f->{slot}`), type routing (`$f->{type} eq '...'`), or the existence of prerequisite computed slots. Move the conformance test into `ACTION`/`EFFET`, which sets the `_ok` slot to `'OUI'` or `'NON'`.
       ```yaml
       # ⛔ WRONG — non-conforming Frames silently skipped; slot never set
