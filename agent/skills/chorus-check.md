@@ -627,6 +627,11 @@ YOUR TASKS:
        • id contains "-OK-" or "-ok-" → expected CONFORME
        • id contains "-KO-" or "-ko-" → expected NON_CONFORME
        Also check "_resultats_attendus" in the JSON if present.
+       ⚠️ **`_expected_uncertain` filter:** before counting a discordance, read the
+       element's `_expected_uncertain` field in the JSON. If `true`, **skip it entirely**
+       — do not count it as a discordance, do not list it in DISC_DETAIL.
+       Report the count of skipped uncertain elements separately:
+       `UNCERTAIN_SKIPPED: N  (stress elements with _expected_uncertain=true — see stress-manifest.org)`
 
 3. Return EXACTLY this block (no other text before or after):
    FILE: <FILE>
@@ -635,12 +640,14 @@ YOUR TASKS:
    NON_CONFORME: N
    UNPROCESSED: N
    DISCORDANCES: N
+   UNCERTAIN_SKIPPED: N
    DISC_DETAIL:
      <id>  expected CONFORME  → got NON_CONFORME
      <id>  expected NON_CONF  → got CONFORME
    UNPROC_DETAIL:
      <id>  (<type>) → targeting slot probably missing from Feed
-   (omit DISC_DETAIL lines if DISCORDANCES=0; omit UNPROC_DETAIL lines if UNPROCESSED=0)
+   (omit DISC_DETAIL lines if DISCORDANCES=0; omit UNPROC_DETAIL lines if UNPROCESSED=0;
+    omit UNCERTAIN_SKIPPED line if 0)
 ```
 
 ### 6-all.3 Collect results and produce synthesis table
@@ -652,15 +659,18 @@ returned structured blocks:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   chorus-check --all  <sandbox-name>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Project file         │ Status      │ CONFORME │ NON_CONF │ Unproc │ Disc
-  ─────────────────────┼─────────────┼──────────┼──────────┼────────┼─────
-  projet-rules-iso     │ SOLVED ✅   │    N     │    N     │   0    │  0
-  projet-edges         │ SOLVED ✅   │    N     │    N     │   0    │  0
-  projet-cross         │ SOLVED ✅   │    N     │    N     │   0    │  0
-  projet-scale         │ SOLVED ✅   │    N     │    N     │   0    │  0
-  <other-projet>       │ FAILED ❌   │    N     │    N     │   N    │  N
+  Project file         │ Status      │ CONFORME │ NON_CONF │ Unproc │ Disc │ Uncertain⁺
+  ─────────────────────┼─────────────┼──────────┼──────────┼────────┼──────┼───────────
+  projet-rules-iso     │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  projet-edges         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  projet-cross         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  projet-scale         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  projet-stress-*      │ SOLVED ✅   │    N     │    N     │   0    │  0   │  N
+  <other-projet>       │ FAILED ❌   │    N     │    N     │   N    │  N   │  —
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Overall: SOLVED ✅ / FAILED ❌     Discordances: N / N_total
+  ⁺ Uncertain: stress elements with _expected_uncertain=true — excluded from Disc count.
+    See stress-manifest.org for manual review list.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 

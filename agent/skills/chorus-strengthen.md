@@ -89,7 +89,36 @@ and stop. No gap report is needed.
 
 ## Phase 2 — Classify discordances
 
-For each discordant element (expected ≠ actual), classify into one of three
+### 2.0 — Uncertain-elements pre-filter (stress files only)
+
+Before classifying any discordance, scan all `projet-stress-*.json` files in `$SANDBOX/`
+and build the **uncertain-elements exclusion set**:
+
+```
+uncertain_ids = Set()
+
+for each projet-stress-*.json in $SANDBOX/:
+  for each element in elements[]:
+    if element._expected_uncertain == true:
+      uncertain_ids.add(element.id)
+```
+
+If `uncertain_ids` is non-empty, record the count for the gap report:
+```
+  N element(s) with _expected_uncertain=true — excluded from gap classification.
+  See stress-manifest.org for manual review details.
+```
+
+**Any discordant element whose id is in `uncertain_ids` is excluded from the
+classification below** — it does NOT count as a gap, is NOT listed in Phase 4,
+and does NOT appear in the enrichment roadmap. It is reported separately in Phase 4
+under a dedicated section (§ Uncertain stress results).
+
+If no `projet-stress-*.json` file exists → skip this step silently.
+
+### 2.1 — Gap classification
+
+For each discordant element (expected ≠ actual) **not in `uncertain_ids`**, classify into one of three
 gap types:
 
 | Gap type | Pattern | Root cause |
@@ -171,6 +200,32 @@ After all gaps:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
+If `uncertain_ids` (from Phase 2.0) is non-empty, append a dedicated section:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Uncertain stress results — manual review required
+  (excluded from gap classification above)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+For each element in `uncertain_ids` that produced a discordance:
+
+```
+  ── Uncertain #N ────────────────────────────────────────────────
+  Element   : <id>  in <projet-stress-file>
+  Got       : <CONFORME|NON_CONFORME|unprocessed>
+  Stress    : family=<family>  slot=<slot>  threshold=<value>
+  Note      : <_stress_note content from the JSON>
+
+  Action    : Manual review — compare pipeline result against corpus source.
+              If result is wrong → treat as a real gap (classify above,
+              add to enrichment roadmap).
+              If result is correct → set _expected_uncertain=false and
+              _resultats_attendus to the verified verdict in the JSON.
+              Ref: stress-manifest.org § Uncertain expected results
+```
+
 ---
 
 ## Phase 5 — Enrichment roadmap
@@ -217,26 +272,31 @@ After running chorus-feed --enrich, re-run:
 Reinforcement loop:
   chorus-create-project <sb> --batch          ← (once, or if suite is stale)
        ↓
-  chorus-strengthen <sb>                      ← identify gaps
+  chorus-stress <sb>                          ← adversarial cases (boundary/missing/edge/cascade)
+       ↓
+  chorus-strengthen <sb>                      ← identify gaps (typical + stress suites)
        ↓
   [edit YAML directly]                        ← bucket B fixes
   chorus-feed <sb> corpus-correctif.txt --enrich  ← bucket C new rules
        ↓
-  chorus-check <sb> --all                     ← verify
+  chorus-check <sb> --all                     ← verify both suites
        ↓
   chorus-strengthen <sb>                      ← check convergence
        ↓
-  ✅ CONVERGED  — all projects pass, 0 discordances
+  ✅ CONVERGED  — all projects pass, 0 discordances, 0 unprocessed
+     (typical suite: projet-rules-iso / edges / cross / scale
+      stress suite:  projet-stress-* with _expected_uncertain=false)
 ```
 
 ---
 
 ## Separation of responsibilities
 
-| | `chorus-feed` | `chorus-create-project` | `chorus-check` | `chorus-strengthen` |
-|---|---|---|---|---|
-| **Reads** | corpus | sandbox org KB | org KB + YAML | pipeline output + org KB |
-| **Produces** | KB org, YAML, Helpers.pm | `projet-*.json` | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap |
-| **Modifies KB** | ✅ | ✗ | ✗ | ✗ |
-| **Modifies YAML** | ✅ | ✗ | ✗ | ✗ |
-| **Triggered by** | new standard | coverage need | project to validate | failed `chorus-check --all` |
+| | `chorus-feed` | `chorus-create-project` | `chorus-stress` | `chorus-check` | `chorus-strengthen` |
+|---|---|---|---|---|---|
+| **Reads** | corpus | sandbox org KB | org KB + YAML CONDITIONs | org KB + YAML | pipeline output + org KB |
+| **Produces** | KB org, YAML, Helpers.pm | `projet-*.json` (typical) | `projet-stress-*.json` (adversarial) | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap |
+| **Expected results** | — | LLM + KB inference | **Deterministic from threshold_registry** | — | — |
+| **Modifies KB** | ✅ | ✗ | ✗ | ✗ | ✗ |
+| **Modifies YAML** | ✅ | ✗ | ✗ | ✗ | ✗ |
+| **Triggered by** | new standard | coverage need | after `--batch` | project to validate | failed `--all` |
