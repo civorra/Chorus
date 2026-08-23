@@ -19,6 +19,40 @@ All domain knowledge is split into two **authoritative** sub-skills — no dupli
 
 ---
 
+## ⛔ Critical rules — Frame slot access
+
+> These two rules were added to the sub-skills after the last audit of this file.
+> They are reproduced here so that `engine-ctx` (which loads only this index) exposes them immediately.
+> **Authoritative reference:** `chorus-frame-advanced.md §hash-vs-get-reads` and `§get-path-vs-autoload`.
+
+### Rule 1 — Always use `$f->get('slot')` for domain reads
+
+```perl
+$f->get('slot')   # ✅ traverses _VALUE → _DEFAULT → _NEEDED → _ISA
+$f->slot          # ✅ AUTOLOAD shorthand — equivalent
+$f->{slot}        # ⛔ bypasses _DEFAULT, _NEEDED, _ISA — silently wrong with prototypes
+```
+
+**Never** use `$f->{slot}` for reads in ACTION/EFFET, CONDITION, Helpers.pm, or procedural slots (`_NEEDED`, `_AFTER`).
+
+**Three legitimate exceptions:**
+1. `EXCEPTION: defined $f->{slot}` — idempotence guard (tests "_VALUE set by set()", not "_DEFAULT exists")
+2. `run.pl` display loop — result slots are plain scalars written by rules
+3. Engine system slots (`$SELF->{_KEY}`, `$agent->{_CYCLE}`) — not domain slots
+
+### Rule 2 — `$f->get('a b c')` vs `$f->a->b->c` — two different `$SELF` semantics
+
+| | `$f->get('a b c')` | `$f->a->b->c` |
+|---|---|---|
+| `$SELF` when `c`'s `_NEEDED` fires | **`$f`** (root frame, unchanged) | frame returned by `->b` |
+| `_NEEDED` evaluated on `a` and `b`? | ❌ No — raw sub-frame used | ✅ Yes — each step goes through `get()` |
+
+**Practical rule:** in YAML rules and Helpers.pm, always prefer `$var->get('a b c')` — it guarantees `$SELF` remains the domain object bound by the rule engine, which is what any `_NEEDED`/`_DEFAULT` coderef in the sub-frame tree expects.
+
+Use `->a->b->c` only when each intermediate step must trigger its own `_NEEDED` and no `_NEEDED` in the chain reads `$SELF`.
+
+---
+
 ## Chorus::Engine — Rule-Firing Log (`_LOG` / `_TRACE`)
 
 > **New in v2.0.2.** Not in either sub-skill — documented here as the canonical reference.
