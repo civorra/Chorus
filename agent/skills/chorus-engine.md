@@ -14,7 +14,7 @@ All domain knowledge is split into two **authoritative** sub-skills — no dupli
 | `chorus-engine-yaml.md` | Frame essentials for YAML (`$SELF`, `fmatch`, `set`), §Engine rule triggering, §Implicit pipeline, §Complete YAML guide (REGLE/CHERCHER/CONDITION/EXCEPTION/EFFET/TERMINAL/PREMISSES), §Checklists YAML + Frames + Multi-Specialty, §YAML DSL quick ref | Writing or reviewing YAML rules — loaded by `chorus-feed` |
 | `chorus-engine-infra.md` | §1 Core Mechanisms (Expert→Agent→Frame chain, Frame slots, Engine rule triggering, Expert orchestration), §2 Multi-Specialty Pattern (project structure, agent template, Expert assembly, implicit pipeline), §Checklists Engine/Expert + Multi-Specialty, §Quick ref (Engine slots, BOARD) | Generating Perl infrastructure (Feed, Agent, Expert, run.pl) — loaded by `chorus-check` (full path) |
 
-**For direct Perl work in `$ENGINE`** (trigger `engine-ctx` or auto Perl trigger):
+**For direct Perl work in `$ENGINE`** (auto Perl trigger):
 → load **both** sub-skills: `chorus-engine-yaml.md` + `chorus-engine-infra.md`
 
 ---
@@ -22,7 +22,7 @@ All domain knowledge is split into two **authoritative** sub-skills — no dupli
 ## ⛔ Critical rules — Frame slot access
 
 > These two rules were added to the sub-skills after the last audit of this file.
-> They are reproduced here so that `engine-ctx` (which loads only this index) exposes them immediately.
+> They are reproduced here so that this index exposes them immediately without requiring the sub-skills to be loaded first.
 > **Authoritative reference:** `chorus-frame-advanced.md §hash-vs-get-reads` and `§get-path-vs-autoload`.
 
 ### Rule 1 — Always use `$f->get('slot')` for domain reads

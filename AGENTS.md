@@ -108,7 +108,6 @@ status: IN_PROGRESS
 | Trigger / Context | Type | Skill | Agent |
 |---|---|---|---|
 | Perl code created or modified in this repository | auto | `perl-coding.md` + `./agent/skills/chorus-engine.md` | `architect` |
-| `engine-ctx` | command | `./agent/skills/chorus-engine.md` — full Chorus engine reference (Frame/Engine/Expert/Collection/YAML) | `fast` |
 | `chorus-quickstart` | command | `./agent/skills/chorus-quickstart.md` — **pipeline overview**: Path A (real project via `chorus-import-project`) vs Path B (synthetic coverage via `chorus-create-project`), step-by-step from corpus to compliance report, reinforcement loop, sandbox layout | `fast` |
 | `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch]` | command | `./agent/skills/chorus-pdf.md` — extracts PDFs → enriched corpus. **4 modes: default (auto-detect → `--hybrid` if API key present, otherwise pdfminer without API → `-text.txt`) · `--hybrid` (pdfminer + cropped vision → `-vision.md`, default when key present) · `--auto` (pdfminer + targeted LLM vision → `-vision.md`) · `--images` (LLM vision all pages → `-vision.md`).** Prerequisite for `chorus-feed` when the corpus contains PDFs. | `architect` |
 | `chorus-word <sandbox-name> <file.docx> [--out <slug>] [--batch]` | command | `./agent/skills/chorus-word.md` — extracts Word documents (.docx) → enriched corpus. **2 modes: default (auto-detect → `--hybrid` if API key present, python-docx text + Claude vision on embedded images → `-vision.md`) · text fallback (python-docx only → `-text.txt`).** Tables reconstructed as Markdown pipe (merged-cell aware). XREF pass links figure identifiers to paragraph text. Prerequisite for `chorus-feed` when the corpus contains DOCX files. | `architect` |
@@ -124,5 +123,8 @@ status: IN_PROGRESS
 | Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./agent/skills/chorus-engine-yaml.md`)* | `code` |
 | `cpan-release` | command | `./agent/skills/cpan-release.md` *(local — not distributed in the CPAN package)* | `code` |
 | `git-ctx` | command | *(no skill — call `git__git_branch` + `git__git_status` + `git__git_log` on this repository)* | `fast` |
-| `skills` | meta | `eca__directory_tree ./agent/skills/` → name + status `✅` loaded / `○` available | `fast` |
-| `skills details` | meta | same + description and trigger per skill | `fast` |
+| `skills [--all]` | meta | `eca__directory_tree ./agent/skills/` → name + status `✅` loaded / `○` available. Without `--all`: sub-skills are hidden (see list below). | `fast` |
+| `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
+
+> **Sub-skills** — internal support files, no direct user trigger. Hidden from `skills` / `skills details` unless `--all` is passed:
+> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md`
