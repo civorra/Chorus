@@ -20,16 +20,21 @@ Two parallel paths exist depending on the origin of the project to validate:
 ```
                          RAW CORPUS
                              │
-                    (PDF? → chorus-pdf)
+              (PDF?  → chorus-pdf)
+              (Word? → chorus-word)
+              (Excel?→ chorus-excel)
                              │
                         chorus-feed
+                             │
+                      chorus-review-kb        ← expert coverage review
                              │
                     ┌────────┴────────┐
                     │                 │
            Real project?       Testing / coverage?
                     │                 │
          chorus-import-project  chorus-create-project
-                    │                 │
+          chorus-audit-import         │
+                    │           chorus-stress   ← adversarial tests
                     └────────┬────────┘
                              │
                         chorus-check
@@ -37,8 +42,10 @@ Two parallel paths exist depending on the origin of the project to validate:
                      Converged? ──No──→ chorus-strengthen
                              │                   │
                             Yes        enrich → chorus-feed --enrich
-                             │                   │
-                        ✅ DONE          loop until converged
+                             │           │
+                        ✅ DONE    chorus-stress → chorus-check --all
+                                         │
+                                   loop until converged
 ```
 
 ---
@@ -93,18 +100,21 @@ it never reads a real project document.
 
 ## Step-by-step reference
 
-### Step 0 — PDF pre-processing (if needed)
+### Step 0 — Pre-processing (if needed)
+
+Run the appropriate extractor depending on the corpus format **before `chorus-feed`**:
 
 ```
-chorus-pdf <sandbox-name> <file.pdf>
+chorus-pdf   <sandbox-name> <file.pdf>              # PDF → corpus text / vision markdown
+chorus-word  <sandbox-name> <file.docx>             # Word → corpus text / vision markdown
+chorus-excel <sandbox-name> <file.xlsx|file.csv>    # Excel / CSV → corpus text / vision markdown
 ```
 
-- Extracts text from the PDF into `corpus/<NNN>-<slug>-text.txt` (default) or
-  a vision-enriched `corpus/<NNN>-<slug>-vision.md` (with `--hybrid` / `--images`).
-- **Must be run before `chorus-feed`** when the corpus source is a PDF.
-- Outputs the exact `chorus-feed` command to run next.
+All three extractors:
+- Output a corpus file in `corpus/` (`.txt` or `-vision.md`) and print the exact `chorus-feed` command to run next.
+- Support `--hybrid` / `--images` (PDF, Word) or multi-sheet (Excel) options.
 
-See: `chorus-pdf.md`
+See: `chorus-pdf.md` · `chorus-word.md` · `chorus-excel.md`
 
 ---
 
@@ -121,6 +131,22 @@ chorus-feed <sandbox-name> <corpus.txt> --enrich  # Mode B — incremental enric
 - ⛔ Never pass a `.pdf` directly — use `chorus-pdf` first.
 
 See: `chorus-feed.md`
+
+---
+
+### Step 1b — Expert coverage review (recommended)
+
+```
+chorus-review-kb <sandbox-name> [--format html|org] [--min-coverage N]
+```
+
+- Produces an interactive HTML viewer (article → rule → Helper mapping) and a machine-readable org report.
+- Detects uncovered corpus articles, orphan CORPUS references, rules without traceability.
+- **Run after `chorus-feed`, before generating or importing projects.**
+- Expert decisions exported from the HTML viewer can be fed back via `--decisions <file>`,
+  which generates a `corpus-correctif-NNN.txt` ready for `chorus-feed --enrich`.
+
+See: `chorus-review-kb.md`
 
 ---
 
@@ -157,6 +183,22 @@ See: `chorus-create-project.md`
 
 ---
 
+### Step 2C — Adversarial stress tests (Path B complement)
+
+```
+chorus-stress <sandbox-name>
+```
+
+- Generates adversarial `projet-stress-*.json` files: boundary values, missing mandatory slots,
+  rare edge combinations, `_AFTER` propagation chains, qualifier-sensitive rules.
+- Expected results are computed **deterministically** from `threshold_registry` — never by LLM inference.
+- **Run after `chorus-create-project --batch`, before `chorus-check --all`.**
+- Stress results feed into `chorus-strengthen` Phase 2.0 to exclude uncertain elements from discordance counts.
+
+See: `chorus-stress.md`
+
+---
+
 ### Step 3 — Validate
 
 ```
@@ -186,14 +228,15 @@ chorus-strengthen <sandbox-name>
 **Reinforcement loop:**
 
 ```
-chorus-strengthen <sandbox>          ← identify gaps
+chorus-strengthen <sandbox>               ← identify gaps
    ↓
-[edit YAML directly]                 ← bucket B: rule calibration
-chorus-feed <sandbox> fix.txt --enrich   ← bucket C: KB gap
+[edit YAML directly]                      ← bucket B: rule calibration
+chorus-feed <sandbox> fix.txt --enrich    ← bucket C: KB gap
    ↓
-chorus-check <sandbox> --all
+chorus-stress <sandbox>                   ← regenerate adversarial tests
+chorus-check  <sandbox> --all
    ↓
-chorus-strengthen <sandbox>          ← verify convergence
+chorus-strengthen <sandbox>               ← verify convergence
    ↓
 ✅ CONVERGED
 ```
@@ -219,7 +262,9 @@ $SANDBOXES/<sandbox-name>/
 ├── Feed.pm                  ← generated infrastructure    (chorus-check)
 ├── run.pl                   ← pipeline runner             (chorus-check)
 ├── projet-rules-iso.json    ← synthetic coverage          (chorus-create-project)
+├── projet-stress-001.json   ← adversarial stress tests    (chorus-stress)
 ├── projet-import-001.json   ← real project                (chorus-import-project)
+├── stress-manifest.org      ← stress test manifest        (chorus-stress)
 └── reports/
     └── <timestamp>-report.md
 ```
@@ -230,15 +275,19 @@ $SANDBOXES/<sandbox-name>/
 
 ```
 # Full Path B (test/synthetic) from a PDF corpus
-chorus-pdf     myproject corpus/spec.pdf
-chorus-feed    myproject corpus/001-spec-text.txt
+chorus-pdf            myproject corpus/spec.pdf
+chorus-feed           myproject corpus/001-spec-text.txt
+chorus-review-kb      myproject                          # expert coverage review
 chorus-create-project myproject --batch
-chorus-check   myproject --all
-chorus-strengthen myproject            # if not converged
+chorus-stress         myproject                          # adversarial tests
+chorus-check          myproject --all
+chorus-strengthen     myproject                          # if not converged
 
 # Full Path A (real project) from a PDF corpus
-chorus-pdf     myproject corpus/spec.pdf
-chorus-feed    myproject corpus/001-spec-text.txt
+chorus-pdf            myproject corpus/spec.pdf
+chorus-feed           myproject corpus/001-spec-text.txt
+chorus-review-kb      myproject                          # expert coverage review
 chorus-import-project myproject project-doc.pdf
-chorus-check   myproject projet-import-001.json
+chorus-audit-import   myproject projet-import-001.json   # validate before check
+chorus-check          myproject projet-import-001.json
 ```
