@@ -1,6 +1,6 @@
 # Les commandes `chorus-*` — Référence du workflow assisté par agent IA
 
-Les neuf commandes `chorus-*` forment un pipeline complet pour transformer un
+Les douze commandes `chorus-*` forment un pipeline complet pour transformer un
 corpus normatif (PDF, texte, Word, Excel) en un moteur d'inférence Perl
 opérationnel qui valide des projets réels.
 
@@ -46,7 +46,9 @@ et à chaque corpus. Un agent IA est aussi requis lorsque le corpus normatif cha
                       │  rules/<slug>/R<NN>-xxx.yml     │
                       │  lib/…/Agent/<Slug>/Helpers.pm  │
                       └──────────────┬──────────────────┘
-                                     │  ← l'expert du domaine relit, corrige
+                                     │
+                          chorus-review-kb   ← revue de couverture (viewer HTML + décisions)
+                                     │  ← l'expert du domaine relit, corrige, signale les lacunes
                                      │
                           chorus-check
                                      │
@@ -61,6 +63,8 @@ et à chaque corpus. Un agent IA est aussi requis lorsque le corpus normatif cha
                                      ▼
                       ✅ CONFORME / ❌ NON_CONFORME
                          avec motif, par élément, par agent
+                                     │
+                 chorus-stress  ← tests adversariaux (limites / manquants / arêtes / cascade)
                                      │
                           chorus-strengthen
                                      │
@@ -309,6 +313,7 @@ Ces fichiers sont la responsabilité de `chorus-check`.
 ### Étape suivante
 
 ```
+chorus-review-kb <sandbox-name>     ← revue de couverture avant chorus-check
 chorus-check <sandbox-name> projet.json
 ```
 
@@ -316,6 +321,64 @@ Ou, pour relire ce qui a été généré avant d'exécuter :
 ```
 # Ouvrir la KB dans l'éditeur
 agent/chorus/<slug>.org
+```
+
+---
+
+## `chorus-review-kb` — Revue de couverture corpus pour l'expert du domaine
+
+```
+chorus-review-kb <sandbox-name> [--agent <slug>] [--format html|org] [--decisions <file>] [--min-coverage N]
+```
+
+**Responsabilité unique :** produire une revue de couverture corpus que l'expert
+du domaine peut lire, valider et exploiter — sans écrire du code ni éditer du YAML.
+
+`chorus-review-kb` fait le pont entre la génération automatique de la KB (par
+l'agent IA) et l'expertise métier (de l'ingénieur ou de l'auditeur) : il montre
+ce qui a été modélisé, ce qui a été différé, et ce qui manque — article par article.
+
+### Sortie
+
+**Par défaut (`--format html`)** — un viewer HTML interactif sans dépendance :
+
+- Une ligne par article du corpus : boutons Valider / Signaler / Marquer comme manquant
+- Code couleur de couverture : ✅ intégré · ⏭ différé · ⛔ hors-périmètre · ❓ non relu
+- Chaque article est lié aux règles YAML et aux sections Helper qui le modélisent
+
+**`--format org`** — rapport org seul (recommandé pour les grands corpus,
+évite la génération HTML par morceaux).
+
+### Fermeture de la boucle expert (`--decisions`)
+
+```
+# L'expert exporte ses décisions depuis le viewer HTML → decisions.json
+chorus-review-kb <sandbox-name> --decisions decisions.json
+```
+
+Ce second appel :
+1. Charge les décisions expert (Valider / Signaler / Manquant par article)
+2. Met à jour le rapport de couverture org en conséquence
+3. Génère `corpus-correctif-<NNN>.txt` pour les articles signalés/manquants —
+   prêt à passer directement à `chorus-feed <sandbox-name> corpus-correctif-NNN.txt --enrich`
+
+### Configuration
+
+`--min-coverage N` fixe le pourcentage minimum d'articles devant être ✅ avant que
+la revue soit considérée complète. Peut aussi être défini dans le fichier KB org via
+`#+MIN_COVERAGE: N`.
+
+### Prérequis
+
+- `chorus-feed` a été exécuté (fichiers KB org présents)
+- `chorus-check` a généré l'infrastructure au moins une fois (pour la traçabilité règle → article)
+
+### Étape suivante
+
+```
+# Appliquer les corrections de l'expert :
+chorus-feed <sandbox-name> corpus-correctif-NNN.txt --enrich
+chorus-check <sandbox-name> projet.json
 ```
 
 ---
@@ -467,9 +530,76 @@ chorus-check <sandbox-name> <fichier-sortie.json>
 # Mode batch — exécuter toute la suite :
 chorus-check <sandbox-name> --all
 
+# Compléter avec des tests adversariaux :
+chorus-stress <sandbox-name>
+chorus-check <sandbox-name> --all
+
 # Si la suite révèle des lacunes :
 chorus-strengthen <sandbox-name>
 ```
+
+---
+
+## `chorus-stress` — Générer des fichiers JSON de stress adversarial
+
+```
+chorus-stress <sandbox-name> [--slots <s1,s2,...>] [--families <f1,f2,...>] [--out <dir>]
+```
+
+**Responsabilité unique :** générer des fichiers JSON projet spécifiquement conçus
+pour exposer les défauts de règles — pas par couverture de cas normaux, mais par
+violations de limites, données obligatoires manquantes, et combinaisons de slots inusuelles.
+
+`chorus-stress` complète `chorus-create-project --batch` : là où la suite batch teste
+le *chemin nominal* et les cas KO explicites, `chorus-stress` sonde les *arêtes* du
+système de règles de façon déterministe.
+
+### Familles de tests
+
+| Famille | Ce qu'elle teste |
+|---|---|
+| **boundary** (limites) | Valeurs exactement au seuil, juste en-dessous, juste au-dessus (± ε) |
+| **missing** (manquants) | Slots obligatoires absents — teste la gestion `_DEFAULT` / `_NEEDED` |
+| **edge** (arêtes) | Combinaisons rares de slots déclenchant plusieurs règles simultanément |
+| **cascade** | Chaînes de propagation `_AFTER` — slots aval calculés depuis écritures amont |
+| **qualifier** | Règles sensibles aux qualificateurs (comportement variant selon le type ou les flags de l'élément) |
+
+### Principe de conception clé
+
+Les résultats attendus sont calculés **déterministement depuis `threshold_registry`** —
+jamais par inférence LLM. Cela garantit la stabilité des sorties de `chorus-stress`
+à travers les régénérations et permet une comparaison diff sur les runs `chorus-check --all`.
+
+Pour les cas genuinement ambigus (règles acceptant légitimement l'un ou l'autre
+résultat), `chorus-stress` positionne `_expected_uncertain: true`. Ces éléments sont
+exclus du compte de discordances dans `chorus-check --all` (colonne `Uncertain` du
+tableau de synthèse) et dans la classification des lacunes de `chorus-strengthen`.
+
+### Sortie
+
+Fichiers `projet-stress-<famille>.json` à la racine de `$SANDBOX/` (ou `--out <sous-répertoire>`).
+Un index `stress-manifest.org` liste tous les fichiers générés avec leur famille, le
+périmètre de slots concernés, et la répartition CONFORME / NON_CONFORME attendue.
+
+> ⚠️ `--out <sous-répertoire>` cache les fichiers de `chorus-check --all` (qui ne
+> scanne que la racine de `$SANDBOX/`). Utiliser l'emplacement par défaut pour inclure
+> les fichiers stress dans le tableau de synthèse.
+
+### Quand l'exécuter
+
+Après `chorus-create-project --batch`, avant `chorus-check --all` :
+
+```
+chorus-create-project <sb> --batch   ← suite de couverture standard
+chorus-stress <sb>                   ← complément adversarial
+chorus-check <sb> --all              ← tableau de synthèse (inclut les fichiers stress)
+chorus-strengthen <sb>               ← rapport d'écarts couvrant les deux familles de tests
+```
+
+### Prérequis
+
+- `chorus-feed` a été exécuté (fichiers KB org présents — `threshold_registry` est lu depuis eux)
+- `chorus-check` a généré l'infrastructure au moins une fois
 
 ---
 
@@ -519,10 +649,15 @@ d'enrichissement :
 ```
 chorus-create-project <sb> --batch     ← construire la suite de couverture (une fois)
         ↓
+chorus-stress <sb>                     ← complément adversarial
+        ↓
+chorus-check <sb> --all                ← tableau de synthèse
+        ↓
 chorus-strengthen <sb>                 ← identifier les lacunes
         ↓
 [éditer les YAML directement]          ← corrections bucket B
 chorus-feed <sb> corpus-fix.txt --enrich  ← nouvelles règles bucket C
+chorus-review-kb <sb>                  ← revue de couverture avant la vérification suivante
         ↓
 chorus-check <sb> --all                ← vérifier
         ↓
@@ -580,7 +715,69 @@ Les lacunes (valeurs absentes du document source) sont signalées mais jamais in
 # Relire le rapport d'import avant d'exécuter :
 agent/import-report-<NNN>.org
 
+# Auditer le JSON contre les sources (recommandé) :
+chorus-audit-import <sandbox-name> projet-import-<NNN>.json
+
 # Puis valider :
+chorus-check <sandbox-name> projet-import-<NNN>.json
+```
+
+---
+
+## `chorus-audit-import` — Auditer un JSON importé contre les documents sources
+
+```
+chorus-audit-import <sandbox-name> <projet.json> [--patch] [--source <file.md>] [--kb]
+```
+
+**Responsabilité unique :** recouper un JSON projet produit par `chorus-import-project`
+avec les documents sources originaux et la KB — en classifiant chaque écart,
+signalant les absences structurelles, et en patchant optionnellement le JSON.
+
+`chorus-audit-import` s'insère entre `chorus-import-project` et `chorus-check` :
+il détecte les problèmes que la phase d'alignement ne peut pas repérer (pages
+manquantes, extractions partielles, valeurs incompatibles avec la KB) avant qu'ils
+produisent silencieusement des résultats de conformité erronés.
+
+### Position dans le pipeline
+
+```
+chorus-import-project → chorus-audit-import → chorus-check
+```
+
+### Classification des écarts
+
+Chaque écart ou signalement du rapport d'import est classifié en l'une des six catégories :
+
+| Label | Signification |
+|---|---|
+| ✅ comblable | Valeur trouvée dans le document source — peut être patchée automatiquement |
+| ⚠️ extraction partielle | Document source incomplet (pages manquantes, qualité OCR) |
+| ❌ structurellement absent | Le document ne contient pas cette information |
+| 🔄 mapping à confirmer | Correspondance incertaine de la phase d'import — décision humaine requise |
+| 🚫 frame manquante | Type de Frame présent dans la source mais pas du tout importé |
+| 🔴 incohérence KB | Valeur de slot hors du domaine KB autorisé (flag `--kb` requis) |
+
+### Options
+
+| Flag | Effet |
+|---|---|
+| `--patch` | Applique toutes les corrections ✅ directement dans le JSON |
+| `--source <file.md>` | Ajoute des documents sources supplémentaires non utilisés lors de l'import |
+| `--kb` | Recroise les valeurs de slots avec les domaines des règles YAML (détection 🔴 incohérence) |
+
+### Sortie
+
+Un rapport d'audit structuré (`agent/audit-report-<NNN>.org`) avec :
+- Tableau de classification par slot
+- Types de Frame manquants (types KB absents du JSON)
+- Résumé du patch (si `--patch` a été utilisé)
+
+### Étape suivante
+
+```
+# Après audit — patcher et valider :
+chorus-audit-import <sandbox-name> projet-import-<NNN>.json --patch
 chorus-check <sandbox-name> projet-import-<NNN>.json
 ```
 
@@ -704,13 +901,16 @@ Pour adapter l'un ou l'autre à un nouveau projet, un agent IA est requis.
 | Commande | Entrée | Sortie | Prérequis |
 |---|---|---|---|
 | `chorus-quickstart` | *(aucune)* | Guide interactif — présentation du pipeline | — |
-| `chorus-pdf` | Fichier PDF | `corpus/<NNN>-<slug>-text.txt` ou `-vision.md` | `pdfminer.six` ; clé API pour `--hybrid`/`--auto`/`--images` |
+| `chorus-pdf` | Fichier PDF | `corpus/<NNN>-<slug>-text.md` ou `-vision.md` | `pdfminer.six` ; clé API pour `--hybrid`/`--auto`/`--images` |
 | `chorus-word` | Fichier `.docx` | `corpus/<NNN>-<slug>-vision.md` ou `-text.txt` | `python-docx` ; clé API pour le mode hybride |
 | `chorus-excel` | Fichier `.xlsx` ou `.csv` | `corpus/<NNN>-<slug>-vision.md` ou `-text.txt` | `openpyxl` ; clé API pour le mode hybride |
 | `chorus-feed` | Corpus `.txt` ou `.md` | `agent/chorus/*.org`, règles YAML, `Helpers.pm` | — |
+| `chorus-review-kb` | *(KB + corpus)* | viewer HTML + rapport org ; `corpus-correctif-NNN.txt` (avec `--decisions`) | `chorus-feed` exécuté au préalable |
 | `chorus-check` | JSON projet (ou `--all`) | `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl` + rapport | `chorus-feed` exécuté au préalable |
 | `chorus-create-project` | *(KB uniquement)* | JSON projet ou suite de 4 fichiers (`--batch`) | `chorus-feed` exécuté au préalable |
+| `chorus-stress` | *(KB uniquement)* | fichiers `projet-stress-<famille>.json` + `stress-manifest.org` | `chorus-feed` exécuté au préalable |
 | `chorus-import-project` | Document d'ingénieur | JSON projet aligné + rapport d'import | `chorus-feed` exécuté au préalable |
+| `chorus-audit-import` | JSON projet importé | rapport d'audit ; JSON patché (avec `--patch`) | `chorus-import-project` exécuté au préalable |
 | `chorus-strengthen` | *(suite de projets)* | rapport d'écarts + plan d'enrichissement | `chorus-check` exécuté au préalable |
 
 ---
@@ -721,8 +921,13 @@ Pour adapter l'un ou l'autre à un nouveau projet, un agent IA est requis.
 - [`02-ai-agent.md`](02-ai-agent.md) — positionnement LLM vs Chorus, pourquoi la chaîne fonctionne
 - [`03-applications.md`](03-applications.md) — analyse par domaine, temps d'onboarding
 - `agent/skills/chorus-pdf.md` — référence complète du skill `chorus-pdf`
+- `agent/skills/chorus-word.md` — référence complète du skill `chorus-word`
+- `agent/skills/chorus-excel.md` — référence complète du skill `chorus-excel`
 - `agent/skills/chorus-feed.md` — référence complète du skill `chorus-feed`
+- `agent/skills/chorus-review-kb.md` — référence complète du skill `chorus-review-kb`
 - `agent/skills/chorus-check.md` — référence complète du skill `chorus-check`
 - `agent/skills/chorus-create-project.md` — référence complète du skill `chorus-create-project`
+- `agent/skills/chorus-stress.md` — référence complète du skill `chorus-stress`
 - `agent/skills/chorus-import-project.md` — référence complète du skill `chorus-import-project`
+- `agent/skills/chorus-audit-import.md` — référence complète du skill `chorus-audit-import`
 - `agent/skills/chorus-strengthen.md` — référence complète du skill `chorus-strengthen`

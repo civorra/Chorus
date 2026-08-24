@@ -135,11 +135,15 @@ Corpus normatif (PDF, texte, Word, Excel)
    chorus-feed         ← construit la KB : ontologie, règles YAML, Helpers.pm
         │
    agent/agents/*.org · rules/**/*.yml · lib/.../Helpers.pm
-        │                 ← l'expert du domaine relit et corrige
+        │
+   chorus-review-kb    ← revue de couverture par l'expert du domaine (viewer HTML + décisions)
+        │                 ← l'expert du domaine relit, corrige, signale les lacunes
    chorus-check        ← génère Feed.pm, Agent/*.pm, Expert.pm, run.pl
         │                   puis exécute : perl run.pl project.json
         ▼
   ✅ CONFORME / ❌ NON_CONFORME  (par élément, par agent, avec motif)
+        │
+   chorus-stress       ← tests adversariaux : valeurs limites, slots manquants, combinaisons d'arêtes
         │
    chorus-strengthen   ← classifie les écarts, produit une feuille de route
         │
@@ -178,9 +182,12 @@ la terminologie du corpus.
 | `chorus-word` | Extraire un document Word (.docx) en corpus enrichi |
 | `chorus-excel` | Extraire une feuille Excel ou CSV en corpus enrichi |
 | `chorus-feed` | Construire ou enrichir la KB depuis un corpus |
+| `chorus-review-kb` | Revue de couverture corpus par l'expert du domaine (viewer HTML + rapport org) |
 | `chorus-check` | Générer l'infrastructure + lancer la vérification de conformité |
 | `chorus-create-project` | Générer un fichier projet JSON synthétique depuis la KB |
+| `chorus-stress` | Générer des fichiers JSON de stress adversarial (limites / arêtes / cascade) |
 | `chorus-import-project` | Aligner des documents d'ingénieur avec les noms de slots de la KB |
+| `chorus-audit-import` | Auditer un projet JSON importé contre les sources avant `chorus-check` |
 | `chorus-strengthen` | Identifier les lacunes de règles, produire une feuille de route d'enrichissement |
 
 ### Boucle de renforcement
@@ -190,11 +197,12 @@ Une fois le premier pipeline en place, `chorus-strengthen` classe chaque discord
 corpus nécessaire pour combler chaque écart :
 
 ```
+chorus-feed <sb> corpus-fix.txt --enrich    ← enrichissement ciblé de la KB
+chorus-review-kb <sb>                       ← revue de couverture par l'expert du domaine
 chorus-create-project <sb> --batch          ← suite de couverture 4 fichiers
+chorus-stress <sb>                          ← tests adversariaux limites / arêtes
 chorus-check <sb> --all                     ← tableau de synthèse
-chorus-strengthen <sb>                      ← rapport de lacunes + feuille de route
-chorus-feed <sb> corpus-fix.txt --enrich    ← enrichissement ciblé
-chorus-check <sb> --all                     ← vérifier la convergence ✅
+chorus-strengthen <sb>                      ← rapport de lacunes + feuille de route → convergence ✅
 ```
 
 ### Une fois généré, fonctionne sans agent IA
@@ -245,13 +253,20 @@ hiérarchiques) s'onboarde en 2 à 4 semaines.
 
 ---
 
-## Exemple complet fonctionnel
+## Exemples complets fonctionnels
 
-`sandboxes/demo_en` — vérification de conformité d'une construction à ossature bois
+`sandboxes/01-demo_en` — vérification de conformité d'une construction à ossature bois
 selon BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501 (simulation).
 
 ```sh
-perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
+perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json
+```
+
+`sandboxes/02-nephro-KDIGO-compliance` — conformité de la prise en charge des patients IRC
+selon le guide clinique KDIGO 2024 (stadification, risque, traitement, soins).
+
+```sh
+perl sandboxes/02-nephro-KDIGO-compliance/run.pl sandboxes/02-nephro-KDIGO-compliance/project-01.json
 ```
 
 ---
@@ -371,7 +386,8 @@ Le framework complet comprend :
 - `lib/` — modules Perl (identiques à CPAN)
 - `agent/skills/` — skills ECA pour `chorus-feed`, `chorus-check`, etc.
 - `agent/org/` — templates KB et ontologie agent
-- `sandboxes/demo_en` — exemple fonctionnel (conformité ossature bois)
+- `sandboxes/01-demo_en` — exemple fonctionnel (conformité ossature bois)
+- `sandboxes/02-nephro-KDIGO-compliance` — second exemple (conformité IRC, KDIGO 2024)
 
 > **Note :** Les distributions CPAN ne contiennent que les fichiers `.pm`. Les
 > assets non-Perl (skills, templates KB) ne sont disponibles que via git.

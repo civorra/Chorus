@@ -127,11 +127,15 @@ Normative corpus (PDF, plain text, Word, Excel)
    chorus-feed         ← builds the KB: ontology, YAML rules, Helpers.pm
         │
    agent/agents/*.org · rules/**/*.yml · lib/.../Helpers.pm
-        │                 ← domain expert reviews and corrects
+        │
+   chorus-review-kb    ← coverage review by domain expert (HTML viewer + decisions)
+        │                 ← domain expert reviews, corrects, flags gaps
    chorus-check        ← generates Feed.pm, Agent/*.pm, Expert.pm, run.pl
         │                   then runs: perl run.pl project.json
         ▼
   ✅ COMPLIANT / ❌ NON_COMPLIANT  (per element, per agent, with reason)
+        │
+   chorus-stress       ← adversarial tests: boundary values, missing slots, edge combos
         │
    chorus-strengthen   ← classifies gaps, produces enrichment roadmap
         │
@@ -170,9 +174,12 @@ imports to refine the match with the corpus terminology.
 | `chorus-word` | Extract a Word document (.docx) into an enriched corpus |
 | `chorus-excel` | Extract an Excel spreadsheet or CSV into an enriched corpus |
 | `chorus-feed` | Build or enrich the KB from a corpus |
+| `chorus-review-kb` | Corpus-coverage review for domain experts (HTML viewer + org report) |
 | `chorus-check` | Generate infrastructure + run conformity check |
 | `chorus-create-project` | Generate a synthetic project JSON from the KB |
+| `chorus-stress` | Generate adversarial stress-test project JSON files (boundary / edge / cascade) |
 | `chorus-import-project` | Align engineer documents with KB slot names |
+| `chorus-audit-import` | Audit an imported project JSON against source documents before `chorus-check` |
 | `chorus-strengthen` | Identify rule gaps, produce enrichment roadmap |
 
 ### Reinforcement loop
@@ -182,11 +189,12 @@ discordance (rule too strict, rule too permissive, Feed targeting gap) and
 recommends the corpus needed to close each gap:
 
 ```
+chorus-feed <sb> corpus-fix.txt --enrich    ← targeted KB enrichment
+chorus-review-kb <sb>                       ← coverage review by domain expert
 chorus-create-project <sb> --batch          ← 4-file coverage suite
+chorus-stress <sb>                          ← adversarial boundary / edge tests
 chorus-check <sb> --all                     ← synthesis table
-chorus-strengthen <sb>                      ← gap report + roadmap
-chorus-feed <sb> corpus-fix.txt --enrich    ← targeted enrichment
-chorus-check <sb> --all                     ← verify convergence ✅
+chorus-strengthen <sb>                      ← gap report + roadmap → convergence ✅
 ```
 
 ### Once generated, runs without an AI agent
@@ -237,13 +245,20 @@ levels) onboards in 2 to 4 weeks.
 
 ---
 
-## Full working example
+## Full working examples
 
-`sandboxes/demo_en` — timber-frame construction compliance
+`sandboxes/01-demo_en` — timber-frame construction compliance
 against BS EN 338, EC5, Building Regulations Part L/B, BS EN 13501 (simulation).
 
 ```sh
-perl sandboxes/demo_en/run.pl sandboxes/demo_en/project-01.json
+perl sandboxes/01-demo_en/run.pl sandboxes/01-demo_en/project-01.json
+```
+
+`sandboxes/02-nephro-KDIGO-compliance` — CKD patient management compliance
+against the KDIGO 2024 Clinical Practice Guideline (staging, risk, treatment, care).
+
+```sh
+perl sandboxes/02-nephro-KDIGO-compliance/run.pl sandboxes/02-nephro-KDIGO-compliance/project-01.json
 ```
 
 > Engine internals (YAML DSL, `Chorus::Frame` API, `_MAX_CYCLES`, `_reset()`):
@@ -363,7 +378,8 @@ The complete framework includes:
 - `lib/` — Perl modules (same as CPAN)
 - `agent/skills/` — ECA skills for `chorus-feed`, `chorus-check`, etc.
 - `agent/org/` — KB templates and agent ontology
-- `sandboxes/demo_en` — working example (timber-frame building compliance)
+- `sandboxes/01-demo_en` — working example (timber-frame building compliance)
+- `sandboxes/02-nephro-KDIGO-compliance` — second example (CKD compliance, KDIGO 2024)
 
 > **Note:** CPAN distributions contain only `.pm` files. Non-Perl assets
 > (skills, KB templates) are only available via git. This is by design: the
