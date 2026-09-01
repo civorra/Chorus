@@ -61,6 +61,24 @@ Use this inventory to:
 - Detect any existing `projet-*.json` file (for Phase 0.3)
 - Know which `rules/<slug>/` directories exist (for the keepalive calls in 0.2)
 
+### 0.0-ctx — Context file check (`--strategy` only)
+
+**Applicable only when `--strategy <slug>` is active** (i.e. the trigger contains `--strategy`).
+
+Immediately after the sandbox inventory (0.0), before reading any `.org` file:
+
+1. Check whether `$SANDBOX/.chorus-batch-ctx.md` exists.
+2. If **yes** → read it immediately, then **jump directly to Phase 6.2**.
+   Skip Phases 0.1, 0.2, 0.3, 1, 1.5, 2 entirely — the compact KB summary already
+   contains all thresholds, types, rules, and coverage data needed for generation.
+3. If **no** → continue with Phase 0.1 as normal (full KB reading).
+
+> ⚠️ This check must happen **before Phase 0.1** — not at Phase 6.2.
+> An agent that reads all `.org` files first and only then checks for `.chorus-batch-ctx.md`
+> defeats the entire purpose of `--batch-seq` (timeout safety via short sessions).
+
+---
+
 ### 0.1 Pipeline index
 
 Read `$SANDBOX/agent/chorus/index.org`:

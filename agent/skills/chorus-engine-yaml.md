@@ -308,7 +308,29 @@ FIND:
 | `CONDITION` | rule **must** be true to fire | `return unless <CONDITION>;` |
 | `EXCEPTION` | rule **must not** fire if true | `return if <EXCEPTION>;` |
 
-> **Idempotence:** always add `EXCEPTION: defined $var->{slot_pose}` to prevent re-firing on the same Frame.
+> **Idempotence — two patterns depending on rule semantics:**
+>
+> **Pattern 1 — "first writer wins" (default):** classification rules that must fire exactly once.
+> ```yaml
+> EXCEPTION: defined $var->{slot_pose}
+> ```
+> Once any rule writes `slot_pose`, all rules sharing this guard are permanently blocked on this Frame.
+> Use for: R01–R0N classification rules within the same agent when only one must fire.
+>
+> **Pattern 2 — "veto / override" rules:** rules that must be able to *overwrite* a value
+> already set by a sibling rule (e.g. exclusion, priority qualification, emergency short-circuit).
+> ```yaml
+> EXCEPTION: '($var->{slot_pose} // "") eq "<veto_value>"'
+> ```
+> The rule re-evaluates every cycle until it either fires (and writes `<veto_value>`) or its
+> CONDITION is not met. Idempotence is still guaranteed: once `<veto_value>` is written, the
+> rule stops.
+> Use for: exclusion rules (`hors_champ`), priority overrides, hard short-circuits that must
+> take precedence over any earlier classification.
+>
+> ⚠️ **Never use Pattern 1 (`defined`) for a veto rule** — if a sibling rule fires first in
+> an earlier cycle, the veto rule will be permanently blocked and the exclusion never applied,
+> even though the engine replays all rules in subsequent cycles.
 
 ### ACTION — Syntaxes
 
@@ -744,12 +766,17 @@ across the full tree before falling back to _DEFAULT.
         0
       ```
       > Invisible on a sandbox (6 frames), critical at real scale (300 frames × 40 rules).
-- [ ] **Always** add `EXCEPTION: defined $var->{slot_pose}` for idempotence —
+- [ ] **Always** add `EXCEPTION` for idempotence — **two patterns:**
+      - **Pattern 1** (`defined $var->{slot_pose}`) for classification rules — "first writer wins".
+        Once any rule writes the slot, all rules with the same guard are blocked on this Frame.
+      - **Pattern 2** (`($var->{slot_pose} // "") eq "<veto_value>"`) for veto/exclusion/override rules
+        that must fire even after a sibling has written the slot in a previous cycle.
       ⚠️ **`$var->{slot}` is intentional here** (not a bug, unlike reads in ACTION).
       It tests "has `set()` explicitly written this slot on this Frame?" — not "does any value exist?".
       Using `$var->get('slot')` would also block the rule when a prototype `_DEFAULT` provides a value,
       meaning the rule would never compute and write the actual `_VALUE`. Keep `$var->{slot}` in
       EXCEPTION guards; use `$var->get('slot')` everywhere else.
+      → Full decision table: `chorus-engine-yaml.md § CONDITION vs EXCEPTION`
 - [ ] Use `|` (block scalar) for multi-line `ACTION`, never `>`
 - [ ] Name files `R01-`, `R02-` to control loading order
 - [ ] `filtre` in `FIND` to narrow scope **before** `_APPLY`

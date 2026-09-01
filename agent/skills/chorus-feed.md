@@ -714,7 +714,16 @@ This sub-section is read first by Phase 3 of `chorus-import-project` (highest co
 > If the source is not identifiable → document the uncertainty in a `# TODO` comment.
 
 Points to watch:
-- Idempotence: `EXCEPTION: defined $var->{<slot_pose>}` on every rule that sets a slot.
+- Idempotence: `EXCEPTION` on every rule that sets a slot — **two patterns depending on semantics**:
+  - **Pattern 1 — "first writer wins"** (default, classification rules):
+    `EXCEPTION: defined $var->{<slot_pose>}`
+    Use when only one rule among siblings should fire. Once any rule writes the slot, all are blocked.
+  - **Pattern 2 — "veto / override"** (exclusion, priority, short-circuit):
+    `EXCEPTION: '($var->{<slot_pose>} // "") eq "<veto_value>"'`
+    Use when the rule must be able to **overwrite** a value already set by a sibling rule.
+    Idempotence is still guaranteed: the rule stops once it has written `<veto_value>`.
+    ⚠️ A veto rule with Pattern 1 (`defined`) will be **permanently blocked** if any sibling fires
+    first — the exclusion is silently never applied, even though the engine replays all rules.
   The guard slot **must be one of the slots written by that rule's ACTION** (`$f->set('X', ...)`).
   → `Chorus::Engine::loadRules()` emits a `warn` automatically if the guard slot is not written
   by the rule — immediate feedback at every `perl run.pl`, not deferred to `chorus-check`.
@@ -779,7 +788,10 @@ For each rule in the `Rule catalog` of each KB:
 #   <helper_name>(<args>)  → <return type>
 #
 # GUARD — EXCEPTION: defined $<var>->{<slot_set>}
-#   Idempotence — prevents re-processing a Frame already handled in a previous cycle.
+#   Pattern 1 — "first writer wins": use for classification rules (only one sibling fires).
+#   Pattern 2 — "veto/override": use EXCEPTION: '($<var>->{<slot_set>} // "") eq "<veto_value>"'
+#   when this rule must override a value already written by a sibling in a previous cycle.
+#   → chorus-engine-yaml.md § CONDITION vs EXCEPTION
 ##
 RULE: <kebab-case-name>          # mandatory — becomes _ID (deduplication)
 TERMINAL: solved                 # optional — 'solved' or 'failed'
@@ -889,9 +901,13 @@ YAML Checklist:
       ```
 - [ ] **`filtre` uses `$_`, not `$f`** — see `chorus-engine-yaml.md` checklist.
 - [ ] **`CONDITION` tests data presence, not conformance** — see `chorus-engine-yaml.md` checklist.
-- [ ] Every rule that sets a slot has its idempotence `EXCEPTION: defined $var->{slot_set}`.
+- [ ] Every rule that sets a slot has its idempotence `EXCEPTION`:
+      - **Pattern 1** (`defined $var->{slot_set}`) for classification rules — "first writer wins".
+      - **Pattern 2** (`($var->{slot_set} // "") eq "<veto_value>"`) for veto/exclusion/override rules
+        that must fire even if a sibling has already written the slot in a previous cycle.
       The guard slot must be **written by this rule's ACTION** (`$f->set('slot_set', ...)`).
       `Chorus::Engine::loadRules()` warns automatically if mismatched — check STDERR on first run.
+      → See `chorus-engine-yaml.md § CONDITION vs EXCEPTION` for the full decision table.
 - [ ] `ACTION` ends with `1` or a truthy expression
 - [ ] ⛔ **`$f->{slot} = val` in ACTION** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
 - [ ] ⛔ **CONDITION too restrictive on `type_element`** → silently excludes Frames of other types — prefer testing slot presence → `chorus-engine §5`
