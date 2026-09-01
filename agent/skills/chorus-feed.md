@@ -1022,9 +1022,24 @@ sub <helper2> {
 - If a helper is **shared between multiple agents** → place it in
   `lib/<Namespace>/Helpers/Shared.pm` and document it in the KB of
   both agents involved.
-- **No side effects** in a helper: no slot writes, no call to
-  `$SELF`, no `fmatch`. Helpers compute and return a value —
-  the YAML calls `$frame->set()`.
+- **Side effects — two categories:**
+  - ✅ **BOARD reads/writes are allowed** when the helper needs a global value
+    (threshold set by a previous agent, counter to increment, phase flag to check).
+    In that case the helper must be called as `$SELF->helper($frame, ...)` from YAML
+    so that the agent (`$SELF`) is passed as `$_[0]`:
+    ```perl
+    sub helper_board_aware {
+        my ($agent, $frame) = @_;          # $agent = $SELF (Chorus::Engine instance)
+        my $threshold = $agent->BOARD->{threshold_override} // 100;
+        $agent->BOARD->{total_processed}++;
+        return compute($frame, $threshold);
+    }
+    ```
+    Plain function call `helper($frame)` cannot access BOARD — match calling convention
+    to the signature. Document which convention is used in the helper's header comment.
+  - ⛔ **No Frame slot writes** (`$frame->set()`), **no `fmatch`** inside a helper.
+    Helpers compute and return a value — slot writes stay in the YAML ACTION.
+    `fmatch` inside a helper causes invisible side effects on `%REPOSITORY`.
 - **Out-of-scope types — defensive fallback:** when a helper is a table lookup
   (section minimums, resistances, thresholds…) and the `type_element` is outside
   the perimeter of the rule (e.g. `chevron` passed to a helper designed for

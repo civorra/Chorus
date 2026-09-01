@@ -252,6 +252,56 @@ ACTION: |
 > ⚠️ In YAML ACTION / EFFET, use **`$SELF`** (the agent) — never `$agent` (out of scope).
 > `$SELF->BOARD` is identical to `$agent->BOARD` — same Frame instance.
 
+#### BOARD access from Perl helpers
+
+Helpers are installed in the `Chorus::Engine` namespace via typeglob. Their ability to
+access the BOARD depends on **how they are called** from a YAML ACTION.
+
+**Two calling conventions:**
+
+```yaml
+# Convention 1 — plain function call: NO agent reference passed
+ACTION: |
+  my $val = helper1($p);          # $_[0] = $p (Frame) — no BOARD access possible
+  $p->set('result', $val);
+  1
+
+# Convention 2 — method call via $SELF: agent is $_[0]
+ACTION: |
+  my $val = $SELF->helper2($p);   # $_[0] = $SELF (agent), $_[1] = $p (Frame)
+  $p->set('result', $val);
+  1
+```
+
+**Helper signatures:**
+
+```perl
+# Pure computation helper — no BOARD access (called as plain function or method)
+sub helper1 {
+    my ($frame) = @_;             # or: my (undef, $frame) = @_ if called as $SELF->helper1($p)
+    return compute($frame);
+}
+
+# BOARD-aware helper — must be called as $SELF->helper2($frame, ...)
+sub helper2 {
+    my ($agent, $frame) = @_;     # $agent = Chorus::Engine instance = $SELF
+    my $threshold = $agent->BOARD->{threshold_override} // 100;
+    $agent->BOARD->{total_processed}++;
+    return compute($frame, $threshold);
+}
+```
+
+> **Choosing the right convention:**
+> - Helper that **only computes** from Frame data → plain function signature `($frame, ...)`,
+>   call as `helper1($p)`. Simpler, no coupling to the agent.
+> - Helper that **reads or writes BOARD** (global threshold, counter, phase flag) → method
+>   signature `($agent, $frame, ...)`, call as `$SELF->helper2($p)`.
+>   Document this calling convention in the `Helpers.pm` header comment.
+
+> ⚠️ A helper that expects `($agent, $frame)` but is called as `helper($frame)` will
+> receive the Frame as `$agent` and crash silently (or produce wrong results) when
+> calling `$agent->BOARD`. Always match the signature to the calling convention.
+
 #### Full inter-agent pattern: Agent A publishes → Agent B consumes
 
 ```
@@ -354,8 +404,21 @@ use Exporter 'import';
 
 our @EXPORT_OK = qw($agent helper1 helper2);
 
-sub helper1 { my ($frame) = @_; return $result; }
-sub helper2 { ... }
+# Pure computation helper — called as: helper1($frame)
+# No BOARD access — receives Frame only.
+sub helper1 {
+    my ($frame) = @_;
+    return compute($frame);
+}
+
+# BOARD-aware helper — called as: $SELF->helper2($frame)
+# Receives agent as $_[0] → can read/write BOARD.
+sub helper2 {
+    my ($agent, $frame) = @_;    # $agent = Chorus::Engine ($SELF in YAML)
+    my $threshold = $agent->BOARD->{threshold_override} // 100;
+    $agent->BOARD->{total_processed}++;
+    return compute($frame, $threshold);
+}
 
 our $agent;
 
