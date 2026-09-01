@@ -1,0 +1,36 @@
+{
+  "projet": "stress-missing-span_mm",
+  "description": "Missing input slot span_mm on load_bearing_stud — R03 FIND filter requires both deflection_mm and span_mm; skips silently → qualified=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "span_mm",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "qualification"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-SPAN_MM",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "strength_class":          "C24",
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "clear_height_mm":         2700,
+      "spacing_mm":              400,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective":              0,
+      "_resultats_attendus": {
+        "deflection_ok":     null,
+        "qualified":         "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot span_mm — R03 FIND filtre requires both deflection_mm AND span_mm → skips silently. No _DEFAULT/_NEEDED — deflection check bypassed → qualified=YES → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

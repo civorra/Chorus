@@ -1,0 +1,109 @@
+#+TITLE: Thesaurus — 01b-demo_en
+#+DATE: 2025-06-15
+#+SOURCE: demo/project-demo-01.md (import 001)
+
+* Type terms
+
+  | Surface term                  | KB slot (type_element)  |
+  |-------------------------------+-------------------------|
+  | bearing stud                  | load_bearing_stud       |
+  | structural stud               | load_bearing_stud       |
+  | LBS                           | load_bearing_stud       |
+  | high-rise bearing stud        | load_bearing_stud       |
+  | partition stud                | non_load_bearing_stud   |
+  | NLBS                          | non_load_bearing_stud   |
+  | non-structural stud           | non_load_bearing_stud   |
+  | bottom plate                  | sole_plate              |
+  | sill plate                    | sole_plate              |
+  | sole plate                    | sole_plate              |
+  | wall plate                    | top_plate               |
+  | head plate                    | top_plate               |
+  | top plate                     | top_plate               |
+  | roof rafter                   | rafter                  |
+  | rafter                        | rafter                  |
+  | floor joist                   | joist                   |
+  | joist                         | joist                   |
+  | insulation layer              | insulation              |
+  | insulation panel              | insulation              |
+  | vapour barrier                | vapour_control_layer    |
+  | VCL                           | vapour_control_layer    |
+  | vapour check layer            | vapour_control_layer    |
+
+* Slot terms
+
+  | Surface term              | KB slot                   |
+  |---------------------------+---------------------------|
+  | strength grade            | strength_class            |
+  | timber class              | strength_class            |
+  | grade                     | strength_class            |
+  | class                     | strength_class            |
+  | Timber class              | strength_class            |
+  | MC%                       | moisture_pct              |
+  | moisture content          | moisture_pct              |
+  | MC                        | moisture_pct              |
+  | defl.                     | deflection_mm             |
+  | measured deflection       | deflection_mm             |
+  | δ                         | deflection_mm             |
+  | Defl.                     | deflection_mm             |
+  | clear span                | span_mm                   |
+  | L                         | span_mm                   |
+  | Clear span L              | span_mm                   |
+  | span                      | span_mm                   |
+  | c/c                       | spacing_mm                |
+  | c-t-c                     | spacing_mm                |
+  | centre-to-centre          | spacing_mm                |
+  | stud spacing              | spacing_mm                |
+  | Centre-to-centre          | spacing_mm                |
+  | storey height             | clear_height_mm           |
+  | floor height              | clear_height_mm           |
+  | clear height              | clear_height_mm           |
+  | Clear height              | clear_height_mm           |
+  | breadth                   | width_mm                  |
+  | section width             | width_mm                  |
+  | b                         | width_mm                  |
+  | section depth             | depth_mm                  |
+  | section height            | depth_mm                  |
+  | h                         | depth_mm                  |
+  | b × section depth         | depth_mm                  |
+  | Depth                     | depth_mm                  |
+  | splice                    | has_longitudinal_splice   |
+  | end joint                 | has_longitudinal_splice   |
+  | longitudinal joint        | has_longitudinal_splice   |
+  | thermal zone              | climate_zone              |
+  | climate class             | climate_zone              |
+  | Climate class             | climate_zone              |
+  | zone                      | climate_zone              |
+  | Thermal zone              | climate_zone              |
+  | ep                        | thickness_mm              |
+  | e                         | thickness_mm              |
+  | thickness                 | thickness_mm              |
+  | Thickness e               | thickness_mm              |
+  | λ                         | lambda                    |
+  | k value                   | lambda                    |
+  | conductivity              | lambda                    |
+  | Conductivity λ            | lambda                    |
+  | Sd                        | sd_value                  |
+  | vapour resistance         | sd_value                  |
+  | diffusion resistance      | sd_value                  |
+  | Vapour resistance Sd      | sd_value                  |
+  | SC                        | service_class             |
+  | humidity class            | service_class             |
+  | exposure class            | service_class             |
+  | service class             | service_class             |
+  | Humidity class (SC)       | service_class             |
+  | fire resistance           | rei_period                |
+  | EI period                 | rei_period                |
+  | fire period               | rei_period                |
+  | REI                       | rei_period                |
+  | Fire period               | rei_period                |
+  | Fire protection           | rei_period                |
+  | Fire resist.              | rei_period                |
+  | Euroclass                 | reaction_class            |
+  | fire class                | reaction_class            |
+  | EN 13501 class            | reaction_class            |
+  | surface density           | surface_mass_kg_m2        |
+  | mass                      | surface_mass_kg_m2        |
+  | board thickness           | plasterboard_thickness_mm |
+  | PB thickness              | plasterboard_thickness_mm |
+  | Board thickness           | plasterboard_thickness_mm |
+  | Board                     | plasterboard_thickness_mm |

@@ -1,0 +1,55 @@
+##
+# RULE: R01-rei-period
+# AGENT: TimberFrame::Agent::Fire  (pos. 4 / 5)
+# CORPUS: §5.1 — Building Regs Part B / BS EN 13501-2 — Required fire resistance period
+#
+# PURPOSE
+#   Checks that structural elements achieve the minimum fire resistance period
+#   required for the building's occupancy type: REI 30 for non-collective
+#   (collective=0) and REI 60 for multi-occupancy (collective=1).
+#   Skipped silently if rei_period or collective is absent.
+#   Does not apply to insulation and vapour_control_layer elements.
+#
+# INPUTS  (slots read)
+#   needs_fire    : targeting slot — set by initial feed
+#   type_element  : enum — insulation and VCL excluded
+#   rei_period    : int — achieved fire resistance period (minutes)
+#   collective    : int — 0 = non-collective, 1 = multi-occupancy
+#
+# OUTPUTS (slots written)
+#   rei_ok          : 'YES' or 'NO'
+#   fire_rejection  : string — failure reason (written only on rejection)
+#
+# HELPERS
+#   min_rei_required($collective) → int (minutes)
+#
+# GUARD — EXCEPTION: defined $f->{rei_ok}
+##
+RULE: R01-rei-period
+FIND:
+  f:
+    attribut: needs_fire
+    filtre: |
+      ($_->get('type_element') // '') !~ /^(insulation|vapour_control_layer)$/
+      && defined $_->get('rei_period')
+      && defined $_->get('collective')
+EXCEPTION: defined $f->{rei_ok}
+ACTION: |
+  # Read fire resistance period and occupancy type — §5.1
+  my $rei        = $f->get('rei_period');
+  my $collective = $f->get('collective');
+
+  # Minimum REI requirement by occupancy type — §5.1
+  my $rei_min = min_rei_required($collective);
+
+  # Check REI ≥ REI_min — §5.1
+  if ($rei < $rei_min) {
+    $f->set('rei_ok', 'NO');
+    $f->set('fire_rejection',
+      sprintf("REI %d below minimum REI %d for %s building (§5.1)",
+        $rei, $rei_min, $collective ? 'multi-occupancy' : 'non-collective'));
+    return 1;
+  }
+
+  $f->set('rei_ok', 'YES');
+  1

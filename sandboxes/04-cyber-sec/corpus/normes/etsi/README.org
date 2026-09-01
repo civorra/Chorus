@@ -1,0 +1,69 @@
+#+TITLE: ETSI — Normes PKI & Trust Services
+#+DATE: 2026-06-23
+
+* Accès
+
+Portail ETSI : https://portal.etsi.org
+- Création de compte gratuite requise pour le portail
+- PDFs accessibles directement via =https://www.etsi.org/deliver/= avec un User-Agent navigateur standard
+- Recherche par numéro (ex: "EN 319 401")
+
+* Index des normes pertinentes
+
+| Norme                 | Titre                                                      | Priorité | Statut        |
+|-----------------------+------------------------------------------------------------+----------+---------------|
+| Norme                 | Titre                                                      | Priorité | Fichier                   | Version    | Pages |
+|-----------------------+------------------------------------------------------------+----------+---------------------------+------------+-------|
+| ETSI EN 319 401       | General Policy Requirements for TSPs                       | 🔴 haute  | etsi-EN-319-401.pdf       | 03.02.01   |    55 |
+| ETSI EN 319 411-1     | Policy requirements — certificats publics (NCP/LCP)        | 🔴 haute  | etsi-EN-319-411-1.pdf     | 01.05.01   |    60 |
+| ETSI EN 319 411-2     | Policy requirements — certificats qualifiés eIDAS (QCP)    | 🔴 haute  | etsi-EN-319-411-2.pdf     | 02.06.01   |    33 |
+| ETSI EN 319 412-1     | Certificate Profiles — Overview                            | haute    | etsi-EN-319-412-1.pdf     | 01.07.01   |    18 |
+| ETSI EN 319 412-2     | Certificate Profiles — Natural Persons                     | haute    | etsi-EN-319-412-2.pdf     | 02.04.01   |    16 |
+| ETSI EN 319 412-3     | Certificate Profiles — Legal Persons                       | haute    | etsi-EN-319-412-3.pdf     | 01.03.01   |    10 |
+| ETSI EN 319 412-4     | Certificate Profiles — Web Sites (TLS)                     | haute    | etsi-EN-319-412-4.pdf     | 01.04.01   |    12 |
+| ETSI EN 319 412-5     | Certificate Profiles — QC Statements                       | haute    | etsi-EN-319-412-5.pdf     | 02.06.01   |    21 |
+| ETSI TS 119 312       | Cryptographic Suites for Trust Services                    | haute    | etsi-TS-119-312.pdf       | 02.01.01   |    38 |
+| ETSI EN 319 421       | Policy Requirements for TSPs issuing Time-Stamps           | moyenne  | —                         | —          |     — |
+| ETSI EN 319 122-1     | CAdES — CMS Advanced Electronic Signatures                 | moyenne  | —                         | —          |     — |
+| ETSI TS 119 612       | Trusted Lists                                              | basse    | —                         | —          |     — |
+
+* Règles directement encodables
+
+** ETSI EN 319 412-5 — QC Statements (OIDs qualifiés)
+
+Extensions spécifiques eIDAS dans le certificat :
+- =id-etsi-qcs-QcCompliance= : certificat qualifié conforme eIDAS
+- =id-etsi-qcs-QcSSCD= : clé dans dispositif sécurisé (QSCD)
+- =id-etsi-qcs-QcType= : type (esign, eseal, web)
+- =id-etsi-qcs-QcPDS= : URL du Policy Disclosure Statement
+
+→ Règles YAML : vérifier présence/absence des OIDs selon le profil déclaré
+
+** ETSI TS 119 312 — Algorithmes
+
+Tableau de recommandations par période :
+- RSA : longueur minimale selon année (4096 bits recommandé post-2024)
+- ECDSA P-256 : acceptable jusqu'en 2030+
+- SHA-256 minimum requis
+
+** ETSI EN 319 411-1 — Niveaux de politique
+
+- LCP (Lightweight Certificate Policy)
+- NCP (Normalized Certificate Policy)
+- NCP+ (NCP with SSCD requirement)
+
+* Fichiers téléchargés
+
+Téléchargés le 2026-06-23 via =https://www.etsi.org/deliver/= (User-Agent Firefox, sans compte).
+
+| Fichier                   | Version  | Taille    | Pages |
+|---------------------------+----------+-----------+-------|
+| etsi-EN-319-401.pdf       | 03.02.01 |  362 Ko   |    55 |
+| etsi-EN-319-411-1.pdf     | 01.05.01 |  354 Ko   |    60 |
+| etsi-EN-319-411-2.pdf     | 02.06.01 |  190 Ko   |    33 |
+| etsi-EN-319-412-1.pdf     | 01.07.01 |  136 Ko   |    18 |
+| etsi-EN-319-412-2.pdf     | 02.04.01 |  130 Ko   |    16 |
+| etsi-EN-319-412-3.pdf     | 01.03.01 |   61 Ko   |    10 |
+| etsi-EN-319-412-4.pdf     | 01.04.01 |   89 Ko   |    12 |
+| etsi-EN-319-412-5.pdf     | 02.06.01 |  120 Ko   |    21 |
+| etsi-TS-119-312.pdf       | 02.01.01 |  296 Ko   |    38 |

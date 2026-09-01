@@ -1,0 +1,32 @@
+##
+# RULE: R39-qcs-type-check
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 3)
+# CORPUS: ETSI EN 319 412-5 V2.6.1 §5 QCS-5-01 + Table 2
+#
+# PURPOSE
+#   QcType (esi4-qcStatement-6) SHALL be present in EU qualified certificates
+#   issued for electronic seals (Annex III / LEG) and website authentication
+#   (Annex IV / WEB). For electronic signatures (Annex I / NAT), QcType is optional.
+#   Fires only on EU-qualified frames of type 'leg' or 'web'.
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot
+#   type_element          : 'leg' or 'web' (filtre)
+#   is_qualified          : 'Y' (CONDITION)
+#   has_qcs_type          : 'Y' if esi4-qcStatement-6 present
+#
+# OUTPUTS (slots written)
+#   qcs_type_ok : "OUI" if QcType present, "NON" otherwise
+#
+# GUARD — EXCEPTION: defined $f->{qcs_type_ok}
+##
+RULE: R39-qcs-type-check
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '($_->get("type_element") eq "leg" || $_->get("type_element") eq "web") && ($_->get("is_qualified") // "") eq "Y"'
+EXCEPTION: 'defined $f->{qcs_type_ok}'
+ACTION: |
+  my $has_type = $f->get('has_qcs_type') // '';
+  $f->set('qcs_type_ok', $has_type eq 'Y' ? 'OUI' : 'NON');
+  1

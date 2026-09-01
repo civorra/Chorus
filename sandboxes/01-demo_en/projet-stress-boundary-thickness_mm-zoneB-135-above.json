@@ -1,0 +1,31 @@
+{
+  "projet": "stress-boundary-thickness_mm-zoneB-above",
+  "description": "Boundary: thickness_mm = 135.1 → R > 4.5 (T+ε, zone B) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "thickness_mm",
+    "threshold": 135,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "thermal R01 §4.1 zone B: R_min=4.5, lambda=0.030",
+    "agent": "thermal",
+    "expected_uncertain": true
+  },
+  "elements": [
+    {
+      "id": "INS-STRESS-BOUNDARY-THICKNESS-ZONEB-ABOVE",
+      "type_element": "insulation",
+      "needs_compliance": 1,
+      "needs_thermal": 1,
+      "thickness_mm": 135.1,
+      "lambda": 0.030,
+      "climate_zone": "B",
+      "_resultats_attendus": {
+        "thermal_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "R = 135.1/(1000×0.030) = 4.5033 > R_min=4.5 (T+ε). Rule: R >= R_min → YES.",
+      "_expected_uncertain": true
+    }
+  ]
+}

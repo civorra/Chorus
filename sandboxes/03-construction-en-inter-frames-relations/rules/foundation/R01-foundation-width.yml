@@ -1,0 +1,81 @@
+##
+# RULE: R01-foundation-width
+# AGENT: ADA::Agent::Foundation  (pos. 4 / 4)
+# CORPUS: Table 10 — Approved Document A (Structure) 2013 — Minimum width of strip footings
+#         §2E3 — Recommended minimum widths of foundations
+#
+# PURPOSE
+#   Verifies that the proposed strip foundation width meets the Table 10 minimum
+#   for the given soil type (I–VII) and total load of load-bearing walling (kN/m).
+#   Handles special cases:
+#   - Soil type I (rock): width = wall width — no numeric minimum
+#   - Soil types V/VI: load > 30kN/m is outside Table 10 scope
+#   - Soil type VII: specialist advice required
+#
+# INPUTS  (slots read)
+#   besoin_foundation    : targeting slot — 'Y' — set by Masonry R02
+#   soil_type            : 'I'..'VII' — Table 10 ground classification
+#   wall_load_kn_m       : float — total load of load-bearing walling (kN/m)
+#   foundation_width_mm  : int — proposed strip footing width (mm)
+#
+# OUTPUTS (slots written)
+#   min_foundation_width_mm : int — Table 10 minimum (0 = wall width / sentinel for rock)
+#   foundation_width_ok     : 'YES'/'NO' — width verdict
+#   foundation_violations   : str — violated constraints
+#
+# HELPERS
+#   min_width_table10($soil_type, $load_kn_m) → $mm | undef
+#
+# GUARD — EXCEPTION: defined $f->{foundation_width_ok}
+#   Idempotence.
+##
+RULE: R01-foundation-width
+FIND:
+  f:
+    attribut: besoin_foundation
+EXCEPTION: defined $f->{foundation_width_ok}
+ACTION: |
+  use ADA::Agent::Foundation::Helpers qw(min_width_table10);
+  my @violations;
+
+  my $soil  = $f->get('soil_type')           // 'II';
+  my $load  = $f->get('wall_load_kn_m')      // 0;
+  my $width = $f->get('foundation_width_mm') // 0;
+
+  # Soil type VII → specialist advice required
+  if ($soil eq 'VII') {
+      push @violations, "soil type VII: specialist advice required (Table 10)";
+      $f->set('min_foundation_width_mm', 0);
+      $f->set('foundation_width_ok',     'NO');
+      $f->set('foundation_violations',   join('; ', @violations));
+      return 1;
+  }
+
+  # Soil types V/VI: load > 30kN/m → outside Table 10 scope
+  if ($soil =~ /^(V|VI)$/ && $load > 30) {
+      push @violations,
+          "soil type $soil: load ${load}kN/m > 30kN/m limit (Table 10 note)";
+      $f->set('min_foundation_width_mm', 0);
+      $f->set('foundation_width_ok',     'NO');
+      $f->set('foundation_violations',   join('; ', @violations));
+      return 1;
+  }
+
+  my $min_w = min_width_table10($soil, $load);
+
+  if (!defined $min_w) {
+      # Soil type I (rock): width = wall width — accept as-is
+      $f->set('min_foundation_width_mm', 0);
+      $f->set('foundation_width_ok',     'YES');
+  } elsif ($width < $min_w) {
+      push @violations,
+          "foundation_width ${width}mm < min ${min_w}mm (Table 10, soil $soil, load ${load}kN/m)";
+      $f->set('min_foundation_width_mm', $min_w);
+      $f->set('foundation_width_ok',     'NO');
+  } else {
+      $f->set('min_foundation_width_mm', $min_w);
+      $f->set('foundation_width_ok',     'YES');
+  }
+
+  $f->set('foundation_violations', join('; ', @violations));
+  1

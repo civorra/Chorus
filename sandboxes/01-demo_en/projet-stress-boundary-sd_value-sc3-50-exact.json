@@ -1,0 +1,30 @@
+{
+  "projet": "stress-boundary-sd_value-sc3-exact",
+  "description": "Boundary: sd_value = 50 (exact Sd_min=50 for SC3) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "sd_value",
+    "threshold": 50,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "thermal R02 §4.2 SC3",
+    "agent": "thermal",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id": "VCL-STRESS-BOUNDARY-SD-SC3-EXACT",
+      "type_element": "vapour_control_layer",
+      "needs_compliance": 1,
+      "needs_thermal": 1,
+      "sd_value": 50,
+      "service_class": 3,
+      "_resultats_attendus": {
+        "thermal_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "sd_value=50 = Sd_min(SC3)=50 (exact boundary). Rule: sd >= 50 → YES.",
+      "_expected_uncertain": false
+    }
+  ]
+}

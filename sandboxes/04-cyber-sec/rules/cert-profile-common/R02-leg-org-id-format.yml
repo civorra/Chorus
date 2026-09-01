@@ -1,0 +1,48 @@
+##
+# RULE: R02-leg-org-id-format
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 1)
+# CORPUS: §5.1.4 — ETSI EN 319 412-1 V1.7.1 — Legal person semantics identifier
+#          LEG-5.1.4-02: organizationIdentifier structure: <type_ref><country>-<id>
+#          LEG-5.1.4-03: accepted type references: VAT, NTR, PSD, LEI, EOR, EXC, or 2-char local + ":"
+#          LEG-5.1.4-04: VAT may use EU country prefix variants (e.g. "EL", "XI")
+#          LEG-5.1.4-08: NTR subdivision variant: NTRXX+SUB-<id>
+#
+# PURPOSE
+#   Validates the format of the organizationIdentifier attribute for legal person certificates.
+#   Only fires on frames where type_element = "leg".
+#   Checks that the value follows one of the defined LEG-5.1.4-02/03/08 structures.
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot — set by Feed.pm at frame creation
+#   type_element          : enum (nat/leg/web/gen) — filtre restricts to "leg" only
+#   org_id                : str — organizationIdentifier X.509 attribute value to validate
+#
+# OUTPUTS (slots written)
+#   org_id_format_ok : "OUI" if format is valid, "NON" otherwise
+#
+# GUARD — EXCEPTION: defined $f->{org_id_format_ok}
+#   Idempotence — prevents re-processing a frame already handled in a previous cycle.
+##
+RULE: R02-leg-org-id-format
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") eq "leg"'
+CONDITION: 'defined $f->get("org_id")'
+EXCEPTION: 'defined $f->{org_id_format_ok}'
+ACTION: |
+  # Read organizationIdentifier value
+  my $oid = $f->get('org_id');
+
+  # §5.1.4 LEG-5.1.4-02/03: standard form <VAT|NTR|PSD|LEI|EOR|EXC><XX>-<id>
+  # LEG-5.1.4-08: NTR subdivision form NTRXX+SUB-<id> (state/province level)
+  # Local scheme: <2-char>:<XX>-<id>
+  # LEI uses XG as country code (transnational) — [A-Z]{2} covers this
+  my $ok = ($oid =~ /^(?:VAT|NTR|PSD|LEI|EOR|EXC)[A-Z]{2}-\S+$/
+         || $oid =~ /^[A-Z]{2}:[A-Z]{2}-\S+$/
+         || $oid =~ /^NTR[A-Z]{2}\+[A-Z]{1,3}-\S+$/)  # §5.1.4 LEG-5.1.4-08 subdivision
+           ? 'OUI' : 'NON';
+
+  # Write result
+  $f->set('org_id_format_ok', $ok);
+  1

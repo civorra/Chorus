@@ -1,0 +1,37 @@
+{
+  "projet": "stress-boundary-depth_mm-lb-below",
+  "description": "Boundary: depth_mm = 88.9 (T-ε, below h_min=89 for LB h≤2700 s≤400) — expect NON_CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "depth_mm",
+    "threshold": 89,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "geo R02 §3.2 min_lb_section(h=2700,s=400)=(38,89)",
+    "agent": "geometry",
+    "expected_uncertain": true
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-DEPTH-LB-BELOW",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 88.9,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective": 0,
+      "_resultats_attendus": {
+        "section_ok": "NO",
+        "frame_ok": "NO",
+        "compliance_status": "NON-COMPLIANT"
+      },
+      "_stress_note": "LB: depth=88.9 < h_min=89 (T-ε). Rule: h < h_min → section_ok=NO → frame_ok=NO → NON-COMPLIANT.",
+      "_expected_uncertain": true
+    }
+  ]
+}

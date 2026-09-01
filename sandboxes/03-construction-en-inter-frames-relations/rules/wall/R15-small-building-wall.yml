@@ -1,0 +1,126 @@
+##
+# RULE: R15-small-building-wall
+# AGENT: ADA::Agent::Wall  (pos. 2 / 6)
+# CORPUS: §2C38 — Approved Document A 2013 — Small single-storey non-residential buildings and annexes
+#          Diagram 17 — Size and location of openings (p.34)
+#          Diagram 18 — Wall thickness and piers (p.35)
+#
+# PURPOSE
+#   Verifies wall-level constraints for small single-storey non-residential buildings
+#   and annexes per §2C38 (ii) and (iii):
+#   (ii) Opening constraints (Diagram 17):
+#     - Major openings restricted to one wall only; combined width ≤ 5m; height ≤ 2.1m
+#     - Other openings: aggregate area ≤ 2.4m²
+#     - Corner distance: window/door to corner ≥ 390mm (unless corner pier present)
+#   (iii) Pier/wall thickness (Diagram 18):
+#     - Min wall thickness: 90mm
+#     - Walls > 2.5m long or > 2.5m high: piers required at ≤ 3m centres
+#     - Min pier size: Ap × Bp ≥ 390mm × 190mm (or 327mm × 215mm for modular units)
+#     - Isolated column (Diagram 18c case): min 325mm × 325mm
+#   Fires on external_wall Frames where building_category = 'small_non_residential'.
+#
+# INPUTS  (slots read)
+#   besoin_wall                 : targeting slot
+#   type_element                : 'external_wall'
+#   building_category           : 'small_non_residential' — flag set by feed (§2C38 scope)
+#   thickness_mm                : wall thickness (mm) — §2C38(iii) min 90mm
+#   length_m                    : wall length (m) — pier spacing trigger if > 2.5m
+#   height_m                    : wall height (m) — pier spacing trigger if > 2.5m
+#   major_opening_total_width_m : combined width of major opening(s) (m, max 5m)
+#   major_opening_height_m      : height of major opening(s) (m, max 2.1m)
+#   corner_to_opening_mm        : distance from corner to nearest window/door (mm, min 390mm)
+#   has_corner_pier             : 'Y'/'N' — corner pier present (exempts corner distance rule)
+#   other_openings_area_m2      : aggregate area of all non-major openings (m², max 2.4m²)
+#   pier_ap_mm                  : pier depth Ap in mm (Diagram 18, min 390mm or 327mm)
+#   pier_bp_mm                  : pier width Bp in mm (Diagram 18, min 190mm or 215mm)
+#   pier_spacing_m              : spacing between piers (m, max 3m if wall > 2.5m)
+#   isolated_column_mm          : side dimension of isolated column (mm, min 325mm)
+#   pier_unit_type              : 'standard' (390×190) or 'modular' (327×215) — Diagram 18 note 1
+#
+# OUTPUTS (slots written)
+#   small_building_wall_ok  : 'YES'/'NO'
+#   wall_violations         : cumulative violation list
+#   wall_ok                 : updated to 'NO' on violation
+#
+# GUARD — EXCEPTION: defined $w->{small_building_wall_ok}
+#   Idempotence — prevents re-processing a Frame already handled in a previous cycle.
+##
+RULE: small-building-wall
+FIND:
+  w:
+    attribut: besoin_wall
+    filtre: |
+      ($_->get('type_element')//"") eq "external_wall"
+      && ($_->get('building_category')//"") eq "small_non_residential"
+EXCEPTION: defined $w->{small_building_wall_ok}
+ACTION: |
+  my @viol = split /;\s*/, ($w->get('wall_violations') // '');
+
+  # §2C38(iii): minimum wall thickness 90mm
+  my $t = $w->get('thickness_mm') // 0;
+  if ($t > 0 && $t < 90) {
+      push @viol, "small non-residential wall thickness ${t}mm < 90mm min (§2C38 iii)";
+  }
+
+  # §2C38(ii) Diagram 17: major opening combined width ≤ 5m, height ≤ 2.1m
+  my $maj_w = $w->get('major_opening_total_width_m');
+  my $maj_h = $w->get('major_opening_height_m');
+  if (defined $maj_w && $maj_w > 5.0) {
+      push @viol, "major opening combined width ${maj_w}m > 5.0m max (§2C38 ii Diagram 17 note 1)";
+  }
+  if (defined $maj_h && $maj_h > 2.1) {
+      push @viol, "major opening height ${maj_h}m > 2.1m max (§2C38 ii Diagram 17 note 1)";
+  }
+
+  # §2C38(ii) Diagram 17 note 3: other openings aggregate area ≤ 2.4m²
+  my $oth = $w->get('other_openings_area_m2');
+  if (defined $oth && $oth > 2.4) {
+      push @viol,
+          "other openings aggregate ${oth}m² > 2.4m² max (§2C38 ii Diagram 17 note 3)";
+  }
+
+  # §2C38(ii) Diagram 17 note 5: corner distance ≥ 390mm (unless corner pier present)
+  my $cdist  = $w->get('corner_to_opening_mm');
+  my $cpier  = $w->get('has_corner_pier') // 'N';
+  if (defined $cdist && $cpier ne 'Y' && $cdist < 390) {
+      push @viol,
+          "corner to opening distance ${cdist}mm < 390mm min (§2C38 ii Diagram 17 note 5)";
+  }
+
+  # §2C38(iii) Diagram 18: piers required if wall length or height > 2.5m
+  my $len = $w->get('length_m')  // 0;
+  my $ht  = $w->get('height_m')  // 0;
+  if ($len > 2.5 || $ht > 2.5) {
+      my $psp = $w->get('pier_spacing_m');
+      if (defined $psp && $psp > 3.0) {
+          push @viol,
+              "pier spacing ${psp}m > 3.0m max for wall > 2.5m (§2C38 iii Diagram 18)";
+      }
+
+      # Pier dimensions: standard 390×190mm, modular 327×215mm
+      my $punit = $w->get('pier_unit_type') // 'standard';
+      my ($min_ap, $min_bp) = ($punit eq 'modular') ? (327, 215) : (390, 190);
+      my $ap = $w->get('pier_ap_mm');
+      my $bp = $w->get('pier_bp_mm');
+      if (defined $ap && $ap < $min_ap) {
+          push @viol,
+              "pier depth Ap ${ap}mm < ${min_ap}mm min (§2C38 iii Diagram 18 note 1, ${punit})";
+      }
+      if (defined $bp && $bp < $min_bp) {
+          push @viol,
+              "pier width Bp ${bp}mm < ${min_bp}mm min (§2C38 iii Diagram 18 note 1, ${punit})";
+      }
+  }
+
+  # §2C38(iii) Diagram 18 note 2: isolated column ≥ 325×325mm
+  my $col = $w->get('isolated_column_mm');
+  if (defined $col && $col < 325) {
+      push @viol,
+          "isolated column ${col}mm < 325mm min (§2C38 iii Diagram 18 note 2)";
+  }
+
+  my $ok = @viol ? 'NO' : 'YES';
+  $w->set('small_building_wall_ok', $ok);
+  $w->set('wall_violations',        join('; ', @viol));
+  $w->set('wall_ok', 'NO') if $ok eq 'NO';
+  1

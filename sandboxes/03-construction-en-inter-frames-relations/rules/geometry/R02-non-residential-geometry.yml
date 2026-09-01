@@ -1,0 +1,71 @@
+##
+# RULE: R02-non-residential-geometry
+# AGENT: ADA::Agent::Geometry  (pos. 1 / 4)
+# CORPUS: §2C4b — Approved Document A (Structure) 2013 — Small single-storey non-residential
+#         §2C14 — Maximum floor area (36m² for open-sided floor)
+#         §2C16 — Maximum height of buildings (Diagram 7 Table c)
+#
+# PURPOSE
+#   Verifies geometric constraints for small single-storey non-residential buildings:
+#   H ≤ 3m, greatest plan width/length W ≤ 9m, floor area ≤ 36m² (open side),
+#   and wind-driven height limit from Table c. Sets besoin_wall.
+#
+# INPUTS  (slots read)
+#   type_element      : targeting slot — 'non_residential_building' — set by feed
+#   height_m          : float — height H in metres (max 3m)
+#   width_m           : float — greatest plan length or width W in metres (max 9m)
+#   floor_area_m2     : float — floor area in m² (optional — checked if present)
+#   factor_s          : float — wind Factor S (optional)
+#   site_type         : enum  — 'country' or 'town' (optional)
+#   coast_distance_km : float — distance to coast in km (optional)
+#
+# OUTPUTS (slots written)
+#   floor_area_ok        : 'YES'/'NO' — area ≤ 36m²
+#   max_height_allowed_m : float — effective height limit (min of 3m and Table c)
+#   geometry_violations  : str — violated constraints
+#   geometry_ok          : 'YES'/'NO' — overall verdict
+#   besoin_wall          : 'Y' — targeting slot for ADA::Agent::Wall
+#
+# HELPERS
+#   max_height_from_table_c($factor_s, $site_type, $coast_km) → $height_m | undef
+#
+# GUARD — EXCEPTION: defined $b->{geometry_ok}
+#   Idempotence.
+##
+RULE: R02-non-residential-geometry
+FIND:
+  b:
+    attribut: type_element
+    filtre: '$_->get("type_element") eq "non_residential_building"'
+EXCEPTION: defined $b->{geometry_ok}
+ACTION: |
+  use ADA::Agent::Geometry::Helpers qw(max_height_from_table_c);
+  my @violations;
+
+  my $h    = $b->get('height_m')       // 0;
+  my $w    = $b->get('width_m')        // 0;
+  my $area = $b->get('floor_area_m2')  // 0;
+
+  # §2C4b: H ≤ 3m
+  push @violations, "height_m > 3m (got ${h}m)" if $h > 3;
+
+  # §2C4b: W ≤ 9m
+  push @violations, "width_m > 9m (got ${w}m)" if $w > 9;
+
+  # §2C14: floor without structural wall on one side ≤ 36m²
+  my $area_ok = ($area <= 36 || $area == 0) ? 'YES' : 'NO';
+  push @violations, "floor_area > 36m2 (got ${area}m2)" if $area_ok eq 'NO';
+
+  # §2C16: wind height limit — capped at 3m for non-residential
+  my $max_h_wind = max_height_from_table_c(
+      $b->get('factor_s'), $b->get('site_type'), $b->get('coast_distance_km')
+  );
+  my $max_h = defined $max_h_wind ? ($max_h_wind < 3 ? $max_h_wind : 3) : 3;
+  push @violations, "height_m > wind_limit (${h}m > ${max_h}m)" if $h > $max_h;
+
+  $b->set('floor_area_ok',        $area_ok);
+  $b->set('max_height_allowed_m', $max_h);
+  $b->set('geometry_violations',  join('; ', @violations));
+  $b->set('geometry_ok',          @violations ? 'NO' : 'YES');
+  $b->set('besoin_wall',          'Y');
+  1

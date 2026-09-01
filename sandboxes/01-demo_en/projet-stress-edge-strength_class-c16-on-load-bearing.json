@@ -1,0 +1,38 @@
+{
+  "projet": "stress-edge-strength_class-c16-on-load-bearing",
+  "description": "Edge: strength_class=C16 (valid minimum for non_load_bearing_stud) does NOT satisfy load_bearing_stud requirement (min=C24) — qualified=NO dominates",
+  "_stress": {
+    "family":             "edge",
+    "pattern":            "B",
+    "slots":              ["strength_class", "type_element"],
+    "source":             "qual R01 §2.1 — Contraintes & Pitfalls: min class varies by element type",
+    "agent":              "qualification",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id":                        "LBS-STRESS-EDGE-C16-ON-LBS",
+      "type_element":              "load_bearing_stud",
+      "needs_compliance":          1,
+      "strength_class":            "C16",
+      "moisture_pct":              14,
+      "clear_height_mm":           2700,
+      "spacing_mm":                400,
+      "width_mm":                  38,
+      "depth_mm":                  89,
+      "has_longitudinal_splice":   0,
+      "rei_period":                30,
+      "collective":                0,
+      "reaction_class":            "A1",
+      "surface_mass_kg_m2":        10,
+      "plasterboard_thickness_mm": 12.5,
+      "_resultats_attendus": {
+        "strength_class_ok":  "NO",
+        "qualified":          "NO",
+        "compliance_status":  "NON-COMPLIANT"
+      },
+      "_stress_note": "edge case from Contraintes & Pitfalls §2.1: C16 is the valid minimum class for non_load_bearing_stud but does NOT satisfy load_bearing_stud (min=C24) — class_rank(C16)=2 < class_rank(C24)=4; R01 rejects → strength_class_ok=NO → qualified=NO → NON-COMPLIANT",
+      "_expected_uncertain": false
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+#+TITLE: CA/Browser Forum — Baseline Requirements
+#+DATE: 2026-06-23
+
+* Index des documents
+
+| Document                          | Pertinence | URL                                              | Statut        |
+|-----------------------------------+------------+--------------------------------------------------+---------------|
+| Baseline Requirements TLS         | 🔴 haute    | https://cabforum.org/baseline-requirements/      | à télécharger |
+| S/MIME Baseline Requirements      | haute      | https://cabforum.org/smime-br/                   | à télécharger |
+| Code Signing Baseline Requirements| moyenne    | https://cabforum.org/code-signing-baseline-requirements/ | à télécharger |
+| Extended Validation Guidelines    | moyenne    | https://cabforum.org/extended-validation-ssl/    | à télécharger |
+
+* Dépôt GitHub (source officielle)
+
+Les Baseline Requirements sont aussi maintenus sur GitHub :
+https://github.com/cabforum/servercert
+
+Les releases officielles (PDF) sont sur :
+https://cabforum.org/baseline-requirements/documents/
+
+* Règles directement encodables
+
+** Durée de validité TLS (Baseline Requirements §6.3.2)
+
+- Certificats TLS publics : =398 jours maximum= (depuis sept. 2020)
+- Certificats Code Signing : 39 mois maximum
+
+→ Règle YAML : comparer =validity_days= au seuil selon le profil
+
+** keyUsage TLS (Baseline Requirements §7.1.2)
+
+Selon l'usage :
+- RSA end-entity : =digitalSignature= requis
+- RSA CA : =keyCertSign= + =cRLSign= requis
+- ECDSA end-entity : =digitalSignature= requis
+
+** extendedKeyUsage TLS (Baseline Requirements §7.1.2.3)
+
+- id-kp-serverAuth (1.3.6.1.5.5.7.3.1) : requis pour certificats serveur TLS
+- id-kp-clientAuth (1.3.6.1.5.5.7.3.2) : optionnel
+
+** Subject Alternative Name (Baseline Requirements §7.1.4)
+
+- SAN obligatoire depuis 2012 (CN seul insuffisant)
+- Noms wildcard : règles de format strictes
+
+** Algorithmes interdits (Baseline Requirements §7.1.3)
+
+- SHA-1 : interdit pour les nouveaux certificats TLS publics
+- RSA < 2048 bits : interdit
+- MD5 : interdit
+
+* Fichiers téléchargés
+
+/Déposer les PDFs téléchargés dans ce dossier./

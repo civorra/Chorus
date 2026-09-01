@@ -1,0 +1,38 @@
+{
+  "projet": "stress-edge-pb_thickness-15-collective-1",
+  "description": "Edge: plasterboard_thickness=15mm (CONFORME for coll=0 ≥ 12.5) does NOT satisfy collective=1 requirement (needs ≥ 25mm) — pb_ok=NO dominates",
+  "_stress": {
+    "family":             "edge",
+    "pattern":            "A",
+    "slots":              ["plasterboard_thickness_mm", "collective"],
+    "source":             "fire R03 §5.3",
+    "agent":              "fire",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id":                        "LBS-STRESS-EDGE-PB15-COLL1",
+      "type_element":              "load_bearing_stud",
+      "needs_compliance":          1,
+      "strength_class":            "C24",
+      "moisture_pct":              14,
+      "clear_height_mm":           2700,
+      "spacing_mm":                400,
+      "width_mm":                  38,
+      "depth_mm":                  89,
+      "has_longitudinal_splice":   0,
+      "rei_period":                60,
+      "collective":                1,
+      "reaction_class":            "A1",
+      "surface_mass_kg_m2":        10,
+      "plasterboard_thickness_mm": 15,
+      "_resultats_attendus": {
+        "pb_thickness_ok":    "NO",
+        "fire_ok":            "NO",
+        "compliance_status":  "NON-COMPLIANT"
+      },
+      "_stress_note": "counter-intuitive: plasterboard_thickness=15mm is CONFORME for non-collective (min=12.5mm §5.3) but does NOT satisfy collective=1 requirement (min=25mm §5.3) — R03 evaluates min_pb_thickness(collective=1)=25; 15 < 25 → pb_thickness_ok=NO → fire_ok=NO → NON-COMPLIANT",
+      "_expected_uncertain": false
+    }
+  ]
+}

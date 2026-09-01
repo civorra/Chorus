@@ -1,0 +1,40 @@
+{
+  "projet": "stress-boundary-surface_mass_kg_m2-above",
+  "description": "Boundary: surface_mass_kg_m2 = 8.1 (T+ε, above min=8) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "surface_mass_kg_m2",
+    "threshold": 8,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "fire R02 §5.2 surface mass >= 8 kg/m²",
+    "agent": "fire",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-SURFMASS-ABOVE",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "needs_fire": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "reaction_class": "A1",
+      "surface_mass_kg_m2": 8.1,
+      "collective": 0,
+      "_resultats_attendus": {
+        "lining_ok": "YES",
+        "fire_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "surface_mass=8.1 > 8 (T+ε). Rule: mass >= 8 → YES.",
+      "_expected_uncertain": false
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+#+TITLE: eIDAS — Règlement (UE) 910/2014 & eIDAS 2.0
+#+DATE: 2026-06-23
+
+* Accès
+
+EUR-Lex : https://eur-lex.europa.eu
+- Téléchargement PDF gratuit, sans inscription
+- Disponible en toutes les langues officielles UE (dont français)
+
+* Documents pertinents
+
+| Document                           | URL                                                                                  | Statut        |
+|------------------------------------+--------------------------------------------------------------------------------------+---------------|
+| Règlement (UE) 910/2014 (eIDAS 1)  | https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX%3A32014R0910              | à télécharger |
+| eIDAS 2.0 (Règlement 2024/1183)    | https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX%3A32024R1183              | à télécharger |
+| ARF — Architecture Reference Framework | https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework | à consulter |
+| Actes d'exécution (décisions EU)   | https://eur-lex.europa.eu (recherche "eIDAS implementing decision")                  | à consulter   |
+
+* Structure du Règlement eIDAS 1 (910/2014)
+
+| Chapitre | Contenu | Pertinence Chorus |
+|----------+---------+-------------------|
+| Chapitre III — Art. 24-34 | Services de confiance qualifiés | 🔴 Exigences certificats qualifiés |
+| Annexe I | Exigences certificats qualifiés pour signature | 🔴 Profil obligatoire |
+| Annexe II | Exigences dispositifs sécurisés (QSCD) | HSM/carte à puce |
+| Annexe III | Exigences certificats qualifiés pour cachet | Personnes morales |
+| Annexe IV | Exigences certificats qualifiés pour auth. de site web | TLS qualifié |
+
+* Règles directement encodables
+
+** Annexe I — Certificat qualifié pour signature électronique
+
+Contenu obligatoire (chaque item = une règle YAML) :
+
+1. Indication qu'il s'agit d'un certificat qualifié (QC Statement OID)
+2. Ensemble de données représentant sans ambiguïté le prestataire
+3. Nom ou pseudonyme du signataire
+4. Données de validation de signature correspondant aux données de création
+5. Début et fin de la période de validité
+6. Code d'identité unique du certificat (serialNumber)
+7. Signature électronique avancée du prestataire émetteur
+8. Localisation du service de validation disponible gratuitement
+9. Localisation des services de révocation
+
+→ Règle YAML par item : vérifier présence et conformité de chaque champ obligatoire
+
+** Niveaux de garantie eIDAS
+
+- Low (faible) : =identity_assurance_level= = "low"
+- Substantial (substantiel) : vérification documentaire requise
+- High (élevé) : présence physique ou équivalent numérique qualifié
+
+* eIDAS 2.0 — Nouveautés (2024)
+
+- EUDIW (EU Digital Identity Wallet) : nouveau cadre portefeuille d'identité
+- PID (Person Identification Data) : attributs d'identité standardisés
+- QEAA (Qualified Electronic Attestation of Attributes) : attestations qualifiées
+- Interopérabilité obligatoire entre États membres
+
+→ Nouveaux profils de certificats et attestations à modéliser
+
+* Fichiers téléchargés
+
+| Fichier                                  | Norme                     | Pages | Taille  | Date       | Source Cellar                                                                 |
+|------------------------------------------+---------------------------+-------+---------+------------+-------------------------------------------------------------------------------|
+| eIDAS-1-reglement-UE-910-2014-FR.pdf     | Règlement (UE) 910/2014   | 42    | ~1,0 Mo | 2026-06-23 | cellar/23b61856-2e82-11e4-8c3c-01aa75ed71a1.0009.01/DOC_1                   |
+| eIDAS-2-reglement-UE-2024-1183-FR.pdf    | Règlement (UE) 2024/1183  | 56    | ~1,5 Mo | 2026-06-23 | cellar/459993a1-068e-11ef-a251-01aa75ed71a1.0009.01/DOC_1                   |
+
+Note technique : EUR-Lex est protégé par AWS WAF (challenge JS). Le téléchargement
+s'effectue via l'API Cellar (Publications Office UE) avec =Accept: application/pdf=
+sur =https://publications.europa.eu/resource/celex/<CELEX>=.

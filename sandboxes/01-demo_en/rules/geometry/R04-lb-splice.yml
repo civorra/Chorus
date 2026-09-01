@@ -1,0 +1,42 @@
+##
+# RULE: R04-lb-splice
+# AGENT: TimberFrame::Agent::Geometry  (pos. 2 / 5)
+# CORPUS: §3.4 — BS EN 1995-1-1 §5.4 — Continuity of load-bearing studs
+#
+# PURPOSE
+#   Rejects any load-bearing stud that contains a longitudinal splice within
+#   its storey height. The presence of a splice is a structural non-conformity.
+#   Applies only to load_bearing_stud elements with has_longitudinal_splice present.
+#
+# INPUTS  (slots read)
+#   needs_geometry          : targeting slot
+#   type_element            : must be 'load_bearing_stud'
+#   has_longitudinal_splice : bool — 1 = splice present
+#
+# OUTPUTS (slots written)
+#   splice_ok          : 'YES' or 'NO'
+#   geometry_rejection : string — failure reason (written only on rejection)
+#
+# GUARD — EXCEPTION: defined $f->{splice_ok}
+##
+RULE: R04-lb-splice
+FIND:
+  f:
+    attribut: needs_geometry
+    filtre: |
+      ($_->get('type_element') // '') eq 'load_bearing_stud'
+      && defined $_->get('has_longitudinal_splice')
+EXCEPTION: defined $f->{splice_ok}
+ACTION: |
+  # Check for longitudinal splice — §3.4 structural non-conformity
+  my $splice = $f->get('has_longitudinal_splice');
+
+  if ($splice) {
+    $f->set('splice_ok', 'NO');
+    $f->set('geometry_rejection',
+      "load-bearing stud has longitudinal splice — structural non-conformity (§3.4)");
+    return 1;
+  }
+
+  $f->set('splice_ok', 'YES');
+  1

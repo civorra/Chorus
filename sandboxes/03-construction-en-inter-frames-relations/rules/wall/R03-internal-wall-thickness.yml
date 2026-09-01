@@ -1,0 +1,78 @@
+##
+# RULE: R03-internal-wall-thickness
+# AGENT: ADA::Agent::Wall  (pos. 2 / 5)
+# CORPUS: §2C6 — Approved Document A (Structure) 2013 — Solid wall thickness ≥ Hs/16
+#          §2C10 — Approved Document A (Structure) 2013 — Base of 3-storey building min 140mm
+#
+# PURPOSE
+#   Verifies that internal (loadbearing) walls satisfy the §2C6 thickness rule:
+#   thickness ≥ storey_height / 16.
+#   Also applies §2C10 extension: a wall in the lowest storey of a three-storey building
+#   carrying load from both upper storeys must be at least 140mm thick (blockwork) —
+#   thickness ≥ max(Hs/16, 140mm) in that specific case.
+#
+# INPUTS  (slots read)
+#   besoin_wall          : targeting slot — 'Y'
+#   type_element         : 'internal_wall' (filtre)
+#   thickness_mm         : int — wall thickness in mm
+#   storey_height_m      : float — storey height Hs in metres
+#   storey_position      : 'base'/'upper'/'single' — storey position (§2C10; optional)
+#   building             : Frame ref — building this wall belongs to
+#                          (resolved from building_ref by Feed.pm at load time)
+#   building.num_storeys_building : int — total building storeys 1/2/3 (§2C10) — read via link
+#
+# OUTPUTS (slots written)
+#   wall_thickness_ok : 'YES'/'NO' — §2C6 / §2C10 verdict
+#   wall_violations   : str — violated constraints
+#   wall_ok           : 'YES'/'NO' — overall verdict
+#
+# GUARD — EXCEPTION: defined $w->{wall_ok}
+#   Idempotence.
+##
+RULE: R03-internal-wall-thickness
+FIND:
+  w:
+    attribut: besoin_wall
+    filtre: '($_->get("type_element")//"") eq "internal_wall"'
+EXCEPTION: defined $w->{wall_ok}
+ACTION: |
+  my @violations;
+  my $t        = $w->get('thickness_mm')         // 0;
+  my $hs       = $w->get('storey_height_m')      // 0;
+  my $pos      = $w->get('storey_position') // '';
+  # Read num_storeys_building via inter-frame link to the building Frame
+  my $bld      = $w->get('building');
+  my $nstoreys = defined($bld) ? ($bld->get('num_storeys_building') // 0) : 0;
+
+  # Determine minimum thickness
+  my $min_t = 0;
+
+  # §2C6: thickness ≥ Hs/16
+  if ($hs > 0) {
+      $min_t = int($hs * 1000 / 16);
+  }
+
+  # §2C10: base storey of a 3-storey building carrying both upper storeys → min 140mm
+  # (formula §2C10: Table3/2 - 5mm ≥ 140mm for 290mm external → 140mm absolute minimum)
+  if ($pos eq 'base' && $nstoreys == 3) {
+      $min_t = 140 if $min_t < 140;
+  }
+
+  if ($hs > 0 || ($pos eq 'base' && $nstoreys == 3)) {
+      if ($t < $min_t) {
+          my $corpus_ref = ($pos eq 'base' && $nstoreys == 3)
+              ? "(§2C6+§2C10, 3-storey base, min ${min_t}mm)"
+              : "(§2C6, Hs=${hs}m)";
+          push @violations, "thickness ${t}mm < min ${min_t}mm $corpus_ref";
+          $w->set('wall_thickness_ok', 'NO');
+      } else {
+          $w->set('wall_thickness_ok', 'YES');
+      }
+  } else {
+      # No storey height and no 3-storey base context — skip check (safe fallback)
+      $w->set('wall_thickness_ok', 'YES');
+  }
+
+  $w->set('wall_violations', join('; ', @violations));
+  $w->set('wall_ok',         @violations ? 'NO' : 'YES');
+  1

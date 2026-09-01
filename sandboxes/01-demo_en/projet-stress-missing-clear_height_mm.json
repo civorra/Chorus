@@ -1,0 +1,36 @@
+{
+  "projet": "stress-missing-clear_height_mm",
+  "description": "Missing input slot clear_height_mm on load_bearing_stud — R02-lb-cross-section FIND requires clear_height_mm AND spacing_mm; skips silently → frame_ok=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "clear_height_mm",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "geometry"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-CLEAR_HEIGHT_MM",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "strength_class":          "C24",
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "span_mm":                 3000,
+      "spacing_mm":              400,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective":              0,
+      "_resultats_attendus": {
+        "section_ok":        null,
+        "frame_ok":          "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot clear_height_mm — R02-lb-cross-section FIND requires both clear_height_mm AND spacing_mm AND width_mm AND depth_mm → skips silently. R05 fires: no rejection → frame_ok=YES → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

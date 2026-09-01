@@ -1,0 +1,30 @@
+##
+# RULE: R05-foundation-termination
+# AGENT: ADA::Agent::Foundation  (pos. 5 / 5 — terminal)
+# CORPUS: n/a — pipeline termination rule
+#
+# PURPOSE
+#   Terminal rule: fires when ALL Frames carrying besoin_foundation have been
+#   fully processed by all foundation rules (R01 through R04-b inclusive).
+#   Uses the YAML EXCEPTION pattern (fmatch in EXCEPTION block).
+#
+#   EXCEPTION evaluates to true (rule skipped) while:
+#     - at least one besoin_foundation Frame still lacks foundation_ok (R03 pending), OR
+#     - at least one Frame with pier_projection_x_mm still lacks pier_foundation_ok (R04-b pending).
+#   When both conditions clear, EXCEPTION → false → terminal fires → solved().
+#
+# INPUTS  (slots read)
+#   besoin_foundation    : targeting slot
+#   pier_projection_x_mm : optional — triggers R04-b requirement
+#   pier_foundation_ok   : set by R04-b
+#
+# OUTPUTS
+#   BOARD->{SOLVED} = 'Y'  (via TERMINAL: solved)
+##
+RULE: R05-foundation-termination
+TERMINAL: solved
+FIND:
+  dummy:
+    attribut: besoin_foundation
+EXCEPTION: "do { my @f = Chorus::Frame::fmatch(slot => 'besoin_foundation'); (scalar grep { !defined \$_->get('foundation_ok') } @f) || (scalar grep { defined \$_->get('pier_projection_x_mm') && !defined \$_->get('pier_foundation_ok') } @f) }"
+ACTION: "1"

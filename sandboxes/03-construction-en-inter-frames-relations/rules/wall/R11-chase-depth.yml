@@ -1,0 +1,93 @@
+##
+# RULE: R11-chase-depth
+# AGENT: ADA::Agent::Wall  (pos. 2 / 6)
+# CORPUS: §2C30 — Approved Document A 2013 — Chases
+#
+# PURPOSE
+#   Verifies that chases cut into walls comply with §2C30 depth limits:
+#   - Vertical chases: depth ≤ 1/3 of wall thickness (or 1/3 of leaf for cavity walls)
+#   - Horizontal chases: depth ≤ 1/6 of wall/leaf thickness
+#   - Chases must not impair wall stability (§2C30c — flag if near hollow-block walls)
+#   Fires on any wall Frame (external or internal) where chase data is provided.
+#
+# INPUTS  (slots read)
+#   besoin_wall          : targeting slot
+#   chase_depth_mm       : depth of chase (mm) — provided by feed
+#   chase_orientation    : 'vertical' or 'horizontal' — direction of chase
+#   thickness_mm         : total wall thickness (mm) — used for solid walls
+#   wall_type            : 'solid' or 'cavity' — determines reference thickness
+#   leaf_thickness_mm    : thickness of the chased leaf (mm, optional — cavity walls)
+#                          if absent, min(leaf_inner_mm, leaf_outer_mm) is used as fallback
+#   leaf_inner_mm        : inner leaf (mm, optional fallback for cavity)
+#   leaf_outer_mm        : outer leaf (mm, optional fallback for cavity)
+#
+# OUTPUTS (slots written)
+#   chase_ok             : 'YES'/'NO' — chase depth within §2C30 limits
+#   wall_violations      : cumulative violation list
+#   wall_ok              : updated to 'NO' on violation
+#
+# GUARD — EXCEPTION: defined $w->{chase_ok}
+#   Idempotence — prevents re-processing a Frame already handled in a previous cycle.
+##
+RULE: chase-depth
+FIND:
+  w:
+    attribut: besoin_wall
+    filtre: "defined $_->get('chase_depth_mm') && defined $_->get('chase_orientation')"
+EXCEPTION: defined $w->{chase_ok}
+ACTION: |
+  # Read chase inputs
+  my @viol = split /;\s*/, ($w->get('wall_violations') // '');
+  my $cd   = $w->get('chase_depth_mm')    // 0;
+  my $ori  = $w->get('chase_orientation') // 'vertical';
+  my $wt   = $w->get('wall_type')         // 'solid';
+
+  # Determine reference thickness for the chase limit
+  my $ref_t;
+  if ($wt eq 'cavity') {
+      # §2C30 specifies 1/3 of the thickness of the leaf (not the total wall)
+      $ref_t = $w->get('leaf_thickness_mm')
+             // do {
+                  my $li = $w->get('leaf_inner_mm') // 0;
+                  my $lo = $w->get('leaf_outer_mm') // 0;
+                  # Conservative: use the thinner leaf (worst case)
+                  ($li > 0 && $lo > 0) ? ($li < $lo ? $li : $lo) : ($li || $lo || 0);
+              };
+  } else {
+      $ref_t = $w->get('thickness_mm') // 0;
+  }
+
+  return 0 unless $ref_t > 0;   # no thickness data — skip silently
+
+  # §2C30a: vertical chase ≤ 1/3 of (leaf) thickness
+  # §2C30b: horizontal chase ≤ 1/6 of (leaf) thickness
+  my $max_depth;
+  if ($ori eq 'horizontal') {
+      $max_depth = $ref_t / 6;
+      if ($cd > $max_depth) {
+          my $md = sprintf("%.1f", $max_depth);
+          push @viol,
+              "horizontal chase ${cd}mm > T/6 = ${md}mm (§2C30b, leaf/wall t=${ref_t}mm)";
+      }
+  } else {
+      # vertical (default)
+      $max_depth = $ref_t / 3;
+      if ($cd > $max_depth) {
+          my $md = sprintf("%.1f", $max_depth);
+          push @viol,
+              "vertical chase ${cd}mm > T/3 = ${md}mm (§2C30a, leaf/wall t=${ref_t}mm)";
+      }
+  }
+
+  # §2C30c: flag if hollow-block construction (stability risk)
+  if (($w->get('wall_construction_material') // '') =~ /hollow/i) {
+      push @viol,
+          "chase in hollow-block wall: verify stability not impaired (§2C30c)";
+  }
+
+  # Write results
+  my $ok = @viol ? 'NO' : 'YES';
+  $w->set('chase_ok',        $ok);
+  $w->set('wall_violations', join('; ', @viol));
+  $w->set('wall_ok', 'NO') if $ok eq 'NO';
+  1

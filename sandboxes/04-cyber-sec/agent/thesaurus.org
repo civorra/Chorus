@@ -1,0 +1,37 @@
+#+TITLE: Project terminology thesaurus — sandbox 11-cyber-sec
+#+UPDATED: 2025-07-09
+#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox.
+               Maintained automatically by chorus-import-project.
+               Do NOT edit KB org files to add project aliases — use this file instead.
+
+* Aliases — type_element
+  Project terms validated as mapping to a specific KB type_element.
+  Applied at ✅ confidence on every future import without asking again.
+
+  | Project term         | KB type_element | Confidence   | Source import     |
+  |----------------------|-----------------|--------------|-------------------|
+  | certificat_ext       | cert_ext        | ✅ confirmed | import-report-001 |
+  | personne physique    | nat             | ✅ confirmed | import-report-001 |
+  | personne morale      | leg             | ✅ confirmed | import-report-001 |
+  | certificat serveur   | web             | ✅ confirmed | import-report-001 |
+  | certificat générique | gen             | ✅ confirmed | import-report-001 |
+
+* Aliases — slot values
+  Project value expressions validated as mapping to a specific KB slot + value.
+  Applied at ✅ confidence on every future import without asking again.
+
+  | Project term      | KB slot               | KB value           | Confidence   | Source import     |
+  |-------------------|-----------------------|--------------------|--------------|-------------------|
+  | prenom_present    | has_given_name        | "Y"                | ✅ confirmed | import-report-001 |
+  | raison_sociale    | has_org_name          | "Y"                | ✅ confirmed | import-report-001 |
+  | politiques_cert   | has_cert_policies     | "Y"                | ✅ confirmed | import-report-001 |
+  | non-répudiation   | key_usage_bits        | "nonRepudiation"   | ✅ confirmed | import-report-001 |
+  | signature-num     | key_usage_bits        | "digitalSignature" | ✅ confirmed | import-report-001 |
+  | duree_h           | validity_period_hours | (integer value)    | ✅ confirmed | import-report-001 |
+  | OUI (flag)        | (any flag slot)       | "Y"                | ✅ confirmed | import-report-001 |
+
+* Pending — to confirm on next import
+  (vide)
+
+* Out-of-scope terms (⬜)
+  (vide)

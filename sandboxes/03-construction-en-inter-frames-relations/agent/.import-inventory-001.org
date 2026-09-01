@@ -1,0 +1,139 @@
+#+TITLE: Raw Import Inventory — building-01.html
+#+DATE: 2025-07-17
+#+SOURCE: coorp/building-01.html
+#+SANDBOX: 02-construction-en-inter-frames-relations
+#+DESCRIPTION: Phase 2 raw inventory — all 50 elements extracted from the HTML source.
+               Project terminology preserved verbatim. Alignment applied in Phase 3.
+
+* Section 1 — Building Frames
+
+** 1.1 Residential Buildings (Detached Houses)
+   Columns: Ref | Element Category | Occupancy/Use | Storeys (bldg) | Storeys (unit) |
+            Height (m) | Least Width W1 (m) | Floor Area (m²) | Wind Factor S |
+            Site Exposure | Coast Distance (km)
+
+   | Ref    | Element Category | Occupancy / Use | Storeys (bldg) | Storeys (unit) | Height (m) | Least Width W1 (m) | Floor Area (m²) | Wind Factor S | Site Exposure | Coast Distance (km) |
+   |--------+------------------+-----------------+----------------+----------------+------------+--------------------+-----------------+---------------+---------------+---------------------|
+   | RES-01 | Detached House   | Dwelling House  | 3              | 3              | 9.0        | 8.0                | 62              | 26            | Town          | 12.0                |
+   | RES-02 | Detached House   | Dwelling House  | 2              | 2              | 6.0        | 7.5                | 55              | 24            | Country       | 8.0                 |
+
+** 1.2 Non-Residential & Ancillary Structures
+   Columns: Ref | Element Category | Height (m) | Width/Plan Dim (m) | Floor Area (m²) | Roof Type
+
+   | Ref    | Element Category         | Height (m) | Width/Plan Dim (m) | Floor Area (m²) | Roof Type |
+   |--------+--------------------------+------------+--------------------+-----------------+-----------|
+   | NRB-01 | Single-Storey Outbuilding | 2.8       | 7.0                | 32              | —         |
+   | ANX-01 | Garden Annexe            | 2.6        | —                  | 16              | Flat      |
+
+* Section 2 — Exterior Wall Schedule
+
+** 2.1 Exterior Cavity Walls — Upper Storey
+   Columns: Ref | Element Category | Construction | Wall Check Req. | Overall t (mm) | Height (m) |
+            Length (m) | Storey Ht (m) | Inner Leaf (mm) | Outer Leaf (mm) | Cavity (mm) |
+            Tie Length (mm) | Storey Position | Building Ref | Unit Type | Material | Group |
+            Decl. Strength (N/mm²) | Mortar | Ground Class | Shrinkage | Wall Load (kN/m) |
+            Fdn Width (mm) | Fdn Depth (m) | Fdn Thickness (mm) | Projection P (mm)
+
+   | Ref     | Element Category     | Construction      | Wall Check Req. | t (mm) | H (m) | L (m) | Hs (m) | Inner (mm) | Outer (mm) | Cav (mm) | Tie (mm) | Storey Position | Building Ref | Unit Type  | Material   | Group | Decl. Str. | Mortar                | Ground Class | Shrinkage       | Load | Fdn W | Fdn D | Fdn T | P  |
+   |---------+----------------------+-------------------+-----------------+--------+-------+-------+--------+------------+------------+----------+----------+-----------------+--------------+------------+------------+-------+------------+-----------------------+--------------+-----------------+------+-------+-------+-------+----|
+   | EW-T-01 | Exterior Cavity Wall | Twin-leaf cavity  | Y               | 290    | 3.0   | 8.0   | 2.7    | 100        | 100        | 90       | 225      | Top storey      | RES-01       | Brick unit | Fired clay | 1     | 7.5        | Mix Designation (iii) | Class II     | Non-shrinkable  | 20   | 300   | 0.50  | 200   | 75 |
+   | EW-T-02 | Exterior Cavity Wall | Twin-leaf cavity  | Y               | 290    | 3.0   | 6.0   | 2.7    | 100        | 100        | 90       | 225      | Top storey      | RES-01       | Brick unit | Fired clay | 1     | 7.5        | Mix Designation (iii) | Class II     | Non-shrinkable  | 20   | 300   | 0.50  | 200   | 75 |
+   | EW-T-03 | Exterior Cavity Wall | Twin-leaf cavity  | Y               | 290    | 3.0   | 7.5   | 2.7    | 100        | 100        | 90       | 225      | Top storey      | RES-01       | Brick unit | Fired clay | 1     | 8.0        | Mix Designation (iii) | Class II     | Non-shrinkable  | 20   | 300   | 0.50  | 200   | 75 |
+   | EW-T-04 | Exterior Cavity Wall | Twin-leaf cavity  | Y               | 290    | 3.0   | 5.5   | 2.7    | 100        | 100        | 90       | 225      | Top storey      | RES-01       | Brick unit | Fired clay | 1     | 7.5        | Mix Designation (iii) | Class III    | Non-shrinkable  | 20   | 300   | 0.50  | 200   | 75 |
+   | EW-T-05 | Exterior Cavity Wall | Twin-leaf cavity  | Y               | 290    | 3.0   | 8.0   | 2.7    | 100        | 100        | 90       | 225      | Top storey      | RES-02       | Brick unit | Fired clay | 1     | 7.5        | Mix Designation (iii) | Class II     | Non-shrinkable  | 20   | 300   | 0.50  | 200   | 75 |
+   | EW-T-06 | Exterior Cavity Wall | Twin-leaf cavity  | Y               | 290    | 3.0   | 6.0   | 2.7    | 100        | 100        | 90       | 225      | Top storey      | RES-02       | Brick unit | Fired clay | 1     | 7.5        | Mix Designation (iii) | Class II     | Non-shrinkable  | 20   | 300   | 0.50  | 200   | 75 |
+   | EW-T-07 | Exterior Cavity Wall | Twin-leaf cavity  | Y               | 340    | 3.0   | 7.0   | 2.7    | 115        | 102        | 123      | 250      | Top storey      | RES-01       | Brick unit | Fired clay | 2     | 10.0       | Mix Designation (iii) | Class II     | Non-shrinkable  | 20   | 300   | 0.50  | 200   | 75 |
+
+** 2.2 Exterior Solid Wall — Upper Storey
+   | Ref     | Element Category    | Construction   | Wall Check Req. | t (mm) | H (m) | L (m) | Hs (m) | Storey Position | Building Ref | Unit Type  | Material   | Group | Decl. Str. | Mortar                | Ground Class | Shrinkage      | Load | Fdn W | Fdn D | Fdn T | P  |
+   |---------+---------------------+----------------+-----------------+--------+-------+-------+--------+-----------------+--------------+------------+------------+-------+------------+-----------------------+--------------+----------------+------+-------+-------+-------+----|
+   | EW-T-08 | Exterior Solid Wall | Solid masonry  | Y               | 215    | 3.0   | 5.0   | 2.7    | Top storey      | RES-02       | Brick unit | Fired clay | 1     | 7.5        | Mix Designation (iii) | Class II     | Non-shrinkable | 20   | 300   | 0.50  | 200   | 75 |
+
+** 2.3 Exterior Solid Walls — Ground-Floor Level
+   | Ref       | Element Category    | Construction  | Wall Check Req. | t (mm) | H (m) | L (m) | Hs (m) | Storey Position    | Building Ref | Unit Type  | Material   | Group | Decl. Str. | Mortar          | Ground Class | Shrinkage                | Load | Fdn W | Fdn D | Fdn T | P   |
+   |-----------+---------------------+---------------+-----------------+--------+-------+-------+--------+--------------------+--------------+------------+------------+-------+------------+-----------------+--------------+--------------------------+------+-------+-------+-------+-----|
+   | EW-B-01   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.2   | 8.0   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Low shrinkage potential  | 30   | 350   | 0.85  | 200   | 100 |
+   | EW-B-02   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.2   | 6.0   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Low shrinkage potential  | 30   | 350   | 0.85  | 200   | 100 |
+   | EW-B-03   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 7.5   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Low shrinkage potential  | 30   | 350   | 0.85  | 200   | 100 |
+   | EW-B-04   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 5.5   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class III    | Low shrinkage potential  | 30   | 350   | 0.85  | 200   | 100 |
+   | EW-B-05   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 8.0   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Non-shrinkable           | 20   | 300   | 0.50  | 200   | 75  |
+   | EW-B-06   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 6.0   | 2.7    | Ground-floor level | RES-02       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Non-shrinkable           | 20   | 300   | 0.50  | 200   | 75  |
+   | EW-B-07   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 7.0   | 2.7    | Ground-floor level | RES-02       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Non-shrinkable           | 20   | 300   | 0.50  | 200   | 75  |
+   | EW-B-09   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 6.5   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 22.0       | M4 class mortar | Class II     | Non-shrinkable           | 20   | 300   | 0.50  | 200   | 75  |
+   | EW-B-10   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 5.0   | 2.7    | Ground-floor level | RES-02       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Non-shrinkable           | 20   | 300   | 0.50  | 200   | 75  |
+   | EW-B-11   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.2   | 7.0   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class III    | Medium shrinkage potential| 30   | 400   | 0.95  | 200   | 100 |
+   | EW-B-12   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 6.0   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Low shrinkage potential  | 30   | 350   | 0.80  | 200   | 75  |
+   | EW-B-13   | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 5.0   | 2.7    | Ground-floor level | RES-02       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class II     | Non-shrinkable           | 20   | 300   | 0.50  | 200   | 75  |
+
+** 2.4 Exterior Cavity Wall — Ground-Floor Level
+   | Ref     | Element Category     | Construction     | Wall Check Req. | t (mm) | H (m) | L (m) | Hs (m) | Inner (mm) | Outer (mm) | Cav (mm) | Tie (mm) | Storey Position    | Building Ref | Unit Type  | Material   | Group | Decl. Str. | Mortar          | Ground Class | Shrinkage               | Load | Fdn W | Fdn D | Fdn T | P   |
+   |---------+----------------------+------------------+-----------------+--------+-------+-------+--------+------------+------------+----------+----------+--------------------+--------------+------------+------------+-------+------------+-----------------+--------------+-------------------------+------+-------+-------+-------+-----|
+   | EW-B-08 | Exterior Cavity Wall | Twin-leaf cavity | Y               | 350    | 3.0   | 8.0   | 2.7    | 100        | 100        | 150      | 275      | Ground-floor level | RES-02       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class III    | Low shrinkage potential | 30   | 350   | 0.85  | 200   | 100 |
+
+** 2.5 Exterior Wall — Non-Compliant (Foundation Width Deficit)
+   | Ref            | Element Category    | Construction  | Wall Check Req. | t (mm) | H (m) | L (m) | Hs (m) | Storey Position    | Building Ref | Unit Type  | Material   | Group | Decl. Str. | Mortar          | Ground Class | Shrinkage      | Load | Fdn W | Fdn D | Fdn T | P   |
+   |----------------+---------------------+---------------+-----------------+--------+-------+-------+--------+--------------------+--------------+------------+------------+-------+------------+-----------------+--------------+----------------+------+-------+-------+-------+-----|
+   | EW-KO-FW-01    | Exterior Solid Wall | Solid masonry | Y               | 215    | 3.0   | 5.0   | 2.7    | Ground-floor level | RES-01       | Brick unit | Fired clay | 1     | 20.0       | M4 class mortar | Class IV     | Non-shrinkable | 40   | 400   | 0.50  | 200   | 100 |
+
+* Section 3 — Internal Partition Schedule
+   Columns: Ref | Element Category | Wall Check Req. | Thickness (mm) | Storey Ht (m) | Storey Position | Building Ref | Compliance
+
+   | Ref             | Element Category   | Wall Check Req. | Thickness (mm) | Storey Ht (m) | Storey Position    | Building Ref | Compliance                      |
+   |-----------------+--------------------+-----------------+----------------+---------------+--------------------+--------------+---------------------------------|
+   | IW-01           | Internal Partition | Y               | 200            | 2.7           | Ground-floor level | RES-01       | —                               |
+   | IW-02           | Internal Partition | Y               | 215            | 2.7           | Top storey         | RES-01       | —                               |
+   | IW-03           | Internal Partition | Y               | 200            | 2.7           | Ground-floor level | RES-02       | —                               |
+   | IW-04           | Internal Partition | Y               | 200            | 2.7           | Top storey         | RES-02       | —                               |
+   | IW-05           | Internal Partition | Y               | 215            | 2.7           | Single storey      | NRB-01       | —                               |
+   | IW-06           | Internal Partition | Y               | 200            | 2.7           | Ground-floor level | RES-01       | —                               |
+   | IW-07           | Internal Partition | Y               | 200            | 2.7           | Top storey         | RES-01       | —                               |
+   | IW-08           | Internal Partition | Y               | 215            | 2.7           | Ground-floor level | RES-01       | —                               |
+   | IW-09           | Internal Partition | Y               | 200            | 2.7           | Top storey         | RES-02       | —                               |
+   | IW-KO-THK-01    | Internal Partition | Y               | 100            | 2.7           | Ground-floor level | RES-01       | ⚠ t=100mm < Hs/16=169mm (§2C10) |
+
+* Section 4 — Parapet Schedule
+   Columns: Ref | Element Category | Wall Check Req. | Parapet Type | Thickness t (mm) | Height hp (m) |
+            Building Ref | Unit Type | Material | Group | Decl. Strength (N/mm²) | Compliance
+
+   | Ref          | Element Category | Wall Check Req. | Parapet Type | t (mm) | hp (m) | Building Ref | Unit Type  | Material   | Group | Decl. Str. | Compliance                          |
+   |--------------+------------------+-----------------+--------------+--------+--------+--------------+------------+------------+-------+------------+-------------------------------------|
+   | PW-01        | Parapet          | Y               | Type B       | 215    | 0.45   | RES-01       | Brick unit | Fired clay | 1     | 7.5        | —                                   |
+   | PW-02        | Parapet          | Y               | Type B       | 215    | 0.55   | RES-02       | Brick unit | Fired clay | 1     | 7.5        | —                                   |
+   | PW-03        | Parapet          | Y               | Type B       | 215    | 0.50   | RES-01       | Brick unit | Fired clay | 1     | 7.5        | —                                   |
+   | PW-04        | Parapet          | Y               | Type B       | 215    | 0.40   | NRB-01       | Brick unit | Fired clay | 1     | 7.5        | —                                   |
+   | PW-KO-H-01   | Parapet          | Y               | Type B       | 215    | 0.75   | RES-01       | Brick unit | Fired clay | 1     | 7.5        | ⚠ hp=0.75m > max 0.60m (§2C17 Diag.4) |
+
+* Section 5 — Buttressing (Return) Wall Schedule
+   Columns: Ref | Element Category | Wall Check Req. | Supported Wall Ref | Buttressing Length (m) | Compliance
+
+   | Ref            | Element Category | Wall Check Req. | Supported Wall Ref | Buttressing Length (m) | Compliance                                |
+   |----------------+------------------+-----------------+--------------------+------------------------+-------------------------------------------|
+   | BW-01          | Return Wall      | Y               | EW-B-01            | 0.80                   | —                                         |
+   | BW-02          | Return Wall      | Y               | EW-B-02            | 0.70                   | —                                         |
+   | BW-03          | Return Wall      | Y               | EW-B-06            | 0.60                   | —                                         |
+   | BW-04          | Return Wall      | Y               | EW-T-01            | 0.60                   | —                                         |
+   | BW-05          | Return Wall      | Y               | EW-B-07            | 0.65                   | —                                         |
+   | BW-06          | Return Wall      | Y               | EW-T-05            | 0.55                   | —                                         |
+   | BW-KO-LEN-01   | Return Wall      | Y               | EW-B-01            | 0.50                   | ⚠ Length 0.50m < H/6=0.533m (§2C17)      |
+
+* Section 6 — Chimney Stack Schedule
+   Columns: Ref | Element Category | Stack Height (m) | Least Width (m) | Unit Density (kg/m³) | Compliance
+
+   | Ref    | Element Category | Stack Height (m) | Least Width (m) | Unit Density (kg/m³) | Compliance |
+   |--------+------------------+------------------+-----------------+----------------------+------------|
+   | CHM-01 | Chimney Stack    | 1.0              | 0.45            | 1800                 | —          |
+   | CHM-02 | Chimney Stack    | 1.5              | 0.50            | 1900                 | —          |
+
+* Summary Count
+  | Category              | Count |
+  |-----------------------+-------|
+  | Residential building  | 2     |
+  | Non-residential bldg  | 1     |
+  | Annexe                | 1     |
+  | External wall (cavity)| 9     |
+  | External wall (solid) | 13    |
+  | Internal wall         | 10    |
+  | Parapet wall          | 5     |
+  | Buttressing wall      | 7     |
+  | Chimney               | 2     |
+  | TOTAL                 | 50    |

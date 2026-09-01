@@ -1,0 +1,413 @@
+    ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+
+EUROPEAN STANDARD
+
+
+
+
+      Electronic Signatures and Infrastructures (ESI);
+                     Certificate Profiles;
+      Part 3: Certificate profile for certificates issued
+                       to legal persons
+                                                                2                             ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+
+                                                            Reference
+                                                      REN/ESI-0019412-3
+
+                                                            Keywords
+                                        electronic signature, IP, profile, security, trust
+                                                           services
+
+
+
+                                                               ETSI
+                                                  650 Route des Lucioles
+                                         F-06921 Sophia Antipolis Cedex - FRANCE
+
+                                       Tel.: +33 4 92 94 42 00 Fax: +33 4 93 65 47 16
+
+                                              Siret N° 348 623 562 00017 - APE 7112B
+                                            Association à but non lucratif enregistrée à la
+                                           Sous-Préfecture de Grasse (06) N° w061004871
+
+
+
+                                                       Important notice
+                                       The present document can be downloaded from:
+                                            https://www.etsi.org/standards-search
+The present document may be made available in electronic versions and/or in print. The content of any electronic and/or
+print versions of the present document shall not be modified without the prior written authorization of ETSI. In case of any
+   existing or perceived difference in contents between such versions and/or in print, the prevailing version of an ETSI
+                    deliverable is the one made publicly available in PDF format at www.etsi.org/deliver.
+    Users of the present document should be aware that the document may be subject to revision or change of status.
+                    Information on the current status of this and other ETSI documents is available at
+                                  https://portal.etsi.org/TB/ETSIDeliverableStatus.aspx
+          If you find errors in the present document, please send your comment to one of the following services:
+                                   https://portal.etsi.org/People/CommiteeSupportStaff.aspx
+                   If you find a security vulnerability in the present document, please report it through our
+                                         Coordinated Vulnerability Disclosure Program:
+                              https://www.etsi.org/standards/coordinated-vulnerability-disclosure
+
+                                       Notice of disclaimer & limitation of liability
+The information provided in the present deliverable is directed solely to professionals who have the appropriate degree of
+         experience to understand and interpret its content in accordance with generally accepted engineering or
+                                 other professional standard and applicable regulations.
+                No recommendation as to products and services or vendors is made or should be implied.
+        In no event shall ETSI be held liable for loss of profits or any other incidental or consequential damages.
+
+   Any software contained in this deliverable is provided "AS IS" with no warranties, express or implied, including but not
+ limited to, the warranties of merchantability, fitness for a particular purpose and non-infringement of intellectual property
+ rights and ETSI shall not be held liable in any event for any damages whatsoever (including, without limitation, damages
+for loss of profits, business interruption, loss of information, or any other pecuniary loss) arising out of or related to the use
+                                                 of or inability to use the software.
+
+                                                   Copyright Notification
+No part may be reproduced or utilized in any form or by any means, electronic or mechanical, including photocopying and
+                             microfilm except as authorized by written permission of ETSI.
+             The content of the PDF version shall not be modified without the written authorization of ETSI.
+                    The copyright and the foregoing restriction extend to reproduction in all media.
+
+                                                          © ETSI 2023.
+                                                       All rights reserved.
+
+
+
+
+                                                              ETSI
+                                                                                         3                                    ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+Contents
+Intellectual Property Rights ................................................................................................................................4
+Foreword.............................................................................................................................................................4
+Modal verbs terminology....................................................................................................................................4
+Introduction ........................................................................................................................................................5
+1        Scope ........................................................................................................................................................6
+2        References ................................................................................................................................................6
+2.1           Normative references ......................................................................................................................................... 6
+2.2           Informative references ........................................................................................................................................ 6
+3        Definition of terms, symbols, abbreviations and notations ......................................................................7
+3.1           Terms.................................................................................................................................................................. 7
+3.2           Symbols .............................................................................................................................................................. 7
+3.3           Abbreviations ..................................................................................................................................................... 7
+3.4           Notations ............................................................................................................................................................ 7
+4        Profile requirements .................................................................................................................................7
+4.1           Generic requirements ......................................................................................................................................... 7
+4.2           Basic certificate fields ........................................................................................................................................ 7
+4.2.1            Subject .......................................................................................................................................................... 7
+4.3           Standard certificate extensions ........................................................................................................................... 8
+4.3.1            Key usage...................................................................................................................................................... 8
+
+Annex A (informative):                           Change History ................................................................................................9
+History ..............................................................................................................................................................10
+
+
+
+
+                                                                                      ETSI
+                                                              4                       ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+Intellectual Property Rights
+Essential patents
+
+IPRs essential or potentially essential to normative deliverables may have been declared to ETSI. The declarations
+pertaining to these essential IPRs, if any, are publicly available for ETSI members and non-members, and can be
+found in ETSI SR 000 314: "Intellectual Property Rights (IPRs); Essential, or potentially Essential, IPRs notified to
+ETSI in respect of ETSI standards", which is available from the ETSI Secretariat. Latest updates are available on the
+ETSI Web server (https://ipr.etsi.org/).
+
+Pursuant to the ETSI Directives including the ETSI IPR Policy, no investigation regarding the essentiality of IPRs,
+including IPR searches, has been carried out by ETSI. No guarantee can be given as to the existence of other IPRs not
+referenced in ETSI SR 000 314 (or the updates on the ETSI Web server) which are, or may be, or may become,
+essential to the present document.
+
+Trademarks
+
+The present document may include trademarks and/or tradenames which are asserted and/or registered by their owners.
+ETSI claims no ownership of these except for any which are indicated as being the property of ETSI, and conveys no
+right to use or reproduce any trademark and/or tradename. Mention of those trademarks in the present document does
+not constitute an endorsement by ETSI of products, services or organizations associated with those trademarks.
+
+DECT™, PLUGTESTS™, UMTS™ and the ETSI logo are trademarks of ETSI registered for the benefit of its
+Members. 3GPP™ and LTE™ are trademarks of ETSI registered for the benefit of its Members and of the 3GPP
+Organizational Partners. oneM2M™ logo is a trademark of ETSI registered for the benefit of its Members and of the
+oneM2M Partners. GSM® and the GSM logo are trademarks registered and owned by the GSM Association.
+
+
+
+Foreword
+This European Standard (EN) has been produced by ETSI Technical Committee Electronic Signatures and
+Infrastructures (ESI).
+
+The present document is part 3 of multi-part deliverable covering the Certificate Profiles. Full details of the entire series
+can be found in part 1 [i.4].
+
+
+                                            National transposition dates
+ Date of adoption of this EN:                                                         21 September 2023
+ Date of latest announcement of this EN (doa):                                        31 December 2023
+ Date of latest publication of new National Standard
+ or endorsement of this EN (dop/e):                                                   30 June 2024
+ Date of withdrawal of any conflicting National Standard (dow):                       30 June 2024
+
+
+
+
+Modal verbs terminology
+In the present document "shall", "shall not", "should", "should not", "may", "need not", "will", "will not", "can" and
+"cannot" are to be interpreted as described in clause 3.2 of the ETSI Drafting Rules (Verbal forms for the expression of
+provisions).
+
+"must" and "must not" are NOT allowed in ETSI deliverables except when used in direct citation.
+
+
+
+
+                                                            ETSI
+                                                             5                       ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+Introduction
+ITU and ISO issued standards for certification of public keys in Recommendation ITU-T X.509 | ISO/IEC 9594-8 [i.2]
+which are used for the security of communications and data for a wide range of electronic applications.
+
+Regulation (EU) No 910/2014 [i.3] of the European Parliament and of the Council of 23 July 2014 on electronic
+identification and trust services for electronic transactions in the internal market and repealing Directive
+1999/93/EC [i.1] defines requirements on specific types of certificates named "qualified certificates". Implementation of
+Directive 1999/93/EC [i.1] and deployment of certificate infrastructures throughout Europe as well as in countries
+outside of Europe, have resulted in a variety of certificate implementations for use in public and closed environments,
+where some are declared as qualified certificates while others are not.
+
+Applications need support from standardized and interoperable identity certificate profiles, in particular when
+applications are used for digital signatures, authentication and secure electronic exchange in open environments and
+international trust scenarios, but also when certificates are used in local application contexts.
+
+ETSI EN 319 412-2 [2] specifies a profile for certificates issued to natural persons, which provides the basis for this
+profile for certificates issued to legal persons.
+
+The present document aims to maximize the interoperability of systems issuing and using certificates both in the
+European context under the Regulation (EU) No 910/2014 [i.3] and in the wider international environment.
+
+
+
+
+                                                           ETSI
+                                                              6                       ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+1             Scope
+The present document specifies a certificate profile for certificates issued to legal persons. The profile defined in the
+present document builds on requirements defined in ETSI EN 319 412-2 [2].
+
+The present document supports the requirements of EU qualified certificates as specified in the Regulation (EU)
+No 910/2014 [i.3] as well as other forms of certificate.
+
+
+
+2             References
+
+2.1           Normative references
+References are either specific (identified by date of publication and/or edition number or version number) or
+non-specific. For specific references, only the cited version applies. For non-specific references, the latest version of the
+referenced document (including any amendments) applies.
+
+Referenced documents which are not found to be publicly available in the expected location might be found at
+https://docbox.etsi.org/Reference/.
+
+    NOTE:     While any hyperlinks included in this clause were valid at the time of publication, ETSI cannot guarantee
+              their long term validity.
+
+The following referenced documents are necessary for the application of the present document.
+
+    [1]               Recommendation ITU-T X.520 (10/2012): "Information technology - Open Systems
+                      Interconnection - The Directory: Selected attribute types".
+
+    [2]               ETSI EN 319 412-2: "Electronic Signatures and Infrastructures (ESI); Certificate Profiles; Part 2:
+                      Certificate Profile for certificates issued to natural persons".
+
+    [3]               IETF RFC 5280: "Internet X.509 Public Key Infrastructure Certificate and Certificate Revocation
+                      List (CRL) Profile".
+
+
+2.2           Informative references
+References are either specific (identified by date of publication and/or edition number or version number) or
+non-specific. For specific references, only the cited version applies. For non-specific references, the latest version of the
+referenced document (including any amendments) applies.
+
+    NOTE:     While any hyperlinks included in this clause were valid at the time of publication, ETSI cannot guarantee
+              their long term validity.
+
+The following referenced documents are not necessary for the application of the present document but they assist the
+user with regard to a particular subject area.
+
+    [i.1]             Directive 1999/93/EC of the European Parliament and of the Council of 13 December 1999 on a
+                      Community framework for electronic signatures.
+
+    [i.2]             Recommendation ITU-T X.509 | ISO/IEC 9594-8: "Information technology - Open Systems
+                      Interconnection - The Directory: Public-key and attribute certificate frameworks".
+
+    [i.3]             Regulation (EU) No 910/2014 of the European Parliament and of the Council of 23 July 2014 on
+                      electronic identification and trust services for electronic transactions in the internal market and
+                      repealing Directive 1999/93/EC.
+
+    [i.4]             ETSI EN 319 412-1: "Electronic Signatures and Infrastructures (ESI); Certificate Profiles; Part 1:
+                      Overview and common data structures".
+
+
+
+
+                                                            ETSI
+                                                            7                       ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+3             Definition of terms, symbols, abbreviations and
+              notations
+
+3.1           Terms
+For the purposes of the present document, the terms given in ETSI EN 319 412-1 [i.4] apply.
+
+
+3.2           Symbols
+Void.
+
+
+3.3           Abbreviations
+For the purposes of the present document, the abbreviations given in ETSI EN 319 412-2 [2] apply.
+
+
+3.4           Notations
+For the purposes of the present document, the notations given in ETSI EN 319 412-1 [i.4] apply.
+
+
+
+4             Profile requirements
+
+4.1           Generic requirements
+LEG-4.1-1: All certificate fields and extensions shall comply with ETSI EN 319 412-2 [2] with the amendments
+specified in the present document.
+
+
+4.2           Basic certificate fields
+4.2.1         Subject
+LEG-4.2.1-1: Clause 4.2.4 of ETSI EN 319 412-2 [2] shall not apply.
+
+LEG-4.2.1-2: The subject field shall include at least the following attributes as specified in Recommendation
+ITU-T X.520 [1]:
+
+    •    countryName;
+
+    •    organizationName;
+
+    •    organizationIdentifier; and
+
+    •    commonName.
+
+LEG-4.2.1-3: Only one instance of each of these attributes shall be present. Additional attributes may be present.
+
+LEG-4.2.1-4: The countryName attribute shall specify the country in which the subject (legal person) is established.
+
+LEG-4.2.1-5: The organizationName attribute shall contain the full registered name of the subject (legal person).
+
+LEG-4.2.1-6: The organizationIdentifier attribute shall contain an identification of the subject organization
+different from the organization name.
+
+
+
+
+                                                          ETSI
+                                                              8                         ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+LEG-4.2.1-7: Certificates may include one or more semantics identifiers as specified in clause 5 of ETSI
+EN 319 412-1 [i.4].
+
+LEG-4.2.1-8: The commonName attribute value shall contain a name commonly used by the subject to represent itself.
+This name needs not be an exact match of the fully registered organization name.
+
+LEG-4.2.1-9: If present, the size of organizationName, organizationalUnitName and commonName may
+be longer than the limit as stated in IETF RFC 5280 [3].
+
+   NOTE:      If other limits are applied it is expected that this is stated in the TSP's published certification practice
+              statement or terms and conditions.
+
+
+4.3           Standard certificate extensions
+4.3.1         Key usage
+LEG-4.3.1-1: Clause 4.3.2 of ETSI EN 319 412-2 [2] shall not apply, except those parts which are referenced below.
+
+LEG-4.3.1-2: Clause 4.3.2 of ETSI EN 319 412-2 [2] paragraph 1 and subsequent table 1 shall apply.
+
+LEG-4.3.1-3: Certificates used to validate digital signatures over content (e.g. documents, agreements and/or
+transactions) that provide evidence of origin and integrity of the content shall be limited to type A, B or F.
+
+LEG-4.3.1-4: Of these alternatives, type A should be used (see the security note 2 below).
+
+   EXAMPLE:          Digital signatures which are aimed to be used as advanced electronic seals as defined in
+                     Regulation (EU) No 910/2014 [i.3] are considered to provide evidence of origin and integrity of
+                     the content.
+
+   NOTE 1: See note 1 in clause 4.3.2 of ETSI EN 319 412-2 [2].
+
+   NOTE 2: See note 2 in clause 4.3.2 of ETSI EN 319 412-2 [2].
+
+
+
+
+                                                            ETSI
+                                                      9                      ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+Annex A (informative):
+Change History
+      Date      Version                               Information about changes
+                          Implemented Change Requests:
+                              •   on key usage as in ESI(18)63_051r1
+February 2020    1.1.2
+                              •   on IETF RFC 5280 size limits not applying to naming attributes as in
+                                   ESI(19)000170r2
+                          ESI(20)000025: Change Request to Clarify keyUsage in certificates for e-seals
+                          ESI(20)000026: Change Request to enhance unrestricted size fields in Subject
+
+                          Version approved by TC ESI for submission to EN Approval Procedure
+April 2020       1.1.3
+                          On https://docbox.etsi.org/esi/Open/Compared_deliverables, one will be able to see
+                          what changes have taken place between the previous published version (v1.1.1) and
+                          this version
+April 2023       1.2.2    Updated to allocate reference number to each requirement in line with EN 319 411-1
+
+
+
+
+                                                    ETSI
+                                                10                    ETSI EN 319 412-3 V1.3.1 (2023-09)
+
+
+
+History
+                                         Document history
+V1.0.1    July 2015        Publication as ETSI TS 119 412-3 (Withdrawn)
+V1.1.1    February 2016    Publication
+
+V1.2.1    July 2020        Publication
+
+V1.3.0    June 2023        EN Approval Procedure              AP 20230921:    2023-06-23 to 2023-09-21
+V1.3.1    September 2023   Publication
+
+
+
+
+                                               ETSI
+

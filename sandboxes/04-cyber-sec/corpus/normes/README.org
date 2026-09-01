@@ -1,0 +1,113 @@
+#+TITLE: Normes de référence — Domaine CMS/PKI/Cybersécurité
+#+DATE: 2026-06-23
+#+CONTEXT: Sandbox test-corpus-cyber-sec — domaine CMS/ATOS-Eviden
+
+* Objectif
+
+Ce dossier regroupe les normes et référentiels qui définissent les règles de validité
+des certificats numériques, des politiques PKI, et des modules cryptographiques.
+
+Toutes les normes listées ici sont =gratuites et accessibles en ligne=.
+
+Vocation : servir de corpus pour l'encodage en règles YAML Chorus, dans le prolongement
+du sandbox construction (Eurocode 5 → EC5 YAML rules → validation de projets bois).
+
+Le même principe s'applique ici : chaque clause normative devient une règle YAML testable,
+traçable, et versionnée.
+
+* Structure du dossier
+
+| Sous-dossier        | Source                  | URL de référence                          |
+|---------------------+-------------------------+-------------------------------------------|
+| =ietf/=             | IETF RFCs               | https://rfc-editor.org / datatracker.ietf.org |
+| =cabforum/=         | CA/Browser Forum        | https://cabforum.org/baseline-requirements/ |
+| =etsi/=             | ETSI (EN/TS)            | https://portal.etsi.org                   |
+| =anssi/=            | ANSSI / RGS             | https://www.ssi.gouv.fr/entreprise/reglementation/confiance-numerique/ |
+| =nist/=             | NIST FIPS / SP          | https://csrc.nist.gov/publications        |
+| =eidas/=            | Règlement UE 910/2014   | https://eur-lex.europa.eu                 |
+| =common-criteria/=  | Common Criteria Portal  | https://commoncriteriaportal.org          |
+
+* Priorité d'encodage Chorus
+
+Les normes les plus directement "règles-encodables" (tableaux de valeurs, contraintes
+binaires oui/non, seuils numériques) sont listées ici par ordre de priorité :
+
+** Priorité 1 — Immédiatement encodables
+
+- =RFC 5280= sections 4.1 à 4.4 : profils de certificats X.509
+  → chaque extension (keyUsage, basicConstraints, SAN, validity…) = une règle YAML
+
+- =CA/Browser Forum Baseline Requirements= (TLS) :
+  → tableaux précis de valeurs autorisées/interdites par type de certificat
+
+** Priorité 2 — Profils européens
+
+- =ETSI EN 319 412-1/2/3/4/5= : profils certificats NCP, QNCP, PSD2, eIDAS
+  → contraintes par profil, directement mappables en CONDITION/EXCEPTION YAML
+
+** Priorité 3 — Contraintes françaises
+
+- =ANSSI RGS v2.0= + =Guide algorithmes cryptographiques=
+  → durées de validité, algorithmes autorisés, tailles de clés minimales
+
+** Priorité 4 — Modules cryptographiques
+
+- =NIST FIPS 140-3= : exigences HSM
+- =NIST SP 800-131A= : algorithmes dépréciés et calendrier de transition
+
+* Normes disponibles (téléchargées)
+
+| Fichier                                                  | Norme                          | Version    | Date       |
+|----------------------------------------------------------+--------------------------------+------------+------------|
+| eidas/eIDAS-1-reglement-UE-910-2014-FR.pdf               | Règlement (UE) 910/2014        | eIDAS 1    | 2026-06-23 |
+| eidas/eIDAS-2-reglement-UE-2024-1183-FR.pdf              | Règlement (UE) 2024/1183       | eIDAS 2    | 2026-06-23 |
+| ietf/rfc5280.txt                                         | RFC 5280 — X.509 PKI           | —          | 2026-06-23 |
+| ietf/rfc6960.txt                                         | RFC 6960 — OCSP                | —          | 2026-06-23 |
+| ietf/rfc4210.txt                                         | RFC 4210 — CMP                 | —          | 2026-06-23 |
+| ietf/rfc4211.txt                                         | RFC 4211 — CRMF                | —          | 2026-06-23 |
+| ietf/rfc2986.txt                                         | RFC 2986 — PKCS#10             | —          | 2026-06-23 |
+| ietf/rfc5652.txt                                         | RFC 5652 — CMS                 | —          | 2026-06-23 |
+| ietf/rfc3647.txt                                         | RFC 3647 — CP/CPS Framework    | —          | 2026-06-23 |
+| ietf/rfc7292.txt                                         | RFC 7292 — PKCS#12             | —          | 2026-06-23 |
+| ietf/rfc8555.txt                                         | RFC 8555 — ACME                | —          | 2026-06-23 |
+| ietf/rfc8446.txt                                         | RFC 8446 — TLS 1.3             | —          | 2026-06-23 |
+| ietf/rfc8410.txt                                         | RFC 8410 — Ed25519/X25519      | —          | 2026-06-23 |
+| ietf/rfc5958.txt                                         | RFC 5958 — Key Packages        | —          | 2026-06-23 |
+| ietf/rfc7468.txt                                         | RFC 7468 — PEM Encodings       | —          | 2026-06-23 |
+| anssi/anssi-RGS-v2-annexe-B1-algorithmes.pdf             | ANSSI RGS v2.0 Annexe B1       | v2.0       | 2026-06-23 |
+| anssi/anssi-guide-mecanismes-cryptographiques.pdf        | ANSSI Guide mécanismes crypto  | 2.04       | 2026-06-23 |
+| anssi/anssi-referentiel-psce.pdf                         | ANSSI PSC qualifiés eIDAS      | v1.3       | 2026-06-23 |
+| nist/nist-FIPS-140-3.pdf                                 | NIST FIPS 140-3 (HSM)          | 2019       | 2026-06-23 |
+| nist/nist-FIPS-186-5.pdf                                 | NIST FIPS 186-5 (DSS)          | 2023       | 2026-06-23 |
+| nist/nist-FIPS-197-AES.pdf                               | NIST FIPS 197 (AES)            | upd1       | 2026-06-23 |
+| nist/nist-SP-800-57-part1.pdf                            | NIST SP 800-57 Part 1          | Rev 5      | 2026-06-23 |
+| nist/nist-SP-800-57-part2.pdf                            | NIST SP 800-57 Part 2          | Rev 1      | 2026-06-23 |
+| nist/nist-SP-800-57-part3.pdf                            | NIST SP 800-57 Part 3          | Rev 1      | 2026-06-23 |
+| nist/nist-SP-800-131A-rev2.pdf                           | NIST SP 800-131A (transition)  | Rev 2      | 2026-06-23 |
+| nist/nist-SP-800-52-rev2.pdf                             | NIST SP 800-52 (TLS)           | Rev 2      | 2026-06-23 |
+| nist/nist-SP-800-63B.pdf                                 | NIST SP 800-63B (auth)         | —          | 2026-06-23 |
+| cabforum/cabforum-baseline-requirements-tls.pdf          | CABForum TLS BR                | v2.2.8     | 2026-06-23 |
+| cabforum/cabforum-baseline-requirements-smime.pdf        | CABForum S/MIME BR             | v1.0.14    | 2026-06-23 |
+| cabforum/cabforum-baseline-requirements-codesigning.pdf  | CABForum Code Signing BR       | v3.11.0    | 2026-06-23 |
+| etsi/etsi-EN-319-401.pdf                                 | ETSI EN 319 401                | 03.02.01   | 2026-06-23 |
+| etsi/etsi-EN-319-411-1.pdf                               | ETSI EN 319 411-1              | 01.05.01   | 2026-06-23 |
+| etsi/etsi-EN-319-411-2.pdf                               | ETSI EN 319 411-2              | 02.06.01   | 2026-06-23 |
+| etsi/etsi-EN-319-412-1.pdf                               | ETSI EN 319 412-1              | 01.07.01   | 2026-06-23 |
+| etsi/etsi-EN-319-412-2.pdf                               | ETSI EN 319 412-2              | 02.04.01   | 2026-06-23 |
+| etsi/etsi-EN-319-412-3.pdf                               | ETSI EN 319 412-3              | 01.03.01   | 2026-06-23 |
+| etsi/etsi-EN-319-412-4.pdf                               | ETSI EN 319 412-4              | 01.04.01   | 2026-06-23 |
+| etsi/etsi-EN-319-412-5.pdf                               | ETSI EN 319 412-5              | 02.06.01   | 2026-06-23 |
+| etsi/etsi-TS-119-312.pdf                                 | ETSI TS 119 312                | 02.01.01   | 2026-06-23 |
+| common-criteria/cc-v3.1r5-part1-introduction.pdf         | CC v3.1 Rev5 Part 1            | 3.1 Rev 5  | 2026-06-23 |
+| common-criteria/cc-v3.1r5-part2-functional.pdf           | CC v3.1 Rev5 Part 2            | 3.1 Rev 5  | 2026-06-23 |
+| common-criteria/cc-v3.1r5-part3-assurance.pdf            | CC v3.1 Rev5 Part 3            | 3.1 Rev 5  | 2026-06-23 |
+
+* Normes NON gratuites (pour mémoire)
+
+Les normes suivantes sont pertinentes mais payantes (ISO/IEC) :
+- ISO/IEC 7816 : interface carte à puce
+- ISO/IEC 27001/27002 : management de la sécurité de l'information
+- ISO/IEC 15408 : Common Criteria (le texte de référence — le portail CC distribue les PP gratuitement)
+
+Note : les implémentations de référence et résumés de ces normes sont souvent documentés
+dans les RFCs IETF ou les guides NIST (gratuits).

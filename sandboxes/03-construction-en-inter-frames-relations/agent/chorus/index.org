@@ -1,0 +1,185 @@
+#+TITLE: Pipeline — test-02-construction-corpus-en-pdf
+#+DATE: 2025-07-11
+#+CHORUS_VERSION: 2.0.2
+#+STATUS: draft
+
+* Pipeline global
+  | Pos | Agent (module Perl)          | Slug       | KB                           | Statut |
+  |-----+------------------------------+------------+------------------------------+--------|
+  |   0 | ADA::Agent::Robustness       | robustness | agent/chorus/robustness.org  | draft  |
+  |   1 | ADA::Agent::Geometry         | geometry   | agent/chorus/geometry.org    | draft  |
+  |   2 | ADA::Agent::Wall             | wall       | agent/chorus/wall.org        | draft  |
+  |   3 | ADA::Agent::Masonry          | masonry    | agent/chorus/masonry.org     | draft  |
+  |   4 | ADA::Agent::Foundation       | foundation | agent/chorus/foundation.org  | draft  |
+  |   5 | ADA::Agent::Chimney          | chimney    | agent/chorus/chimney.org     | draft  |
+
+  Notes:
+  - Pos 0 (Robustness): independent upstream agent — no targeting chain; classifies buildings
+    per §5/A3 Table 11. Runs on building Frames that carry ~building_use~ slot.
+  - Pos 5 (Chimney): optional terminal agent — runs on masonry_chimney Frames (§2D1).
+    Independent of Geometry→Wall→Masonry→Foundation chain.
+
+* Consistency — targeting slot chain
+  | Agent (pos) | Targeting slot (FIND.attribut) | Set by                              |
+  |-------------+--------------------------------+-------------------------------------|
+  | Geometry (1)| type_element                   | feed (initial JSON)                 |
+  | Wall (2)    | besoin_wall                    | Geometry R01 / R02 / R03            |
+  | Masonry (3) | besoin_masonry                 | Wall R01 (external_wall) / R04 (parapet_wall) |
+  | Foundation (4)| besoin_foundation            | Masonry R02 (external_wall only)    |
+
+  Termination: ADA::Agent::Foundation (pos. 4) → R03-foundation-thickness sets
+  ~foundation_ok~ on all Frames → shell Agent addrule() calls ~$agent->solved()~
+  when all besoin_foundation Frames carry ~foundation_ok~.
+
+* Global slot dictionary
+  Flat cross-agent slot registry — prevents naming collisions across agents.
+
+  | Slot                     | Owner agent    | Set by          | Consumed by               |
+  |--------------------------+----------------+-----------------+---------------------------|
+  | type_element             | (feed)         | feed            | Geometry (FIND filtre)    |
+  | height_m                 | (feed)         | feed            | Geometry, Wall            |
+  | width_w1_m               | (feed)         | feed            | Geometry R01              |
+  | width_m                  | (feed)         | feed            | Geometry R02              |
+  | num_storeys              | (feed)         | feed            | Geometry R01              |
+  | floor_area_m2            | (feed)         | feed            | Geometry R01/R02/R03      |
+  | factor_s                 | (feed)         | feed            | Geometry R01/R02/R03      |
+  | site_type                | (feed)         | feed            | Geometry R01/R02/R03      |
+  | coast_distance_km        | (feed)         | feed            | Geometry R01/R02/R03      |
+  | roof_type                | (feed)         | feed            | Geometry R03              |
+  | thickness_mm             | (feed)         | feed            | Wall R01/R03/R04          |
+  | length_m                 | (feed)         | feed            | Wall R01                  |
+  | storey_height_m          | (feed)         | feed            | Wall R01/R03, Masonry R01 |
+  | wall_type                | (feed)         | feed            | Wall R01                  |
+  | leaf_inner_mm            | (feed)         | feed            | Wall R01                  |
+  | leaf_outer_mm            | (feed)         | feed            | Wall R01                  |
+  | cavity_width_mm          | (feed)         | feed            | Wall R01/R02              |
+  | tie_length_mm            | (feed)         | feed            | Wall R02                  |
+  | parapet_type             | (feed)         | feed            | Wall R04                  |
+  | buttressing_length_m     | (feed)         | feed            | Wall R05                  |
+  | buttressing_thickness_mm | (feed)         | feed            | Wall R05                  |
+  | storey_position          | (feed)         | feed            | Masonry R01               |
+  | hf_m                     | (feed)         | feed            | Masonry R01               |
+  | num_storeys_building     | (feed)         | feed            | Masonry R01               |
+  | masonry_unit_type        | (feed)         | feed            | Masonry R02               |
+  | masonry_material         | (feed)         | feed            | Masonry R02               |
+  | masonry_group            | (feed)         | feed            | Masonry R02/R03           |
+  | declared_strength_nmm2   | (feed)         | feed            | Masonry R02               |
+  | normalised_strength_nmm2 | (feed)         | feed            | Masonry R03               |
+  | soil_type                | (feed)         | feed            | Foundation R01            |
+  | soil_condition           | (feed)         | feed            | Foundation (info)         |
+  | shrink_class             | (feed)         | feed            | Foundation R02            |
+  | wall_load_kn_m           | (feed)         | feed            | Foundation R01            |
+  | foundation_width_mm      | (feed)         | feed            | Foundation R01            |
+  | foundation_depth_m       | (feed)         | feed            | Foundation R02            |
+  | foundation_thickness_mm  | (feed)         | feed            | Foundation R03            |
+  | projection_p_mm          | (feed)         | feed            | Foundation R03            |
+  | geometry_ok              | Geometry       | R01/R02/R03     | (report)                  |
+  | geometry_violations      | Geometry       | R01/R02/R03     | (report)                  |
+  | max_height_allowed_m     | Geometry       | R01/R02/R03     | (report)                  |
+  | storey_height_ok         | Geometry       | R01             | (report)                  |
+  | proportion_ok            | Geometry       | R01             | (report)                  |
+  | floor_area_ok            | Geometry       | R01/R02         | (report)                  |
+  | besoin_wall              | Geometry       | R01/R02/R03     | Wall (FIND.attribut)      |
+  | wall_thickness_ok        | Wall           | R01/R03/R04     | (report)                  |
+  | cavity_ok                | Wall           | R01             | (report)                  |
+  | tie_ok                   | Wall           | R02             | (report)                  |
+  | buttressing_ok           | Wall           | R05             | (report)                  |
+  | wall_violations          | Wall           | R01–R05         | (report)                  |
+  | wall_ok                  | Wall           | R01–R05         | (report)                  |
+  | besoin_masonry           | Wall           | R01/R04         | Masonry (FIND.attribut)   |
+  | masonry_condition        | Masonry        | R01             | R02, R03                  |
+  | masonry_strength_ok      | Masonry        | R02             | (report)                  |
+  | masonry_normalised_ok    | Masonry        | R03             | (report)                  |
+  | masonry_violations       | Masonry        | R01–R03         | (report)                  |
+  | masonry_ok               | Masonry        | R02             | (report)                  |
+  | besoin_foundation        | Masonry        | R02             | Foundation (FIND.attribut)|
+  | min_foundation_width_mm  | Foundation     | R01             | (report)                  |
+  | foundation_width_ok      | Foundation     | R01             | R03 (aggregate)           |
+  | foundation_depth_ok      | Foundation     | R02             | R03 (aggregate)           |
+  | foundation_thickness_ok  | Foundation     | R03             | (report)                  |
+  | foundation_violations    | Foundation     | R01–R03         | (report)                  |
+  | foundation_ok            | Foundation     | R03             | shell Agent (solved())    |
+  | single_leaf              | (feed)         | feed            | Wall R01 (§2C12)          |
+  | storey_position          | (feed)         | feed            | Wall R03 (§2C10)          |
+  | num_storeys_building     | (feed)         | feed            | Wall R03 (§2C10)          |
+  | buttress_opening_area_m2 | (feed)         | feed            | Wall R09 (§2C26)          |
+  | buttress_opening_dist_mm | (feed)         | feed            | Wall R09 (§2C26)          |
+  | buttress_opening_height_m| (feed)         | feed            | Wall R09 (§2C26)          |
+  | buttress_lintel_depth_mm | (feed)         | feed            | Wall R09 (§2C26)          |
+  | buttress_opening_ok      | Wall           | R09             | (report)                  |
+  | foundation_type          | (feed)         | feed            | Foundation R04 (§2E2d)    |
+  | step_height_mm           | (feed)         | feed            | Foundation R04 (§2E2d-e)  |
+  | foundation_overlap_mm    | (feed)         | feed            | Foundation R04 (§2E2d)    |
+  | stepped_foundation_ok    | Foundation     | R04             | (report)                  |
+  | pier_projection_x_mm     | (feed)         | feed            | Foundation R05 (§2E2f)    |
+  | pier_plan_dim_p_mm       | (feed)         | feed            | Foundation R05 (§2E2f)    |
+  | pier_foundation_ok       | Foundation     | R05             | (report)                  |
+  | openings_total_width_m   | (feed)         | feed            | Wall R10 (§2C29)          |
+  | opening_max_individual_m | (feed)         | feed            | Wall R10 (§2C29)          |
+  | opening_height_m         | (feed)         | feed            | Wall R10 (§2C29)          |
+  | corner_pier_dist_mm      | (feed)         | feed            | Wall R10 (§2C29)          |
+  | factor_x                 | (feed)         | feed            | Wall R10 (§2C29 Table 8)  |
+  | opening_factor_x_w4_m    | (feed)         | feed            | Wall R10 (§2C29 rule 7)   |
+  | opening_factor_ok        | Wall           | R10             | (report)                  |
+  | chase_depth_mm           | (feed)         | feed            | Wall R11 (§2C30)          |
+  | chase_orientation        | (feed)         | feed            | Wall R11 (§2C30)          |
+  | leaf_thickness_mm        | (feed)         | feed            | Wall R11 (§2C30 cavity)   |
+  | chase_ok                 | Wall           | R11             | (report)                  |
+  | strap_spacing_m          | (feed)         | feed            | Wall R12 (§2C35)          |
+  | has_floor_support        | (feed)         | feed            | Wall R12 (Table 9)        |
+  | lateral_support_ok       | Wall           | R12             | (report)                  |
+  | is_gable_wall            | (feed)         | feed            | Wall R13 (§2C36)          |
+  | gable_strap_spacing_m    | (feed)         | feed            | Wall R13 (§2C36)          |
+  | roof_pitch_deg           | (feed)         | feed            | Wall R13 (§2C36 exempt)   |
+  | roof_covering_type       | (feed)         | feed            | Wall R13 (§2C36 exempt)   |
+  | roof_wind_resistant      | (feed)         | feed            | Wall R13 (§2C36 exempt)   |
+  | roof_main_member_spacing_m| (feed)        | feed            | Wall R13 (§2C36 exempt)   |
+  | gable_strapping_ok       | Wall           | R13             | (report)                  |
+  | has_lateral_interruption | (feed)         | feed            | Wall R14 (§2C37)          |
+  | stairway_opening_m       | (feed)         | feed            | Wall R14 (§2C37a)         |
+  | other_interruptions      | (feed)         | feed            | Wall R14 (§2C37d)         |
+  | lateral_interruption_ok  | Wall           | R14             | (report)                  |
+  | building_category        | (feed)         | feed            | Wall R15 (§2C38 scope)    |
+  | major_opening_total_width_m| (feed)       | feed            | Wall R15 (§2C38 ii Diag17)|
+  | major_opening_height_m   | (feed)         | feed            | Wall R15 (§2C38 ii Diag17)|
+  | corner_to_opening_mm     | (feed)         | feed            | Wall R15 (§2C38 ii Diag17)|
+  | has_corner_pier          | (feed)         | feed            | Wall R15 (§2C38 ii Diag17)|
+  | other_openings_area_m2   | (feed)         | feed            | Wall R15 (§2C38 ii Diag17)|
+  | pier_ap_mm               | (feed)         | feed            | Wall R15 (§2C38 iii Diag18)|
+  | pier_bp_mm               | (feed)         | feed            | Wall R15 (§2C38 iii Diag18)|
+  | pier_spacing_m           | (feed)         | feed            | Wall R15 (§2C38 iii Diag18)|
+  | isolated_column_mm       | (feed)         | feed            | Wall R15 (§2C38 iii Diag18)|
+  | pier_unit_type           | (feed)         | feed            | Wall R15 (§2C38 iii Diag18)|
+  | small_building_wall_ok   | Wall           | R15             | (report)                  |
+
+* Integrated corpus
+  | Num | Fichier                                     | Agents affected        | Date       |
+  |-----+---------------------------------------------+------------------------+------------|
+  | 004 | corpus/004-uk-approved-doc-a-2013-vision.md | all (init)             | 2025-07-11 |
+  | 004 | corpus/004-uk-approved-doc-a-2013-vision.md | all (--enrich Mode B #2) | 2025-07-16 |
+
+  Note: corpus file 004 is a --images mode extraction (pdftoppm + Claude vision).
+  Primary source file number follows sandbox convention (001–003 reserved for earlier
+  extraction attempts — see corpus/ directory).
+  Mode B enrichment (2025-07-16): extracted §2C7 uncoursed stone, §2C8 tie spacing,
+  §2C22 mortar, §2C23-24 loading conditions, §2C25-27 end restraint, Diagram 4 parapet
+  correction, §2D chimney proportions, §5/A3 consequence classes.
+
+* Helpers map
+  | Helper module                            | Functions exported                                                |
+  |------------------------------------------+-------------------------------------------------------------------|
+  | ADA::Agent::Geometry::Helpers            | max_height_from_table_c                                           |
+  | ADA::Agent::Wall::Helpers                | min_thickness_table3, min_tie_length_table5                       |
+  | ADA::Agent::Masonry::Helpers             | diagram9_condition, min_strength_table6, min_normalised_table7    |
+  | ADA::Agent::Foundation::Helpers          | min_width_table10, min_depth_2e4                                  |
+    | ADA::Agent::Robustness::Helpers          | consequence_class_table11                                                         |
+    | ADA::Agent::Chimney::Helpers             | (none — §2D1 is a direct ratio, no lookup table)                                  |
+    | ADA::Agent::Wall::Helpers (updated)     | min_thickness_table3, min_tie_length_table5, factor_x_table8 (NEW — Table 8 §2C29)|
+
+* Notes
+  - Namespace: ADA (Approved Document A)
+  - Corpus: UK Building Regulations 2010 — Approved Document A (Structure) 2013 edition
+  - Corpus format: vision.md (54 pages via pdftoppm + Claude vision, --images mode)
+  - Known corpus defect: Table c Diagram 7, Factor S=34, Country >50km = 8.5m
+    (PDF source printed 87.5 — corrected in corpus/004 and in geometry.org Helper table)
+  - Termination: pure-Perl addrule() in shell Agent — NOT a YAML rule (avoids fmatch loop)

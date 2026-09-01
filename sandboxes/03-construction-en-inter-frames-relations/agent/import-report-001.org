@@ -1,0 +1,292 @@
+#+TITLE: Import Report 001 — building-01.html
+#+DATE: 2025-07-17
+#+SOURCE: coorp/building-01.html
+#+SANDBOX: 02-construction-en-inter-frames-relations
+#+IMPORT_JSON: projet-import-001.json
+#+ELEMENTS: 50
+#+KO_COUNT: 4
+#+ENGINEER: Whitmore & Associates — F. Thornton CEng MIStructE
+#+PROJECT_REF: ADA-P01 / Rev 01 — 12 November 2024
+
+* Phase 0 — Source Acquisition
+
+  Source: ~coorp/building-01.html~ — HTML structural schedule produced by Whitmore & Associates.
+  Format: HTML table layout — read directly (no corpus-pdf conversion needed).
+  Mode: Single (1 HTML source → 1 JSON output).
+  Thesaurus: ~agent/thesaurus.org~ — not present (first import).
+  Previous import reports: none.
+
+* Phase 3 — Terminology Alignment Table
+
+  All project terms extracted from the HTML and aligned to canonical KB slots/values.
+  Confidence: ✅ confirmed (direct KB match or unambiguous rule-based resolution).
+
+** type_element — Building categories
+
+   | Project term              | KB type_element            | Confidence | Resolution method                          |
+   |---------------------------+----------------------------+------------+--------------------------------------------|
+   | Detached House            | residential_building       | ✅         | geometry.org Aliases: "house, dwelling..." |
+   | Single-Storey Outbuilding | non_residential_building   | ✅         | geometry.org Aliases: "outbuilding..."     |
+   | Garden Annexe             | annexe                     | ✅         | geometry.org Aliases: "annex, extension, garden building..." |
+   | Exterior Cavity Wall      | external_wall              | ✅         | wall.org Aliases: "outer wall, facade wall..." |
+   | Exterior Solid Wall       | external_wall              | ✅         | wall.org Aliases: "external leaf..."       |
+   | Internal Partition        | internal_wall              | ✅         | wall.org Aliases: "inner wall, partition..." |
+   | Parapet                   | parapet_wall               | ✅         | wall.org Aliases: "parapet, coping wall"  |
+   | Return Wall               | buttressing_wall           | ✅         | wall.org Aliases: "buttress, lateral support wall" |
+   | Chimney Stack             | masonry_chimney            | ✅         | chimney.org Aliases: "chimney stack, flue stack..." |
+
+** wall_type values
+
+   | Project term      | KB slot      | KB value | Confidence | Resolution method                        |
+   |-------------------+--------------+----------+------------+------------------------------------------|
+   | Twin-leaf cavity  | wall_type    | cavity   | ✅         | wall.org Aliases: "twin-leaf construction" |
+   | Solid masonry     | wall_type    | solid    | ✅         | wall.org Aliases: "solid masonry..."     |
+
+** storey_position values
+
+   | Project term       | KB slot          | KB value | Confidence | Resolution method                          |
+   |--------------------+------------------+----------+------------+--------------------------------------------|
+   | Top storey         | storey_position  | top      | ✅         | masonry.org Aliases: "top storey, upper storey..." |
+   | Ground-floor level | storey_position  | base     | ✅         | masonry.org Aliases: "ground floor wall, base storey..." |
+   | Single storey      | storey_position  | single   | ✅         | masonry.org Aliases: "single storey..."    |
+
+** soil_type values (Ground Class column)
+
+   | Project term | KB slot    | KB value | Confidence | Resolution method                                    |
+   |--------------+------------+----------+------------+------------------------------------------------------|
+   | Class II     | soil_type  | II       | ✅         | Invocation rule: strip "Class " prefix → "II"       |
+   | Class III    | soil_type  | III      | ✅         | Invocation rule: strip "Class " prefix → "III"      |
+   | Class IV     | soil_type  | IV       | ✅         | Invocation rule: strip "Class " prefix → "IV"       |
+
+** masonry_material values
+
+   | Project term | KB slot           | KB value | Confidence | Resolution method                                        |
+   |--------------+-------------------+----------+------------+----------------------------------------------------------|
+   | Fired clay   | masonry_material  | clay     | ✅         | masonry.org Aliases: "clay brick, fired brick (BS EN 771-1)" |
+
+** masonry_unit_type values
+
+   | Project term | KB slot             | KB value | Confidence | Resolution method                              |
+   |--------------+---------------------+----------+------------+------------------------------------------------|
+   | Brick unit   | masonry_unit_type   | brick    | ✅         | masonry.org Aliases: "brick unit, fired clay brick" |
+
+** mortar_designation values
+
+   | Project term          | KB slot              | KB value | Confidence | Resolution method                                     |
+   |-----------------------+----------------------+----------+------------+-------------------------------------------------------|
+   | Mix Designation (iii) | mortar_designation   | iii      | ✅         | masonry.org Aliases: "designation iii, mortar designation (iii)" + invocation rule: extract from parentheses |
+   | M4 class mortar       | mortar_designation   | M4       | ✅         | masonry.org Aliases: "strength class M4, M4 mortar"   |
+
+** shrink_class values (Shrinkage column)
+
+   | Project term              | KB slot       | KB value | Confidence | Resolution method                               |
+   |---------------------------+---------------+----------+------------+-------------------------------------------------|
+   | Non-shrinkable            | shrink_class  | none     | ✅         | Invocation rule: "Non-shrinkable" → none        |
+   | Low shrinkage potential   | shrink_class  | low      | ✅         | Invocation rule: "Low shrinkage potential" → low |
+   | Medium shrinkage potential| shrink_class  | medium   | ✅         | Invocation rule: "Medium shrinkage potential" → medium |
+
+** parapet_type values
+
+   | Project term | KB slot        | KB value | Confidence | Resolution method                          |
+   |--------------+----------------+----------+------------+--------------------------------------------|
+   | Type B       | parapet_type   | B        | ✅         | Invocation rule: "Type B" → "B"            |
+
+** building_use values
+
+   | Project term   | KB slot       | KB value | Confidence | Resolution method                                      |
+   |----------------+---------------+----------+------------+--------------------------------------------------------|
+   | Dwelling House | building_use  | house    | ✅         | robustness.org Aliases: "house, dwelling, single occupancy house" |
+
+** site_type values (Site Exposure column)
+
+   | Project term | KB slot     | KB value | Confidence | Resolution method                      |
+   |--------------+-------------+----------+------------+----------------------------------------|
+   | Town         | site_type   | town     | ✅         | Invocation rule: "Town" → "town"       |
+   | Country      | site_type   | country  | ✅         | Invocation rule: "Country" → "country" |
+
+** Column header → KB slot mapping
+
+   | Column header (project)      | KB slot                | Notes                                       |
+   |------------------------------+------------------------+---------------------------------------------|
+   | Wall Check Req.              | besoin_wall            | Always "Y" for all wall/chimney types       |
+   | Overall t (mm)               | thickness_mm           | —                                           |
+   | Storey Ht (m)                | storey_height_m        | —                                           |
+   | Inner Leaf (mm)              | leaf_inner_mm          | Cavity walls only                           |
+   | Outer Leaf (mm)              | leaf_outer_mm          | Cavity walls only                           |
+   | Cavity (mm)                  | cavity_width_mm        | Cavity walls only                           |
+   | Tie Length (mm)              | tie_length_mm          | Cavity walls only                           |
+   | Building Ref                 | building_ref           | —                                           |
+   | Unit Type                    | masonry_unit_type      | —                                           |
+   | Material                     | masonry_material       | —                                           |
+   | Group                        | masonry_group          | Integer 1 or 2                              |
+   | Decl. Strength (N/mm²)       | declared_strength_nmm2 | —                                           |
+   | Mortar                       | mortar_designation     | Extracted/normalised per alignment rules    |
+   | Ground Class                 | soil_type              | "Class X" → "X"                             |
+   | Shrinkage                    | shrink_class           | Normalised per alignment rules              |
+   | Wall Load (kN/m)             | wall_load_kn_m         | —                                           |
+   | Fdn Width (mm)               | foundation_width_mm    | —                                           |
+   | Fdn Depth (m)                | foundation_depth_m     | —                                           |
+   | Fdn Thickness (mm)           | foundation_thickness_mm | —                                          |
+   | Projection P (mm)            | projection_p_mm        | —                                           |
+   | Thickness (mm) [IW]          | thickness_mm           | Internal walls section                      |
+   | Parapet Type                 | parapet_type           | "Type B" → "B"                              |
+   | Thickness t (mm) [PW]        | thickness_mm           | Parapet walls section                       |
+   | Height hp (m)                | height_m               | Parapet walls                               |
+   | Supported Wall Ref           | supports_ref           | Buttressing walls — inter-frame link        |
+   | Buttressing Length (m)       | buttressing_length_m   | —                                           |
+   | Stack Height (m)             | chimney_height_m       | —                                           |
+   | Least Width (m) [chimney]    | chimney_least_width_m  | —                                           |
+   | Unit Density (kg/m³)         | masonry_density_kg_m3  | —                                           |
+   | Storeys (bldg)               | num_storeys_building   | —                                           |
+   | Storeys (unit)               | num_storeys            | residential_building only                   |
+   | Height (m) [building]        | height_m               | —                                           |
+   | Least Width W1 (m)           | width_w1_m             | residential_building only                   |
+   | Floor Area (m²)              | floor_area_m2          | —                                           |
+   | Wind Factor S                | factor_s               | —                                           |
+   | Site Exposure                | site_type              | "Town"→"town", "Country"→"country"          |
+   | Coast Distance (km)          | coast_distance_km      | —                                           |
+   | Width / Plan Dim (m)         | width_m                | non_residential_building only               |
+   | Roof Type                    | roof_type              | annexe only; "Flat"→"flat"                  |
+
+* Phase 4 — Gap Analysis
+
+** Gaps detected per element category
+
+*** Building frames
+    - *RES-01, RES-02*: ~building_use~ present ✅ (required by Robustness R01). All mandatory slots present.
+    - *NRB-01*: no ~building_use~ in source (non-residential — not required by Robustness agent
+      for this frame type). ~width_m~ present. ✅ no mandatory gap.
+    - *ANX-01*: ~roof_type~ present (= "flat" → "flat"). ✅ no mandatory gap.
+
+*** External walls
+    - ~num_storeys_building~ not present as a column in the HTML schedule. Inferred from
+      ~building_ref~: RES-01 = 3 storeys, RES-02 = 2 storeys. Added to all external wall
+      and internal wall frames in the JSON. This is a gap in the source document that was
+      resolved by cross-reference.
+    - All other mandatory slots (wall_type, thickness_mm, height_m, length_m, storey_height_m,
+      storey_position, masonry_unit_type, masonry_material, masonry_group,
+      declared_strength_nmm2, mortar_designation, soil_type, shrink_class, wall_load_kn_m,
+      foundation_width_mm, foundation_depth_m, foundation_thickness_mm, projection_p_mm)
+      are present for all external wall frames. ✅
+
+*** Internal walls
+    - ~num_storeys_building~ not in source — inferred from ~building_ref~. Added as above.
+    - All other mandatory slots (thickness_mm, storey_height_m, storey_position, building_ref)
+      present. ✅
+
+*** Parapet walls
+    - ~num_storeys_building~ absent (not required by parapet pipeline — masonry R01 for parapets
+      always gives Condition A; parapet_wall frame does not need this slot). ✅
+    - All mandatory slots for parapet_wall present. ✅
+
+*** Buttressing walls
+    - ~height_m~ of supported wall: the HTML provides ~buttressing_length_m~ and ~supports_ref~
+      but does NOT include the height of the supported wall directly in the buttressing section.
+      The buttressing_wall KB frame requires ~height_m~ for the R05 check (H/6 minimum length).
+      ⚠ UNRESOLVED GAP: height_m not set on buttressing_wall frames in the JSON.
+      Resolution: Wall R05 in Chorus reads h = $w->{height_m} // 0 → if height_m is absent,
+      h=0, min_len=0, buttressing check trivially passes (even BW-KO-LEN-01 would show OK).
+      The source document documents the compliance verdict explicitly — the pipeline will need
+      height_m to reproduce the correct check.
+      Recommendation: Add height_m from the referenced external wall (via supports_ref lookup)
+      to each buttressing_wall frame. Values:
+      - BW-01 → supports EW-B-01 → height_m: 3.2
+      - BW-02 → supports EW-B-02 → height_m: 3.2
+      - BW-03 → supports EW-B-06 → height_m: 3.0
+      - BW-04 → supports EW-T-01 → height_m: 3.0
+      - BW-05 → supports EW-B-07 → height_m: 3.0
+      - BW-06 → supports EW-T-05 → height_m: 3.0
+      - BW-KO-LEN-01 → supports EW-B-01 → height_m: 3.2
+
+*** Chimney frames
+    - All mandatory slots (chimney_height_m, chimney_least_width_m, masonry_density_kg_m3)
+      present. ✅
+
+** Summary of gaps
+
+   | Gap type        | Elements affected        | Severity | Resolution in JSON              |
+   |-----------------+--------------------------+----------+---------------------------------|
+   | num_storeys_building absent from HTML wall tables | All external/internal walls | Medium | ✅ Resolved by cross-ref with building_ref |
+   | height_m absent from buttressing wall section | BW-01..BW-06, BW-KO-LEN-01 | High | ⚠ NOT resolved — requires enrichment pass |
+
+* Phase 5 — JSON Summary
+
+  Output file: ~projet-import-001.json~
+  Total elements: 50
+  Frame types:
+
+  | type_element            | Count | besoin_wall set? |
+  |-------------------------+-------+-----------------|
+  | residential_building    | 2     | by Geometry agent (not in JSON — set by pipeline) |
+  | non_residential_building| 1     | by Geometry agent |
+  | annexe                  | 1     | by Geometry agent |
+  | external_wall           | 22    | Y (manual — all) |
+  | internal_wall           | 10    | Y (manual — all) |
+  | parapet_wall            | 5     | Y (manual — all) |
+  | buttressing_wall        | 7     | Y (manual — all) |
+  | masonry_chimney         | 2     | n/a (Strategy A) |
+  | TOTAL                   | 50    | —               |
+
+  KO elements: 4
+  | KO element      | Rule triggered          | Defect                                       |
+  |-----------------+-------------------------+----------------------------------------------|
+  | EW-KO-FW-01     | Foundation R01          | foundation_width 400mm < min 450mm (soil IV, 40kN/m) |
+  | IW-KO-THK-01    | Wall R03                | thickness 100mm < Hs/16 = 169mm              |
+  | PW-KO-H-01      | Wall R04                | parapet height 0.75m > max 0.60m (type B, t=215mm) |
+  | BW-KO-LEN-01    | Wall R05                | buttressing length 0.50m < H/6=0.533m        |
+
+* Phase 6 — Thesaurus Update Recommendations
+
+  No thesaurus.org existed prior to this import. The following entries should be
+  created in ~agent/thesaurus.org~ to canonicalise the project-side terminology
+  for future imports from the same project family.
+
+** Recommended Aliases — type_element
+
+   | Project term              | KB type_element          | Source section          |
+   |---------------------------+--------------------------+-------------------------|
+   | Detached House            | residential_building     | §1.1 building category  |
+   | Single-Storey Outbuilding | non_residential_building | §1.2 building category  |
+   | Garden Annexe             | annexe                   | §1.2 building category  |
+   | Exterior Cavity Wall      | external_wall            | §2 wall category        |
+   | Exterior Solid Wall       | external_wall            | §2 wall category        |
+   | Internal Partition        | internal_wall            | §3 wall category        |
+   | Parapet                   | parapet_wall             | §4 wall category        |
+   | Return Wall               | buttressing_wall         | §5 wall category        |
+   | Chimney Stack             | masonry_chimney          | §6 chimney category     |
+
+** Recommended Aliases — slot values
+
+   | Project term               | KB slot            | KB value | Source              |
+   |----------------------------+--------------------+----------+---------------------|
+   | Twin-leaf cavity           | wall_type          | cavity   | Construction column |
+   | Solid masonry              | wall_type          | solid    | Construction column |
+   | Top storey                 | storey_position    | top      | Storey Position col |
+   | Ground-floor level         | storey_position    | base     | Storey Position col |
+   | Single storey              | storey_position    | single   | Storey Position col |
+   | Class II                   | soil_type          | II       | Ground Class col    |
+   | Class III                  | soil_type          | III      | Ground Class col    |
+   | Class IV                   | soil_type          | IV       | Ground Class col    |
+   | Fired clay                 | masonry_material   | clay     | Material col        |
+   | Brick unit                 | masonry_unit_type  | brick    | Unit Type col       |
+   | Mix Designation (iii)      | mortar_designation | iii      | Mortar col          |
+   | M4 class mortar            | mortar_designation | M4       | Mortar col          |
+   | Non-shrinkable             | shrink_class       | none     | Shrinkage col       |
+   | Low shrinkage potential    | shrink_class       | low      | Shrinkage col       |
+   | Medium shrinkage potential | shrink_class       | medium   | Shrinkage col       |
+   | Type B                     | parapet_type       | B        | Parapet Type col    |
+   | Dwelling House             | building_use       | house    | Occupancy/Use col   |
+   | Town                       | site_type          | town     | Site Exposure col   |
+   | Country                    | site_type          | country  | Site Exposure col   |
+
+** Action required
+
+   1. ⚠ *Buttressing walls — height_m gap*: enrich the 7 buttressing_wall frames in
+      ~projet-import-001.json~ with ~height_m~ inferred from the referenced external wall
+      (see Gap Analysis above). This is required for Wall R05 to correctly reproduce
+      the non-compliance verdict on BW-KO-LEN-01.
+
+   2. Create ~agent/thesaurus.org~ with the aliases above to accelerate future imports
+      from the same project document set.
+
+   3. No ambiguous or ⚠ pending terms identified — all alignments resolved at ✅ confidence.

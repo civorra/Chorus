@@ -1,0 +1,87 @@
+#+TITLE: Import Report — 001 — project-demo-01.md
+#+DATE: 2025-06-15
+#+SANDBOX: 01b-demo_en
+
+* Summary
+
+  | Field             | Value                                    |
+  |-------------------+------------------------------------------|
+  | Source            | demo/project-demo-01.md                  |
+  | Output            | demo/project-demo-01.json                |
+  | Mode              | Single                                   |
+  | NNN               | 001                                      |
+  | Elements imported | 111                                      |
+  | Pipeline result   | SOLVED ✅                                |
+  | COMPLIANT         | 54                                       |
+  | NON-COMPLIANT     | 57                                       |
+  | Unprocessed       | 0                                        |
+
+* Source characteristics
+
+  Plain text Markdown report (no frontmatter, no YAML).
+  Language: English.
+  Structure: sections per element type, compliant/non-compliant subsections,
+  data presented as Markdown tables and inline prose paragraphs.
+
+* Type mapping
+
+  | Source term(s)                                    | KB type              |
+  |---------------------------------------------------+----------------------|
+  | bearing stud / structural stud / LBS              | load_bearing_stud    |
+  | partition stud / NLBS / non-structural stud       | non_load_bearing_stud|
+  | bottom plate / sill plate / sole plate            | sole_plate           |
+  | wall plate / head plate / top plate               | top_plate            |
+  | roof rafter / rafter                              | rafter               |
+  | floor joist / joist                               | joist                |
+  | insulation layer / insulation panel               | insulation           |
+  | vapour barrier / VCL / vapour check layer         | vapour_control_layer |
+
+* Slot alignment
+
+  See =agent/thesaurus.org= for full term → slot mapping.
+  37 distinct surface variants resolved to 18 canonical KB slots.
+
+* Gaps by type
+
+  Structural types (LBS, NLBS, SP, TP, RAF, JOI):
+  - =deflection_mm= / =span_mm=: present only when measured (optional per KB)
+  - =has_longitudinal_splice=: present only when splice is present or explicitly noted as absent
+  - =rei_period= / =plasterboard_thickness_mm=: absent on some KO elements (fire data not recorded)
+  - =reaction_class= / =surface_mass_kg_m2=: present only on elements with lining fire data
+
+  Insulation:
+  - All 3 required slots (=thickness_mm=, =lambda=, =climate_zone=) present on all 10 elements.
+
+  VCL:
+  - All 2 required slots (=sd_value=, =service_class=) present on all 14 elements.
+
+* Agent pipeline results
+
+  | Agent         | w/result | OK | KO |
+  |---------------+----------+----+----|
+  | Qualification |      111 | 89 | 22 |
+  | Geometry      |       65 | 48 | 17 |
+  | Thermal       |       24 | 14 | 10 |
+  | Fire          |       87 | 79 |  8 |
+  | Compliance    |      111 | 54 | 57 |
+
+* Distribution by element type
+
+  | Type                  | ✅ | ❌ |
+  |-----------------------+----+----|
+  | load_bearing_stud     | 10 | 15 |
+  | non_load_bearing_stud |  9 |  5 |
+  | sole_plate            |  5 |  7 |
+  | top_plate             |  6 |  6 |
+  | rafter                |  5 |  7 |
+  | joist                 |  5 |  7 |
+  | insulation            |  6 |  4 |
+  | vapour_control_layer  |  8 |  6 |
+
+* Notes
+
+  - JSON structure uses =elements= array with =type_element= slot (Feed.pm convention).
+  - =_labels= metadata preserved on each element for round-trip traceability.
+  - =collective=0= (single dwelling) propagated by Feed to all frames.
+  - Source section 9 ("Summary Notes for Import") provided explicit terminology equivalences —
+    used to bootstrap thesaurus without ambiguity resolution needed.

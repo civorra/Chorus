@@ -1,0 +1,63 @@
+##
+# RULE: R02-lb-cross-section
+# AGENT: TimberFrame::Agent::Geometry  (pos. 2 / 5)
+# CORPUS: §3.2 — BS EN 1995-1-1 §5.2 — Minimum cross-sections for load-bearing studs
+#
+# PURPOSE
+#   Checks that load-bearing structural elements (load_bearing_stud, sole_plate,
+#   top_plate, rafter, joist) meet minimum cross-section requirements based on
+#   clear height and spacing. Uses the min_lb_section() helper.
+#   Requires both clear_height_mm and spacing_mm; skipped silently if absent.
+#   Non-load-bearing studs are excluded (handled by R03).
+#
+# INPUTS  (slots read)
+#   needs_geometry   : targeting slot
+#   type_element     : enum — must be a load-bearing type
+#   clear_height_mm  : float — clear storey height (mm)
+#   spacing_mm       : float — centre-to-centre spacing (mm)
+#   width_mm         : float — cross-section width b (mm)
+#   depth_mm         : float — cross-section depth h (mm)
+#
+# OUTPUTS (slots written)
+#   section_ok         : 'YES' or 'NO'
+#   geometry_rejection : string — failure reason (written only on rejection)
+#
+# HELPERS
+#   min_lb_section($clear_height_mm, $spacing_mm) → ($b_min, $h_min)
+#
+# GUARD — EXCEPTION: defined $f->{section_ok}
+##
+RULE: R02-lb-cross-section
+FIND:
+  f:
+    attribut: needs_geometry
+    filtre: |
+      $_->get('type_element') =~ /^(load_bearing_stud|sole_plate|top_plate|rafter|joist)$/
+      && defined $_->get('clear_height_mm')
+      && defined $_->get('spacing_mm')
+      && defined $_->get('width_mm')
+      && defined $_->get('depth_mm')
+EXCEPTION: defined $f->{section_ok}
+ACTION: |
+  # Read geometry inputs — §3.2
+  my $height  = $f->get('clear_height_mm');
+  my $spacing = $f->get('spacing_mm');
+  my $b       = $f->get('width_mm');
+  my $h       = $f->get('depth_mm');
+  my $type    = $f->get('type_element');
+
+  # Retrieve minimum section from normative table — §3.2
+  my ($b_min, $h_min) = min_lb_section($height, $spacing);
+
+  # Check b ≥ b_min AND h ≥ h_min — §3.2
+  if ($b < $b_min || $h < $h_min) {
+    $f->set('section_ok', 'NO');
+    $f->set('geometry_rejection',
+      sprintf("cross-section %d×%d mm below minimum %d×%d mm "
+            . "for %s (h=%.0f mm, spacing=%.0f mm) (§3.2)",
+        $b, $h, $b_min, $h_min, $type, $height, $spacing));
+    return 1;
+  }
+
+  $f->set('section_ok', 'YES');
+  1

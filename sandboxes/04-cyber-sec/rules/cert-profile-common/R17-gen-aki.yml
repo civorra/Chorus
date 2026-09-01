@@ -1,0 +1,33 @@
+##
+# RULE: R17-gen-aki
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 2)
+# CORPUS: §4.3.1 — ETSI EN 319 412-2 V2.4.1 — Authority key identifier
+#
+# PURPOSE
+#   Validates that the Authority Key Identifier (AKI) extension is present per
+#   GEN-4.3.1-1: "The authority key identifier extension shall be present, containing
+#   a key identifier for the issuing CA's public key."
+#   Applies to all SubjectIdentifier frames (nat / leg / web / gen).
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot — set by Feed.pm
+#   has_aki               : 'Y' if AKI extension is present in the certificate
+#
+# OUTPUTS (slots written)
+#   aki_ok : "OUI" if AKI is present, "NON" if absent (including undef)
+#
+# GUARD — EXCEPTION: defined $f->{aki_ok}
+#   Idempotence — prevents re-processing a frame already handled in a previous cycle.
+##
+RULE: R17-gen-aki
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") ne "cert_ext"'
+EXCEPTION: 'defined $f->{aki_ok}'
+ACTION: |
+  # §4.3.1 GEN-4.3.1-1: AKI extension shall be present
+  # Absence of has_aki slot = extension not present = NON
+  my $aki = $f->get('has_aki') // '';
+  $f->set('aki_ok', ($aki eq 'Y') ? 'OUI' : 'NON');
+  1

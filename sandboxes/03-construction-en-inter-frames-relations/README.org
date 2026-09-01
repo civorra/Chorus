@@ -1,0 +1,190 @@
+#+TITLE: Sandbox test-02-construction-corpus-en-pdf
+#+DATE: 2025-07-11
+#+STATUS: draft
+
+* Corpus
+  | Num | Fichier                                     | Source                                                           | Date       | Mode       |
+  |-----+---------------------------------------------+------------------------------------------------------------------+------------+------------|
+  | 001 | corpus/001-* (reserved)                     | —                                                                | —          | —          |
+  | 002 | corpus/002-uk-approved-doc-a-2013.pdf        | UK Building Regulations 2010 — Approved Document A, 2013 ed.    | 2025-07-10 | source PDF |
+  | 003 | corpus/003-uk-approved-doc-a-2013-text.txt   | pdfminer text extraction                                         | 2025-07-10 | text-only  |
+  | 004 | corpus/004-uk-approved-doc-a-2013-vision.md  | pdftoppm + Claude vision (54 pages, 11 chunks, ~17 min)          | 2025-07-10 | --images   |
+  | 004 | corpus/004-uk-approved-doc-a-2013-vision.md  | Mode B enrichment #1 — §2C7/8/22/23-24/25-27, §2D, §5/A3       | 2025-07-16 | --enrich   |
+  | 004 | corpus/004-uk-approved-doc-a-2013-vision.md  | Mode B enrichment #2 — §2C10, §2C12, §2C26, §2E2d-e             | 2025-07-16 | --enrich   |
+  | 004 | corpus/004-uk-approved-doc-a-2013-vision.md  | Mode B enrichment #3 — §2C29-30, §2C32-37, §2C38(ii-iii), §2E2f | 2025-07-16 | --enrich   |
+
+  ⚠ Corpus 004 is the authoritative source for this KB.
+  Corpus 003 has known defects: 0 extractable figures, 4 column inversions in tables,
+  watermark artefacts. Use 004 only.
+
+  Known source defect corrected in 004 and in KB:
+  Table c Diagram 7, Factor S=34, Country >50km: 8.5m (PDF printed "87.5" — merge artefact).
+
+* Identified pipeline
+  | Pos | Agent (module Perl)      | Slug       | Rules dir            | Helpers                                  |
+  |-----+--------------------------+------------+----------------------+------------------------------------------|
+  |   0 | ADA::Agent::Robustness   | robustness | rules/robustness/    | lib/ADA/Agent/Robustness/Helpers.pm      |
+  |   1 | ADA::Agent::Geometry     | geometry   | rules/geometry/      | lib/ADA/Agent/Geometry/Helpers.pm        |
+  |   2 | ADA::Agent::Wall         | wall       | rules/wall/          | lib/ADA/Agent/Wall/Helpers.pm            |
+  |   3 | ADA::Agent::Masonry      | masonry    | rules/masonry/       | lib/ADA/Agent/Masonry/Helpers.pm         |
+  |   4 | ADA::Agent::Foundation   | foundation | rules/foundation/    | lib/ADA/Agent/Foundation/Helpers.pm      |
+  |   5 | ADA::Agent::Chimney      | chimney    | rules/chimney/       | (none)                                   |
+
+  Targeting slot chains:
+  Main chain:
+    feed → type_element → [Geometry] → besoin_wall → [Wall] → besoin_masonry
+         → [Masonry] → besoin_foundation → [Foundation] → foundation_ok → solved()
+  Independent chains:
+    feed → building_use → [Robustness] → consequence_class (standalone verdict)
+    feed → type_element='masonry_chimney' → [Chimney] → chimney_ok (standalone verdict)
+
+* Agent status
+  | Agent      | KB                            | YAML                       | Helpers                              | Enrichments |
+  |------------+-------------------------------+----------------------------+--------------------------------------+-------------|
+  | Robustness | agent/chorus/robustness.org   | rules/robustness/ (R01)    | lib/ADA/Agent/Robustness/Helpers.pm  | 0 (new)     |
+  | Geometry   | agent/chorus/geometry.org     | rules/geometry/ (R01-3)    | lib/ADA/Agent/Geometry/Helpers.pm    | 0           |
+  | Wall       | agent/chorus/wall.org         | rules/wall/ (R01-9)        | lib/ADA/Agent/Wall/Helpers.pm        | 2           |
+  | Masonry    | agent/chorus/masonry.org      | rules/masonry/ (R01-4)     | lib/ADA/Agent/Masonry/Helpers.pm     | 1           |
+  | Foundation | agent/chorus/foundation.org   | rules/foundation/ (R01-4)  | lib/ADA/Agent/Foundation/Helpers.pm  | 1           |
+  | Chimney    | agent/chorus/chimney.org      | rules/chimney/ (R01)       | (none)                               | 0 (new)     |
+
+* YAML rules inventory
+  | Agent      | File                                            | Rule intent                                      |
+  |------------+-------------------------------------------------+--------------------------------------------------|
+  | Robustness | rules/robustness/R01-consequence-class.yml      | Table 11 consequence class CC1/CC2a/CC2b/CC3     |
+  | Geometry   | rules/geometry/R01-residential-geometry.yml     | Residential building §2C4a/§2C14/§2C16           |
+  | Geometry   | rules/geometry/R02-non-residential-geometry.yml | Non-residential §2C4b/§2C14/§2C16               |
+  | Geometry   | rules/geometry/R03-annexe-geometry.yml          | Annexe §2C4c/§2C14/§2C16                         |
+  | Wall       | rules/wall/R01-external-wall-thickness.yml      | Table 3 + §2C6 + §2C7 uncoursed stone            |
+  | Wall       | rules/wall/R02-cavity-tie.yml                   | Table 5 tie length check                         |
+  | Wall       | rules/wall/R03-internal-wall-thickness.yml      | §2C6 internal wall Hs/16                         |
+  | Wall       | rules/wall/R04-parapet-wall.yml                 | Diagram 4 parapet type A/B (corrected table)     |
+  | Wall       | rules/wall/R05-buttressing-wall.yml             | §2C17 buttressing length ≥ H/6                   |
+  | Wall       | rules/wall/R06-tie-spacing.yml                  | §2C8 tie spacing h≤900/v≤450/edge≤300mm (NEW)    |
+  | Wall       | rules/wall/R07-loading-conditions.yml           | §2C23 span≤6m + §2C24b diff≤4t + §2C24c≤70kN/m (NEW) |
+    | Wall       | rules/wall/R08-end-restraint.yml                | §2C27 pier ≥3T, min 190mm                            |
+    | Wall       | rules/wall/R09-buttressing-opening.yml          | §2C26 opening in buttress: dist≥550mm, h≤0.9Hs, lintel≥150mm (NEW) |
+    | Wall       | rules/wall/R10-opening-factor-x.yml             | §2C29 Diagram 14: total≤2L/3, individual≤3m, corner P5≥665mm (NEW)  |
+    | Wall       | rules/wall/R11-chase-depth.yml                  | §2C30 chase depth: vertical≤T/3, horizontal≤T/6 (NEW)               |
+    | Wall       | rules/wall/R12-lateral-strap.yml                | §2C32-35 strap spacing≤2m, Table 9 floor support (NEW)              |
+    | Wall       | rules/wall/R13-gable-strapping.yml              | §2C36 gable vertical strapping≤2m at eaves (4 exemption conds) (NEW)|
+    | Wall       | rules/wall/R14-lateral-interruption.yml         | §2C37 stairway interruption≤3m parallel to wall (NEW)               |
+    | Wall       | rules/wall/R15-small-building-wall.yml          | §2C38(ii-iii) pier 390×190mm, corner≥390mm, openings (NEW)          |
+    | Foundation | rules/foundation/R05-pier-chimney-foundation.yml| §2E2f Diagram 22: foundation projection X≥P (NEW)                   |
+    | Masonry    | rules/masonry/R01-masonry-condition.yml         | Diagram 9 condition A/B/C                        |
+  | Masonry    | rules/masonry/R02-masonry-strength.yml          | Table 6 declared compressive strength            |
+  | Masonry    | rules/masonry/R03-normalised-strength-blocks.yml | Table 7 normalised strength blocks              |
+  | Masonry    | rules/masonry/R04-mortar-specification.yml      | §2C22 mortar designation (iii)/M4/1:1:5-6 (NEW) |
+  | Foundation | rules/foundation/R01-foundation-width.yml       | Table 10 strip footing minimum width             |
+  | Foundation | rules/foundation/R02-foundation-depth.yml       | §2E4 minimum depth (frost + shrink)              |
+    | Foundation | rules/foundation/R03-foundation-thickness.yml   | §2E2c T ≥ 150mm or P + overall verdict                  |
+    | Foundation | rules/foundation/R04-a-stepped-foundation.yml   | §2E2d-e overlap L≥max(2S,T,300mm); S≤T (NEW)            |
+    | Chimney    | rules/chimney/R01-chimney-proportion.yml         | §2D1 chimney H ≤ 4.5W                                    |
+
+* Session notes
+  2025-07-11 — chorus-feed Mode A initialized from corpus 004 (vision.md).
+               Pipeline: 4 agents, namespace ADA.
+               11 YAML rules, 4 Helpers.pm files, 4 KB org files.
+               Termination: pure-Perl addrule() in shell Agent (see foundation.org pitfalls).
+
+  2025-07-16 — chorus-feed Mode B enrichment #1 (--enrich) from corpus 004 (same source).
+               Extracted previously uncaptured sections:
+               • §2C7 uncoursed stone wall (thickness × 1.33) — KB note in R01
+               • §2C8 cavity tie spacing — new R06-tie-spacing.yml
+               • §2C22 mortar specification — new R04-mortar-specification.yml
+               • §2C23-24 loading conditions (floor span, ground diff, base load) — new R07
+               • §2C25-27 end restraint / pier sizing — new R08-end-restraint.yml
+               • Diagram 4 parapet correction — fixed R04 KB (stepped table vs simplified)
+               • §2D chimney proportions — new Chimney agent (pos 5)
+               • §5/A3 consequence classes (Table 11) — new Robustness agent (pos 0)
+               Pipeline: 6 agents (pos 0–5), 19 YAML rules, 5 Helpers.pm files, 6 KB org files.
+
+  2025-07-16 — chorus-feed Mode B enrichment #2 (--enrich) from corpus 004 (same source).
+               Extracted sections explicitly flagged as deferred in previous passes:
+               • §2C10 internal wall base-of-3-storey min 140mm — R03-internal-wall-thickness updated
+               • §2C12 single-leaf non-residential/annexe wall 90mm exception — R01 updated
+               • §2C26 openings in buttressing walls (dist≥550mm, h≤0.9Hs, lintel≥150mm) — new R09
+               • §2E2d-e stepped foundations (overlap L≥max(2S,T,300mm); S≤T) — new R04 (Foundation)
+               Pipeline: 6 agents (pos 0–5), 21 YAML rules, 5 Helpers.pm files, 6 KB org files.
+
+  2025-07-16 — chorus-feed Mode B enrichment #3 (--enrich) from corpus 004 (same source).
+               Extracted all remaining codifiable deferred sections:
+               • §2C29 opening dimensional criteria (Diagram 14 + Table 8 Factor X) — new R10
+               • §2C30 chase depth limits (vertical ≤T/3, horizontal ≤T/6) — new R11
+               • §2C32-35 lateral support strap spacing ≤2m + Table 9 floor support — new R12
+               • §2C36 gable wall strapping ≤2m at eaves (4 exemption conditions) — new R13
+               • §2C37 stairway lateral interruption ≤3m — new R14
+               • §2C38(ii-iii) small building pier/opening checks (Diag 17/18) — new R15
+               • §2E2f pier/chimney foundation projection X≥P (Diagram 22) — Foundation R05
+               • §2C13 modular bricks: reclassified ⛔ (external-norm — BS deviation values not in corpus)
+               Pipeline: 6 agents (pos 0–5), 29 YAML rules, 6 Helpers.pm files (Wall updated).
+               Wall::Helpers.pm: added factor_x_table8 (Table 8).
+               Next step: chorus-check to regenerate infrastructure; chorus-strengthen to verify.
+
+* Coverage
+  Last updated by chorus-feed --enrich #3 — 2025-07-16
+  Corpus: corpus/004-uk-approved-doc-a-2013-vision.md  (enrichment pass 4 total)
+
+** ✅ Integrated (29 rules / tables)
+   | Section / Article                  | Rules generated                                          | Added in pass |
+   |------------------------------------+----------------------------------------------------------+---------------|
+   | §2C4a — Residential geom           | R01-residential-geometry.yml                             | Mode A        |
+   | §2C4b — Non-res geom               | R02-non-residential-geometry.yml                         | Mode A        |
+   | §2C4c — Annexe geom                | R03-annexe-geometry.yml                                  | Mode A        |
+   | §2C6 — Wall Hs/16                  | R01-external-wall-thickness.yml, R03-internal-wall       | Mode A        |
+   | §2C7 — Uncoursed stone             | R01 (×1.33 branch)                                       | Mode B #1     |
+   | §2C8 — Tie spacing                 | R06-tie-spacing.yml                                      | Mode B #1     |
+   | §2C10 — Internal 3-storey          | R03-internal-wall-thickness.yml (140mm branch)           | Mode B #2     |
+   | §2C12 — Single-leaf 90mm           | R01-external-wall-thickness.yml (single_leaf branch)     | Mode B #2     |
+   | §2C14 — Max floor area             | R01 (70m²), R02 (36m²), R03-annexe (36m²)               | Mode A        |
+   | §2C17 — Buttress length            | R05-buttressing-wall.yml                                 | Mode A        |
+   | §2C18 — Parapet Diagram 4          | R04-parapet-wall.yml (corrected)                         | Mode B #1     |
+   | §2C21 + Diagram 9                  | R01-masonry-condition.yml + Helper diagram9_condition    | Mode A        |
+   | §2C22 — Mortar spec                | R04-mortar-specification.yml                             | Mode B #1     |
+   | §2C23 — Floor span ≤ 6m            | R07-loading-conditions.yml                               | Mode B #1     |
+   | §2C24b-c — Loading cond            | R07-loading-conditions.yml                               | Mode B #1     |
+   | §2C25-27 — End restraint           | R08-end-restraint.yml                                    | Mode B #1     |
+   | §2C26 — Buttress openings          | R09-buttressing-opening.yml                              | Mode B #2     |
+   | §2C29 — Openings/Factor X Diag14   | R10-opening-factor-x.yml + Helper factor_x_table8        | Mode B #3     |
+   | §2C30 — Chase depth                | R11-chase-depth.yml                                      | Mode B #3     |
+   | §2C32-35 — Lateral strap support   | R12-lateral-strap.yml (strap≤2m, Table 9 floor support)  | Mode B #3     |
+   | §2C36 — Gable strapping            | R13-gable-strapping.yml (≤2m at eaves, 4 exemptions)    | Mode B #3     |
+   | §2C37 — Lateral interruption       | R14-lateral-interruption.yml (stairway ≤3m)              | Mode B #3     |
+   | §2C38(ii-iii) — Small bldg wall    | R15-small-building-wall.yml (pier 390×190, corner ≥390mm)| Mode B #3     |
+   | §2D1 — Chimney H≤4.5W             | R01-chimney-proportion.yml                               | Mode B #1     |
+   | §2E2c — Foundation T≥150           | R03-foundation-thickness.yml                             | Mode A        |
+   | §2E2d-e — Stepped found            | R04-a-stepped-foundation.yml                             | Mode B #2     |
+   | §2E2f — Pier/chimney found proj    | R05-pier-chimney-foundation.yml (X≥P)                   | Mode B #3     |
+   | §2E4 — Foundation depth            | R02-foundation-depth.yml + Helper min_depth_2e4          | Mode A        |
+   | Table 3 — Ext wall min t           | R01 + Helper min_thickness_table3                        | Mode A        |
+   | Table 5 — Cavity tie len           | R02-cavity-tie.yml + Helper min_tie_length_table5        | Mode A        |
+   | Table 6 — Masonry strength         | R02-masonry-strength.yml + Helper min_strength_table6    | Mode A        |
+   | Table 7 — Normalised str           | R03-normalised-strength-blocks.yml + Helper              | Mode A        |
+   | Table 8 — Factor X                 | Helper factor_x_table8 (Wall::Helpers.pm)                | Mode B #3     |
+   | Table 10 — Strip min width         | R01-foundation-width.yml + Helper min_width_table10      | Mode A        |
+   | Table 11 — Consequence cls         | R01-consequence-class.yml + Helper consequence_class_table11 | Mode B #1  |
+
+** ⏭ Deferred — needs chorus-feed --enrich (0 sections)
+   All codifiable sections from this corpus are now integrated.
+
+** ⛔ Out of scope (9 sections)
+   | Section / Article           | Reason                                                             |
+   |-----------------------------+--------------------------------------------------------------------|
+   | Section 1 — References      | informative — lists Eurocodes and British Standards only           |
+   | §2A — Basic requirements    | procedural — principles without numeric thresholds                 |
+   | §2B — Timber members        | external-norm — TRADA tables (removed from 2013 edition)          |
+   | §2C13 — Modular bricks      | external-norm — deviation values in BS standard, not in corpus     |
+   | §2C19 — Wall ties BS EN     | external-norm — specification via BS EN 845-1 standard             |
+   | §2C20 — Masonry units BS EN | external-norm — compliance per BS EN 771-1 to -6                   |
+   | Section 3 — Wall cladding   | procedural/external-norm — fixings per specialist design           |
+   | Section 4 — Roof covering   | informative — material references only                             |
+   | §2A, §2C31 — Overhangs      | procedural — no numeric threshold                                  |
+
+** Next step
+   #+BEGIN_EXAMPLE
+   # ✅ Full coverage reached — no --enrich pass needed.
+
+   # Regenerate infrastructure and verify:
+   chorus-check test-02-construction-corpus-en-pdf projet-ada-01.json
+   chorus-strengthen test-02-construction-corpus-en-pdf
+   #+END_EXAMPLE

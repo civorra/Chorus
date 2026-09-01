@@ -1,0 +1,36 @@
+##
+# RULE: R14-cert-policies
+# AGENT: CyberSec::Agent::CertProfileNat  (pos. 2 / 2)
+# CORPUS: §4.3.3 — ETSI EN 319 412-2 V2.4.1 — Certificate policies extension
+#          GEN-4.3.3-1: extension should not be marked critical
+#          GEN-4.3.3-2: certificate policies extension SHALL be present and SHALL contain
+#                       at least one certificate policy identifier
+#          Cross-ref: §5.2 — ETSI EN 319 412-2 V2.4.1 (EU QC certPolicies OID — covered by R32)
+#
+# PURPOSE
+#   Validates that the certificatePolicies extension is present in the certificate.
+#   Applies to all NAT frames. The extension must carry at least one OID (has_cert_policies = 'Y').
+#   Criticality check (GEN-4.3.3-1) is a "should" — documented but not enforced as NON verdict.
+#
+# INPUTS  (slots read)
+#   needs_nat_validation : targeting slot — set by CertProfileCommon R04
+#   has_cert_policies    : 'Y' if certificatePolicies extension present with ≥1 OID
+#
+# OUTPUTS (slots written)
+#   cert_policies_ok : "OUI" if extension present, "NON" if absent
+#
+# GUARD — EXCEPTION: defined $f->{cert_policies_ok}
+#   Idempotence — prevents re-processing a frame already handled in a previous cycle.
+##
+RULE: R14-cert-policies
+FIND:
+  f:
+    attribut: needs_nat_validation
+EXCEPTION: 'defined $f->{cert_policies_ok}'
+ACTION: |
+  # §4.3.3 GEN-4.3.3-2: certificatePolicies SHALL be present
+  my $cp = $f->get('has_cert_policies') // '';
+  my $ok = ($cp eq 'Y') ? 'OUI' : 'NON';
+
+  $f->set('cert_policies_ok', $ok);
+  1

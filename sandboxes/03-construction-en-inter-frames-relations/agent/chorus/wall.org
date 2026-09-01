@@ -1,0 +1,935 @@
+#+TITLE: Agent Wall
+#+AGENT: ADA::Agent::Wall
+#+PIPELINE_POS: 2
+#+RULES_DIR: rules/wall/
+
+# ============================================================
+# NOTICE
+# KB of the second Chorus agent in the ADA pipeline.
+# Source corpus: UK Building Regulations 2010 — Approved Document A (Structure)
+#               Edition 2013 — 54 pages
+# Corpus file  : corpus/004-uk-approved-doc-a-2013-vision.md
+# ============================================================
+
+* Domain
+  Verification of wall thickness, cavity construction and buttressing rules.
+  This agent handles sections 2C6, 2C17 and Table 3 of Approved Document A:
+
+  - Verifies minimum thickness of external/compartment/separating walls (Table 3)
+  - Verifies solid wall thickness ≥ storey_height / 16 (§2C6)
+  - Verifies cavity wall leaf minimum thickness (90mm each leaf, cavity 50–175mm)
+  - Verifies parapet wall thickness rules (type A cavity / type B solid)
+  - Verifies buttressing wall dimensions (length ≥ H/6, §2C17)
+  - Verifies cavity ties specification (Table 5)
+  - Sets ~besoin_masonry~ targeting slot for ADA::Agent::Masonry
+
+  Pipeline position 2/4 — depends on ADA::Agent::Geometry having set ~besoin_wall~.
+
+* Targeting Slots                                                        :SCOPE:
+  /This agent processes Frames tagged by ADA::Agent::Geometry./
+
+** Chosen Strategy
+   Strategy B — presence slot.
+   Agent::Geometry sets ~besoin_wall~ = 'Y' on every building and wall Frame
+   after geometric verification. Agent::Wall scopes on that slot only.
+
+   Chosen strategy : B
+   Justification   : Wall Frames outnumber building Frames (one project may have
+                     many walls); Strategy B avoids scanning all Frames with a
+                     filtre on type_element — direct presence-slot lookup is O(1).
+
+** Targeting Slots Table
+   | Slot        | Strategy | Set by                               | Value / condition |
+   |-------------+----------+--------------------------------------+-------------------|
+   | besoin_wall | B        | ADA::Agent::Geometry (R01/R02/R03)   | existence = 'Y'   |
+
+** Pre-Population Contract
+   ADA::Agent::Geometry MUST have set ~besoin_wall~ = 'Y' on every building Frame
+   AND on every wall Frame that needs thickness/buttressing checks.
+   ⚠ Walls not tagged by the feed or geometry agent → invisible to this agent.
+
+* Pipeline — I/O Contract
+** Incoming Slots (FIND / fmatch)
+   | Slot                  | Source Frame(s)                                                | Set by         | Description                                              |
+   |-----------------------+----------------------------------------------------------------+----------------+----------------------------------------------------------|
+   | besoin_wall           | all wall-type Frames + building Frames                         | Geometry R01-3 | targeting slot — presence = Frame needs wall checks      |
+   | type_element          | external_wall, internal_wall, parapet_wall, buttressing_wall   | feed           | wall category                                            |
+   | thickness_mm          | external_wall, internal_wall, parapet_wall                     | feed           | wall thickness in mm                                     |
+   | height_m              | external_wall, parapet_wall, buttressing_wall                  | feed           | wall height in metres                                    |
+   | length_m              | external_wall                                                  | feed           | wall length in metres                                    |
+   | storey_height_m       | external_wall, internal_wall                                   | feed           | storey height in metres (for 1/16 check)                 |
+   | wall_type             | external_wall, parapet_wall                                    | feed           | 'solid' or 'cavity'                                      |
+   | leaf_inner_mm         | external_wall (cavity)                                         | feed           | inner leaf thickness in mm (min 90mm)                    |
+   | leaf_outer_mm         | external_wall (cavity)                                         | feed           | outer leaf thickness in mm (min 90mm)                    |
+   | cavity_width_mm       | external_wall (cavity), parapet_wall type A                    | feed           | cavity width in mm (50–175mm)                            |
+   | tie_length_mm            | external_wall (cavity)                                      | feed           | supplied tie length in mm                                |
+   | tie_h_spacing_mm         | external_wall (cavity)                                      | feed           | horizontal spacing of ties in mm (§2C8: max 900mm)       |
+   | tie_v_spacing_mm         | external_wall (cavity)                                      | feed           | vertical spacing of ties in mm (§2C8: max 450mm)         |
+   | tie_edge_spacing_mm      | external_wall (cavity)                                      | feed           | tie spacing at openings/edges in mm (§2C8: max 300mm)    |
+   | wall_construction_material | external_wall, internal_wall                              | feed           | 'coursed_brick' / 'uncoursed_stone' (§2C6-7)            |
+   | parapet_type             | parapet_wall                                                | feed           | 'A' (cavity) or 'B' (solid)                              |
+   | leaf_combined_mm         | parapet_wall type A                                         | feed           | t₁ + t₂ combined leaf thickness for Diagram 4 lookup    |
+   | buttressing_length_m     | buttressing_wall                                            | feed           | buttressing wall length in metres                        |
+   | buttressing_thickness_mm | buttressing_wall                                            | feed           | thickness T2 in mm                                       |
+   | floor_span_m             | external_wall, internal_wall                                | feed           | max span of floor supported by this wall (§2C23, max 6m) |
+   | ground_level_diff_mm     | external_wall                                               | feed           | height diff between ground levels each side (§2C24b)    |
+   | combined_load_kn_m       | external_wall, internal_wall                                | feed           | combined dead+imposed load at base (§2C24c, max 70kN/m) |
+   | pier_thickness_mm        | buttressing_wall                                            | feed           | pier thickness measured ⊥ to supported wall (§2C27)     |
+   | pier_width_mm            | buttressing_wall                                            | feed           | pier minimum width (§2C27: min 190mm)                   |
+   | single_leaf              | external_wall                                               | feed           | 'Y' if single-leaf wall of non-residential/annexe (§2C12: 90mm min) |
+   | storey_position          | internal_wall                                               | feed           | 'base'/'upper'/'single' — storey position in building (§2C10) |
+   | num_storeys_building     | internal_wall                                               | feed           | total storeys 1/2/3 — for §2C10 base-of-3-storey check  |
+   | buttress_opening_area_m2 | buttressing_wall                                            | feed           | area of opening in buttressing wall m² (§2C26)           |
+   | buttress_opening_dist_mm | buttressing_wall                                            | feed           | dist of opening from supported wall mm (§2C26: >0.1m² must be ≥ 550mm) |
+   | buttress_opening_height_m| buttressing_wall                                            | feed           | height of opening in buttress wall m (§2C26: max 0.9×floor-to-ceil) |
+   | buttress_lintel_depth_mm | buttressing_wall                                            | feed           | lintel depth incl. masonry over opening mm (§2C26: min 150mm) |
+
+** Outgoing Slots (set by this agent)
+   | Slot                  | Target Frame(s)                                                | Type / values  | Description                                              |
+   |-----------------------+----------------------------------------------------------------+----------------+----------------------------------------------------------|
+   | wall_thickness_ok     | external_wall, internal_wall, parapet_wall                     | 'YES'/'NO'     | thickness meets Table 3 / §2C6 requirements              |
+   | cavity_ok             | external_wall (cavity)                                         | 'YES'/'NO'     | leaf and cavity width compliant                          |
+   | tie_ok                | external_wall (cavity)                                         | 'YES'/'NO'     | tie length matches Table 5 requirement                   |
+   | buttressing_ok        | buttressing_wall                                               | 'YES'/'NO'     | length ≥ H/6 and thickness requirements met              |
+   | wall_violations       | all wall Frames                                                | str            | list of violated constraints                             |
+   | wall_ok               | all wall Frames                                                | 'YES'/'NO'     | overall wall verdict                                     |
+   | tie_spacing_ok        | external_wall (cavity)                                         | 'YES'/'NO'     | tie spacing (h/v/edge) meets §2C8 requirements            |
+   | loading_ok           | external_wall, internal_wall                                   | 'YES'/'NO'     | floor span, ground diff, combined load within limits      |
+   | end_restraint_ok     | buttressing_wall                                               | 'YES'/'NO'     | pier/chimney sizing meets §2C25-27 requirements           |
+   | buttress_opening_ok  | buttressing_wall                                               | 'YES'/'NO'     | opening constraints in buttressing wall meet §2C26        |
+   | besoin_masonry       | external_wall, parapet_wall                                    | 'Y'            | targeting slot for ADA::Agent::Masonry                    |
+
+* Ontology
+  Core concepts from corpus §2C6, §2C17, §2C18, §2C19, Table 3, Table 5:
+
+  - *External wall* → Frame ~external_wall~ — solid or cavity construction
+  - *Internal wall* → Frame ~internal_wall~ — loadbearing or partition
+  - *Parapet wall* → Frame ~parapet_wall~ — type A (cavity) or B (solid), above roof line
+  - *Buttressing wall* → Frame ~buttressing_wall~ — provides lateral support, §2C17
+  - *Pier* → integral thickened section of a wall, lateral support function (§2.3 Definitions)
+  - *Cavity tie* → metal tie connecting two leaves, specified in Table 5
+  - *Cavity width* → horizontal distance between two leaves (§2.3 Definitions)
+
+** Aliases
+   Sources: corpus §2.3 Definitions, Table 3, Table 5 Notes
+   | Canonical KB form (slot / type_element value)  | Project-side variants                                         | Source                   |
+   |------------------------------------------------+---------------------------------------------------------------+--------------------------|
+   | external_wall                                  | outer wall, external leaf, facade wall, perimeter wall        | corpus §2C6              |
+   | internal_wall                                  | inner wall, partition, loadbearing partition                  | corpus §2C6              |
+   | parapet_wall                                   | parapet, coping wall                                         | corpus §2C18             |
+   | buttressing_wall                               | buttress, buttressing wall, lateral support wall              | corpus §2.3 Definitions  |
+   | cavity_width_mm                                | cavity width, clear cavity, gap between leaves               | corpus §2.3 Definitions  |
+   | wall_type "solid"                              | solid masonry, solid construction, no cavity                 | corpus §2C6              |
+   | wall_type "cavity"                             | cavity wall, two-leaf wall, twin-leaf construction           | corpus §2C6              |
+   | parapet_type "A"                               | type A parapet, cavity parapet                               | corpus §2C18             |
+   | parapet_type "B"                               | type B parapet, solid parapet                                | corpus §2C18             |
+   | thickness_mm                                   | wall thickness, t, T, overall thickness                      | corpus Table 3           |
+   | leaf_inner_mm                                  | inner leaf, inner skin, inner leaf thickness                 | corpus §2C17             |
+   | leaf_outer_mm                                  | outer leaf, outer skin, outer leaf thickness                 | corpus §2C17             |
+   | tie_length_mm                                  | wall tie length, tie length                                  | corpus Table 5           |
+   | buttressing_length_m                           | buttress length, T3, support length                          | corpus §2C17             |
+   | storey_height_m                                | Hs, storey height, floor-to-ceiling height                   | corpus Diagram 9         |
+   | wall_construction_material "coursed_brick"     | coursed brickwork, blockwork, coursed masonry                | corpus §2C6              |
+   | wall_construction_material "uncoursed_stone"   | uncoursed stone, flints, clunches, vitrified material        | corpus §2C7              |
+   | tie_h_spacing_mm                               | horizontal tie spacing, tie spacing horizontal               | corpus §2C8              |
+   | tie_v_spacing_mm                               | vertical tie spacing, tie spacing vertical                   | corpus §2C8              |
+   | tie_edge_spacing_mm                            | tie spacing at edges, spacing near openings/verges           | corpus §2C8              |
+   | leaf_combined_mm                               | combined leaf thickness, t₁+t₂, total cavity leaves         | corpus Diagram 4         |
+   | floor_span_m                                   | floor span, span, centre-to-centre span                      | corpus §2C23 Diagram 10  |
+   | ground_level_diff_mm                           | ground level difference, retained height H, level diff       | corpus §2C24b Diagram 11 |
+   | combined_load_kn_m                             | combined dead and imposed load, W, load at base              | corpus §2C24c Diagram 11 |
+   | pier_thickness_mm                              | pier thickness, 3T dimension, pier depth                     | corpus §2C27 Diagram 13  |
+      | pier_width_mm                               | pier width, minimum 190mm, pier breadth                      | corpus §2C27 Diagram 13  |
+      | single_leaf "Y"                             | single-leaf wall, single skin, monoleaf, 90mm wall           | corpus §2C12             |
+      | storey_position "base"                      | base storey, ground floor storey, lowest storey              | corpus §2C10, Diagram 9  |
+      | storey_position "upper"                     | upper storey, first floor, intermediate storey               | corpus §2C10, Diagram 9  |
+      | storey_position "single"                    | single storey, one-storey only                               | corpus §2C10, Diagram 9  |
+      | num_storeys_building                        | number of storeys, building storeys, n storeys               | corpus §2C10, Diagram 9  |
+
+* Frame Catalogue
+** Frame: external_wall
+   Role: External, compartment, or separating wall subject to Table 3 checks.
+
+   | Slot                  | Type    | Possible values       | Constraint    | Description                             |
+   |-----------------------+---------+-----------------------+---------------+-----------------------------------------|
+   | besoin_wall           | flag    | 'Y' or undef          | set upstream  | targeting slot                          |
+   | type_element          | enum    | 'external_wall'       | set by feed   | element category                        |
+   | wall_type             | enum    | 'solid' / 'cavity'    | required      | construction type                       |
+   | thickness_mm          | int     | ≥ 100                 | required      | total wall thickness (mm)               |
+   | height_m              | float   | > 0                   | required      | wall height (m)                         |
+   | length_m              | float   | > 0                   | required      | wall length (m)                         |
+   | storey_height_m       | float   | > 0                   | required      | storey height for §2C6 check (m)        |
+   | leaf_inner_mm         | int     | ≥ 90                  | cond. req.    | inner leaf thickness (mm) — cavity only |
+   | leaf_outer_mm         | int     | ≥ 90                  | cond. req.    | outer leaf thickness (mm) — cavity only |
+   | cavity_width_mm       | int     | 50..175               | cond. req.    | cavity width (mm) — cavity only         |
+   | tie_length_mm         | int     | > 0                   | optional      | supplied tie length (mm)                |
+   | wall_thickness_ok     | enum    | 'YES' / 'NO'          | set by R01    | Table 3 / §2C6 verdict                  |
+   | cavity_ok             | enum    | 'YES' / 'NO'          | set by R01    | cavity dimensions verdict               |
+   | tie_ok                | enum    | 'YES' / 'NO'          | set by R02    | tie length verdict                      |
+   | wall_violations       | str     | CSV list              | set by R01/R02 | violated constraints                   |
+   | wall_ok               | enum    | 'YES' / 'NO'          | set by R01    | overall wall verdict                    |
+   | besoin_masonry        | flag    | 'Y' or undef          | set by R01    | targeting slot for Agent::Masonry       |
+   | single_leaf           | enum    | 'Y' or undef          | set by feed   | single-leaf non-res/annexe wall — §2C12 min 90mm |
+
+   Slots d'entrée  : besoin_wall, type_element, wall_type, thickness_mm, height_m, length_m, storey_height_m, leaf_inner_mm, leaf_outer_mm, cavity_width_mm, single_leaf
+   Slots calculés  : wall_thickness_ok, cavity_ok, tie_ok, wall_violations, wall_ok, besoin_masonry
+   Slots optionnels: tie_length_mm
+
+   Inheritance (_ISA): –
+
+** Frame: internal_wall
+   Role: Internal loadbearing wall — thickness ≥ storey_height/16 (§2C6).
+
+   | Slot              | Type    | Possible values   | Constraint    | Description                          |
+   |-------------------+---------+-------------------+---------------+--------------------------------------|
+   | besoin_wall       | flag    | 'Y' or undef      | set upstream  | targeting slot                       |
+   | type_element      | enum    | 'internal_wall'   | set by feed   | element category                     |
+   | thickness_mm      | int     | ≥ 0               | required      | wall thickness (mm)                  |
+   | storey_height_m   | float   | > 0               | required      | storey height (m)                    |
+   | storey_position   | enum    | base/upper/single | set by feed   | storey position (§2C10 base-3-storey check) |
+   | num_storeys_building | int  | 1..3              | set by feed   | total building storeys (§2C10)       |
+   | wall_thickness_ok | enum    | 'YES' / 'NO'      | set by R03    | §2C6 / §2C10 verdict                 |
+   | wall_violations   | str     | CSV list          | set by R03    | violated constraints                 |
+   | wall_ok           | enum    | 'YES' / 'NO'      | set by R03    | overall verdict                      |
+
+   Slots d'entrée  : besoin_wall, type_element, thickness_mm, storey_height_m, storey_position, num_storeys_building
+   Slots calculés  : wall_thickness_ok, wall_violations, wall_ok
+
+   Inheritance (_ISA): –
+
+** Frame: parapet_wall
+   Role: Parapet wall above roof — type A (cavity) or B (solid), specific thickness rules.
+
+   | Slot              | Type    | Possible values        | Constraint    | Description                          |
+   |-------------------+---------+------------------------+---------------+--------------------------------------|
+   | besoin_wall       | flag    | 'Y' or undef           | set upstream  | targeting slot                       |
+   | type_element      | enum    | 'parapet_wall'         | set by feed   | element category                     |
+   | parapet_type      | enum    | 'A' / 'B'              | required      | A=cavity, B=solid                    |
+   | thickness_mm      | int     | ≥ 0                    | required      | parapet thickness (mm)               |
+   | height_m          | float   | > 0                    | required      | parapet height Hp (m)                |
+   | wall_thickness_ok | enum    | 'YES' / 'NO'           | set by R04    | thickness verdict                    |
+   | wall_violations   | str     | CSV list               | set by R04    | violated constraints                 |
+   | wall_ok           | enum    | 'YES' / 'NO'           | set by R04    | overall verdict                      |
+   | besoin_masonry    | flag    | 'Y' or undef           | set by R04    | targeting slot for Agent::Masonry    |
+
+   Slots d'entrée  : besoin_wall, type_element, parapet_type, thickness_mm, height_m
+   Slots calculés  : wall_thickness_ok, wall_violations, wall_ok, besoin_masonry
+
+   Inheritance (_ISA): –
+
+** Frame: buttressing_wall
+   Role: Wall providing lateral support — §2C17, length ≥ H/6.
+
+   | Slot                    | Type    | Possible values      | Constraint    | Description                    |
+   |-------------------------+---------+----------------------+---------------+--------------------------------|
+   | besoin_wall             | flag    | 'Y' or undef         | set upstream  | targeting slot                 |
+   | type_element            | enum    | 'buttressing_wall'   | set by feed   | element category               |
+   | height_m                | float   | > 0                  | required      | height of supported wall (m)   |
+   | buttressing_length_m    | float   | > 0                  | required      | buttressing wall length (m)    |
+   | buttressing_thickness_mm| int     | > 0                  | required      | buttressing wall thickness T2  |
+   | buttressing_ok              | enum    | 'YES' / 'NO'       | set by R05    | §2C17 verdict                  |
+   | end_restraint_ok           | enum    | 'YES' / 'NO'       | set by R08    | pier sizing §2C27 verdict      |
+   | buttress_opening_area_m2   | float   | ≥ 0                | optional      | opening area m² (§2C26)        |
+   | buttress_opening_dist_mm   | float   | ≥ 0                | optional      | dist from supported wall mm    |
+   | buttress_opening_height_m  | float   | ≥ 0                | optional      | opening height m               |
+   | buttress_lintel_depth_mm   | float   | ≥ 0                | optional      | lintel depth mm (min 150)      |
+   | buttress_opening_ok        | enum    | 'YES' / 'NO'       | set by R09    | opening constraints §2C26      |
+   | wall_violations            | str     | CSV list           | set by R05-9  | violated constraints           |
+   | wall_ok                    | enum    | 'YES' / 'NO'       | set by R05-9  | overall verdict                |
+
+   Slots d'entrée  : besoin_wall, type_element, height_m, buttressing_length_m, buttressing_thickness_mm
+   Slots calculés  : buttressing_ok, end_restraint_ok, buttress_opening_ok, wall_violations, wall_ok
+   Slots optionnels: buttress_opening_area_m2, buttress_opening_dist_mm, buttress_opening_height_m, buttress_lintel_depth_mm
+
+   Inheritance (_ISA): –
+
+* Slot Dictionary
+  | Slot                    | Frame(s)                                         | Role              | fmatch target? |
+  |-------------------------+--------------------------------------------------+-------------------+----------------|
+  | besoin_wall             | all wall Frames                                  | _SCOPE targeting  | yes            |
+  | type_element            | all wall Frames                                  | _APPLY read       | no             |
+  | wall_type               | external_wall, parapet_wall                      | _APPLY read       | no             |
+  | thickness_mm            | external_wall, internal_wall, parapet_wall       | _APPLY read       | no             |
+  | height_m                | external_wall, parapet_wall, buttressing_wall    | _APPLY read       | no             |
+  | length_m                | external_wall                                    | _APPLY read       | no             |
+  | storey_height_m         | external_wall, internal_wall                     | _APPLY read       | no             |
+  | leaf_inner_mm           | external_wall (cavity)                           | _APPLY read       | no             |
+  | leaf_outer_mm           | external_wall (cavity)                           | _APPLY read       | no             |
+  | cavity_width_mm         | external_wall (cavity), parapet_wall type A      | _APPLY read       | no             |
+  | tie_length_mm           | external_wall (cavity)                           | _APPLY read       | no             |
+  | parapet_type            | parapet_wall                                     | _APPLY read       | no             |
+  | buttressing_length_m    | buttressing_wall                                 | _APPLY read       | no             |
+  | buttressing_thickness_mm| buttressing_wall                                 | _APPLY read       | no             |
+  | wall_thickness_ok       | external_wall, internal_wall, parapet_wall       | _APPLY write      | no             |
+  | cavity_ok               | external_wall (cavity)                           | _APPLY write      | no             |
+  | tie_ok                  | external_wall (cavity)                           | _APPLY write      | no             |
+    | buttressing_ok             | buttressing_wall                                | _APPLY write      | no             |
+    | tie_h_spacing_mm           | external_wall (cavity)                          | _APPLY read       | no             |
+    | tie_v_spacing_mm           | external_wall (cavity)                          | _APPLY read       | no             |
+    | tie_edge_spacing_mm        | external_wall (cavity)                          | _APPLY read       | no             |
+    | tie_spacing_ok             | external_wall (cavity)                          | _APPLY write      | no             |
+    | wall_construction_material | external_wall, internal_wall                    | _APPLY read       | no             |
+    | leaf_combined_mm           | parapet_wall type A                             | _APPLY read       | no             |
+    | floor_span_m               | external_wall, internal_wall                    | _APPLY read       | no             |
+    | ground_level_diff_mm       | external_wall                                   | _APPLY read       | no             |
+    | combined_load_kn_m         | external_wall, internal_wall                    | _APPLY read       | no             |
+    | loading_ok                 | external_wall, internal_wall                    | _APPLY write      | no             |
+    | pier_thickness_mm          | buttressing_wall                                | _APPLY read       | no             |
+    | pier_width_mm              | buttressing_wall                                | _APPLY read       | no             |
+    | end_restraint_ok           | buttressing_wall                                | _APPLY write      | no             |
+    | single_leaf                | external_wall                                   | _APPLY read       | no             |
+    | storey_position            | internal_wall                                   | _APPLY read       | no             |
+    | num_storeys_building       | internal_wall                                   | _APPLY read       | no             |
+    | buttress_opening_area_m2   | buttressing_wall                                | _APPLY read       | no             |
+    | buttress_opening_dist_mm   | buttressing_wall                                | _APPLY read       | no             |
+    | buttress_opening_height_m  | buttressing_wall                                | _APPLY read       | no             |
+    | buttress_lintel_depth_mm   | buttressing_wall                                | _APPLY read       | no             |
+    | buttress_opening_ok        | buttressing_wall                                | _APPLY write      | no             |
+    | wall_violations            | all wall Frames                                 | _APPLY write      | no             |
+    | wall_ok                    | all wall Frames                                 | _APPLY write      | no             |
+    | besoin_masonry             | external_wall, parapet_wall                     | _APPLY write      | no             |
+    | openings_total_width_m     | external_wall                                   | _APPLY read       | no             |
+    | opening_max_individual_m   | external_wall                                   | _APPLY read       | no             |
+    | opening_height_m           | external_wall                                   | _APPLY read       | no             |
+    | corner_pier_dist_mm        | external_wall                                   | _APPLY read       | no             |
+    | factor_x                   | external_wall                                   | _APPLY read       | no             |
+    | opening_factor_x_w4_m      | external_wall                                   | _APPLY read       | no             |
+    | opening_factor_ok          | external_wall                                   | _APPLY write      | no             |
+    | chase_depth_mm             | external_wall, internal_wall                    | _APPLY read       | no             |
+    | chase_orientation          | external_wall, internal_wall                    | _APPLY read       | no             |
+    | leaf_thickness_mm          | external_wall (cavity)                          | _APPLY read       | no             |
+    | chase_ok                   | external_wall, internal_wall                    | _APPLY write      | no             |
+    | strap_spacing_m            | external_wall, internal_wall                    | _APPLY read       | no             |
+    | has_floor_support          | external_wall, internal_wall                    | _APPLY read       | no             |
+    | lateral_support_ok         | external_wall, internal_wall                    | _APPLY write      | no             |
+    | is_gable_wall              | external_wall                                   | _APPLY read       | no             |
+    | gable_strap_spacing_m      | external_wall                                   | _APPLY read       | no             |
+    | roof_pitch_deg             | external_wall                                   | _APPLY read       | no             |
+    | roof_covering_type         | external_wall                                   | _APPLY read       | no             |
+    | roof_wind_resistant        | external_wall                                   | _APPLY read       | no             |
+    | roof_main_member_spacing_m | external_wall                                   | _APPLY read       | no             |
+    | gable_strapping_ok         | external_wall                                   | _APPLY write      | no             |
+    | has_lateral_interruption   | external_wall, internal_wall                    | _APPLY read       | no             |
+    | stairway_opening_m         | external_wall, internal_wall                    | _APPLY read       | no             |
+    | other_interruptions        | external_wall, internal_wall                    | _APPLY read       | no             |
+    | lateral_interruption_ok    | external_wall, internal_wall                    | _APPLY write      | no             |
+    | building_category          | external_wall                                   | _APPLY read       | no             |
+    | major_opening_total_width_m| external_wall                                   | _APPLY read       | no             |
+    | major_opening_height_m     | external_wall                                   | _APPLY read       | no             |
+    | corner_to_opening_mm       | external_wall                                   | _APPLY read       | no             |
+    | has_corner_pier            | external_wall                                   | _APPLY read       | no             |
+    | other_openings_area_m2     | external_wall                                   | _APPLY read       | no             |
+    | pier_ap_mm                 | external_wall                                   | _APPLY read       | no             |
+    | pier_bp_mm                 | external_wall                                   | _APPLY read       | no             |
+    | pier_spacing_m             | external_wall                                   | _APPLY read       | no             |
+    | isolated_column_mm         | external_wall                                   | _APPLY read       | no             |
+    | pier_unit_type             | external_wall                                   | _APPLY read       | no             |
+    | small_building_wall_ok     | external_wall                                   | _APPLY write      | no             |
+
+* Rule Catalogue
+** Rule: R01-external-wall-thickness
+   Intent    : Check minimum thickness of external/compartment/separating walls per Table 3
+               and solid wall 1/16 storey height rule (§2C6). If wall_construction_material
+               is 'uncoursed_stone' apply §2C7 multiplier 1.33 to the §2C6 minimum.
+               Set besoin_masonry.
+   Priority  : 1
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~  [filtre: ~'($_->{type_element}//"") eq "external_wall"'~]
+
+   EXCEPTION : ~defined $w->{wall_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   use ADA::Agent::Wall::Helpers qw(min_thickness_table3 min_tie_length_table5);
+   my @violations;
+
+   my $h    = $w->{height_m}  // 0;
+   my $l    = $w->{length_m}  // 0;
+   my $t    = $w->{thickness_mm} // 0;
+   my $hs   = $w->{storey_height_m} // 0;
+   my $wt   = $w->{wall_type} // 'solid';
+
+   # Table 3 minimum thickness check
+   my $min_t = min_thickness_table3($h, $l);
+   my $thick_ok = ($t >= $min_t) ? 'YES' : 'NO';
+   push @violations, "thickness ${t}mm < min ${min_t}mm (Table 3, H=${h}m, L=${l}m)"
+       if $thick_ok eq 'NO';
+
+   # §2C6: solid wall thickness ≥ storey_height/16
+   if ($wt eq 'solid' && $hs > 0) {
+       my $min_t_2c6 = int($hs * 1000 / 16);  # convert m→mm
+       push @violations, "thickness ${t}mm < storey_height/16 = ${min_t_2c6}mm (§2C6)"
+           if $t < $min_t_2c6;
+   }
+
+   # Cavity dimensions check
+   my $cav_ok = 'YES';
+   if ($wt eq 'cavity') {
+       my $li   = $w->{leaf_inner_mm}  // 0;
+       my $lo   = $w->{leaf_outer_mm}  // 0;
+       my $cw   = $w->{cavity_width_mm} // 0;
+       push @violations, "inner leaf ${li}mm < 90mm min" if $li < 90;
+       push @violations, "outer leaf ${lo}mm < 90mm min" if $lo < 90;
+       push @violations, "cavity ${cw}mm outside 50–175mm range"
+           if $cw < 50 || $cw > 175;
+       $cav_ok = @violations ? 'NO' : 'YES';
+   }
+
+   $w->set('wall_thickness_ok', $thick_ok);
+   $w->set('cavity_ok',         $cav_ok);
+   $w->set('wall_violations',   join('; ', @violations));
+   $w->set('wall_ok',           @violations ? 'NO' : 'YES');
+   $w->set('besoin_masonry',    'Y');
+   1
+   #+END_SRC
+
+   Notes: cavity_ok is always 'YES' for solid walls. besoin_masonry set regardless
+          of verdict — masonry agent runs on all external and parapet walls.
+
+** Rule: R02-cavity-tie
+   Intent    : Check that supplied tie length meets Table 5 requirement for the cavity width.
+   Priority  : 2
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") eq "external_wall" && ($_->{wall_type}//"") eq "cavity" && defined $_->{tie_length_mm}'~]
+
+   EXCEPTION : ~defined $w->{tie_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   use ADA::Agent::Wall::Helpers qw(min_tie_length_table5);
+   my @viol = split /;\s*/, ($w->{wall_violations} // '');
+
+   my $cw      = $w->{cavity_width_mm} // 0;
+   my $tie_sup = $w->{tie_length_mm}   // 0;
+   my $min_tie = min_tie_length_table5($cw);
+
+   my $tie_ok = 'YES';
+   if (defined $min_tie && $tie_sup < $min_tie) {
+       push @viol, "tie ${tie_sup}mm < min ${min_tie}mm for cavity ${cw}mm (Table 5)";
+       $tie_ok = 'NO';
+       $w->set('wall_ok', 'NO');
+   }
+
+   $w->set('tie_ok',         $tie_ok);
+   $w->set('wall_violations', join('; ', @viol));
+   1
+   #+END_SRC
+
+   Notes: min_tie_length_table5 returns undef for cavity_width_mm > 175 (specialist design).
+
+** Rule: R03-internal-wall-thickness
+   Intent    : Check internal wall thickness ≥ storey_height/16 (§2C6).
+   Priority  : 3
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~  [filtre: ~'($_->{type_element}//"") eq "internal_wall"'~]
+
+   EXCEPTION : ~defined $w->{wall_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my @violations;
+   my $t  = $w->{thickness_mm}     // 0;
+   my $hs = $w->{storey_height_m}  // 0;
+
+   if ($hs > 0) {
+       my $min_t = int($hs * 1000 / 16);
+       push @violations, "thickness ${t}mm < storey_height/16 = ${min_t}mm (§2C6)"
+           if $t < $min_t;
+       $w->set('wall_thickness_ok', ($t >= $min_t) ? 'YES' : 'NO');
+   } else {
+       $w->set('wall_thickness_ok', 'YES');  # no storey height → skip
+   }
+
+   $w->set('wall_violations', join('; ', @violations));
+   $w->set('wall_ok',         @violations ? 'NO' : 'YES');
+   1
+   #+END_SRC
+
+** Rule: R04-parapet-wall
+   Intent    : Check parapet wall thickness rules per Diagram 4 (type A cavity / type B solid)
+               and set besoin_masonry.
+               Diagram 4 table (corpus p.17):
+               - Type A (cavity): t₁+t₂ ≤ 200mm → Hp ≤ 600mm;
+                                  200 < t₁+t₂ ≤ 250mm → Hp ≤ 860mm
+               - Type B (solid):  t = 150mm → Hp ≤ 600mm;
+                                  t = 190mm → Hp ≤ 760mm;
+                                  t = 215mm → Hp ≤ 860mm
+   Priority  : 4
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~  [filtre: ~'($_->{type_element}//"") eq "parapet_wall"'~]
+
+   EXCEPTION : ~defined $w->{wall_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my @violations;
+   my $pt  = $w->{parapet_type}  // 'B';
+   my $t   = $w->{thickness_mm}  // 0;
+   my $hp  = ($w->{height_m} // 0) * 1000;  # convert to mm for comparison
+
+   if ($pt eq 'A') {
+       # Type A (cavity): use leaf_combined_mm (t₁+t₂) if available, else thickness_mm
+       my $tc = $w->{leaf_combined_mm} // $t;
+       my $max_hp;
+       if ($tc <= 200) {
+           $max_hp = 600;
+       } elsif ($tc <= 250) {
+           $max_hp = 860;
+       } else {
+           push @violations, "type A parapet: combined leaf ${tc}mm > 250mm (outside Diagram 4 scope)";
+           $max_hp = 860;
+       }
+       push @violations, "type A parapet: height ${hp}mm > max ${max_hp}mm (Diagram 4)"
+           if $hp > $max_hp;
+   } elsif ($pt eq 'B') {
+       # Type B (solid): step-table lookup from Diagram 4
+       my $max_hp;
+       if    ($t <= 150) { $max_hp = 600 }
+       elsif ($t <= 190) { $max_hp = 760 }
+       else              { $max_hp = 860 }
+       push @violations, "type B parapet: thickness ${t}mm below minimum for any step (min 150mm)"
+           if $t < 150;
+       push @violations, "type B parapet: height ${hp}mm > max ${max_hp}mm (Diagram 4, t=${t}mm)"
+           if $hp > $max_hp;
+   }
+
+   $w->set('wall_thickness_ok', @violations ? 'NO' : 'YES');
+   $w->set('wall_violations',   join('; ', @violations));
+   $w->set('wall_ok',           @violations ? 'NO' : 'YES');
+   $w->set('besoin_masonry',    'Y');
+   1
+   #+END_SRC
+
+** Rule: R05-buttressing-wall
+   Intent    : Check buttressing wall meets §2C17 — length ≥ H/6.
+   Priority  : 5
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~  [filtre: ~'($_->{type_element}//"") eq "buttressing_wall"'~]
+
+   EXCEPTION : ~defined $w->{wall_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my @violations;
+   my $h  = $w->{height_m}               // 0;
+   my $bl = $w->{buttressing_length_m}   // 0;
+   my $bt = $w->{buttressing_thickness_mm} // 0;
+
+   # §2C17: buttressing wall length ≥ H/6
+   my $min_len = $h / 6;
+   push @violations, "buttressing length ${bl}m < H/6 = ${min_len}m (§2C17)"
+       if $h > 0 && $bl < $min_len;
+
+   $w->set('buttressing_ok',    @violations ? 'NO' : 'YES');
+   $w->set('wall_violations',   join('; ', @violations));
+   $w->set('wall_ok',           @violations ? 'NO' : 'YES');
+   1
+   #+END_SRC
+
+** Rule: R06-tie-spacing
+   Intent    : Check cavity wall tie spacing meets §2C8 requirements:
+               horizontal ≤ 900mm, vertical ≤ 450mm (or ≥ 2.5 ties/m²),
+               edge spacing ≤ 300mm (within 225mm of openings/verges).
+               Only fires on cavity external walls where spacing data is provided.
+   Priority  : 6
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") eq "external_wall" && ($_->{wall_type}//"") eq "cavity" && (defined $_->{tie_h_spacing_mm} || defined $_->{tie_v_spacing_mm})'~]
+
+   EXCEPTION : ~defined $w->{tie_spacing_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my @viol = split /;\s*/, ($w->{wall_violations} // '');
+
+   my $hs   = $w->{tie_h_spacing_mm}   // 900;   # mm
+   my $vs   = $w->{tie_v_spacing_mm}   // 450;   # mm
+   my $es   = $w->{tie_edge_spacing_mm} // 0;    # mm (0 = not provided)
+
+   # §2C8: horizontal ≤ 900mm, vertical ≤ 450mm
+   push @viol, "tie horizontal spacing ${hs}mm > 900mm max (§2C8)"   if $hs > 900;
+   push @viol, "tie vertical spacing ${vs}mm > 450mm max (§2C8)"     if $vs > 450;
+
+   # §2C8: edge spacing ≤ 300mm within 225mm of openings
+   if ($es > 0) {
+       push @viol, "tie edge spacing ${es}mm > 300mm max at opening edges (§2C8)" if $es > 300;
+   }
+
+   # Density check: 900mm × 450mm → 2.47 ties/m² (marginally below 2.5 if spacing at limits)
+   # Flag if at or above max spacing AND no alternative density provided
+   if ($hs >= 900 && $vs >= 450) {
+       my $density = (1000 / $hs) * (1000 / $vs);
+       push @viol, sprintf("tie density %.2f/m² < 2.5/m² (§2C8 min)", $density)
+           if $density < 2.5;
+   }
+
+   my $ok = @viol ? 'NO' : 'YES';
+   $w->set('tie_spacing_ok',   $ok);
+   $w->set('wall_violations',  join('; ', @viol));
+   $w->set('wall_ok', 'NO') if $ok eq 'NO';
+   1
+   #+END_SRC
+
+   Notes: Only fires when at least one spacing slot is present (feed may omit if default spacing used).
+          §2C8 also allows 2.5 ties/m² arrangement instead of 900×450 grid — density check handles this.
+
+** Rule: R07-loading-conditions
+   Intent    : Check loading conditions per §2C23 and §2C24:
+               - max floor span 6m (§2C23)
+               - ground level difference ≤ 4 × wall thickness (§2C24b)
+               - combined dead+imposed load ≤ 70kN/m at base (§2C24c)
+   Priority  : 7
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") =~ /^(external_wall|internal_wall)$/ && (defined $_->{floor_span_m} || defined $_->{ground_level_diff_mm} || defined $_->{combined_load_kn_m})'~]
+
+   EXCEPTION : ~defined $w->{loading_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my @viol = split /;\s*/, ($w->{wall_violations} // '');
+
+   # §2C23: max floor span 6m
+   if (defined $w->{floor_span_m}) {
+       my $span = $w->{floor_span_m};
+       push @viol, "floor_span ${span}m > 6m max (§2C23)" if $span > 6;
+   }
+
+   # §2C24b: ground level difference ≤ 4 × wall thickness
+   if (defined $w->{ground_level_diff_mm}) {
+       my $diff = $w->{ground_level_diff_mm};
+       my $t    = $w->{thickness_mm} // 0;
+       my $max_diff = 4 * $t;
+       push @viol, "ground_level_diff ${diff}mm > 4t = ${max_diff}mm (§2C24b, t=${t}mm)"
+           if $t > 0 && $diff > $max_diff;
+   }
+
+   # §2C24c: combined dead+imposed load ≤ 70kN/m at base
+   if (defined $w->{combined_load_kn_m}) {
+       my $load = $w->{combined_load_kn_m};
+       push @viol, "combined_load ${load}kN/m > 70kN/m max (§2C24c)" if $load > 70;
+   }
+
+   my $ok = @viol ? 'NO' : 'YES';
+   $w->set('loading_ok',      $ok);
+   $w->set('wall_violations', join('; ', @viol));
+   $w->set('wall_ok', 'NO') if $ok eq 'NO';
+   1
+   #+END_SRC
+
+   Notes: Rule skips silently if none of the loading slots are present (all optional in feed).
+          §2C24c check is independent of R01 thickness check — both can flag violations.
+
+** Rule: R08-end-restraint
+   Intent    : Check end restraint dimensions per §2C25-2C27:
+               - buttressing wall length ≥ H/6 (§2C26, already in R05)
+               - pier thickness ≥ 3 × supported wall thickness (§2C27a)
+               - pier width ≥ 190mm (§2C27a)
+               - chimney section ≥ pier area (§2C27b) — flag if pier_thickness implies chimney
+               Fires on buttressing_wall Frames where pier dimension data is provided.
+   Priority  : 8
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") eq "buttressing_wall" && (defined $_->{pier_thickness_mm} || defined $_->{pier_width_mm})'~]
+
+   EXCEPTION : ~defined $w->{end_restraint_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my @viol = split /;\s*/, ($w->{wall_violations} // '');
+
+   my $pt  = $w->{pier_thickness_mm} // 0;   # mm — measured perpendicular to supported wall
+   my $pw  = $w->{pier_width_mm}     // 0;   # mm — parallel to supported wall
+   my $t   = $w->{buttressing_thickness_mm} // 0;  # T2 of buttressing wall itself
+
+   # §2C27a: pier thickness ≥ 3 × supported wall thickness
+   # (buttressing_thickness_mm represents the supported wall thickness here)
+   if ($t > 0 && $pt > 0) {
+       my $min_pt = 3 * $t;
+       push @viol, "pier thickness ${pt}mm < 3×T = ${min_pt}mm (§2C27a)" if $pt < $min_pt;
+   }
+
+   # §2C27a: pier minimum width 190mm
+   if ($pw > 0) {
+       push @viol, "pier width ${pw}mm < 190mm min (§2C27a)" if $pw < 190;
+   }
+
+   my $ok = @viol ? 'NO' : 'YES';
+   $w->set('end_restraint_ok', $ok);
+   $w->set('wall_violations',  join('; ', @viol));
+   $w->set('wall_ok', 'NO') if $ok eq 'NO';
+   1
+   #+END_SRC
+
+   Notes: pier_thickness_mm measured perpendicular to the supported wall (Diagram 13).
+          This rule complements R05 (buttressing wall length ≥ H/6) — both may fire on the same Frame.
+          §2C27b (chimney cross-section) requires specialist dimensions → not codified here.
+
+** Rule: R09-buttressing-opening
+   Intent    : Check that openings in buttressing walls comply with §2C26 / Diagram 12:
+               - max one opening ≤ 0.1m²; any opening > 0.1m² must be ≥ 550mm from supported wall
+               - opening height ≤ 0.9 × floor-to-ceiling height
+               - lintel depth (masonry included) ≥ 150mm
+               Fires only when at least one buttress_opening_* slot is present.
+   Priority  : 9
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") eq "buttressing_wall" && (defined $_->{buttress_opening_area_m2} || defined $_->{buttress_opening_height_m} || defined $_->{buttress_lintel_depth_mm})'~]
+
+   EXCEPTION : ~defined $w->{buttress_opening_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my @viol = split /;\s*/, ($w->{wall_violations} // '');
+
+   my $area  = $w->{buttress_opening_area_m2}  // 0;
+   my $dist  = $w->{buttress_opening_dist_mm}  // 0;
+   my $oh    = $w->{buttress_opening_height_m} // 0;
+   my $ld    = $w->{buttress_lintel_depth_mm}  // 0;
+
+   # §2C26 / Diagram 12: only 1 opening ≤ 0.1m² at any position;
+   # an opening > 0.1m² must be ≥ 550mm from the supported wall
+   if ($area > 0.1) {
+       if ($dist > 0 && $dist < 550) {
+           push @viol,
+               "buttressing opening (${area}m²) is ${dist}mm from supported wall — min 550mm (§2C26)";
+       }
+   }
+
+   # §2C26: opening height ≤ 0.9 × floor-to-ceiling height (storey_height_m)
+   if ($oh > 0) {
+       my $ceil = $w->{storey_height_m} // 0;
+       if ($ceil > 0 && $oh > 0.9 * $ceil) {
+           push @viol,
+               sprintf("buttressing opening height %.2fm > 0.9×Hs = %.2fm (§2C26 Diagram 12)",
+                       $oh, 0.9 * $ceil);
+       }
+   }
+
+   # §2C26: lintel depth (including masonry over opening) ≥ 150mm
+   if ($ld > 0 && $ld < 150) {
+       push @viol, "buttressing opening lintel depth ${ld}mm < 150mm min (§2C26 Diagram 12)";
+   }
+
+   my $ok = @viol ? 'NO' : 'YES';
+   $w->set('buttress_opening_ok', $ok);
+   $w->set('wall_violations',     join('; ', @viol));
+   $w->set('wall_ok', 'NO') if $ok eq 'NO';
+   1
+   #+END_SRC
+
+   Notes: Fires only when at least one opening slot is provided — rule is silently skipped
+          for buttressing walls with no opening data (openings are optional per §2C26).
+          §2C26 Note 2 permits one small opening (≤ 0.1m²) at any position; this rule does
+          not count multiple openings — the feed must pre-aggregate if multiple openings exist.
+          storey_height_m is used as the floor-to-ceiling proxy for the 0.9× check.
+
+** Rule: R10-opening-factor-x
+   Intent    : Check opening dimensional constraints per §2C29 / Diagram 14 + Table 8:
+               total openings ≤ 2L/3; individual opening ≤ 3m; height ≤ 2.1m;
+               corner pier P5 ≥ max(W4/X, 665mm). Factor X from Table 8 (or 6 if strength ≥ 7.3 N/mm²).
+   Priority  : 10
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") eq "external_wall" && (defined $_->{openings_total_width_m} || defined $_->{opening_max_individual_m})'~]
+
+   EXCEPTION : ~defined $w->{opening_factor_ok}~
+   Notes: The feed must provide pre-aggregated opening widths (W1+W2+W3 summed into
+          openings_total_width_m). Detailed per-pier ratio checks (rules 3-6 of Diagram 14)
+          require individual P1-P4 and W1-W4 values — codifiable with feed support.
+          Factor X defaults to 6 if absent (conservative safe default per §2C29 rule 8).
+
+** Rule: R11-chase-depth
+   Intent    : Check chase depth limits per §2C30:
+               vertical chase ≤ T/3 (or leaf/3 for cavity); horizontal ≤ T/6 (or leaf/6).
+   Priority  : 11
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'defined $_->{chase_depth_mm} && defined $_->{chase_orientation}'~]
+
+   EXCEPTION : ~defined $w->{chase_ok}~
+   Notes: leaf_thickness_mm preferred for cavity walls; falls back to min(leaf_inner_mm, leaf_outer_mm).
+
+** Rule: R12-lateral-strap
+   Intent    : Check lateral support strap spacing ≤ 2m (§2C35) and Table 9 floor support
+               requirement for external walls > 3m and internal loadbearing walls.
+   Priority  : 12
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") =~ /^(external_wall|internal_wall)$/ && (defined $_->{strap_spacing_m} || defined $_->{has_floor_support})'~]
+
+   EXCEPTION : ~defined $w->{lateral_support_ok}~
+   Notes: §2C35 exemptions (joists at ≤1.2m, joist hangers, concrete bearing ≥90mm) are
+          constructional checks not codifiable without specialist data — feed must pre-resolve.
+
+** Rule: R13-gable-strapping
+   Intent    : Check gable wall vertical strapping ≤ 2m at eaves (§2C36 Diagram 16),
+               or verify all four exemption conditions (pitch ≥ 15°, tiled/slated,
+               wind-resistant, main members ≤ 1.2m centres).
+   Priority  : 13
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") eq "external_wall" && ($_->{is_gable_wall}//"") eq "Y"'~]
+
+   EXCEPTION : ~defined $w->{gable_strapping_ok}~
+
+** Rule: R14-lateral-interruption
+   Intent    : Check stairway/similar opening interrupting lateral support ≤ 3m (§2C37a)
+               and no other interruption in same storey (§2C37d).
+   Priority  : 14
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{has_lateral_interruption}//"") eq "Y"'~]
+
+   EXCEPTION : ~defined $w->{lateral_interruption_ok}~
+
+** Rule: R15-small-building-wall
+   Intent    : Check wall/pier/opening constraints for small single-storey non-residential
+               buildings and annexes per §2C38 (ii) Diagram 17 and (iii) Diagram 18:
+               thickness ≥ 90mm; major openings ≤ 5m×2.1m (one wall only);
+               other openings aggregate ≤ 2.4m²; corner distance ≥ 390mm;
+               pier 390×190mm (or 327×215mm modular), spacing ≤ 3m if wall > 2.5m;
+               isolated column ≥ 325mm.
+   Priority  : 15
+
+   FIND      :
+   - ~w~ → attribut: ~besoin_wall~
+           [filtre: ~'($_->{type_element}//"") eq "external_wall" && ($_->{building_category}//"") eq "small_non_residential"'~]
+
+   EXCEPTION : ~defined $w->{small_building_wall_ok}~
+
+* Perl Helpers
+** min_thickness_table3
+   Signature   : ~sub min_thickness_table3($height_m, $length_m) → $min_mm~
+   Description : Returns the minimum wall thickness in mm from Table 3.
+                 Height and length of wall in metres → lookup in H/L matrix.
+   Called by   : R01-external-wall-thickness
+   Exported    : yes — add to @EXPORT_OK
+   Notes       : Returns 190 for heights not exceeding 9m (standard case).
+                 Returns 290 for the base storey when H > 3.5m and L > 9m (or H > 9m).
+
+   #+BEGIN_SRC perl
+   # Table 3 — Minimum thickness of external/compartment/separating walls
+   # Source corpus: Table 3 (p.18)
+   #
+   # Matrix:
+   # H ≤ 3.5m,          L ≤ 12m → 190mm whole height
+   # 3.5m < H ≤ 9m,     L ≤ 9m  → 190mm whole height
+   # 3.5m < H ≤ 9m,  9m < L ≤ 12m → 290mm base storey, 190mm rest
+   # 9m < H ≤ 12m,      L ≤ 9m  → 290mm base storey, 190mm rest
+   # 9m < H ≤ 12m,   9m < L ≤ 12m → 290mm base TWO storeys, 190mm rest
+   #
+   # Returns minimum thickness in mm (worst case = 290 for base-storey check,
+   # returns 190 if caller only needs to verify the upper section).
+   # For simplicity this helper returns the MINIMUM for the base section
+   # (most restrictive), which covers the single-section thickness check.
+   #+END_SRC
+
+** min_tie_length_table5
+   Signature   : ~sub min_tie_length_table5($cavity_width_mm) → $min_mm | undef~
+   Description : Returns minimum tie length in mm from Table 5 for a given cavity width.
+                 Returns undef for cavity > 175mm (specialist design — outside Table 5 scope).
+   Called by   : R01-external-wall-thickness, R02-cavity-tie
+   Exported    : yes — add to @EXPORT_OK
+   Notes       : Embedment depth ≥ 50mm in both leaves (Table 5 Note 2).
+                 For cavity > 175mm: tie length = cavity_width + 125mm (Table 5 Note 3).
+
+   #+BEGIN_SRC perl
+   # Table 5 — Cavity wall ties
+   # Source corpus: Table 5 (p.25)
+   # Cavity 50-75mm   → 200mm
+   # Cavity 76-100mm  → 225mm
+   # Cavity 101-125mm → 250mm
+   # Cavity 126-150mm → 275mm
+   # Cavity 151-175mm → 300mm
+   # Cavity > 175mm   → cavity_width + 125mm (Note 3) — returned as undef here
+   #                    (caller to apply Note 3 formula directly)
+   #+END_SRC
+
+** factor_x_table8
+   Signature   : ~sub factor_x_table8($roof_dir, $floor_type, $max_floor_span_m, $wall_thickness_mm) → integer (3..6)~
+   Description : Returns Factor X from Table 8 (§2C29) for opening pier ratio checks.
+                 When all four parameters match a 'parallel' roof and any floor → returns 6 (or 5).
+                 For timber roof spanning into wall: lookup by floor type × span × wall thickness.
+   Called by   : R10-opening-factor-x (or by feed to pre-compute factor_x slot)
+   Exported    : yes — add to @EXPORT_OK
+
+   #+BEGIN_SRC perl
+   # Table 8 — Value of Factor 'X'
+   # Source corpus: Table 8 (p.31) — §2C29
+   #
+   # Axes: roof_span_direction × floor_type × max_floor_span_m × wall_thickness_mm
+   # Values: 3, 4, 5, 6
+   #
+   # Note: Factor X = 6 unconditionally if declared compressive strength ≥ 7.3 N/mm²
+   # (§2C29 rule 8) — apply this override in the caller before using this helper.
+   #+END_SRC
+
+* Constraints & Pitfalls
+  - [ ] besoin_wall filtre uses ~($_->{type_element}//"")~ to avoid 'Use of uninitialized value'
+        warnings when type_element is undef on a Frame
+  - [ ] R02 filtre checks both type_element AND wall_type — reduces scope to cavity walls only
+  - [ ] Table 3 returns 290mm for the *base storey* when applicable — a single wall Frame
+        should carry the storey position ('base'/'upper') if multi-storey checks are required
+  - [ ] besoin_masonry set on external_wall and parapet_wall regardless of wall_ok verdict —
+        masonry agent runs on ALL such walls for a complete report
+  - [ ] Cavity > 175mm → Table 5 Note 3 formula applies — min_tie_length_table5 returns undef;
+        calling code must handle this (R02 skips the check if undef)
+  - [ ] Parapet type A/B rules are from §2C18 — values here are conservative interpretations;
+        more precise values may require specialist review
+  - [ ] §2C7 (uncoursed stone): R01 should read ~wall_construction_material~ and multiply §2C6 min_thickness
+        by 1.33 when 'uncoursed_stone' — current ACTION code must be updated in YAML to add this branch
+  - [ ] R04 corrected per Diagram 4: parapet height limits are stepped by combined leaf thickness (type A)
+        or solid thickness (type B) — the original oversimplification (215mm / 0.86m) was replaced by
+        the actual Diagram 4 lookup table
+  - [ ] R06: tie density check at max spacing (900×450) gives 2.47/m² < 2.5 required — flag this edge case
+  - [ ] R07: loading slots are all optional — rule fires only when at least one is present
+  - [ ] R08: pier_thickness_mm is measured perpendicular to the supported wall; buttressing_thickness_mm
+        is used as a proxy for the supported wall T — feed must set these carefully
+  - [x] §2C12: single-leaf external walls of non-residential/annexes — 90mm minimum; feed sets
+        single_leaf='Y' on external_wall Frames; R01 now reads this slot and applies 90mm minimum
+        instead of the full Table 3 / §2C6 formula (enrichment pass 2025-07-16)
+  - [x] §2C10 internal wall — 3-storey base extension: R03 now reads storey_position and
+        num_storeys_building; if storey_position='base' AND num_storeys_building=3 →
+        min_thickness = max(Hs/16, 140mm). Feed must set both slots for this check to activate.
+  - [ ] R09: buttress_opening_* slots are all optional — rule only fires when at least one
+        is present. The feed MUST aggregate multiple openings into a worst-case single slot set
+        before submission (multiple openings not individually tracked in this KB).
+  - [ ] §2C26 Note 1: buttressing wall must be bonded or securely tied to the supported wall —
+        this is a constructional requirement not codifiable without tie-detail slots.
+  - [ ] R10: openings_total_width_m must be pre-aggregated by the feed (W1+W2+W3 summed).
+        Detailed per-pier ratio checks (Diagram 14 rules 3-6) need individual P1-P4/W1-W4 slots.
+  - [ ] R10: factor_x defaults to 6 when absent — safe default per §2C29 rule 8 (strength ≥ 7.3 N/mm²).
+  - [ ] R11: leaf_thickness_mm preferred for cavity walls; computed from min(leaf_inner_mm, leaf_outer_mm) if absent.
+  - [ ] R12: strap_spacing ≤ 2m check requires feed to provide measured strap interval.
+        §2C35 exemptions (joist spacing, hangers, concrete bearing) require feed pre-resolution.
+  - [ ] R13: gable wall exemption: ALL four conditions must be met simultaneously (pitch AND tiled AND wind-resistant AND member spacing).
+        If any is absent from feed → conservative (strapping required, spacing must be ≤ 2m).
+  - [ ] R13: roof_wind_resistant is a local knowledge judgment — feed must encode from project documentation.
+  - [ ] R14: other_interruptions='Y' is a global building check — feed must aggregate all lateral
+        support interruptions before setting this slot on the wall Frame.
+  - [ ] R15: building_category='small_non_residential' must be set by feed for §2C38 scope walls.
+        Geometry agent already checks floor_area ≤ 36m² and height via R02; R15 adds wall-level checks.
+  - [ ] R15: major openings are restricted to ONE wall only (§2C38 ii) — feed must encode this
+        constraint at the building level before setting slots on wall Frames.
+  - [ ] _MAX_CYCLES recommended: 10 wall Frames × 15 rules × 6 agents × 10 = 9000
+  - [ ] ⚠️ _CYCLE and _SUCCES are reset to 0 at the start of every loop() call — do not use
+        them as cumulative counters across loop() calls. To accumulate a global total,
+        write to a dedicated BOARD slot from within a rule.
+        [ref: pitfalls.org §_CYCLE and _SUCCES — DISCOVERED 2026-07-24]
+
+* Debug Engine (Chorus v2.0.2+)
+  - Name the agent for rule-firing logs:
+    =$agent = Chorus::Engine->new(_IDENT => 'ADA::Agent::Wall')=
+  - Enable global firing log to STDERR:
+    =$agent->set('_LOG', 1)=  → one line per fired rule, with cycle number and scope
+  - Trace a single rule without enabling global log:
+    add =TRACE: 1= to the YAML file for that rule (captured at registration, immutable after)
+  - English YAML aliases available since v2.01:
+    =RULE= / =FIND= / =ACTION= / =PREMISES= / =TRACE= — equivalent to French forms

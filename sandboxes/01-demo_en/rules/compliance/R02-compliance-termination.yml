@@ -1,0 +1,28 @@
+##
+# RULE: R02-compliance-termination
+# AGENT: TimberFrame::Agent::Compliance  (pos. 5 / 5)
+# CORPUS: §6.2 — Pipeline termination condition
+#
+# PURPOSE
+#   Terminates the pipeline (solved) when all elements carrying needs_compliance
+#   have received their compliance_status verdict. Uses the two-rule pattern:
+#   R01 handles per-element computation; this rule checks global completion.
+#   Fires only when no pending elements remain.
+#
+# INPUTS  (slots read)
+#   needs_compliance  : targeting slot
+#   compliance_status : set by R01 on each element
+#
+# OUTPUTS
+#   (none — calls solved() via TERMINAL)
+#
+# GUARD — EXCEPTION: fmatch pending check
+#   Fires only when ALL elements have compliance_status set — §6.2.
+##
+RULE: R02-compliance-termination
+TERMINAL: solved
+FIND:
+  dummy:
+    attribut: needs_compliance
+EXCEPTION: scalar(grep { !defined $_->{compliance_status} } Chorus::Frame::fmatch(slot => 'needs_compliance')) > 0
+ACTION: "1"

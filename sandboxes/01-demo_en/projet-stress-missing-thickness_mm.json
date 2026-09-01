@@ -1,0 +1,29 @@
+{
+  "projet": "stress-missing-thickness_mm",
+  "description": "Missing input slot thickness_mm on insulation — R01-thermal-resistance FIND requires defined thickness_mm; skips → thermal_ok absent → compliance R01 thermal_ok // 'YES' → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "thickness_mm",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "thermal"
+  },
+  "elements": [
+    {
+      "id":                      "INS-STRESS-MISSING-THICKNESS_MM",
+      "type_element":            "insulation",
+      "needs_compliance":        1,
+      "needs_thermal":           1,
+      "needs_fire":              1,
+      "lambda":                  0.030,
+      "climate_zone":            "B",
+      "_resultats_attendus": {
+        "thermal_ok":        null,
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot thickness_mm — R01-thermal-resistance FIND requires thickness_mm AND lambda AND climate_zone → skips (thickness_mm absent). thermal_ok absent. Compliance R01: thermal_ok // 'YES' → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+##
+# RULE: R05-geometry-pass
+# AGENT: TimberFrame::Agent::Geometry  (pos. 2 / 5)
+# CORPUS: §3 — General geometry compliance
+#
+# PURPOSE
+#   Sets frame_ok='YES' for elements where all applicable geometry checks have
+#   passed (no geometry_rejection set). Fires only after R01-R04 have processed
+#   this element. Elements with a geometry_rejection are handled separately —
+#   this rule sets frame_ok='NO' if rejection is already present.
+#
+# INPUTS  (slots read)
+#   needs_geometry     : targeting slot
+#   geometry_rejection : string — set by R01/R02/R03/R04 on failure
+#
+# OUTPUTS (slots written)
+#   frame_ok : 'YES' or 'NO'
+#
+# GUARD — EXCEPTION: defined $f->{frame_ok}
+#   Idempotence — fires only once per Frame.
+##
+RULE: R05-geometry-pass
+FIND:
+  f:
+    attribut: needs_geometry
+EXCEPTION: defined $f->{frame_ok}
+ACTION: |
+  # Check if any geometry check has already failed
+  my $rejection = $f->get('geometry_rejection');
+
+  if (defined $rejection) {
+    $f->set('frame_ok', 'NO');
+    return 1;
+  }
+
+  # No geometry failure — element passes geometry stage
+  $f->set('frame_ok', 'YES');
+  1

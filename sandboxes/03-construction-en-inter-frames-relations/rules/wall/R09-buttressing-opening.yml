@@ -1,0 +1,76 @@
+##
+# RULE: R09-buttressing-opening
+# AGENT: ADA::Agent::Wall  (pos. 2 / 5)
+# CORPUS: §2C26 — Approved Document A (Structure) 2013 — Buttressing walls / Diagram 12
+#
+# PURPOSE
+#   Verifies that openings in buttressing walls comply with §2C26 and Diagram 12:
+#   - Any opening > 0.1m² must be at least 550mm from the supported wall.
+#   - Opening height must not exceed 0.9 × floor-to-ceiling height (storey_height_m).
+#   - Lintel depth (including masonry over the opening) must be ≥ 150mm.
+#   One small opening ≤ 0.1m² may be at any position (no distance constraint).
+#   Only fires when at least one buttress_opening_* slot is present in the feed.
+#
+# INPUTS  (slots read)
+#   besoin_wall                : targeting slot — 'Y'
+#   type_element               : 'buttressing_wall' (filtre)
+#   buttress_opening_area_m2   : float — area of opening(s) in buttressing wall (m²)
+#   buttress_opening_dist_mm   : float — distance of opening from supported wall (mm)
+#   buttress_opening_height_m  : float — height of opening (m)
+#   buttress_lintel_depth_mm   : float — lintel depth incl. masonry over opening (mm)
+#   storey_height_m            : float — floor-to-ceiling height proxy for 0.9× check
+#
+# OUTPUTS (slots written)
+#   buttress_opening_ok : 'YES'/'NO' — §2C26 opening constraint verdict
+#   wall_violations     : str — appended constraint violations
+#   wall_ok             : set to 'NO' if opening violations found
+#
+# GUARD — EXCEPTION: defined $w->{buttress_opening_ok}
+#   Idempotence — prevents re-processing a Frame already checked in a prior cycle.
+##
+RULE: R09-buttressing-opening
+FIND:
+  w:
+    attribut: besoin_wall
+    filtre: >
+      ($_->get('type_element')//"") eq "buttressing_wall"
+      && (defined $_->get('buttress_opening_area_m2')
+          || defined $_->get('buttress_opening_height_m')
+          || defined $_->get('buttress_lintel_depth_mm'))
+EXCEPTION: defined $w->{buttress_opening_ok}
+ACTION: |
+  my @viol = split /;\s*/, ($w->get('wall_violations') // '');
+
+  my $area = $w->get('buttress_opening_area_m2')  // 0;
+  my $dist = $w->get('buttress_opening_dist_mm')  // 0;
+  my $oh   = $w->get('buttress_opening_height_m') // 0;
+  my $ld   = $w->get('buttress_lintel_depth_mm')  // 0;
+  my $ceil = $w->get('storey_height_m')           // 0;
+
+  # §2C26 / Diagram 12: opening > 0.1m² must be ≥ 550mm from supported wall
+  if ($area > 0.1 && $dist > 0 && $dist < 550) {
+      push @viol,
+          "buttressing opening ${area}m² is ${dist}mm from supported wall — min 550mm (§2C26)";
+  }
+
+  # §2C26 / Diagram 12: opening height ≤ 0.9 × floor-to-ceiling height
+  if ($oh > 0 && $ceil > 0) {
+      my $max_oh = 0.9 * $ceil;
+      if ($oh > $max_oh) {
+          push @viol,
+              sprintf("buttressing opening height %.2fm > 0.9×Hs = %.2fm (§2C26 Diagram 12)",
+                      $oh, $max_oh);
+      }
+  }
+
+  # §2C26 / Diagram 12: lintel depth (masonry included) ≥ 150mm
+  if ($ld > 0 && $ld < 150) {
+      push @viol,
+          "buttressing opening lintel depth ${ld}mm < 150mm min (§2C26 Diagram 12)";
+  }
+
+  my $ok = @viol ? 'NO' : 'YES';
+  $w->set('buttress_opening_ok', $ok);
+  $w->set('wall_violations',     join('; ', @viol));
+  $w->set('wall_ok', 'NO') if $ok eq 'NO';
+  1

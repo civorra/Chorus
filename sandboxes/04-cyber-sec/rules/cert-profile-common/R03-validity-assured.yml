@@ -1,0 +1,42 @@
+##
+# RULE: R03-validity-assured
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 1)
+# CORPUS: §5.2.2 — ETSI EN 319 412-1 V1.7.1 — Validity Assured — Short Term
+#          GEN-5.2.3-01: ASN.1 extension id-etsi-ext-valassured-ST-certs
+#          Note: ETSI EN 319 411-1 REV-6.2.4-03A limits short-term cert validity to ≤ 24 h
+#
+# PURPOSE
+#   When a certificate carries the short-term validity assured extension
+#   (has_validity_assured = "Y"), verifies that validity_period_hours ≤ 24 h.
+#   Only fires on frames where type_element = "cert_ext".
+#   If has_validity_assured is absent, the rule does not fire (CONDITION guard).
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot — set by Feed.pm at frame creation
+#   type_element          : enum — filtre restricts to "cert_ext" only
+#   has_validity_assured  : str "Y" — presence of the id-etsi-ext-valassured-ST-certs extension
+#   validity_period_hours : float — certificate validity duration in hours
+#
+# OUTPUTS (slots written)
+#   validity_assured_ok : "OUI" if ≤ 24 h and > 0, "NON" otherwise
+#
+# GUARD — EXCEPTION: defined $e->{validity_assured_ok}
+#   Idempotence — prevents re-processing a frame already handled in a previous cycle.
+##
+RULE: R03-validity-assured
+FIND:
+  e:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") eq "cert_ext"'
+CONDITION: 'defined $e->get("has_validity_assured")'
+EXCEPTION: 'defined $e->{validity_assured_ok}'
+ACTION: |
+  # Read validity period; default to 0 if absent (conservative: fails the check)
+  my $h = $e->get('validity_period_hours') // 0;
+
+  # §5.2.2 + ETSI EN 319 411-1 REV-6.2.4-03A: short-term cert validity ≤ 24 h
+  my $ok = ($h > 0 && $h <= 24) ? 'OUI' : 'NON';
+
+  # Write result
+  $e->set('validity_assured_ok', $ok);
+  1

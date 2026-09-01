@@ -1,0 +1,69 @@
+##
+# RULE: R01-thermal-resistance
+# AGENT: TimberFrame::Agent::Thermal  (pos. 3 / 5)
+# CORPUS: §4.1 — Part L + BS EN ISO 6946 — Minimum thermal resistance by climate zone
+#
+# PURPOSE
+#   Checks that insulation elements achieve the minimum thermal resistance R
+#   required for their climate zone. R = thickness_mm / (1000 × lambda).
+#   Requires thickness_mm, lambda, and climate_zone; skipped silently if absent.
+#   Applies only to type_element = insulation.
+#
+# INPUTS  (slots read)
+#   needs_thermal  : targeting slot — set by initial feed
+#   type_element   : must be 'insulation'
+#   thickness_mm   : float — insulation thickness (mm)
+#   lambda         : float — thermal conductivity W/(m·K)
+#   climate_zone   : enum — 'A', 'B', or 'C'
+#
+# OUTPUTS (slots written)
+#   r_value            : float — computed thermal resistance (m²·K/W)
+#   thermal_ok         : 'YES' or 'NO'
+#   thermal_rejection  : string — failure reason (written only on rejection)
+#
+# HELPERS
+#   r_min_by_zone($climate_zone) → float (R_min in m²·K/W)
+#
+# GUARD — EXCEPTION: defined $f->{thermal_ok}
+##
+RULE: R01-thermal-resistance
+FIND:
+  f:
+    attribut: needs_thermal
+    filtre: |
+      ($_->get('type_element') // '') eq 'insulation'
+      && defined $_->get('thickness_mm')
+      && defined $_->get('lambda')
+      && defined $_->get('climate_zone')
+EXCEPTION: defined $f->{thermal_ok}
+ACTION: |
+  # Read insulation properties — §4.1
+  my $thickness = $f->get('thickness_mm');
+  my $lambda    = $f->get('lambda');
+  my $zone      = $f->get('climate_zone');
+
+  # Guard: avoid division by zero
+  return 0 unless $lambda > 0;
+
+  # Compute thermal resistance R = thickness(m) / lambda — §4.1
+  my $r_actual = $thickness / (1000 * $lambda);
+  $f->set('r_value', $r_actual);
+
+  # Look up minimum R for this climate zone — §4.1
+  my $r_min = r_min_by_zone($zone);
+  unless (defined $r_min) {
+    # Unknown zone — pass with a note
+    $f->set('thermal_ok', 'YES');
+    return 1;
+  }
+
+  # Check R ≥ R_min — §4.1
+  if ($r_actual < $r_min) {
+    $f->set('thermal_ok', 'NO');
+    $f->set('thermal_rejection',
+      sprintf("R=%.2f m²·K/W below minimum %.1f for zone %s (§4.1)", $r_actual, $r_min, $zone));
+    return 1;
+  }
+
+  $f->set('thermal_ok', 'YES');
+  1

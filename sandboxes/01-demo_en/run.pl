@@ -1,13 +1,15 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
+use utf8;
+use open ':std', ':encoding(UTF-8)';
 
 use FindBin qw($Bin);
 use lib "$Bin/../../lib";   # Chorus::Engine, Frame, Expert, Collection
-use lib "$Bin/lib";                 # CobIntro::*
+use lib "$Bin/lib";         # TimberFrame::*
 
-use CobIntro::Feed   qw(load_projet);
-use CobIntro::Expert;
+use TimberFrame::Feed   qw(load_projet);
+use TimberFrame::Expert;
 
 my $fichier = shift @ARGV
     or die "Usage: perl run.pl <fichier-projet.json>\n";
@@ -18,12 +20,12 @@ my @elements = load_projet($fichier);
 printf "Feed: %d element(s) loaded\n\n", scalar @elements;
 
 # Calibrate _MAX_CYCLES to actual project volume
-# Heuristic: N_elements × 16_rules × 4_agents × 10 (safety margin)
-my $max_cycles = scalar(@elements) * 16 * 4 * 10;
+# Heuristic: N_elements × 17_rules × 5_agents × 10 (safety margin)
+my $max_cycles = scalar(@elements) * 17 * 5 * 10;
 $max_cycles = 10_000 if $max_cycles < 10_000;  # safety minimum
 
 # Pipeline
-my ($ok) = CobIntro::Expert->run(
+my ($ok) = TimberFrame::Expert->run(
     base_dir   => $Bin,
     input      => { elements => \@elements },
     max_cycles => $max_cycles,
@@ -33,14 +35,14 @@ my ($ok) = CobIntro::Expert->run(
 # Result slots to display (set by agents in the pipeline)
 my @slots_resultat_display = qw(
     qualified rejection_reason
-    frame_ok domain_note
-    thermal_ok
-    fire_ok fire_note
-    compliance_status compliance_note
+    frame_ok geometry_rejection
+    thermal_ok thermal_rejection
+    fire_ok fire_rejection
+    compliance_status compliance_summary
 );
 
 print "=" x 62 . "\n";
-print "  COMPLIANCE REPORT — CobIntro\n";
+print "  COMPLIANCE REPORT — TimberFrame\n";
 print "=" x 62 . "\n\n";
 
 my $n_conforme     = 0;
@@ -64,11 +66,11 @@ for my $e (@elements) {
 
     for my $slot (@slots_resultat_display) {
         next unless defined $e->{$slot};
-        next if $slot eq 'compliance_note';
+        next if $slot eq 'compliance_summary';
         printf "       %-28s : %s\n", $slot, $e->{$slot};
     }
-    if (defined $e->{compliance_note}) {
-        printf "       %-28s : %s\n", '→ compliance_note', $e->{compliance_note};
+    if (defined $e->{compliance_summary}) {
+        printf "       %-28s : %s\n", '→ compliance_summary', $e->{compliance_summary};
     }
     print "\n";
 }
@@ -90,22 +92,21 @@ print "─" x 62 . "\n";
 
 # ── Block 2: Validation process — traversal by agent ──────────────────────
 {
-    # [ label, targeting_slot, result_slot, ok_value, ko_value ]
     my @pipeline_def = (
-        [ 'Qualification', 'needs_qualify',    'qualified',         'YES',       'NO'          ],
-        [ 'Domain',        'needs_domain',      'frame_ok',          'YES',       'NO'          ],
-        [ 'Fire',          'needs_fire',        'fire_ok',           'YES',       'NO'          ],
-        [ 'Compliance',    'needs_compliance',  'compliance_status', 'COMPLIANT', 'NON-COMPLIANT' ],
+        [ 'Qualification', 'needs_compliance', 'qualified',         'YES',       'NO'             ],
+        [ 'Geometry',      'needs_geometry',   'frame_ok',          'YES',       'NO'             ],
+        [ 'Thermal',       'needs_thermal',    'thermal_ok',        'YES',       'NO'             ],
+        [ 'Fire',          'needs_fire',       'fire_ok',           'YES',       'NO'             ],
+        [ 'Compliance',    'needs_compliance', 'compliance_status', 'COMPLIANT', 'NON-COMPLIANT'  ],
     );
 
     print "\n  Validation process — traversal by agent\n";
     print "  " . "─" x 58 . "\n";
-    printf "  %-16s  %7s  %6s  %6s  %5s\n", 'Agent', 'Targeted', 'OK', 'KO', 'NA';
+    printf "  %-16s  %7s  %6s  %6s\n", 'Agent', 'w/result', 'OK', 'KO';
     print "  " . "─" x 58 . "\n";
 
     for my $def (@pipeline_def) {
         my ($label, $slot_cible, $slot_res, $ok_val, $ko_val) = @$def;
-        # Since targeting slots are deleted after processing, count via result slot
         my @with_res = grep { defined $_->{$slot_res} } @elements;
         my $n_res    = scalar @with_res;
         my ($n_ok, $n_ko) = (0, 0);
@@ -114,11 +115,10 @@ print "─" x 62 . "\n";
             if    ($res eq $ok_val) { $n_ok++ }
             elsif ($res eq $ko_val) { $n_ko++ }
         }
-        printf "  %-16s  %7d  %6s  %6s  %5s\n",
+        printf "  %-16s  %7d  %6s  %6s\n",
             $label, $n_res,
             $n_ok ? $n_ok : '-',
-            $n_ko ? $n_ko : '-',
-            '-';
+            $n_ko ? $n_ko : '-';
     }
     print "  " . "─" x 58 . "\n";
 }
@@ -148,15 +148,14 @@ print "─" x 62 . "\n";
 
 # ── Block 4: Non-conformity summary ───────────────────────────────────────
 {
-    my @nc = grep { ($_{compliance_status} // '') eq 'NON-COMPLIANT' } @elements;
-    @nc    = grep { ($_ ->{compliance_status} // '') eq 'NON-COMPLIANT' } @elements;
+    my @nc = grep { ($_->{compliance_status} // '') eq 'NON-COMPLIANT' } @elements;
     if (@nc) {
         print "\n  Non-conformity summary\n";
         print "  " . "─" x 58 . "\n";
         for my $e (@nc) {
             my $id   = $e->{id}           // '?';
             my $type = $e->{type_element} // '?';
-            my $note = $e->{compliance_note} // '(reason not specified)';
+            my $note = $e->{compliance_summary} // '(reason not specified)';
             printf "  ❌  %-22s [%s]\n      %s\n\n", $id, $type, $note;
         }
         print "  " . "─" x 58 . "\n";

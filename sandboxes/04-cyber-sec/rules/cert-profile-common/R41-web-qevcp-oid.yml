@@ -1,0 +1,52 @@
+##
+# RULE: R41-web-qevcp-oid
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 3)
+# CORPUS: §4.3 — ETSI EN 319 412-4 V1.4.1 (2025-06) — Certificate policies for EU Qualified WEB certs
+#          Cross-ref: §5.3 — ETSI EN 319 411-2 V2.6.1 (QEVCP-w OID definition)
+#
+# PURPOSE
+#   For EU Qualified website authentication certificates (type_element = "web",
+#   is_qualified = 'Y'), the certificatePolicies extension SHALL contain the QEVCP-w
+#   policy OID: 0.4.0.194112.1.4  (qcp-web — Qualified Electronic Seal Certificate
+#   for Website Authentication).
+#
+#   R32 (cert-profile-common) verifies that the OID is one of the 7 valid QCP/QNCP OIDs
+#   for any EU QC frame type. This rule adds the WEB-specific constraint: among the 7
+#   valid OIDs, only QEVCP-w (0.4.0.194112.1.4) is permitted for WEB frames per §4.3 of
+#   EN 319 412-4.
+#
+#   Silently skips:
+#   - Non-WEB frames (type_element ≠ "web")
+#   - Non-qualified WEB frames (is_qualified ≠ 'Y')
+#   - WEB frames without cert_policy_oid (slot absent or empty)
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot
+#   type_element          : must be "web"
+#   is_qualified          : must be 'Y'
+#   cert_policy_oid       : OID string of the certificate policy
+#
+# OUTPUTS (slots written)
+#   web_qevcp_ok : OUI — cert_policy_oid is 0.4.0.194112.1.4 (QEVCP-w)
+#                  NON — cert_policy_oid is a different OID (wrong policy for WEB EU QC)
+#
+# GUARD — EXCEPTION: defined $f->{web_qevcp_ok}
+##
+RULE: R41-web-qevcp-oid
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") eq "web"'
+EXCEPTION: defined $f->{web_qevcp_ok}
+ACTION: |
+  # Only applies to EU Qualified website authentication certificates
+  unless (($f->get('is_qualified') // '') eq 'Y') { return 0; }
+
+  # Skip if cert_policy_oid not provided
+  my $oid = $f->get('cert_policy_oid');
+  return 0 unless defined $oid && length $oid;
+
+  # §4.3 EN 319 412-4: EU Qualified WEB certs shall use QEVCP-w OID
+  # 0.4.0.194112.1.4 = qcp-web (QEVCP-w)
+  $f->set('web_qevcp_ok', ($oid eq '0.4.0.194112.1.4') ? 'OUI' : 'NON');
+  1

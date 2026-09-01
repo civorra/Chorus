@@ -1,0 +1,37 @@
+{
+  "projet": "stress-boundary-moisture_pct-high-below",
+  "description": "Boundary: moisture_pct = 17.9 (T-ε, just below upper bound) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "moisture_pct",
+    "threshold": 18,
+    "direction": "<=",
+    "epsilon": 0.1,
+    "source": "qual R02 §2.2",
+    "agent": "qualification",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-MOISTURE-HIGH-BELOW",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "strength_class": "C24",
+      "moisture_pct": 17.9,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective": 0,
+      "_resultats_attendus": {
+        "moisture_ok": "YES",
+        "qualified": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "moisture_pct = 17.9 < 18 (T-ε). Rule: mc <= 18 → YES. Just inside range.",
+      "_expected_uncertain": false
+    }
+  ]
+}

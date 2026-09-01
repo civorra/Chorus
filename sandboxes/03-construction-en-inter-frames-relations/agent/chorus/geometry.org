@@ -1,0 +1,426 @@
+#+TITLE: Agent Geometry
+#+AGENT: ADA::Agent::Geometry
+#+PIPELINE_POS: 1
+#+RULES_DIR: rules/geometry/
+
+# ============================================================
+# NOTICE
+# KB of the first Chorus agent in the ADA pipeline.
+# Source corpus: UK Building Regulations 2010 — Approved Document A (Structure)
+#               Edition 2013 — 54 pages
+# Corpus file  : corpus/004-uk-approved-doc-a-2013-vision.md
+# ============================================================
+
+* Domain
+  Geometric verification of building proportions and classification.
+  This agent handles the upstream checks defined in sections 2C1, 2C4, 2C6,
+  2C14 and 2C16 of Approved Document A:
+
+  - Identifies the building type (residential, non-residential, annexe)
+  - Verifies H ≤ 15m, H ≤ 2×W1 proportions for residential buildings
+  - Verifies H ≤ 3m / W ≤ 9m for single-storey non-residential buildings
+  - Verifies H ≤ 3m or 4.5m for annexes
+  - Verifies max floor area (70m² / 36m²)
+  - Calculates wind exposure via Diagram 7 (Factor S → max height)
+  - Sets the targeting slot for downstream agents (Wall, Masonry, Foundation)
+
+  Pipeline position 1/4 — no dependency on previous agents.
+
+* Targeting Slots                                                        :SCOPE:
+  /This agent is the first in the pipeline. Frames are populated by the initial/
+  /JSON feed. The targeting slot is set by the feed on every submitted element./
+
+** Chosen Strategy
+   Strategy A — discriminating slot value.
+   The feed sets ~type_element~ on every Frame. This agent filters on type
+   values belonging to the geometric perimeter.
+   Frame volume is expected to remain well below 50 → Strategy A is safe.
+
+   Chosen strategy : A
+   Justification   : small volume (typically 1 building + 4–8 walls + 1 floor + 1 roof);
+                     ~type_element~ is set by the feed on every Frame from the outset;
+                     direct filter avoids the overhead of a dedicated presence slot.
+
+** Targeting Slots Table
+   | Slot         | Strategy | Set by | Value / condition                                        |
+   |--------------+----------+--------+----------------------------------------------------------|
+   | type_element | A        | feed   | eq 'residential_building' \| 'non_residential_building' \| 'annexe' |
+
+** Pre-Population Contract
+   Before this agent becomes active, the feed MUST have set ~type_element~ on
+   every submitted Frame.
+   ⚠ If ~type_element~ is missing → _SCOPE returns empty → no rule fires.
+
+* Pipeline — I/O Contract
+** Incoming Slots (FIND / fmatch)
+   | Slot                   | Source Frame(s)                                       | Set by | Description                                         |
+   |------------------------+-------------------------------------------------------+--------+-----------------------------------------------------|
+   | type_element           | residential_building, non_residential_building, annexe | feed  | element category — primary scope discriminant       |
+   | height_m               | residential_building, non_residential_building, annexe | feed  | overall building height in metres                   |
+   | width_w1_m             | residential_building                                  | feed   | least plan width W1 in metres (H ≤ 2×W1)           |
+   | width_w2_m             | residential_building                                  | feed   | wing width W2 in metres (wing check)                |
+   | projection_p_m         | residential_building                                  | feed   | wing projection P in metres                         |
+   | height_wing_h2_m       | residential_building                                  | feed   | wing height H2 in metres                            |
+   | width_m                | non_residential_building                              | feed   | greatest plan length or width W in metres           |
+   | num_storeys            | residential_building                                  | feed   | number of storeys (max 3)                           |
+   | floor_area_m2          | residential_building, non_residential_building, annexe | feed  | floor area enclosed by structural walls on all sides |
+   | roof_type              | annexe                                                | feed   | 'flat' or 'pitched' (affects max height check)      |
+   | factor_s               | residential_building, non_residential_building, annexe | feed  | wind Factor S (S = V × O × A per Diagram 7)        |
+   | site_type              | residential_building, non_residential_building, annexe | feed  | 'country' or 'town'                                 |
+   | coast_distance_km      | residential_building, non_residential_building, annexe | feed  | distance to coast in km (< 2 / 2–20 / > 50)        |
+
+** Outgoing Slots (set by this agent)
+   | Slot                    | Target Frame(s)                                        | Type / values      | Description                                    |
+   |-------------------------+--------------------------------------------------------+--------------------+------------------------------------------------|
+   | geometry_ok             | residential_building, non_residential_building, annexe | 'YES'/'NO'         | overall geometric conformance verdict          |
+   | geometry_violations     | residential_building, non_residential_building, annexe | str (list)         | list of violated constraints (empty if ok)     |
+   | max_height_allowed_m    | residential_building, non_residential_building, annexe | float              | max height per Table c Diagram 7 (or 15m)      |
+   | storey_height_ok        | residential_building                                   | 'YES'/'NO'         | H ≤ 15m and storeys ≤ 3                        |
+   | proportion_ok           | residential_building                                   | 'YES'/'NO'         | H ≤ 2×W1                                       |
+   | floor_area_ok           | residential_building, non_residential_building         | 'YES'/'NO'         | floor area ≤ 70m² (or 36m² open side)          |
+   | besoin_wall             | residential_building, non_residential_building, annexe | 'Y'                | targeting slot for ADA::Agent::Wall            |
+
+* Ontology
+  Core concepts derived from corpus §2C1, §2C4, §2C14, §2C16:
+
+  - *Building* → Frame ~residential_building~ | ~non_residential_building~ | ~annexe~
+    with slots [type_element, height_m, num_storeys, floor_area_m2, factor_s, site_type, coast_distance_km]
+  - *Geometric proportion* → H ≤ 2×W1 (residential), H ≤ 3m (non-res), applied per §2C4
+  - *Wind height limit* → max_height_allowed_m via Table c Diagram 7, capped at 15m
+
+** Aliases
+   Sources: corpus §2.3 Definitions, §2C1, §2C4
+   | Canonical KB form (slot / type_element value)  | Project-side variants                                     | Source                            |
+   |------------------------------------------------+-----------------------------------------------------------+-----------------------------------|
+   | residential_building                           | house, dwelling, home, residential unit                   | corpus §2C1a                      |
+   | non_residential_building                       | small single-storey non-residential, outbuilding, garage  | corpus §2C1b                      |
+   | annexe                                         | annex, extension, garden building, outbuilding (small)    | corpus §2C1c                      |
+   | height_m                                       | H, overall height, building height (metres)               | corpus §2C4a-i, Diagram 1         |
+   | width_w1_m                                     | W1, least width, minimum plan width                       | corpus §2C4a-ii, Diagram 1        |
+   | floor_area_m2                                  | floor area, enclosed floor area                           | corpus §2C14                      |
+   | factor_s                                       | Factor S, S = V × O × A, wind factor                     | corpus Diagram 7                  |
+   | site_type                                      | country site, town site, country terrain, town terrain    | corpus Diagram 7 Table c Note (i) |
+   | coast_distance_km                              | distance to coast, coastal distance                       | corpus Diagram 7 Table c          |
+
+* Frame Catalogue
+** Frame: residential_building
+   Role: A residential building of not more than three storeys — primary subject of §2C.
+
+   | Slot                | Type    | Possible values                | Constraint       | Description                                    |
+   |---------------------+---------+--------------------------------+------------------+------------------------------------------------|
+   | type_element        | enum    | 'residential_building'         | set by feed      | element category — targeting slot              |
+   | height_m            | float   | 0..15                          | required         | overall height H (metres)                      |
+   | width_w1_m          | float   | > 0                            | required         | least plan width W1 (metres)                   |
+   | width_w2_m          | float   | > 0 or undef                   | optional         | wing width W2 (metres) — if wing present       |
+   | projection_p_m      | float   | ≥ 0                            | optional         | wing projection P (metres)                     |
+   | height_wing_h2_m    | float   | > 0 or undef                   | optional         | wing height H2 (metres)                        |
+   | num_storeys         | int     | 1..3                           | required         | number of storeys                              |
+   | floor_area_m2       | float   | > 0                            | required         | max enclosed floor area (m²)                   |
+   | factor_s            | float   | 25..44                         | optional         | wind Factor S (Diagram 7) — undef → no limit   |
+   | site_type           | enum    | 'country' / 'town'             | optional         | site type for Table c lookup                   |
+   | coast_distance_km   | float   | > 0                            | optional         | distance to coast in km                        |
+   | geometry_ok         | enum    | 'YES' / 'NO'                   | set by R01       | overall geometric verdict                      |
+   | geometry_violations | str     | CSV list or ''                 | set by R01       | violated constraints                           |
+   | max_height_allowed_m| float   | 3..15                          | set by R01       | max height from Table c Diagram 7              |
+   | storey_height_ok    | enum    | 'YES' / 'NO'                   | set by R01       | H ≤ 15m and storeys ≤ 3                        |
+   | proportion_ok       | enum    | 'YES' / 'NO'                   | set by R01       | H ≤ 2×W1                                       |
+   | floor_area_ok       | enum    | 'YES' / 'NO'                   | set by R01       | floor area ≤ 70m²                              |
+   | besoin_wall         | flag    | 'Y' or undef                   | set by R01       | targeting slot for Agent::Wall                 |
+
+   Slots d'entrée  : type_element, height_m, width_w1_m, num_storeys, floor_area_m2
+   Slots calculés  : geometry_ok, geometry_violations, max_height_allowed_m, storey_height_ok, proportion_ok, floor_area_ok, besoin_wall
+   Slots optionnels: width_w2_m, projection_p_m, height_wing_h2_m, factor_s, site_type, coast_distance_km
+
+   Inheritance (_ISA): –
+   Hooks: none in geometry agent (all logic in YAML rules)
+
+** Frame: non_residential_building
+   Role: Small single-storey non-residential building — §2C1b.
+
+   | Slot                | Type    | Possible values                | Constraint       | Description                                    |
+   |---------------------+---------+--------------------------------+------------------+------------------------------------------------|
+   | type_element        | enum    | 'non_residential_building'     | set by feed      | element category                               |
+   | height_m            | float   | 0..3                           | required         | height H (max 3m)                              |
+   | width_m             | float   | 0..9                           | required         | greatest plan length or width W (max 9m)       |
+   | floor_area_m2       | float   | > 0                            | optional         | floor area (m²)                                |
+   | factor_s            | float   | 25..44                         | optional         | wind Factor S                                  |
+   | site_type           | enum    | 'country' / 'town'             | optional         | site type                                      |
+   | coast_distance_km   | float   | > 0                            | optional         | distance to coast in km                        |
+   | geometry_ok         | enum    | 'YES' / 'NO'                   | set by R02       | overall geometric verdict                      |
+   | geometry_violations | str     | CSV list or ''                 | set by R02       | violated constraints                           |
+   | max_height_allowed_m| float   | 3..15                          | set by R02       | max height from Table c Diagram 7              |
+   | floor_area_ok       | enum    | 'YES' / 'NO'                   | set by R02       | no structural wall one side → area ≤ 36m²      |
+   | besoin_wall         | flag    | 'Y' or undef                   | set by R02       | targeting slot for Agent::Wall                 |
+
+   Slots d'entrée  : type_element, height_m, width_m
+   Slots calculés  : geometry_ok, geometry_violations, max_height_allowed_m, floor_area_ok, besoin_wall
+   Slots optionnels: floor_area_m2, factor_s, site_type, coast_distance_km
+
+   Inheritance (_ISA): –
+
+** Frame: annexe
+   Role: Small annexe building (garage, outbuilding) — §2C1c.
+
+   | Slot                | Type    | Possible values                | Constraint       | Description                                    |
+   |---------------------+---------+--------------------------------+------------------+------------------------------------------------|
+   | type_element        | enum    | 'annexe'                       | set by feed      | element category                               |
+   | height_m            | float   | 0..4.5                         | required         | height H                                       |
+   | roof_type           | enum    | 'flat' / 'pitched'             | optional         | determines max height (3m flat / 4.5m pitched) |
+   | floor_area_m2       | float   | 0..36                          | optional         | floor area (max 36m² per §2C14)                |
+   | factor_s            | float   | 25..44                         | optional         | wind Factor S                                  |
+   | site_type           | enum    | 'country' / 'town'             | optional         | site type                                      |
+   | coast_distance_km   | float   | > 0                            | optional         | distance to coast in km                        |
+   | geometry_ok         | enum    | 'YES' / 'NO'                   | set by R03       | overall geometric verdict                      |
+   | geometry_violations | str     | CSV list or ''                 | set by R03       | violated constraints                           |
+   | max_height_allowed_m| float   | 3..4.5                         | set by R03       | height limit per §2C4c                         |
+   | besoin_wall         | flag    | 'Y' or undef                   | set by R03       | targeting slot for Agent::Wall                 |
+
+   Slots d'entrée  : type_element, height_m
+   Slots calculés  : geometry_ok, geometry_violations, max_height_allowed_m, besoin_wall
+   Slots optionnels: roof_type, floor_area_m2, factor_s, site_type, coast_distance_km
+
+   Inheritance (_ISA): –
+
+* Slot Dictionary
+  | Slot                 | Frame(s)                                            | Role                   | fmatch target? |
+  |----------------------+-----------------------------------------------------+------------------------+----------------|
+  | type_element         | all building Frames                                 | _SCOPE targeting (A)   | yes            |
+  | height_m             | all building Frames                                 | _APPLY read            | no             |
+  | width_w1_m           | residential_building                                | _APPLY read            | no             |
+  | width_w2_m           | residential_building                                | _APPLY read            | no             |
+  | projection_p_m       | residential_building                                | _APPLY read            | no             |
+  | height_wing_h2_m     | residential_building                                | _APPLY read            | no             |
+  | width_m              | non_residential_building                            | _APPLY read            | no             |
+  | num_storeys          | residential_building                                | _APPLY read            | no             |
+  | floor_area_m2        | residential_building, non_residential_building, annexe | _APPLY read          | no             |
+  | roof_type            | annexe                                              | _APPLY read            | no             |
+  | factor_s             | all building Frames                                 | _APPLY read            | no             |
+  | site_type            | all building Frames                                 | _APPLY read            | no             |
+  | coast_distance_km    | all building Frames                                 | _APPLY read            | no             |
+  | geometry_ok          | all building Frames                                 | _APPLY write           | no             |
+  | geometry_violations  | all building Frames                                 | _APPLY write           | no             |
+  | max_height_allowed_m | all building Frames                                 | _APPLY write           | no             |
+  | storey_height_ok     | residential_building                                | _APPLY write           | no             |
+  | proportion_ok        | residential_building                                | _APPLY write           | no             |
+  | floor_area_ok        | residential_building, non_residential_building      | _APPLY write           | no             |
+  | besoin_wall          | all building Frames                                 | _APPLY write (targeting) | no           |
+
+* Rule Catalogue
+** Rule: R01-residential-geometry
+   Intent    : Verify all geometric constraints for residential buildings (§2C4a, §2C14, §2C16)
+               and set the besoin_wall targeting slot.
+   Priority  : 1
+
+   FIND      :
+   - ~b~ → attribut: ~type_element~  [filtre: ~'$_->{type_element} eq "residential_building"'~]
+
+   EXCEPTION : ~defined $b->{geometry_ok}~
+   CONDITION : –
+   EFFECT    :
+   #+BEGIN_SRC perl
+   use ADA::Agent::Geometry::Helpers qw(max_height_from_table_c);
+   my @violations;
+
+   # Check: storeys ≤ 3 and H ≤ 15m
+   my $h          = $b->{height_m} // 0;
+   my $storeys    = $b->{num_storeys} // 0;
+   my $w1         = $b->{width_w1_m} // 0;
+   my $floor_area = $b->{floor_area_m2} // 0;
+
+   push @violations, "storeys > 3 (got $storeys)"  if $storeys > 3;
+   push @violations, "height_m > 15 (got ${h}m)"   if $h > 15;
+
+   # Check: H ≤ 2×W1 (§2C4a-ii)
+   my $prop_ok = ($w1 > 0 && $h <= 2 * $w1) ? 'YES' : 'NO';
+   push @violations, "H > 2×W1 (H=${h}m, W1=${w1}m)" if $prop_ok eq 'NO';
+
+   # Check: floor area ≤ 70m² (§2C14)
+   my $area_ok = ($floor_area <= 70) ? 'YES' : 'NO';
+   push @violations, "floor_area > 70m² (got ${floor_area}m²)" if $area_ok eq 'NO';
+
+   # Check: wing proportions if wing present (§2C4a-iii)
+   my $p  = $b->{projection_p_m} // 0;
+   my $w2 = $b->{width_w2_m}    // 0;
+   my $h2 = $b->{height_wing_h2_m} // 0;
+   if ($p > 0 && $w2 > 0 && $p > 2 * $w2) {
+       push @violations, "wing H2 > 2×W2 (H2=${h2}m, W2=${w2}m)"
+           if $h2 > 2 * $w2;
+   }
+
+   # Wind height limit from Table c Diagram 7 (§2C16)
+   my $max_h = max_height_from_table_c(
+       $b->{factor_s}, $b->{site_type}, $b->{coast_distance_km}
+   );
+   $max_h = 15 unless defined $max_h;  # default cap
+   push @violations, "height_m > max_wind_height (${h}m > ${max_h}m)" if $h > $max_h;
+
+   my $geo_ok = @violations ? 'NO' : 'YES';
+
+   $b->set('storey_height_ok',    ($h <= 15 && $storeys <= 3) ? 'YES' : 'NO');
+   $b->set('proportion_ok',       $prop_ok);
+   $b->set('floor_area_ok',       $area_ok);
+   $b->set('max_height_allowed_m', $max_h);
+   $b->set('geometry_violations', join('; ', @violations));
+   $b->set('geometry_ok',         $geo_ok);
+   $b->set('besoin_wall',         'Y');
+   1
+   #+END_SRC
+
+   Notes: max_height_from_table_c() returns undef if factor_s/site_type not provided →
+          defaults to 15m. Wing check only activates when P > 0 and W2 > 0.
+
+** Rule: R02-non-residential-geometry
+   Intent    : Verify geometric constraints for small non-residential buildings (§2C4b).
+   Priority  : 2
+
+   FIND      :
+   - ~b~ → attribut: ~type_element~  [filtre: ~'$_->{type_element} eq "non_residential_building"'~]
+
+   EXCEPTION : ~defined $b->{geometry_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   use ADA::Agent::Geometry::Helpers qw(max_height_from_table_c);
+   my @violations;
+
+   my $h     = $b->{height_m} // 0;
+   my $w     = $b->{width_m}  // 0;
+   my $area  = $b->{floor_area_m2} // 0;
+
+   # §2C4b: H ≤ 3m
+   push @violations, "height_m > 3m (got ${h}m)" if $h > 3;
+
+   # §2C4b: W ≤ 9m
+   push @violations, "width_m > 9m (got ${w}m)" if $w > 9;
+
+   # §2C14: area without structural wall on one side ≤ 36m²
+   my $area_ok = ($area <= 36) ? 'YES' : 'NO';
+   push @violations, "floor_area > 36m² (got ${area}m²)" if $area_ok eq 'NO';
+
+   # Wind height limit from Table c
+   my $max_h = max_height_from_table_c(
+       $b->{factor_s}, $b->{site_type}, $b->{coast_distance_km}
+   );
+   $max_h = 3 unless defined $max_h;  # non-res cap is 3m
+   $max_h = 3 if $max_h > 3;          # Table c may return higher — hard cap at 3m
+   push @violations, "height_m > max_wind_height (${h}m > ${max_h}m)" if $h > $max_h;
+
+   $b->set('max_height_allowed_m', $max_h);
+   $b->set('floor_area_ok',        $area_ok);
+   $b->set('geometry_violations',  join('; ', @violations));
+   $b->set('geometry_ok',          @violations ? 'NO' : 'YES');
+   $b->set('besoin_wall',          'Y');
+   1
+   #+END_SRC
+
+** Rule: R03-annexe-geometry
+   Intent    : Verify geometric constraints for annexes (§2C4c, §2C14).
+   Priority  : 3
+
+   FIND      :
+   - ~b~ → attribut: ~type_element~  [filtre: ~'$_->{type_element} eq "annexe"'~]
+
+   EXCEPTION : ~defined $b->{geometry_ok}~
+   EFFECT    :
+   #+BEGIN_SRC perl
+   use ADA::Agent::Geometry::Helpers qw(max_height_from_table_c);
+   my @violations;
+
+   my $h         = $b->{height_m}    // 0;
+   my $roof_type = $b->{roof_type}   // 'flat';
+   my $area      = $b->{floor_area_m2} // 0;
+
+   # §2C4c: max H = 3m (flat) or 4.5m (pitched ≤40°)
+   my $max_h_type = ($roof_type eq 'pitched') ? 4.5 : 3.0;
+   push @violations, "height_m > ${max_h_type}m for $roof_type roof (got ${h}m)"
+       if $h > $max_h_type;
+
+   # §2C14: floor area ≤ 36m²
+   push @violations, "floor_area > 36m² (got ${area}m²)" if $area > 36;
+
+   # Wind height limit
+   my $max_h_wind = max_height_from_table_c(
+       $b->{factor_s}, $b->{site_type}, $b->{coast_distance_km}
+   );
+   if (defined $max_h_wind) {
+       my $effective_max = ($max_h_type < $max_h_wind) ? $max_h_type : $max_h_wind;
+       push @violations, "height_m > wind limit (${h}m > ${max_h_wind}m)"
+           if $h > $max_h_wind;
+       $b->set('max_height_allowed_m', $effective_max);
+   } else {
+       $b->set('max_height_allowed_m', $max_h_type);
+   }
+
+   $b->set('geometry_violations', join('; ', @violations));
+   $b->set('geometry_ok',         @violations ? 'NO' : 'YES');
+   $b->set('besoin_wall',         'Y');
+   1
+   #+END_SRC
+
+* Perl Helpers
+** max_height_from_table_c
+   Signature   : ~sub max_height_from_table_c($factor_s, $site_type, $coast_km) → $height_m | undef~
+   Description : Returns the maximum allowable building height in metres from Table c of
+                 Diagram 7, given wind Factor S, site type ('country'/'town'), and distance
+                 to coast in km. Returns undef if factor_s is not provided.
+                 Corrected value: Factor S=34, country >50km = 8.5m (PDF source defect: was 87.5).
+   Called by   : R01-residential-geometry, R02-non-residential-geometry, R03-annexe-geometry
+   Exported    : yes — add to @EXPORT_OK
+   Notes       : Interpolation not implemented (conservative: use lower bound).
+                 Empty cells in Table c (Factor S too high for that exposure) → returns undef
+                 (site is out of scope of this guidance).
+
+   #+BEGIN_SRC perl
+   # Table c — Diagram 7 — Maximum allowable building height (metres)
+   # Source corpus: Diagram 7 Table c (p.23)
+   # NOTE: Factor S=34, country >50km corrected to 8.5 (PDF source defect: 87.5)
+   #
+   # Structure: $TABLE_C{$site_type}{$coast_band}[$factor_s - 25]
+   # coast_band: 'lt2' (<2km), '2to20' (2–20km), 'gt50' (>50km)
+   my %TABLE_C = (
+     country => {
+       lt2   => [15, 11.5, 8,   5.5, 4,   3,   undef, undef, undef, undef,
+                 undef, undef, undef, undef, undef, undef, undef, undef, undef, undef],
+       '2to20' => [15, 13.5, 11,  8,   6.5, 5,   4,   3.5, 3,   undef,
+                 undef, undef, undef, undef, undef, undef, undef, undef, undef, undef],
+       gt50  => [15, 15,   14.5, 11,  8.5, 6.5, 5.5, 4.5, 3.5, 3,
+                 undef, undef, undef, undef, undef, undef, undef, undef, undef, undef],
+     },
+     town => {
+       lt2   => [15, 15,   15,  15,  12.5, 10,  8.5, 7,   6,   5.5,
+                 4.5, 4,   3.5, 3,   undef, undef, undef, undef, undef, undef],
+       '2to20' => [15, 15,   15,  15,  15,  12.5, 11,  9.5, 8,   7,
+                 6.5, 5.5, 5,   4.5, 4,   3.5, 3,   undef, undef, undef],
+       gt50  => [15, 15,   15,  15,  15,  15,  13.5, 11.5, 10,  8.5,
+                 7.5, 6.5, 6,   5.5, 5,   4.5, 4,   3.5, 3.5, 3],
+     },
+   );
+   #+END_SRC
+
+* Constraints & Pitfalls
+  - [ ] ~type_element~ must use exact values 'residential_building', 'non_residential_building', 'annexe'
+        — any typo silently produces 0 processed Frames (filtre fails)
+  - [ ] R01/R02/R03 EXCEPTION on ~geometry_ok~ ensures idempotence — mandatory
+  - [ ] ~max_height_from_table_c~ returns ~undef~ for Factor S > 44 or for cells marked
+        empty in Table c → calling code must handle undef (default to type-specific cap)
+  - [ ] Wing check (R01) activates only when P > 0 and W2 > 0 — if omitted from JSON the
+        wing check is simply skipped (safe default)
+  - [ ] ~besoin_wall~ = 'Y' must be set even if geometry_ok = 'NO' — downstream agents
+        still need to process the walls (to produce a complete non-conformance report)
+  - [ ] Table c values: Factor S index = factor_s − 25 (S=25 → index 0, S=44 → index 19)
+  - [ ] Country/town boundary: sites < 300m from town edge → treated as country terrain
+        (Table c Note i) — this must be handled at feed time, not by this agent
+  - [ ] _MAX_CYCLES recommended: 3 Frames × 3 rules × 4 agents × 10 = 360 (default 10000 is fine)
+  - [ ] ⚠️ _CYCLE and _SUCCES are reset to 0 at the start of every loop() call — do not use
+        them as cumulative counters across loop() calls. To accumulate a global total,
+        write to a dedicated BOARD slot from within a rule.
+        [ref: pitfalls.org §_CYCLE and _SUCCES — DISCOVERED 2026-07-24]
+
+* Debug Engine (Chorus v2.0.2+)
+  - Name the agent for rule-firing logs:
+    =$agent = Chorus::Engine->new(_IDENT => 'ADA::Agent::Geometry')=
+  - Enable global firing log to STDERR:
+    =$agent->set('_LOG', 1)=  → one line per fired rule, with cycle number and scope
+  - Trace a single rule without enabling global log:
+    add =TRACE: 1= to the YAML file for that rule (captured at registration, immutable after)
+  - English YAML aliases available since v2.01:
+    =RULE= / =FIND= / =ACTION= / =PREMISES= / =TRACE= — equivalent to French forms

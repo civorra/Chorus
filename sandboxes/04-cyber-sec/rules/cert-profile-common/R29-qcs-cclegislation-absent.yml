@@ -1,0 +1,33 @@
+##
+# RULE: R29-qcs-cclegislation-absent
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 3)
+# CORPUS: §5 Table 2 — ETSI EN 319 412-5 V2.6.1 — esi4-qcStatement-7 presence: X
+#
+# PURPOSE
+#   For EU Qualified Certificates, id-etsi-qcs-QcCClegislation (esi4-qcStatement-7)
+#   SHALL NOT be present — it is Forbidden (Table 2: X) for EU QC certs.
+#   Silently skips non-qualified frames.
+#
+# INPUTS  (slots read)
+#   needs_cert_validation    : targeting slot — set by Feed.pm
+#   is_qualified             : 'Y' if EU Qualified Certificate
+#   has_qcs_cclegislation    : 'Y' if id-etsi-qcs-QcCClegislation present
+#
+# OUTPUTS (slots written)
+#   qcs_cclegislation_ok     : OUI if absent (correct), NON if present (violation)
+#
+# GUARD — EXCEPTION: defined $f->{qcs_cclegislation_ok}
+##
+RULE: qcs-cclegislation-absent
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") ne "cert_ext"'
+EXCEPTION: defined $f->{qcs_cclegislation_ok}
+ACTION: |
+  # Only applies to EU Qualified Certificates
+  unless (($f->get('is_qualified') // '') eq 'Y') { return 0; }
+  # §5 Table 2: esi4-qcStatement-7 (QcCClegislation) — Presence: X (Forbidden for EU QC)
+  my $ccleg = $f->get('has_qcs_cclegislation') // '';
+  $f->set('qcs_cclegislation_ok', ($ccleg eq 'Y') ? 'NON' : 'OUI');
+  1

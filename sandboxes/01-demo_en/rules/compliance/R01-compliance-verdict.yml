@@ -1,0 +1,68 @@
+##
+# RULE: R01-compliance-verdict
+# AGENT: TimberFrame::Agent::Compliance  (pos. 5 / 5)
+# CORPUS: §6.1 — Compliance conditions by element type
+#
+# PURPOSE
+#   Aggregates domain verdicts (qualified, frame_ok, thermal_ok, fire_ok) into
+#   a final compliance_status per element according to §6.1 rules:
+#   - All elements must have qualified='YES'
+#   - Structural elements must also have frame_ok='YES'
+#   - Insulation/VCL must have thermal_ok='YES'
+#   - All elements if fire rules apply must have fire_ok='YES'
+#
+# INPUTS  (slots read)
+#   needs_compliance  : targeting slot
+#   type_element      : enum — determines which checks are required
+#   qualified         : from qualification agent
+#   frame_ok          : from geometry agent (structural only — may be absent)
+#   thermal_ok        : from thermal agent (insulation/VCL only — may be absent)
+#   fire_ok           : from fire agent (may be absent for VCL)
+#
+# OUTPUTS (slots written)
+#   compliance_status  : 'COMPLIANT' or 'NON-COMPLIANT'
+#   compliance_summary : comma-separated list of failed checks (empty if compliant)
+#
+# GUARD — EXCEPTION: defined $f->{compliance_status}
+##
+RULE: R01-compliance-verdict
+FIND:
+  f:
+    attribut: needs_compliance
+EXCEPTION: defined $f->{compliance_status}
+ACTION: |
+  my $type = $f->get('type_element') // '';
+  my @failures;
+
+  # All elements: qualified check — §6.1
+  my $qualified = $f->get('qualified') // 'YES';
+  push @failures, 'qualified=NO' if $qualified ne 'YES';
+
+  # Structural elements: geometry check — §6.1
+  if ($type =~ /^(load_bearing_stud|non_load_bearing_stud|sole_plate|top_plate|rafter|joist)$/) {
+    my $frame_ok = $f->get('frame_ok') // 'YES';
+    push @failures, 'frame_ok=NO' if $frame_ok ne 'YES';
+  }
+
+  # Insulation and VCL: thermal check — §6.1
+  if ($type =~ /^(insulation|vapour_control_layer)$/) {
+    my $thermal_ok = $f->get('thermal_ok') // 'YES';
+    push @failures, 'thermal_ok=NO' if $thermal_ok ne 'YES';
+  }
+
+  # All elements (except VCL): fire check — §6.1
+  if ($type !~ /^vapour_control_layer$/) {
+    my $fire_ok = $f->get('fire_ok') // 'YES';
+    push @failures, 'fire_ok=NO' if $fire_ok ne 'YES';
+  }
+
+  # Write final verdict
+  if (@failures) {
+    $f->set('compliance_status', 'NON-COMPLIANT');
+    $f->set('compliance_summary', join(', ', @failures));
+  } else {
+    $f->set('compliance_status', 'COMPLIANT');
+    $f->set('compliance_summary', '');
+  }
+
+  1

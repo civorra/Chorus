@@ -1,0 +1,29 @@
+{
+  "projet": "stress-missing-lambda",
+  "description": "Missing input slot lambda on insulation — R01-thermal-resistance FIND requires defined lambda; skips → thermal_ok absent → compliance R01 thermal_ok // 'YES' → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "lambda",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "thermal"
+  },
+  "elements": [
+    {
+      "id":                      "INS-STRESS-MISSING-LAMBDA",
+      "type_element":            "insulation",
+      "needs_compliance":        1,
+      "needs_thermal":           1,
+      "needs_fire":              1,
+      "thickness_mm":            150,
+      "climate_zone":            "B",
+      "_resultats_attendus": {
+        "thermal_ok":        null,
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot lambda — R01-thermal-resistance FIND requires lambda defined → skips (also guard: $lambda > 0 would reject). thermal_ok absent. Compliance R01: thermal_ok // 'YES' → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

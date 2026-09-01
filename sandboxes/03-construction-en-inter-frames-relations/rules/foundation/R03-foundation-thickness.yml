@@ -1,0 +1,60 @@
+##
+# RULE: R03-foundation-thickness
+# AGENT: ADA::Agent::Foundation  (pos. 4 / 4 — terminal agent)
+# CORPUS: §2E2c — Approved Document A (Structure) 2013 — Minimum concrete thickness
+#
+# PURPOSE
+#   Verifies concrete foundation thickness T ≥ 150mm or ≥ P (projection from
+#   face of wall), whichever is greater (§2E2c). Then aggregates all three
+#   foundation sub-verdicts (width, depth, thickness) into the overall
+#   foundation_ok result.
+#   ⚠ Pipeline termination is NOT done here — the shell Agent registers a
+#   pure-Perl addrule() that calls $agent->solved() when all besoin_foundation
+#   Frames carry foundation_ok. Never use a YAML global-fmatch termination rule.
+#
+# INPUTS  (slots read)
+#   besoin_foundation        : targeting slot — 'Y'
+#   foundation_width_ok      : 'YES'/'NO' — set by R01 (CONDITION guard)
+#   foundation_depth_ok      : 'YES'/'NO' — set by R02 (CONDITION guard)
+#   foundation_thickness_mm  : int — concrete thickness T (mm)
+#   projection_p_mm          : int — projection P from face of wall (mm, optional)
+#
+# OUTPUTS (slots written)
+#   foundation_thickness_ok : 'YES'/'NO' — §2E2c verdict
+#   foundation_violations   : final consolidated list
+#   foundation_ok           : 'YES'/'NO' — overall foundation verdict
+#
+# GUARD — EXCEPTION: defined $f->{foundation_ok}
+#   Idempotence.
+##
+RULE: R03-foundation-thickness
+FIND:
+  f:
+    attribut: besoin_foundation
+EXCEPTION: defined $f->{foundation_ok}
+CONDITION: defined $f->get('foundation_width_ok') && defined $f->get('foundation_depth_ok')
+ACTION: |
+  my @viol = grep { length $_ } split /;\s*/, ($f->get('foundation_violations') // '');
+
+  my $T = $f->get('foundation_thickness_mm') // 0;
+  my $P = $f->get('projection_p_mm')         // 0;
+
+  # §2E2c: T ≥ 150mm or P, whichever is greater
+  my $min_T = ($P > 150) ? $P : 150;
+  if ($T < $min_T) {
+      push @viol,
+          "foundation_thickness ${T}mm < min ${min_T}mm (§2E2c, T≥150mm or P=${P}mm)";
+      $f->set('foundation_thickness_ok', 'NO');
+  } else {
+      $f->set('foundation_thickness_ok', 'YES');
+  }
+
+  # Aggregate overall verdict
+  my $ok = (   ($f->get('foundation_width_ok')  // 'NO') eq 'YES'
+            && ($f->get('foundation_depth_ok')   // 'NO') eq 'YES'
+            && @viol == 0)
+           ? 'YES' : 'NO';
+
+  $f->set('foundation_violations', join('; ', @viol));
+  $f->set('foundation_ok',         $ok);
+  1

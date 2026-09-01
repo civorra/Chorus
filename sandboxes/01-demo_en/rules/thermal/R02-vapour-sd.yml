@@ -1,0 +1,57 @@
+##
+# RULE: R02-vapour-sd
+# AGENT: TimberFrame::Agent::Thermal  (pos. 3 / 5)
+# CORPUS: §4.2 — BS 5250 / BS EN ISO 13788 — Vapour control layer minimum Sd value
+#
+# PURPOSE
+#   Checks that the vapour control layer provides sufficient vapour diffusion
+#   resistance (Sd value) for its service class. Applies only to elements of
+#   type vapour_control_layer with sd_value and service_class present.
+#
+# INPUTS  (slots read)
+#   needs_thermal   : targeting slot — set by initial feed
+#   type_element    : must be 'vapour_control_layer'
+#   sd_value        : float — Sd value (m)
+#   service_class   : int — 1, 2, or 3
+#
+# OUTPUTS (slots written)
+#   thermal_ok        : 'YES' or 'NO'
+#   thermal_rejection : string — failure reason (written only on rejection)
+#
+# HELPERS
+#   sd_min_by_service_class($service_class) → float (Sd_min in m)
+#
+# GUARD — EXCEPTION: defined $f->{thermal_ok}
+##
+RULE: R02-vapour-sd
+FIND:
+  f:
+    attribut: needs_thermal
+    filtre: |
+      ($_->get('type_element') // '') eq 'vapour_control_layer'
+      && defined $_->get('sd_value')
+      && defined $_->get('service_class')
+EXCEPTION: defined $f->{thermal_ok}
+ACTION: |
+  # Read vapour resistance and service class — §4.2
+  my $sd    = $f->get('sd_value');
+  my $class = $f->get('service_class');
+
+  # Look up minimum Sd for this service class — §4.2
+  my $sd_min = sd_min_by_service_class($class);
+  unless (defined $sd_min) {
+    # Unknown service class — pass
+    $f->set('thermal_ok', 'YES');
+    return 1;
+  }
+
+  # Check Sd ≥ Sd_min — §4.2
+  if ($sd < $sd_min) {
+    $f->set('thermal_ok', 'NO');
+    $f->set('thermal_rejection',
+      sprintf("Sd=%.1f m below minimum %.0f m for service class %d (§4.2)", $sd, $sd_min, $class));
+    return 1;
+  }
+
+  $f->set('thermal_ok', 'YES');
+  1

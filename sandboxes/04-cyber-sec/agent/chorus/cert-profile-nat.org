@@ -1,0 +1,345 @@
+#+TITLE: Agent CertProfileNat
+#+AGENT: CyberSec::Agent::CertProfileNat
+#+PIPELINE_POS: 2
+#+RULES_DIR: rules/cert-profile-nat/
+
+# ============================================================
+# KB — CyberSec::Agent::CertProfileNat
+# Corpus: ETSI EN 319 412-2 V2.4.1 (2025-06)
+# Updated by chorus-feed Mode B (--enrich corpus 003) — 2025-07-14
+# Pipeline: now pos. 2 / 3 (CertProfileLeg added as agent 3)
+# ============================================================
+
+* Domain
+  This agent validates requirements specific to certificates issued to natural persons,
+  as defined in ETSI EN 319 412-2:
+  - Subject field mandatory attributes (§4.2.4 — NAT-4.2.4-*)
+  - Key usage settings (§4.3.2 — NAT-4.3.2-*)
+  - Revocation information presence: CRL distribution points and/or OCSP (§4.3.11, §4.4.1)
+  - EU Qualified Certificate policy identifiers (§5.1, §5.2)
+
+  It runs after CertProfileCommon (pos. 1) which validates common data structures.
+  It targets NAT frames that have been cleared by agent 1 (needs_nat_validation slot
+  set by CertProfileCommon R04 on conformant nat frames).
+
+* Targeting Slots                                                        :SCOPE:
+
+** Chosen Strategy
+   - *Strategy B — presence slot (existence)*:
+     CertProfileCommon (R04) sets ~needs_nat_validation~ on every NAT SubjectIdentifier
+     frame after computing cert_profile_result. This agent scopes on that slot.
+
+   Chosen strategy : B
+   Justification   : Volume is bounded, frame type is homogeneous (NAT only).
+                     Strategy B is safe and efficient; avoids Cartesian products.
+
+** Targeting Slots Table
+   | Slot                  | Strategy | Set by                            | Value / condition          |
+   |-----------------------+----------+-----------------------------------+----------------------------|
+   | needs_nat_validation  | B        | CertProfileCommon R04 (ACTION)    | existence alone sufficient |
+
+** Pre-Population Contract
+   Before this agent becomes active, every NAT SubjectIdentifier frame MUST carry:
+   - slot ~needs_nat_validation~ — set by CertProfileCommon R04 when type_element = "nat".
+   ⚠ frames missing this slot are invisible to this agent — intended (non-NAT frames skipped).
+
+* Pipeline — I/O Contract
+
+** Incoming Slots (FIND / fmatch)
+   | Slot                   | Source Frame(s)   | Set by                   | Description                                             |
+   |------------------------+-------------------+--------------------------+---------------------------------------------------------|
+   | needs_nat_validation   | NatCert           | CertProfileCommon R04    | Targeting slot                                          |
+   | type_element           | NatCert           | Feed.pm                  | Always "nat" for frames reaching this agent             |
+   | has_given_name         | NatCert           | Feed.pm                  | 'Y' if givenName attribute present in subject           |
+   | has_surname            | NatCert           | Feed.pm                  | 'Y' if surname attribute present in subject             |
+   | has_pseudonym          | NatCert           | Feed.pm                  | 'Y' if pseudonym attribute present in subject           |
+   | has_common_name        | NatCert           | Feed.pm                  | 'Y' if commonName attribute present in subject          |
+   | has_country_name       | NatCert           | Feed.pm                  | 'Y' if countryName attribute present in subject         |
+   | key_usage_bits         | NatCert           | Feed.pm                  | str — comma-separated active bits: "nonRepudiation", "digitalSignature", "keyEncipherment", "keyAgreement" |
+   | commitment_cert        | NatCert           | Feed.pm                  | 'Y' if certificate is used for commitment to signed content |
+   | has_crl_dp             | NatCert           | Feed.pm                  | 'Y' if CRL distribution points extension present        |
+   | has_ocsp               | NatCert           | Feed.pm                  | 'Y' if OCSP access location present in AIA              |
+   | has_validity_assured   | NatCert           | Feed.pm                  | 'Y' if validity assured extension present               |
+   | has_no_rev_avail       | NatCert           | Feed.pm                  | 'Y' if NoRevocationAvailable extension present          |
+   | is_qualified           | NatCert           | Feed.pm                  | 'Y' if certificate is an EU Qualified Certificate       |
+   | has_qcstatements       | NatCert           | Feed.pm                  | 'Y' if QCStatements extension present                   |
+   | has_cert_policies      | NatCert           | Feed.pm                  | 'Y' if certificatePolicies extension present (≥1 OID)   |
+
+** Outgoing Slots (set by this agent)
+   | Slot                  | Target Frame(s) | Type / values | Description                                                   |
+   |-----------------------+-----------------+---------------+---------------------------------------------------------------|
+   | nat_subject_ok        | NatCert         | OUI / NON     | §4.2.4 subject mandatory attributes conformance               |
+   | nat_key_usage_ok      | NatCert         | OUI / NON     | §4.3.2 key usage settings conformance                         |
+   | revocation_ok         | NatCert         | OUI / NON     | §4.3.11 + §4.4.1 revocation info presence conformance         |
+   | nat_profile_result    | NatCert         | OK / KO       | Global per-frame NAT profile conformance verdict              |
+   | cert_policies_ok      | NatCert         | OUI / NON     | §4.3.3 certificatePolicies extension presence                 |
+   | qcstatements_ok       | NatCert         | OUI / NON     | §5.1 QCStatements presence (QC certs only)                    |
+   | needs_nat_validation  | NatCert         | deleted       | consumed after processing                                     |
+
+** BOARD — Inter-agent Communication
+   Not used in this two-agent pipeline.
+
+* Ontologie
+
+** Concepts
+   - *Natural person certificate (NAT)* → Frame ~NatCert~
+     Contains all slots describing a certificate issued to a natural person, including
+     subject field attributes, key usage, revocation info, and QC status.
+     Corresponds to SubjectIdentifier (from agent 1) once targeted for NAT validation.
+
+** Aliases
+   Sources: §3.3 Abbreviations, §4.2.4, §4.3.2, §4.3.11, §4.4.1, §5.1 definitions
+   ETSI EN 319 412-2 V2.4.1
+
+   | Canonical KB form (slot / value)   | Project-side variants                                                   | Source                        |
+   |------------------------------------+-------------------------------------------------------------------------+-------------------------------|
+   | has_given_name "Y"                 | givenName_present, given_name, firstName, first_name                    | §4.2.4 NAT-4.2.4-10           |
+   | has_surname "Y"                    | surname_present, familyName, family_name, lastName                      | §4.2.4 NAT-4.2.4-11           |
+   | has_pseudonym "Y"                  | pseudonym_present, alias, pseudonym                                     | §4.2.4 NAT-4.2.4-4            |
+   | has_common_name "Y"                | commonName_present, common_name, cn                                     | §4.2.4 NAT-4.2.4-1            |
+   | has_country_name "Y"               | countryName_present, country_name, country, c                           | §4.2.4 NAT-4.2.4-1            |
+   | key_usage_bits                     | keyUsage, key_usage, usage_bits, kub                                    | §4.3.2 NAT-4.3.2-1, Table 1   |
+   | commitment_cert "Y"                | is_commitment, commitment, for_signature, non_repudiation_cert          | §4.3.2 NAT-4.3.2-2            |
+   | has_crl_dp "Y"                     | crl_present, crlDistributionPoints, crl_dp, has_crl                     | §4.3.11 GEN-4.3.11-1          |
+   | has_ocsp "Y"                       | ocsp_present, authorityInfoAccess_ocsp, has_aia_ocsp                    | §4.4.1 GEN-4.4.1-5            |
+   | has_validity_assured "Y"           | validity_assured, valAssured, short_term_cert                           | §4.3.11 GEN-4.3.11-2A         |
+   | has_no_rev_avail "Y"               | noRevAvail, no_revocation_available, NoRevocationAvailable              | §4.3.11 GEN-4.3.11-2A (RFC 9608) |
+   | is_qualified "Y"                   | qualified, eu_qualified, eidas_qualified, qc                            | §5.1 QCS-5.1-1                |
+   | has_cert_policies "Y"              | cert_policies_present, certificatePolicies, has_cp, cert_policy_ext    | §4.3.3 GEN-4.3.3-2            |
+   | has_qcstatements "Y"               | qcStatements_present, qc_statements, has_qcs                           | §5.1 QCS-5.1-1                |
+
+* Frame Catalogue
+
+** NatCert
+   Role: Represents a certificate issued to a natural person. One Frame per certificate.
+   Extends SubjectIdentifier (same frame in practice — NatCert is the NAT subtype).
+
+   | Slot                  | Type  | Possible values                                        | Description                                              |
+   |-----------------------+-------+--------------------------------------------------------+----------------------------------------------------------|
+   | type_element          | enum  | nat                                                    | Mandatory routing slot                                   |
+   | needs_nat_validation  | flag  | 'Y'                                                    | Targeting slot — set by CertProfileCommon R04            |
+   | has_given_name        | flag  | 'Y' / undef                                            | givenName attribute present                              |
+   | has_surname           | flag  | 'Y' / undef                                            | surname attribute present                                |
+   | has_pseudonym         | flag  | 'Y' / undef                                            | pseudonym attribute present                              |
+   | has_common_name       | flag  | 'Y' / undef                                            | commonName attribute present (mandatory)                 |
+   | has_country_name      | flag  | 'Y' / undef                                            | countryName attribute present (mandatory)                |
+   | key_usage_bits        | str   | comma-sep: nonRepudiation, digitalSignature, …         | Active keyUsage bits                                     |
+   | commitment_cert       | flag  | 'Y' / undef                                            | Certificate intended for commitment to signed content    |
+   | has_crl_dp            | flag  | 'Y' / undef                                            | CRL distribution points present                          |
+   | has_ocsp              | flag  | 'Y' / undef                                            | OCSP access location present                             |
+   | has_validity_assured  | flag  | 'Y' / undef                                            | Validity assured extension present                       |
+   | has_no_rev_avail      | flag  | 'Y' / undef                                            | NoRevocationAvailable extension present                  |
+   | is_qualified          | flag  | 'Y' / undef                                            | EU Qualified Certificate                                 |
+   | has_qcstatements      | flag  | 'Y' / undef                                            | QCStatements extension present                           |
+   | has_cert_policies     | flag  | 'Y' / undef                                            | certificatePolicies extension present (≥1 OID)           |
+   | nat_subject_ok        | enum  | OUI / NON                                              | Written by R09                                           |
+   | nat_key_usage_ok      | enum  | OUI / NON                                              | Written by R10                                           |
+   | revocation_ok         | enum  | OUI / NON                                              | Written by R11                                           |
+   | cert_policies_ok      | enum  | OUI / NON                                              | Written by R14                                           |
+   | qcstatements_ok       | enum  | OUI / NON                                              | Written by R15 (QC certs only)                           |
+   | nat_profile_result    | enum  | OK / KO                                                | Written by R12                                           |
+
+   Slots d'entrée  : type_element, needs_nat_validation
+   Slots calculés  : nat_subject_ok, nat_key_usage_ok, revocation_ok, cert_policies_ok, qcstatements_ok, nat_profile_result
+   Slots optionnels: has_given_name, has_surname, has_pseudonym, has_common_name, has_country_name,
+                     key_usage_bits, commitment_cert, has_crl_dp, has_ocsp,
+                     has_validity_assured, has_no_rev_avail, has_cert_policies,
+                     is_qualified, has_qcstatements
+
+   Inheritance (_ISA): —
+   Hooks: none
+
+* Slot Dictionary
+  | Slot                  | Frame(s) | Role                         | fmatch target? |
+  |-----------------------+----------+------------------------------+----------------|
+  | needs_nat_validation  | NatCert  | _SCOPE targeting             | yes            |
+  | type_element          | NatCert  | type routing                 | no             |
+  | has_given_name        | NatCert  | R09 input                    | no             |
+  | has_surname           | NatCert  | R09 input                    | no             |
+  | has_pseudonym         | NatCert  | R09 input                    | no             |
+  | has_common_name       | NatCert  | R09 input                    | no             |
+  | has_country_name      | NatCert  | R09 input                    | no             |
+  | key_usage_bits        | NatCert  | R10 input                    | no             |
+  | commitment_cert       | NatCert  | R10 input                    | no             |
+  | has_crl_dp            | NatCert  | R11 input                    | no             |
+  | has_ocsp              | NatCert  | R11 input                    | no             |
+  | has_validity_assured  | NatCert  | R11 input                    | no             |
+  | has_no_rev_avail      | NatCert  | R11 input                    | no             |
+  | is_qualified          | NatCert  | R13 input (deferred)         | no             |
+  | has_qcstatements      | NatCert  | R13 input (deferred)         | no             |
+  | has_cert_policies     | NatCert  | R14 input                    | no             |
+  | nat_subject_ok        | NatCert  | R09 output                   | no             |
+  | nat_key_usage_ok      | NatCert  | R10 output                   | no             |
+  | revocation_ok         | NatCert  | R11 output                   | no             |
+  | cert_policies_ok      | NatCert  | R14 output                   | no             |
+  | qcstatements_ok       | NatCert  | R15 output                   | no             |
+  | nat_profile_result    | NatCert  | R12 final verdict            | no             |
+
+* Rule Catalogue
+
+** Rule: R09-nat-subject-mandatory-attrs
+   Intent    : Validate that the subject field of a NAT certificate contains all mandatory
+               attributes per §4.2.4: countryName + (givenName and/or surname OR pseudonym)
+               + commonName. Pseudonym must NOT be combined with givenName/surname.
+   FIND      : ~f~ → attribut: ~needs_nat_validation~
+   EXCEPTION : defined $f->{nat_subject_ok}
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my $cn      = $f->get('has_common_name')  // '';
+   my $country = $f->get('has_country_name') // '';
+   my $gn      = $f->get('has_given_name')   // '';
+   my $sn      = $f->get('has_surname')      // '';
+   my $pseudo  = $f->get('has_pseudonym')    // '';
+
+   # NAT-4.2.4-1: countryName + (givenName/surname OR pseudonym) + commonName mandatory
+   my $ok = 'OUI';
+   $ok = 'NON' unless ($country eq 'Y');                         # countryName mandatory
+   $ok = 'NON' unless ($cn eq 'Y');                              # commonName mandatory
+   $ok = 'NON' unless (($gn eq 'Y' || $sn eq 'Y') || $pseudo eq 'Y');  # name identity mandatory
+   # NAT-4.2.4-4: pseudonym shall not be present if givenName/surname are present
+   $ok = 'NON' if ($pseudo eq 'Y' && ($gn eq 'Y' || $sn eq 'Y'));
+
+   $f->set('nat_subject_ok', $ok);
+   1
+   #+END_SRC
+
+** Rule: R10-nat-key-usage
+   Intent    : Validate keyUsage extension for NAT certificates per §4.3.2 Table 1.
+               Exactly one valid combination (A–F) must be present.
+               If commitment_cert = 'Y', only type A, B or F is allowed (NAT-4.3.2-2).
+   FIND      : ~f~ → attribut: ~needs_nat_validation~
+   EXCEPTION : defined $f->{nat_key_usage_ok}
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my $bits = $f->get('key_usage_bits') // '';
+
+   # Valid keyUsage combinations — Table 1 ETSI EN 319 412-2 §4.3.2
+   my %valid_combos = (
+     'nonRepudiation'                                    => 'A',  # bit 1 only
+     'nonRepudiation,digitalSignature'                   => 'B',  # bits 1+0
+     'digitalSignature'                                  => 'C',  # bit 0 only
+     'digitalSignature,keyEncipherment'                  => 'D',  # bits 0+2
+     'digitalSignature,keyAgreement'                     => 'D',  # bits 0+4
+     'keyEncipherment'                                   => 'E',  # bit 2 only
+     'keyAgreement'                                      => 'E',  # bit 4 only
+     'nonRepudiation,digitalSignature,keyEncipherment'   => 'F',  # bits 1+0+2
+     'nonRepudiation,digitalSignature,keyAgreement'      => 'F',  # bits 1+0+4
+   );
+
+   # Normalize: sort comma-sep bits alphabetically for reliable key lookup
+   my $key = join(',', sort split(/,\s*/, $bits));
+   my $combo = $valid_combos{$key};
+
+   my $ok = defined($combo) ? 'OUI' : 'NON';
+
+   # NAT-4.3.2-2: commitment cert must be type A, B or F
+   if ($ok eq 'OUI' && ($f->get('commitment_cert') // '') eq 'Y') {
+     $ok = 'NON' unless ($combo =~ /^[ABF]$/);
+   }
+
+   $f->set('nat_key_usage_ok', $ok);
+   1
+   #+END_SRC
+
+** Rule: R11-revocation-info
+   Intent    : Validate revocation information presence per §4.3.11 and §4.4.1.
+               CRL or OCSP must be present UNLESS validity_assured + no_rev_avail are both set.
+   FIND      : ~f~ → attribut: ~needs_nat_validation~
+   EXCEPTION : defined $f->{revocation_ok}
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my $crl      = $f->get('has_crl_dp')          // '';
+   my $ocsp     = $f->get('has_ocsp')             // '';
+   my $va       = $f->get('has_validity_assured') // '';
+   my $no_rev   = $f->get('has_no_rev_avail')     // '';
+
+   # GEN-4.3.11-2 / GEN-4.4.1-8: CRL or OCSP required
+   # GEN-4.3.11-2A / GEN-4.4.1-8A: exception when validity_assured AND no_rev_avail present
+   my $ok;
+   if ($crl eq 'Y' || $ocsp eq 'Y') {
+     $ok = 'OUI';  # CRL or OCSP present — always conformant
+   } elsif ($va eq 'Y' && $no_rev eq 'Y') {
+     $ok = 'OUI';  # validity assured + NoRevAvail — RFC 9608 exception satisfied
+   } else {
+     $ok = 'NON';  # neither CRL/OCSP nor valid exception
+   }
+
+   $f->set('revocation_ok', $ok);
+   1
+   #+END_SRC
+
+** Rule: R14-cert-policies
+   Intent    : Validate that the certificatePolicies extension is present (§4.3.3 GEN-4.3.3-2).
+               Applies to all NAT frames; presence of at least one OID is mandatory.
+   FIND      : ~f~ → attribut: ~needs_nat_validation~
+   EXCEPTION : defined $f->{cert_policies_ok}
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my $cp = $f->get('has_cert_policies') // '';
+   $f->set('cert_policies_ok', ($cp eq 'Y') ? 'OUI' : 'NON');
+   1
+   #+END_SRC
+
+** Rule: R15-qcstatements
+   Intent    : For EU Qualified Certificates, QCStatements SHALL be present (§5.1 QCS-5.1-1).
+               Silently skips non-qualified frames (is_qualified absent or ≠ 'Y').
+   FIND      : ~f~ → attribut: ~needs_nat_validation~
+   EXCEPTION : defined $f->{qcstatements_ok}
+   EFFECT    :
+   #+BEGIN_SRC perl
+   unless (($f->get('is_qualified') // '') eq 'Y') { return 0; }
+   my $qcs = $f->get('has_qcstatements') // '';
+   $f->set('qcstatements_ok', ($qcs eq 'Y') ? 'OUI' : 'NON');
+   1
+   #+END_SRC
+
+** Rule: R12-nat-compute-result
+   Intent    : Aggregate nat_subject_ok + nat_key_usage_ok + revocation_ok into nat_profile_result.
+               Must run after R09, R10, R11 (alphabetical load order guarantees this).
+   FIND      : ~f~ → attribut: ~needs_nat_validation~
+   EXCEPTION : defined $f->{nat_profile_result}
+   EFFECT    :
+   #+BEGIN_SRC perl
+   my $subj_ok = $f->get('nat_subject_ok');
+   my $ku_ok   = $f->get('nat_key_usage_ok');
+   my $rev_ok  = $f->get('revocation_ok');
+
+   # KO if any checked field is NON
+   my $result = 'OK';
+   $result = 'KO' if (defined $subj_ok && $subj_ok eq 'NON');
+   $result = 'KO' if (defined $ku_ok   && $ku_ok   eq 'NON');
+   $result = 'KO' if (defined $rev_ok  && $rev_ok  eq 'NON');
+
+   $f->set('nat_profile_result', $result);
+   1
+   #+END_SRC
+
+** Rule: R13-nat-handoff
+   Intent    : Handoff rule — passes control to CertProfileLeg (agent 3) once all NAT frames
+               have nat_profile_result set. Converted from TERMINAL: solved after corpus 003
+               added CertProfileLeg as the final agent. Uses $SELF->last() for handoff.
+   FIND      : ~dummy~ → attribut: ~needs_nat_validation~
+   TERMINAL  : — (uses $SELF->last() instead — see above)
+   EXCEPTION : scalar(grep { !defined $_->{nat_profile_result} }
+                 Chorus::Frame::fmatch(slot => 'needs_nat_validation')) > 0
+   EFFECT    : $SELF->last()  ← passes control to CertProfileLeg (agent 3)
+
+* Perl Helpers
+  No helpers needed for corpus 002 — keyUsage combinations are a bounded static table
+  codeable inline in R10. Revocation logic is pure boolean (§4.3.11-2A).
+
+* Constraints & Pitfalls
+  - [ ] ~needs_nat_validation~ must be set by CertProfileCommon R04 on NAT frames BEFORE
+        this agent becomes active. Verify R04 ACTION sets this slot (update required).
+  - [ ] R10 normalizes ~key_usage_bits~ by sorting — project JSON must use consistent bit names
+        (see Aliases table). A mismatch silently produces ~combo = undef~ → NON verdict.
+  - [ ] R11: if ~has_validity_assured~ is set but ~has_no_rev_avail~ is absent → NON.
+        Conservative: a validity-assured cert without NoRevAvail AND without CRL/OCSP is
+        non-conformant per GEN-4.3.11-2A.
+  - [ ] R12 runs only after R09/R10/R11 have fired on the same frame. If any of those rules
+        failed to set their slot (e.g. CONDITION miss), R12 sees undef for that slot and
+        treats it as untested — does NOT force KO. Intentional: checks only what is present.
+  - [ ] EU Qualified Certificate QCS check (§5.1 QCS-5.1-1: has_qcstatements mandatory when
+        is_qualified = Y) is deferred to next --enrich cycle.
+  - [ ] _MAX_CYCLES: with 2 agents × ~13 rules × N frames, calibrate:
+        ~$agent->set('_MAX_CYCLES', N * 13 * 2)~

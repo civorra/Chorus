@@ -1,0 +1,37 @@
+{
+  "projet": "stress-missing-plasterboard_thickness_mm",
+  "description": "Missing input slot plasterboard_thickness_mm on load_bearing_stud — R03-pb-thickness: pb absent → `if (defined $pb)` skipped → pb_ok absent → aggregate: pb_ok // 'YES' → fire_ok=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "plasterboard_thickness_mm",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "fire"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-PLASTERBOARD",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "needs_fire":              1,
+      "strength_class":          "C24",
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "span_mm":                 3000,
+      "clear_height_mm":         2700,
+      "spacing_mm":              400,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "collective":              0,
+      "_resultats_attendus": {
+        "pb_thickness_ok":   null,
+        "fire_ok":           "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot plasterboard_thickness_mm — R03-pb-thickness: `if (defined $pb)` → absent → pb check skipped. Aggregate: rei_ok // 'YES', lining_ok // 'YES', pb_ok // 'YES' → fire_ok=YES → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

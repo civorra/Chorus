@@ -1,0 +1,62 @@
+##
+# RULE: R01-chimney-proportion
+# AGENT: ADA::Agent::Chimney  (pos. 5 / 5)
+# CORPUS: §2D1 — UK Approved Document A 2013 — Height to width relationship for masonry chimneys
+#
+# PURPOSE
+#   Verifies that the height H of an unsupported masonry chimney does not exceed 4.5 × W (§2D1).
+#   H: measured from highest roof intersection to top of chimney pot or flue terminal.
+#   W: least horizontal dimension at the same point of intersection.
+#   Precondition: masonry density must be > 1500 kg/m³ (§2D1).
+#   Applies to masonry_chimney Frames.
+#
+# INPUTS  (slots read)
+#   type_element           : 'masonry_chimney' — targeting slot (Strategy A)
+#   chimney_height_m       : H — height from roof intersection to pot/terminal (m)
+#   chimney_least_width_m  : W — least horizontal dimension at roof intersection (m)
+#   masonry_density_kg_m3  : masonry unit density (kg/m³) — §2D1 requires > 1500
+#
+# OUTPUTS (slots written)
+#   chimney_proportion_ok : 'YES'/'NO' — §2D1 proportion verdict
+#   chimney_violations    : list of violated constraints
+#   chimney_ok            : overall chimney verdict
+#
+# GUARD — EXCEPTION: defined $c->{chimney_ok}
+#   Idempotence — prevents re-processing a Frame already handled.
+##
+RULE: R01-chimney-proportion
+FIND:
+  c:
+    attribut: type_element
+    filtre: "($_->get('type_element')//'') eq 'masonry_chimney'"
+EXCEPTION: defined $c->{chimney_ok}
+ACTION: |
+  my @violations;
+
+  my $H       = $c->get('chimney_height_m')     // 0;
+  my $W       = $c->get('chimney_least_width_m') // 0;
+  my $density = $c->get('masonry_density_kg_m3') // 1600;  # default: standard clay brick
+
+  # §2D1 precondition: masonry density > 1500 kg/m³
+  if ($density <= 1500) {
+      push @violations,
+          "masonry_density ${density}kg/m³ ≤ 1500 — §2D1 not applicable; specialist design required";
+      $c->set('chimney_proportion_ok', 'NO');
+      $c->set('chimney_violations',    join('; ', @violations));
+      $c->set('chimney_ok',            'NO');
+      return 1;
+  }
+
+  # §2D1: H ≤ 4.5 × W
+  if ($W > 0) {
+      my $max_h = 4.5 * $W;
+      push @violations, sprintf("chimney H %.2fm > 4.5×W = %.2fm (§2D1, W=%.2fm)", $H, $max_h, $W)
+          if $H > $max_h;
+  } else {
+      push @violations, "chimney_least_width_m missing — cannot verify §2D1 (H=${H}m)";
+  }
+
+  $c->set('chimney_proportion_ok', @violations ? 'NO' : 'YES');
+  $c->set('chimney_violations',    join('; ', @violations));
+  $c->set('chimney_ok',            @violations ? 'NO' : 'YES');
+  1

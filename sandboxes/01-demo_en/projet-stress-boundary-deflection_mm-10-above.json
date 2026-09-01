@@ -1,0 +1,39 @@
+{
+  "projet": "stress-boundary-deflection_mm-above",
+  "description": "Boundary: deflection_mm = 10.1 (T+ε, above L/300=10.0, span=3000) — expect NON_CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "deflection_mm",
+    "threshold": 10.0,
+    "direction": "<=",
+    "epsilon": 0.1,
+    "source": "qual R03 §2.3 (span=3000mm → T=span/300=10.0)",
+    "agent": "qualification",
+    "expected_uncertain": true
+  },
+  "elements": [
+    {
+      "id": "RAF-STRESS-BOUNDARY-DEFLECTION-ABOVE",
+      "type_element": "rafter",
+      "needs_compliance": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "deflection_mm": 10.1,
+      "span_mm": 3000,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective": 0,
+      "_resultats_attendus": {
+        "deflection_ok": "NO",
+        "qualified": "NO",
+        "compliance_status": "NON-COMPLIANT"
+      },
+      "_stress_note": "deflection=10.1 > allowable=10.0 (T+ε). Rule: delta > allowable → deflection_ok=NO → qualified=NO → NON-COMPLIANT.",
+      "_expected_uncertain": true
+    }
+  ]
+}

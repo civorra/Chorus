@@ -1,0 +1,88 @@
+##
+# RULE: R10-opening-factor-x
+# AGENT: ADA::Agent::Wall  (pos. 2 / 6)
+# CORPUS: §2C29 — Approved Document A 2013 — Dimensional criteria for openings and recesses
+#          Diagram 14 — Sizes of openings and recesses (p.31)
+#          Table 8 — Value of Factor 'X' (p.31)
+#
+# PURPOSE
+#   Verifies dimensional constraints for openings and recesses in walls per §2C29/Diagram 14:
+#   - Total opening width (W1+W2+W3) must not exceed 2L/3 (rule 1)
+#   - No individual opening width (W1, W2 or W3) may exceed 3m (rule 2)
+#   - Opening height H must not exceed 2.1m (Diagram 14 note)
+#   - Corner pier P5 ≥ max(W4/X, 665mm) (rule 7)
+#   Factor X is supplied by the feed from Table 8 (roof/floor span inputs), or
+#   defaults to 6 when declared compressive strength ≥ 7.3 N/mm².
+#   Fires only on external_wall Frames where opening data is provided.
+#
+# INPUTS  (slots read)
+#   besoin_wall             : targeting slot — set by Geometry R01/R02/R03
+#   type_element            : must be 'external_wall'
+#   length_m                : wall length L in metres
+#   openings_total_width_m  : sum W1+W2+W3 (aggregate opening width, metres)
+#   opening_max_individual_m: max individual opening width (metres) — max of W1, W2, W3
+#   opening_height_m        : max opening height H (metres, optional — checked ≤ 2.1m)
+#   corner_pier_dist_mm     : P5 — distance from corner to nearest opening edge (mm, optional)
+#   factor_x                : Factor X from Table 8 (integer 3–6; defaults to 6 if absent)
+#   opening_factor_x_w4_m   : W4 — corner opening width (metres, optional — used for P5 check)
+#
+# OUTPUTS (slots written)
+#   opening_factor_ok       : 'YES'/'NO' — openings meet §2C29 / Diagram 14 constraints
+#   wall_violations         : cumulative violation list
+#   wall_ok                 : updated to 'NO' on violation
+#
+# GUARD — EXCEPTION: defined $w->{opening_factor_ok}
+#   Idempotence — prevents re-processing a Frame already handled in a previous cycle.
+##
+RULE: opening-factor-x
+FIND:
+  w:
+    attribut: besoin_wall
+    filtre: |
+      ($_->get('type_element')//"") eq "external_wall"
+      && (defined $_->get('openings_total_width_m') || defined $_->get('opening_max_individual_m'))
+EXCEPTION: defined $w->{opening_factor_ok}
+ACTION: |
+  # Read opening slots
+  my @viol = split /;\s*/, ($w->get('wall_violations') // '');
+  my $L    = $w->get('length_m')               // 0;
+  my $tot  = $w->get('openings_total_width_m') // 0;
+  my $wmax = $w->get('opening_max_individual_m') // 0;
+  my $hmax = $w->get('opening_height_m');
+  my $fx   = $w->get('factor_x') // 6;          # §2C29 rule 8 default = 6
+  my $p5   = $w->get('corner_pier_dist_mm');
+  my $w4   = $w->get('opening_factor_x_w4_m') // 0;
+
+  # §2C29 rule 1: total openings W1+W2+W3 ≤ 2L/3
+  if ($L > 0 && $tot > (2 * $L / 3)) {
+      my $max_tot = sprintf("%.3f", 2 * $L / 3);
+      push @viol, "openings total ${tot}m > 2L/3 = ${max_tot}m (§2C29 Diagram 14 rule 1)";
+  }
+
+  # §2C29 rule 2: individual opening ≤ 3m
+  if ($wmax > 3.0) {
+      push @viol, "opening width ${wmax}m > 3.0m max (§2C29 Diagram 14 rule 2)";
+  }
+
+  # §2C29 Diagram 14 note: H ≤ 2.1m
+  if (defined $hmax && $hmax > 2.1) {
+      push @viol, "opening height ${hmax}m > 2.1m max (§2C29 Diagram 14)";
+  }
+
+  # §2C29 rule 7: corner pier P5 ≥ max(W4/X, 665mm)
+  if (defined $p5 && $fx > 0) {
+      my $min_p5_ratio = ($w4 > 0) ? ($w4 * 1000 / $fx) : 0;
+      my $min_p5 = ($min_p5_ratio > 665) ? $min_p5_ratio : 665;
+      if ($p5 < $min_p5) {
+          my $ms = sprintf("%.0f", $min_p5);
+          push @viol,
+              "corner pier P5 ${p5}mm < max(W4/X, 665mm) = ${ms}mm (§2C29 Diagram 14 rule 7)";
+      }
+  }
+
+  # Write results
+  my $ok = @viol ? 'NO' : 'YES';
+  $w->set('opening_factor_ok', $ok);
+  $w->set('wall_violations',   join('; ', @viol));
+  $w->set('wall_ok', 'NO') if $ok eq 'NO';
+  1

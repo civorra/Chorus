@@ -1,0 +1,89 @@
+##
+# RULE: R37-sig-suite
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 3)
+# CORPUS: §7.3 Table 4 + §10.2.5 Table 14 — ETSI TS 119 312 V2.1.1 — Signature suite (algorithm)
+#
+# PURPOSE
+#   The signature algorithm OID in the certificate (signatureAlgorithm field) SHALL be
+#   one of the approved signature suite OIDs defined in Table 4 (§7.3) and Table 14 (§10.2.5).
+#   Both R (recommended) and L (legacy, not yet discontinued) suites are accepted.
+#   Silently skips frames without sig_suite_oid.
+#
+# Approved signature suite OIDs (Table 14 — §10.2.5):
+#   sha256WithRSAEncryption   : 1.2.840.113549.1.1.11   — L (RSA-PKCS#1v1.5 + SHA-256)
+#   sha512WithRSAEncryption   : 1.2.840.113549.1.1.13   — L (RSA-PKCS#1v1.5 + SHA-512)
+#   id-RSASSA-PSS             : 1.2.840.113549.1.1.10   — R (RSA-PSS)
+#   ecdsa-with-SHA224         : 1.2.840.10045.4.3.1     — L (sha224WithECDSA)
+#   ecdsa-with-SHA256         : 1.2.840.10045.4.3.2     — R
+#   ecdsa-with-SHA384         : 1.2.840.10045.4.3.3     — R
+#   ecdsa-with-SHA512         : 1.2.840.10045.4.3.4     — R
+#   id-ecdsa-with-sha3-256    : 2.16.840.1.101.3.4.3.10 — R
+#   id-ecdsa-with-sha3-384    : 2.16.840.1.101.3.4.3.11 — R
+#   id-ecdsa-with-sha3-512    : 2.16.840.1.101.3.4.3.12 — R
+#   id-Ed25519                : 1.3.101.112             — R
+#   id-Ed448                  : 1.3.101.113             — R
+#   id-ml-dsa-44              : 2.16.840.1.101.3.4.3.17 — R (ML-DSA-44)
+#   id-ml-dsa-65              : 2.16.840.1.101.3.4.3.18 — R (ML-DSA-65)
+#   id-ml-dsa-87              : 2.16.840.1.101.3.4.3.19 — R (ML-DSA-87)
+#   SLH-DSA suites (pure)     : 2.16.840.1.101.3.4.3.22-25, 28-31 — R
+#   HashSLH-DSA suites        : 2.16.840.1.101.3.4.3.37-40, 43-46 — R (PKIX certs only)
+#
+# NOTE: DSA (id-dsa-with-sha256 etc.) and EC-SDSA-opt are NOT in Table 14 — out of scope.
+#       sha224-with-rsa is legacy L (included via sha224WithRSAEncryption — see note below).
+#       sha384WithRSAEncryption (1.2.840.113549.1.1.12) and sha256/384-with-DSA are absent
+#       from Table 14 — using id-RSASSA-PSS OID covers all RSA-PSS hash variants.
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot — set by Feed.pm
+#   sig_suite_oid         : OID string of the certificate signatureAlgorithm
+#
+# OUTPUTS (slots written)
+#   sig_suite_ok          : OUI if OID is in approved list, NON otherwise
+#
+# GUARD — EXCEPTION: defined $f->{sig_suite_ok}
+##
+RULE: sig-suite
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") ne "cert_ext"'
+EXCEPTION: defined $f->{sig_suite_ok}
+ACTION: |
+  my $oid = $f->get('sig_suite_oid');
+  return 0 unless defined $oid && length $oid;
+  # §7.3 Table 4 + §10.2.5 Table 14: approved signature suite OIDs
+  my %approved = map { $_ => 1 } qw(
+    1.2.840.113549.1.1.11
+    1.2.840.113549.1.1.13
+    1.2.840.113549.1.1.10
+    1.2.840.10045.4.3.1
+    1.2.840.10045.4.3.2
+    1.2.840.10045.4.3.3
+    1.2.840.10045.4.3.4
+    2.16.840.1.101.3.4.3.10
+    2.16.840.1.101.3.4.3.11
+    2.16.840.1.101.3.4.3.12
+    1.3.101.112
+    1.3.101.113
+    2.16.840.1.101.3.4.3.17
+    2.16.840.1.101.3.4.3.18
+    2.16.840.1.101.3.4.3.19
+    2.16.840.1.101.3.4.3.22
+    2.16.840.1.101.3.4.3.23
+    2.16.840.1.101.3.4.3.24
+    2.16.840.1.101.3.4.3.25
+    2.16.840.1.101.3.4.3.28
+    2.16.840.1.101.3.4.3.29
+    2.16.840.1.101.3.4.3.30
+    2.16.840.1.101.3.4.3.31
+    2.16.840.1.101.3.4.3.37
+    2.16.840.1.101.3.4.3.38
+    2.16.840.1.101.3.4.3.39
+    2.16.840.1.101.3.4.3.40
+    2.16.840.1.101.3.4.3.43
+    2.16.840.1.101.3.4.3.44
+    2.16.840.1.101.3.4.3.45
+    2.16.840.1.101.3.4.3.46
+  );
+  $f->set('sig_suite_ok', $approved{$oid} ? 'OUI' : 'NON');
+  1

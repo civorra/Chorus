@@ -1,0 +1,32 @@
+##
+# RULE: R27-qcs-not-critical
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 3)
+# CORPUS: §4.1 QCS-4.1-02 — ETSI EN 319 412-5 V2.6.1
+#
+# PURPOSE
+#   For EU Qualified Certificates, the qcStatements extension SHALL NOT be marked
+#   as critical (QCS-4.1-02). Silently skips non-qualified frames.
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot — set by Feed.pm
+#   is_qualified          : 'Y' if EU Qualified Certificate
+#   qcstatements_critical : 'Y' if qcStatements extension is marked critical
+#
+# OUTPUTS (slots written)
+#   qcs_not_critical_ok   : OUI if not critical (or absent), NON if critical
+#
+# GUARD — EXCEPTION: defined $f->{qcs_not_critical_ok}
+##
+RULE: qcs-not-critical
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") ne "cert_ext"'
+EXCEPTION: defined $f->{qcs_not_critical_ok}
+ACTION: |
+  # Only applies to EU Qualified Certificates
+  unless (($f->get('is_qualified') // '') eq 'Y') { return 0; }
+  # QCS-4.1-02: qcStatements SHALL NOT be marked critical
+  my $critical = $f->get('qcstatements_critical') // '';
+  $f->set('qcs_not_critical_ok', ($critical eq 'Y') ? 'NON' : 'OUI');
+  1

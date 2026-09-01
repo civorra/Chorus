@@ -1,0 +1,59 @@
+##
+# RULE: R04-qualification-result
+# AGENT: TimberFrame::Agent::Qualification  (pos. 1 / 5)
+# CORPUS: §6.1 — Compliance conditions by element type
+#
+# PURPOSE
+#   Aggregates individual material check results (strength class, moisture,
+#   deflection) into a final 'qualified' verdict per element. Also sets the
+#   'needs_geometry' targeting slot on structural elements so the geometry
+#   agent can process them.
+#   Fires only after R01-R03 have completed for this Frame (all applicable
+#   verdict slots present).
+#
+# INPUTS  (slots read)
+#   needs_compliance    : targeting slot
+#   strength_class_ok   : 'YES'/'NO' — from R01 (optional — absent if no class required)
+#   moisture_ok         : 'YES'/'NO' — from R02 (optional — absent if no moisture_pct)
+#   deflection_ok       : 'YES'/'NO' — from R03 (optional — absent if no deflection data)
+#   type_element        : enum — used to set needs_geometry on structural elements
+#
+# OUTPUTS (slots written)
+#   qualified       : 'YES' or 'NO'
+#   needs_geometry  : 1 — set on structural elements
+#
+# GUARD — EXCEPTION: defined $f->{qualified}
+#   Idempotence — prevents re-processing a Frame already handled.
+##
+RULE: R04-qualification-result
+FIND:
+  f:
+    attribut: needs_compliance
+EXCEPTION: defined $f->{qualified}
+ACTION: |
+  # Collect available verdict slots — absent means check was not applicable
+  my $sc_ok   = $f->get('strength_class_ok');
+  my $moist_ok = $f->get('moisture_ok');
+  my $defl_ok  = $f->get('deflection_ok');
+
+  # Any present verdict that is 'NO' disqualifies the element
+  my @failures;
+  push @failures, 'strength_class_ok'  if defined $sc_ok   && $sc_ok   ne 'YES';
+  push @failures, 'moisture_ok'        if defined $moist_ok && $moist_ok ne 'YES';
+  push @failures, 'deflection_ok'      if defined $defl_ok  && $defl_ok  ne 'YES';
+
+  if (@failures) {
+    $f->set('qualified', 'NO');
+    # rejection_reason already set by individual rules — do not overwrite
+    return 1;
+  }
+
+  $f->set('qualified', 'YES');
+
+  # Set needs_geometry on structural elements — §6.1 structural check required
+  my $type = $f->get('type_element') // '';
+  if ($type =~ /^(load_bearing_stud|non_load_bearing_stud|sole_plate|top_plate|rafter|joist)$/) {
+    $f->set('needs_geometry', 1);
+  }
+
+  1

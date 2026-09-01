@@ -1,0 +1,61 @@
+##
+# RULE: R02-cavity-tie
+# AGENT: ADA::Agent::Wall  (pos. 2 / 4)
+# CORPUS: Table 5 — Approved Document A (Structure) 2013 — Cavity wall ties
+#
+# PURPOSE
+#   Verifies that the supplied wall tie length meets the minimum requirement
+#   from Table 5 for the actual cavity width. Only fires on cavity external
+#   walls where a tie_length_mm value has been provided.
+#
+# INPUTS  (slots read)
+#   besoin_wall     : targeting slot — 'Y'
+#   type_element    : 'external_wall' (filtre)
+#   wall_type       : 'cavity' (filtre)
+#   tie_length_mm   : int — supplied tie length (filtre: must be defined)
+#   cavity_width_mm : int — nominal cavity width in mm
+#
+# OUTPUTS (slots written)
+#   tie_ok          : 'YES'/'NO' — tie length meets Table 5 minimum
+#   wall_ok         : updated to 'NO' if tie fails
+#   wall_violations : updated with tie violation if present
+#
+# HELPERS
+#   min_tie_length_table5($cavity_width_mm) → $mm | undef
+#
+# GUARD — EXCEPTION: defined $w->{tie_ok}
+#   Idempotence.
+##
+RULE: R02-cavity-tie
+FIND:
+  w:
+    attribut: besoin_wall
+    filtre: '($_->get("type_element")//"") eq "external_wall" && ($_->get("wall_type")//"") eq "cavity" && defined $_->get("tie_length_mm")'
+EXCEPTION: defined $w->{tie_ok}
+ACTION: |
+  use ADA::Agent::Wall::Helpers qw(min_tie_length_table5);
+  my @viol = split /;\s*/, ($w->get('wall_violations') // '');
+  @viol = grep { length $_ } @viol;
+
+  my $cw      = $w->get('cavity_width_mm') // 0;
+  my $tie_sup = $w->get('tie_length_mm')   // 0;
+  my $min_tie = min_tie_length_table5($cw);
+
+  my $tie_ok = 'YES';
+  if (!defined $min_tie) {
+      # Cavity > 175mm: Note 3 formula (cav_w + 125mm) — record advisory
+      my $note3 = $cw + 125;
+      if ($tie_sup < $note3) {
+          push @viol, "tie ${tie_sup}mm < Note3_min ${note3}mm for cavity ${cw}mm (Table 5 Note 3)";
+          $tie_ok = 'NO';
+          $w->set('wall_ok', 'NO');
+      }
+  } elsif ($tie_sup < $min_tie) {
+      push @viol, "tie ${tie_sup}mm < min ${min_tie}mm for cavity ${cw}mm (Table 5)";
+      $tie_ok = 'NO';
+      $w->set('wall_ok', 'NO');
+  }
+
+  $w->set('tie_ok',          $tie_ok);
+  $w->set('wall_violations', join('; ', @viol));
+  1

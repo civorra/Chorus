@@ -1,0 +1,40 @@
+#+TITLE: Import inventory — dossier-validation-01.txt — 14 elements
+#+GENERATED: chorus-import-project Phase 2
+
+| # | id                  | type_doc          | slots extraits (bruts)                                                                         |
+|---|---------------------|-------------------|-----------------------------------------------------------------------------------------------|
+| 1 | EXT-OK-01           | certificat_ext    | cert_id=nat-ok-ref, has_validity_assured=OUI, duree_h=24                                      |
+| 2 | EXT-KO-VALIDITY-01  | certificat_ext    | cert_id=ext-ko-ref, has_validity_assured=OUI, duree_h=25                                      |
+| 3 | NAT-OK-01           | personne physique | serial_number=PASFR-P3000180, prenom_present=oui, has_surname=Y, has_common_name=Y,           |
+|   |                     |                   | has_country_name=Y, usage=non-répudiation, has_crl_dp=Y, politiques_cert=oui,                 |
+|   |                     |                   | cert_version=v3, has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1,                    |
+|   |                     |                   | sig_suite_oid=1.2.840.10045.4.3.4                                                              |
+| 4 | NAT-OK-02           | personne physique | serial_number=PNOUK-A12345678, has_pseudonym=Y, has_common_name=Y, has_country_name=Y,        |
+|   |                     |                   | usage=signature-num, has_ocsp=Y, politiques_cert=oui, cert_version=v3, has_aki=Y, has_aia=Y,  |
+|   |                     |                   | pk_algorithm_oid=1.3.101.112, sig_suite_oid=1.3.101.112                                        |
+| 5 | NAT-KO-SERIAL-01    | personne physique | serial_number=XYZFR-BADFORMAT, prenom_present=oui, has_common_name=Y, has_country_name=Y,     |
+|   |                     |                   | usage=non-répudiation, has_crl_dp=Y, politiques_cert=oui, cert_version=v3,                    |
+|   |                     |                   | has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1, sig_suite_oid=1.2.840.10045.4.3.4   |
+| 6 | NAT-KO-NRA-01       | personne physique | serial_number=XX:FR-12345, prenom_present=oui, has_common_name=Y, has_country_name=Y,         |
+|   |                     |                   | usage=non-répudiation, has_crl_dp=Y, politiques_cert=oui, cert_version=v3,                    |
+|   |                     |                   | has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1, sig_suite_oid=1.2.840.10045.4.3.4   |
+| 7 | LEG-OK-01           | personne morale   | org_id=VATFR-123456789, raison_sociale=oui, has_org_id_attr=Y, has_common_name=Y,             |
+|   |                     |                   | has_country_name=Y, usage=non-répudiation, cert_version=v3,                                   |
+|   |                     |                   | has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1, sig_suite_oid=1.2.840.10045.4.3.4   |
+| 8 | LEG-OK-02           | personne morale   | org_id=NTRDE-DED2601V.HRB12345, raison_sociale=oui, has_org_id_attr=Y, has_common_name=Y,     |
+|   |                     |                   | has_country_name=Y, usage=signature-num, cert_version=v3,                                     |
+|   |                     |                   | has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1, sig_suite_oid=1.2.840.10045.4.3.4   |
+| 9 | LEG-KO-ORGID-01     | personne morale   | org_id=XXXXXXFR-BADID, raison_sociale=oui, has_org_id_attr=Y, has_common_name=Y,              |
+|   |                     |                   | has_country_name=Y, usage=non-répudiation, cert_version=v3,                                   |
+|   |                     |                   | has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1, sig_suite_oid=1.2.840.10045.4.3.4   |
+|10 | LEG-KO-SUBJECT-01   | personne morale   | org_id=VATBE-0876866142, raison_sociale=ABSENTE, has_org_id_attr=Y, has_common_name=Y,        |
+|   |                     |                   | has_country_name=Y, usage=non-répudiation, cert_version=v3,                                   |
+|   |                     |                   | has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1, sig_suite_oid=1.2.840.10045.4.3.4   |
+|11 | WEB-OK-01           | certificat serveur| cert_version=v3, has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1,                   |
+|   |                     |                   | sig_suite_oid=1.2.840.10045.4.3.4                                                              |
+|12 | WEB-KO-VERSION-01   | certificat serveur| cert_version=v1, has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1,                   |
+|   |                     |                   | sig_suite_oid=1.2.840.10045.4.3.4                                                              |
+|13 | GEN-OK-01           | certificat générique| cert_version=v3, has_aki=Y, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1,                 |
+|   |                     |                   | sig_suite_oid=1.2.840.10045.4.3.4                                                              |
+|14 | GEN-KO-AKI-01       | certificat générique| cert_version=v3, has_aki=N, has_aia=Y, pk_algorithm_oid=1.2.840.10045.2.1,                 |
+|   |                     |                   | sig_suite_oid=1.2.840.10045.4.3.4                                                              |

@@ -1,0 +1,72 @@
+##
+# RULE: R07-loading-conditions
+# AGENT: ADA::Agent::Wall  (pos. 2 / 5)
+# CORPUS: §2C23 — UK Approved Document A 2013 — Maximum span of floors
+#          §2C24 — UK Approved Document A 2013 — Other loading conditions
+#
+# PURPOSE
+#   Verifies wall loading conditions per §2C23-24:
+#   1. Maximum floor span ≤ 6m centre-to-centre of bearing (§2C23, Diagram 10)
+#   2. Ground level difference ≤ 4 × wall thickness (§2C24b, Diagram 11)
+#   3. Combined dead+imposed load ≤ 70kN/m at base of wall (§2C24c)
+#   Applies to external_wall and internal_wall Frames where loading data is present.
+#
+# INPUTS  (slots read)
+#   besoin_wall          : targeting slot — set by ADA::Agent::Geometry R01/R02/R03
+#   type_element         : 'external_wall' or 'internal_wall' — filter
+#   floor_span_m         : max floor span (m) — §2C23 max 6m [optional]
+#   ground_level_diff_mm : ground level difference between sides (mm) — §2C24b [optional]
+#   thickness_mm         : wall thickness (mm) — for §2C24b ratio check
+#   combined_load_kn_m   : combined dead+imposed load at base (kN/m) — §2C24c max 70 [optional]
+#
+# OUTPUTS (slots written)
+#   loading_ok       : 'YES'/'NO' — loading conditions compliance verdict
+#   wall_violations  : updated with loading violations
+#   wall_ok          : set to 'NO' if loading violations found
+#
+# GUARD — EXCEPTION: defined $w->{loading_ok}
+#   Idempotence — prevents re-processing a Frame already handled.
+##
+RULE: R07-loading-conditions
+FIND:
+  w:
+    attribut: besoin_wall
+    filtre: >
+      ($_->get('type_element')//"") =~ /^(external_wall|internal_wall)$/
+      && (defined $_->get('floor_span_m')
+          || defined $_->get('ground_level_diff_mm')
+          || defined $_->get('combined_load_kn_m'))
+EXCEPTION: defined $w->{loading_ok}
+ACTION: |
+  my @viol = split /;\s*/, ($w->get('wall_violations') // '');
+
+  # §2C23: maximum floor span 6m (centre-to-centre of bearing)
+  if (defined $w->get('floor_span_m')) {
+      my $span = $w->get('floor_span_m');
+      push @viol, "floor_span ${span}m > 6m max (§2C23)" if $span > 6;
+  }
+
+  # §2C24b: ground level difference ≤ 4 × wall thickness
+  if (defined $w->get('ground_level_diff_mm')) {
+      my $diff = $w->get('ground_level_diff_mm');
+      my $t    = $w->get('thickness_mm') // 0;
+      if ($t > 0) {
+          my $max_diff = 4 * $t;
+          push @viol,
+              "ground_level_diff ${diff}mm > 4×t = ${max_diff}mm (§2C24b, t=${t}mm)"
+              if $diff > $max_diff;
+      }
+  }
+
+  # §2C24c: combined dead+imposed load ≤ 70kN/m at base
+  if (defined $w->get('combined_load_kn_m')) {
+      my $load = $w->get('combined_load_kn_m');
+      push @viol, "combined_load ${load}kN/m > 70kN/m max (§2C24c)" if $load > 70;
+  }
+
+  # Write results
+  my $ok = @viol ? 'NO' : 'YES';
+  $w->set('loading_ok',      $ok);
+  $w->set('wall_violations', join('; ', @viol));
+  $w->set('wall_ok', 'NO') if $ok eq 'NO';
+  1

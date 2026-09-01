@@ -1,0 +1,47 @@
+##
+# RULE: R04-mortar-specification
+# AGENT: ADA::Agent::Masonry  (pos. 3 / 5)
+# CORPUS: §2C22 — UK Approved Document A 2013 — Mortar
+#
+# PURPOSE
+#   Verifies that the mortar designation meets §2C22 requirements:
+#   - Mortar designation (iii) per BS EN 1996-1-1:2005 UK NA, OR
+#   - Strength class M4 per BS EN 998-2:2010, OR
+#   - Mix 1:1:5 to 6 (CEM I : lime : fine aggregate by volume), OR
+#   - Equivalent or greater strength and durability.
+#   Only fires when mortar_designation is provided in the JSON.
+#
+# INPUTS  (slots read)
+#   besoin_masonry   : targeting slot — set by ADA::Agent::Wall R01/R04
+#   mortar_designation: 'iii'/'M4'/'1:1:5-6'/'equivalent' or other string
+#
+# OUTPUTS (slots written)
+#   mortar_ok         : 'YES'/'NO' — mortar specification compliance verdict
+#   masonry_violations: updated with mortar violations
+#   masonry_ok        : set to 'NO' if mortar violations found
+#
+# GUARD — EXCEPTION: defined $w->{mortar_ok}
+#   Idempotence — prevents re-processing a Frame already handled.
+##
+RULE: R04-mortar-specification
+FIND:
+  w:
+    attribut: besoin_masonry
+    filtre: "defined $_->get('mortar_designation')"
+EXCEPTION: defined $w->{mortar_ok}
+ACTION: |
+  my $desig = $w->get('mortar_designation') // '';
+  my @viol  = split /;\s*/, ($w->get('masonry_violations') // '');
+
+  # §2C22: accepted designations (case-insensitive)
+  my $accepted = ($desig =~ /^(iii|M4|1:1:[56](-6)?|equivalent)$/i) ? 1 : 0;
+
+  unless ($accepted) {
+      push @viol,
+          "mortar '$desig' not accepted — must be designation(iii), M4, 1:1:5-6 or equivalent (§2C22)";
+      $w->set('masonry_ok', 'NO');
+  }
+
+  $w->set('mortar_ok',           $accepted ? 'YES' : 'NO');
+  $w->set('masonry_violations',  join('; ', @viol));
+  1

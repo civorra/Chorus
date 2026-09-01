@@ -1,0 +1,50 @@
+##
+# RULE: R01-masonry-condition
+# AGENT: ADA::Agent::Masonry  (pos. 3 / 4)
+# CORPUS: Diagram 9 — Approved Document A (Structure) 2013 — Compressive strength conditions
+#         §2C21 — Use of masonry units
+#
+# PURPOSE
+#   Determines the masonry condition (A, B, or C) from Diagram 9 based on the
+#   storey position of the wall, storey height Hs, total number of storeys, and
+#   basement depth Hf. The condition governs the minimum compressive strength
+#   required by Table 6 and Table 7.
+#
+# INPUTS  (slots read)
+#   besoin_masonry         : targeting slot — 'Y' — set by Wall R01/R04
+#   storey_position        : 'top'/'intermediate'/'base'/'single'
+#   storey_height_m        : float — storey height Hs in metres
+#   building               : Frame ref — building this wall belongs to
+#                            (resolved from building_ref by Feed.pm at load time)
+#   building.num_storeys_building : int — total storeys (1, 2 or 3) — read via link
+#   hf_m                   : float — basement depth Hf (optional, default 0)
+#
+# OUTPUTS (slots written)
+#   masonry_condition : 'A' / 'B' / 'C' — Diagram 9 result
+#
+# HELPERS
+#   diagram9_condition($pos, $hs, $num_storeys, $hf) → 'A'|'B'|'C'
+#
+# GUARD — EXCEPTION: defined $w->{masonry_condition}
+#   Idempotence.
+##
+RULE: R01-masonry-condition
+FIND:
+  w:
+    attribut: besoin_masonry
+EXCEPTION: defined $w->{masonry_condition}
+ACTION: |
+  use ADA::Agent::Masonry::Helpers qw(diagram9_condition);
+
+  # Read num_storeys_building via inter-frame link to the building Frame
+  my $bld      = $w->get('building');
+  my $nstoreys = defined($bld) ? ($bld->get('num_storeys_building') // 1) : 1;
+
+  my $cond = diagram9_condition(
+      $w->get('storey_position') // 'single',
+      $w->get('storey_height_m') // 0,
+      $nstoreys,
+      $w->get('hf_m')            // 0,
+  );
+  $w->set('masonry_condition', $cond);
+  1

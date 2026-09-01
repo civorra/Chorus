@@ -1,0 +1,32 @@
+{
+  "projet": "stress-boundary-thickness_mm-zoneC-exact",
+  "description": "Boundary: thickness_mm = 105 → R = 3.5 (exact R_min zone C with lambda=0.030) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "thickness_mm",
+    "threshold": 105,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "thermal R01 §4.1 zone C: R_min=3.5, lambda=0.030 → T=105mm",
+    "agent": "thermal",
+    "expected_uncertain": true
+  },
+  "elements": [
+    {
+      "id": "INS-STRESS-BOUNDARY-THICKNESS-ZONEC-EXACT",
+      "type_element": "insulation",
+      "needs_compliance": 1,
+      "needs_thermal": 1,
+      "thickness_mm": 105,
+      "lambda": 0.030,
+      "climate_zone": "C",
+      "_resultats_attendus": {
+        "r_value": 3.5,
+        "thermal_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "R = 105/(1000×0.030) = 3.5 = R_min(zone C)=3.5 (exact boundary). Rule: R >= R_min → YES.",
+      "_expected_uncertain": true
+    }
+  ]
+}

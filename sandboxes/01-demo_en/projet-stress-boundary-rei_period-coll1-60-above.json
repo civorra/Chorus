@@ -1,0 +1,38 @@
+{
+  "projet": "stress-boundary-rei_period-coll1-above",
+  "description": "Boundary: rei_period = 61 (T+ε=T+1, above min_rei=60, coll=1) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "rei_period",
+    "threshold": 60,
+    "direction": ">=",
+    "epsilon": 1,
+    "source": "fire R01 §5.1 collective=1 → min REI=60",
+    "agent": "fire",
+    "expected_uncertain": true
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-REI-COLL1-ABOVE",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "needs_fire": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 61,
+      "plasterboard_thickness_mm": 25,
+      "collective": 1,
+      "_resultats_attendus": {
+        "rei_ok": "YES",
+        "fire_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "rei_period=61 > 60 (T+ε=T+1). Rule: rei >= 60 → YES. pb=25 = min_pb(coll=1) → OK.",
+      "_expected_uncertain": true
+    }
+  ]
+}

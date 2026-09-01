@@ -1,0 +1,117 @@
+#+AGENT: TimberFrame::Agent::Geometry
+#+PIPELINE_POS: 2 / 5
+#+RULES_DIR: rules/geometry
+
+* Domain
+  Verifies frame geometry compliance: stud spacing (§3.1), cross-sections for
+  load-bearing studs (§3.2), cross-sections for non-load-bearing studs (§3.3),
+  and continuity of load-bearing studs (§3.4). Operates on structural elements
+  that carry the =needs_geometry= targeting slot.
+
+* Targeting slots
+** Strategy
+   Strategy B — presence slot =needs_geometry=.
+   Set by qualification agent (R04) on structural elements:
+   load_bearing_stud, sole_plate, top_plate, rafter, joist, non_load_bearing_stud.
+
+** Table
+   | Slot           | Set by                          | Consumed by                    |
+   |----------------+---------------------------------+--------------------------------|
+   | needs_geometry | Qualification agent R04         | This agent (TimberFrame::Agent::Geometry) |
+
+** Pre-population contract
+   =needs_geometry= is set exclusively by the qualification agent on elements
+   where geometry checks are applicable.
+
+* Pipeline I/O
+** Incoming slots
+   - =type_element= — element type
+   - =needs_geometry= — targeting slot
+   - =spacing_mm= — stud centre-to-centre spacing (mm)
+   - =clear_height_mm= — clear storey height (mm) — for load-bearing studs
+   - =width_mm= — cross-section width b (mm)
+   - =depth_mm= — cross-section depth h (mm)
+   - =has_longitudinal_splice= — boolean (1 = splice present, 0 = absent)
+
+** Outgoing slots
+   - =frame_ok= — 'YES' or 'NO'
+   - =geometry_rejection= — human-readable reason if frame_ok='NO'
+
+* Ontologie
+
+** Aliases
+   Sources: corpus §3.1, §3.2, §3.3, §3.4
+   | Canonical KB form (slot / type_element value) | Project-side variants                         | Source        |
+   |-----------------------------------------------+-----------------------------------------------+---------------|
+   | spacing_mm                                    | stud spacing, centre-to-centre, c/c, c-t-c    | corpus §3.1   |
+   | clear_height_mm                               | storey height, clear height, h, floor height  | corpus §3.2   |
+   | width_mm                                      | b, breadth, section width                     | corpus §3.2   |
+   | depth_mm                                      | h, section depth, section height              | corpus §3.2   |
+   | has_longitudinal_splice                       | splice, longitudinal joint, end joint         | corpus §3.4   |
+
+* Catalogue des Frames
+
+** StructuralElement
+   Slots d'entrée  : type_element, needs_geometry
+   Slots calculés  : frame_ok, geometry_rejection
+   Slots optionnels: spacing_mm, clear_height_mm, width_mm, depth_mm, has_longitudinal_splice
+
+   *** type_element = load_bearing_stud
+       Geometry checks: spacing (§3.1), cross-section by height/spacing (§3.2), no longitudinal splice (§3.4).
+   *** type_element = non_load_bearing_stud
+       Geometry checks: spacing (§3.1), cross-section minimum 38×63 mm (§3.3).
+   *** type_element = sole_plate
+       Geometry checks: cross-section — inherits load-bearing thresholds.
+   *** type_element = top_plate
+       Geometry checks: cross-section — inherits load-bearing thresholds.
+   *** type_element = rafter
+       Geometry checks: spacing (§3.1), cross-section (§3.2 by height/spacing).
+   *** type_element = joist
+       Geometry checks: spacing (§3.1), cross-section (§3.2 by height/spacing).
+
+* Slot dictionary
+  | Slot                   | Type   | Description                                                           |
+  |------------------------+--------+-----------------------------------------------------------------------|
+  | type_element           | enum   | Element type — invariant canonical slot                               |
+  | needs_geometry         | bool   | Targeting slot — set by qualification agent R04                       |
+  | spacing_mm             | float  | Centre-to-centre stud spacing (mm)                                    |
+  | clear_height_mm        | float  | Clear storey height (mm)                                              |
+  | width_mm               | float  | Cross-section width b (mm)                                            |
+  | depth_mm               | float  | Cross-section depth h (mm)                                            |
+  | has_longitudinal_splice| bool   | 1 = splice present on load-bearing stud; 0 = absent                  |
+  | frame_ok               | enum   | YES / NO — geometry compliance verdict                                |
+  | geometry_rejection     | string | Human-readable rejection reason (set when frame_ok=NO)               |
+
+* Rule catalog
+  | Rule                       | Corpus | Purpose                                              |
+  |----------------------------+--------+------------------------------------------------------|
+  | R01-stud-spacing           | §3.1   | Check stud spacing within [300, 600] mm              |
+  | R02-lb-cross-section       | §3.2   | Check load-bearing stud cross-section by height+spacing |
+  | R03-nlb-cross-section      | §3.3   | Check non-load-bearing stud cross-section ≥ 38×63 mm |
+  | R04-lb-splice              | §3.4   | Reject load-bearing stud with longitudinal splice    |
+  | R05-geometry-pass          | §3     | Set frame_ok=YES when no geometry failure found      |
+  | R06-geometry-termination   | §6.2   | Terminate geometry agent when all elements processed |
+
+* Perl Helpers
+
+** min_lb_section
+   # Source corpus: §3.2 — BS EN 1995-1-1 §5.2 — Minimum cross-sections for load-bearing studs
+   # Signature: min_lb_section($clear_height_mm, $spacing_mm) → ($b_min, $h_min)
+   # Called by: R02-lb-cross-section.yml (ACTION)
+   Returns (b_min, h_min) in mm for load-bearing studs based on clear height and spacing.
+
+   Table:
+     height ≤ 2700, spacing ≤ 400  → (38,  89)
+     height ≤ 2700, spacing ≤ 600  → (38, 140)
+     height ≤ 3000, spacing ≤ 400  → (38, 140)
+     height ≤ 3000, spacing ≤ 600  → (44, 140)
+     height  > 3000, any spacing   → (44, 184)
+     types outside perimeter       → (0, 0)    # neutral — no constraint
+
+* Constraints & Pitfalls
+  - Elements without spacing_mm must pass R01 silently (skip, not reject).
+  - R02 requires both clear_height_mm and spacing_mm — skip silently if absent.
+  - R05 (pass rule) must only fire after R01-R04 have had a chance to set geometry_rejection.
+    EXCEPTION on R05: defined $f->{frame_ok} prevents double-writing.
+  - R04 splice check applies only to load_bearing_stud — guard on type in filtre.
+  - _MAX_CYCLES recommended: 50 × 6 × 5 × 10 = 15 000 (engine default sufficient for demo).

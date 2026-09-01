@@ -1,0 +1,46 @@
+##
+# RULE: R03-nlb-cross-section
+# AGENT: TimberFrame::Agent::Geometry  (pos. 2 / 5)
+# CORPUS: §3.3 — BS EN 1995-1-1 — Minimum cross-sections for non-load-bearing studs
+#
+# PURPOSE
+#   Checks that non-load-bearing studs meet the minimum cross-section of
+#   38 × 63 mm regardless of clear height. Applies only to
+#   non_load_bearing_stud elements with width_mm and depth_mm present.
+#
+# INPUTS  (slots read)
+#   needs_geometry  : targeting slot
+#   type_element    : must be 'non_load_bearing_stud'
+#   width_mm        : float — cross-section width b (mm)
+#   depth_mm        : float — cross-section depth h (mm)
+#
+# OUTPUTS (slots written)
+#   section_ok         : 'YES' or 'NO'
+#   geometry_rejection : string — failure reason (written only on rejection)
+#
+# GUARD — EXCEPTION: defined $f->{section_ok}
+##
+RULE: R03-nlb-cross-section
+FIND:
+  f:
+    attribut: needs_geometry
+    filtre: |
+      ($_->get('type_element') // '') eq 'non_load_bearing_stud'
+      && defined $_->get('width_mm')
+      && defined $_->get('depth_mm')
+EXCEPTION: defined $f->{section_ok}
+ACTION: |
+  # Read cross-section — §3.3 minimum 38 × 63 mm
+  my $b = $f->get('width_mm');
+  my $h = $f->get('depth_mm');
+
+  # Check minimum cross-section for non-load-bearing studs — §3.3
+  if ($b < 38 || $h < 63) {
+    $f->set('section_ok', 'NO');
+    $f->set('geometry_rejection',
+      sprintf("non-load-bearing stud %d×%d mm below minimum 38×63 mm (§3.3)", $b, $h));
+    return 1;
+  }
+
+  $f->set('section_ok', 'YES');
+  1

@@ -1,51 +1,58 @@
 ##
 # RULE: R01-strength-class
-# AGENT: CobIntro::Agent::Qualification  (pos. 1 / 4)
+# AGENT: TimberFrame::Agent::Qualification  (pos. 1 / 5)
 # CORPUS: §2.1 — BS EN 338 — Minimum strength class by element type
 #
 # PURPOSE
-#   Checks that each structural element's strength class meets the minimum
-#   required by §2.1 BS EN 338 for its element type.
-#   Elements without a strength_class slot (e.g. insulation) are skipped silently.
+#   Checks that the element's strength class meets the minimum required for its
+#   type. Applies to structural and semi-structural elements only; insulation and
+#   vapour control layers have no strength class requirement and are skipped.
 #
 # INPUTS  (slots read)
-#   needs_qualify   : targeting slot — set by Feed (load_projet)
-#   type_element    : element type — load_bearing_stud, sole_plate, top_plate,
-#                     non_lb_stud, rafter, joist
-#   strength_class  : BS EN 338 class string (C14, C16, C18, C24, C30, C35, C40)
+#   needs_compliance  : targeting slot — set by initial feed
+#   type_element      : enum — element type
+#   strength_class    : enum — BS EN 338 class (C14…C40)
 #
 # OUTPUTS (slots written)
-#   qualified        : 'NO' — element rejected (set only if check fails)
-#   rejection_reason : description of the failure
-#   needs_qualify    : deleted after rejection (consumed targeting slot)
+#   strength_class_ok : 'YES' or 'NO' — strength class verdict for this element
+#   rejection_reason  : string — failure reason (written only on rejection)
 #
 # HELPERS
-#   min_strength_class($type_element) → class string | undef
-#   strength_class_ok($actual, $required) → 1 | 0
+#   min_strength_class_required($type_element) → string class or undef
+#   class_rank($class) → integer rank (1..7) or 0 if unknown
 #
-# GUARD — EXCEPTION: defined $f->{qualified}
-#   Idempotence — prevents re-processing a Frame already handled (by this or another rule).
+# GUARD — EXCEPTION: defined $f->{strength_class_ok}
+#   Idempotence — prevents re-processing a Frame already handled.
 ##
 RULE: R01-strength-class
 FIND:
   f:
-    attribut: needs_qualify
-EXCEPTION: defined $f->{qualified}
-CONDITION: "defined $f->get('strength_class') && defined $f->get('type_element')"
+    attribut: needs_compliance
+    filtre: "defined $_->get('strength_class')"
+EXCEPTION: defined $f->{strength_class_ok}
 ACTION: |
-  # Look up minimum required class for this element type
-  my $required = min_strength_class($f->get('type_element'));
+  # Read element type and strength class
+  my $type    = $f->get('type_element') // '';
+  my $class   = $f->get('strength_class');
 
-  # Element type not covered by §2.1 (e.g. insulation) → skip silently
-  return 0 unless defined $required;
+  # Determine minimum required class for this element type
+  my $min_class = min_strength_class_required($type);
 
-  # §2.1 — check class rank
-  unless (strength_class_ok($f->get('strength_class'), $required)) {
-    $f->set('qualified', 'NO');
-    $f->set('rejection_reason',
-      "Strength class $f->{strength_class} below required $required for $f->{type_element} (§2.1)");
-    $f->set('needs_domain', 1);   # propagate through pipeline even on rejection
-    $f->delete('needs_qualify');
+  # No requirement for this element type (insulation, VCL, etc.) — pass silently
+  unless (defined $min_class) {
+    $f->set('strength_class_ok', 'YES');
     return 1;
   }
+
+  # Compare ranks — §2.1: any class below minimum is REJECTED
+  my $rank_actual = class_rank($class);
+  my $rank_min    = class_rank($min_class);
+
+  if ($rank_actual < $rank_min) {
+    $f->set('strength_class_ok', 'NO');
+    $f->set('rejection_reason', "strength class $class below minimum $min_class for $type (§2.1)");
+    return 1;
+  }
+
+  $f->set('strength_class_ok', 'YES');
   1

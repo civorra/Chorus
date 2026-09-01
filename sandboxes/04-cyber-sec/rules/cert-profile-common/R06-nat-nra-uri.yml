@@ -1,0 +1,51 @@
+##
+# RULE: R06-nat-nra-uri
+# AGENT: CyberSec::Agent::CertProfileCommon  (pos. 1 / 1)
+# CORPUS: §5.1.3 — ETSI EN 319 412-1 V1.7.1 — Natural person semantics identifier
+#          NAT-5.1.3-05: nameRegistrationAuthorities shall be present when local scheme used
+#          NAT-5.1.3-06: element shall contain at least a uniformResourceIdentifier generalName
+#          NAT-5.1.3-07: 2-letter type reference shall be unique within NRA URI context
+#
+# PURPOSE
+#   When a natural person serialNumber uses a locally-defined identity type reference
+#   (2-char prefix followed by ":"), the nameRegistrationAuthorities element MUST be
+#   present. This rule checks that the name_reg_authority slot is set and non-empty.
+#   Only fires on NAT frames where the serial_number contains the local scheme marker ":".
+#   Silently skips standard-scheme serials (PAS, IDC, PNO, TAX, TIN, EID).
+#
+# INPUTS  (slots read)
+#   needs_cert_validation : targeting slot — set by Feed.pm at frame creation
+#   type_element          : enum — filtre restricts to "nat" only
+#   serial_number         : str — checked for local scheme marker ":"
+#   name_reg_authority    : str URI — nameRegistrationAuthorities value
+#
+# OUTPUTS (slots written)
+#   nra_uri_ok : "OUI" if NRA URI is present, "NON" if absent (required but missing)
+#
+# GUARD — EXCEPTION: defined $f->{nra_uri_ok}
+#   Idempotence — prevents re-processing a frame already handled in a previous cycle.
+#   Note: nra_uri_ok is shared with R07 (legal person); EXCEPTION guards both.
+##
+RULE: R06-nat-nra-uri
+FIND:
+  f:
+    attribut: needs_cert_validation
+    filtre: '$_->get("type_element") eq "nat"'
+CONDITION: 'defined $f->get("serial_number")'
+EXCEPTION: 'defined $f->{nra_uri_ok}'
+ACTION: |
+  my $sn = $f->get('serial_number') // '';
+
+  # Only applies when a locally-defined identity scheme is used (2-char + ":")
+  # Standard schemes (PAS, IDC, PNO, TAX, TIN, EID) do not require NRA URI
+  unless ($sn =~ /^[A-Z]{2}:/) {
+    return 0;  # standard scheme — NRA not required; skip silently
+  }
+
+  # §5.1.3 NAT-5.1.3-05: nameRegistrationAuthorities must be present
+  # §5.1.3 NAT-5.1.3-06: must contain a uniformResourceIdentifier generalName
+  my $nra = $f->get('name_reg_authority');
+  my $ok  = (defined $nra && $nra =~ /\S/) ? 'OUI' : 'NON';
+
+  $f->set('nra_uri_ok', $ok);
+  1

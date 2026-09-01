@@ -1,0 +1,97 @@
+##
+# RULE: R01-residential-geometry
+# AGENT: ADA::Agent::Geometry  (pos. 1 / 4)
+# CORPUS: §2C4a — Approved Document A (Structure) 2013 — Conditions relating to the building
+#         §2C14 — Maximum floor area
+#         §2C16 — Maximum height of buildings
+#         Diagram 7, Table c — Maximum allowable building height
+#
+# PURPOSE
+#   Verifies all geometric constraints for residential buildings of not more than
+#   three storeys. Checks H ≤ 15m, storeys ≤ 3, H ≤ 2×W1 proportion, floor area
+#   ≤ 70m², wing proportions (if present), and wind-driven height limit from
+#   Table c Diagram 7. Sets besoin_wall targeting slot for Agent::Wall.
+#
+# INPUTS  (slots read)
+#   type_element      : targeting slot — 'residential_building' — set by feed
+#   height_m          : float — overall building height H in metres
+#   width_w1_m        : float — least plan width W1 in metres
+#   num_storeys       : int — number of storeys (max 3)
+#   floor_area_m2     : float — max enclosed floor area in m²
+#   width_w2_m        : float — wing width W2 (optional)
+#   projection_p_m    : float — wing projection P (optional)
+#   height_wing_h2_m  : float — wing height H2 (optional)
+#   factor_s          : float — wind Factor S (optional — omit → 15m default)
+#   site_type         : enum  — 'country' or 'town' (optional)
+#   coast_distance_km : float — distance to coast in km (optional)
+#
+# OUTPUTS (slots written)
+#   storey_height_ok     : 'YES'/'NO' — H ≤ 15m and storeys ≤ 3
+#   proportion_ok        : 'YES'/'NO' — H ≤ 2×W1
+#   floor_area_ok        : 'YES'/'NO' — floor area ≤ 70m²
+#   max_height_allowed_m : float — max height from Table c Diagram 7 (or 15m)
+#   geometry_violations  : str — semicolon-separated list of violated constraints
+#   geometry_ok          : 'YES'/'NO' — overall geometric verdict
+#   besoin_wall          : 'Y' — targeting slot for ADA::Agent::Wall
+#
+# HELPERS
+#   max_height_from_table_c($factor_s, $site_type, $coast_km) → $height_m | undef
+#
+# GUARD — EXCEPTION: defined $b->{geometry_ok}
+#   Idempotence — prevents re-processing a Frame already handled in a previous cycle.
+##
+RULE: R01-residential-geometry
+FIND:
+  b:
+    attribut: type_element
+    filtre: '$_->get("type_element") eq "residential_building"'
+EXCEPTION: defined $b->{geometry_ok}
+ACTION: |
+  use ADA::Agent::Geometry::Helpers qw(max_height_from_table_c);
+  my @violations;
+
+  # Read input slots
+  my $h          = $b->get('height_m')          // 0;
+  my $storeys    = $b->get('num_storeys')        // 0;
+  my $w1         = $b->get('width_w1_m')        // 0;
+  my $floor_area = $b->get('floor_area_m2')     // 0;
+
+  # §2C4a-i: storeys ≤ 3
+  push @violations, "storeys > 3 (got $storeys)" if $storeys > 3;
+
+  # §2C4a-i: H ≤ 15m
+  push @violations, "height_m > 15 (got ${h}m)" if $h > 15;
+
+  # §2C4a-ii: H ≤ 2×W1
+  my $prop_ok = ($w1 > 0 && $h <= 2 * $w1) ? 'YES' : 'NO';
+  push @violations, "H > 2xW1 (H=${h}m, W1=${w1}m)" if $prop_ok eq 'NO';
+
+  # §2C14: floor area ≤ 70m²
+  my $area_ok = ($floor_area <= 70) ? 'YES' : 'NO';
+  push @violations, "floor_area > 70m2 (got ${floor_area}m2)" if $area_ok eq 'NO';
+
+  # §2C4a-iii: wing proportions (only if P > 2×W2)
+  my $p  = $b->get('projection_p_m')      // 0;
+  my $w2 = $b->get('width_w2_m')         // 0;
+  my $h2 = $b->get('height_wing_h2_m')   // 0;
+  if ($p > 0 && $w2 > 0 && $p > 2 * $w2) {
+      push @violations, "wing H2 > 2xW2 (H2=${h2}m, W2=${w2}m)"
+          if $h2 > 2 * $w2;
+  }
+
+  # §2C16: wind height limit from Table c Diagram 7
+  my $max_h = max_height_from_table_c(
+      $b->get('factor_s'), $b->get('site_type'), $b->get('coast_distance_km')
+  );
+  $max_h = 15 unless defined $max_h;
+  push @violations, "height_m > wind_limit (${h}m > ${max_h}m)" if $h > $max_h;
+
+  # Write results
+  $b->set('storey_height_ok',     ($h <= 15 && $storeys <= 3) ? 'YES' : 'NO');
+  $b->set('proportion_ok',        $prop_ok);
+  $b->set('floor_area_ok',        $area_ok);
+  $b->set('max_height_allowed_m', $max_h);
+  $b->set('geometry_violations',  join('; ', @violations));
+  $b->set('geometry_ok',          @violations ? 'NO' : 'YES');
+  $b->set('besoin_wall',          'Y');
+  1

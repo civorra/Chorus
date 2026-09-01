@@ -1,0 +1,46 @@
+##
+# RULE: R22-leg-subject-mandatory-attrs
+# AGENT: CyberSec::Agent::CertProfileLeg  (pos. 3 / 3)
+# CORPUS: §4.2.1 — ETSI EN 319 412-3 V1.3.1 — Subject field for legal person certificates
+#         LEG-4.2.1-2: subject SHALL include countryName, organizationName,
+#                      organizationIdentifier, commonName
+#         LEG-4.2.1-3: Only one instance of each attribute shall be present.
+#
+# PURPOSE
+#   Validates that all four mandatory subject attributes are present in a LEG certificate.
+#   Unlike NAT certificates (which allow pseudonym as an alternative), LEG certificates
+#   require exactly these four attributes with no alternatives.
+#
+# INPUTS  (slots read)
+#   needs_leg_validation : targeting slot — set by CertProfileCommon R20
+#   has_country_name     : 'Y' if countryName present in subject
+#   has_org_name         : 'Y' if organizationName present in subject
+#   has_org_id_attr      : 'Y' if organizationIdentifier present in subject
+#   has_common_name      : 'Y' if commonName present in subject
+#
+# OUTPUTS (slots written)
+#   leg_subject_ok : "OUI" if all four are present, "NON" if any is missing
+#
+# GUARD — EXCEPTION: defined $f->{leg_subject_ok}
+#   Idempotence — prevents re-processing a frame already handled in a previous cycle.
+##
+RULE: R22-leg-subject-mandatory-attrs
+FIND:
+  f:
+    attribut: needs_leg_validation
+EXCEPTION: 'defined $f->{leg_subject_ok}'
+ACTION: |
+  # LEG-4.2.1-2: all four subject attributes are mandatory (no alternatives)
+  my $country = $f->get('has_country_name') // '';
+  my $orgname = $f->get('has_org_name')     // '';
+  my $orgid   = $f->get('has_org_id_attr')  // '';
+  my $cn      = $f->get('has_common_name')  // '';
+
+  my $ok = 'OUI';
+  $ok = 'NON' unless ($country eq 'Y');   # countryName mandatory
+  $ok = 'NON' unless ($orgname eq 'Y');   # organizationName mandatory
+  $ok = 'NON' unless ($orgid   eq 'Y');   # organizationIdentifier mandatory
+  $ok = 'NON' unless ($cn      eq 'Y');   # commonName mandatory
+
+  $f->set('leg_subject_ok', $ok);
+  1
