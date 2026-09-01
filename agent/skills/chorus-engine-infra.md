@@ -125,6 +125,61 @@ my $ok = $xprt->process($input);  # 1=solved, undef=failed
 - Inter-agent communication: write/read slots on `$agent->BOARD`.
 - `_LOCK_UNTIL_STABLE`: agent skipped if a previous agent already succeeded in the current iteration.
 
+#### Two-level inference loop
+
+The engine operates on **two nested loops** that must not be confused:
+
+```
+┌─── Chorus::Expert::process() — OUTER loop ──────────────────────────────┐
+│                                                                          │
+│  do {                                                                    │
+│    for each agent in register() order:                                   │
+│    │                                                                     │
+│    │  ┌─── Chorus::Engine::loop() — INNER loop ────────────────────┐    │
+│    │  │  applyrules() until all rules return 0 (local convergence)  │    │
+│    │  │  = one agent iterates over its own rules until stable       │    │
+│    │  └────────────────────────────────────────────────────────────┘    │
+│    │                                                                     │
+│    └─ then: next agent                                                   │
+│                                                                          │
+│  } until BOARD->{SOLVED} or BOARD->{FAILED}                             │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**What this means in practice:**
+
+- **Inner loop** (`Chorus::Engine`): one agent iterates over its own YAML rules, cycle after
+  cycle, until no rule produces an effect in a full pass. This is the level described in
+  `chorus-engine-yaml.md § Rule Evaluation Lifecycle`. The term "cycle" always refers to this
+  inner loop.
+
+- **Outer loop** (`Chorus::Expert`): once Agent A has converged locally (inner loop finished),
+  control passes to Agent B — which runs its own inner loop. After all agents have run, the
+  Expert checks `BOARD->{SOLVED|FAILED}`. If neither flag is set, it launches **another outer
+  iteration**, starting again from Agent A.
+
+**Inter-agent slot dependencies** work through the outer loop, not the inner cycle:
+
+| Dependency type | Mechanism | Loop level |
+|---|---|---|
+| Rule Rxx depends on slot written by Rule Ryy **in the same agent** | `CONDITION: defined $p->{slot_from_Ryy}` | Inner loop — resolved within one agent's inference |
+| Rule Rxx depends on slot written by **another agent** via BOARD | Read `$agent->BOARD->{key}` in ACTION | Outer loop — available only after the other agent's inner loop has completed |
+
+> ⚠️ **CONDITION cannot wait for another agent's output.**
+> `CONDITION: defined $p->{slot_from_agent_B}` will never be satisfied within Agent A's inner
+> loop if the slot is written by Agent B — because Agent B has not yet run in this outer
+> iteration. Cross-agent data must transit via **BOARD** slots, read in ACTION (not CONDITION).
+
+**Why `N_agents` appears in the `_MAX_CYCLES` formula:**
+
+`_MAX_CYCLES = N_frames × N_rules_total × N_agents × D × 10`
+
+Each outer iteration runs all agents. If the Expert needs K outer iterations to converge
+(e.g. because Agent B's output unlocks new rules in Agent A on the next round), the total
+number of inner cycles is multiplied by N_agents × K. The `N_agents` factor approximates
+this overhead assuming K ≈ 1 (single outer pass). If the pipeline requires multiple outer
+rounds, increase the margin accordingly.
+
 > ⚠️ **Known bug: `Chorus::Expert->new()` ignores its arguments.**
 > Always force `_MAX_ITER` via direct assignment after `new()`:
 > ```perl

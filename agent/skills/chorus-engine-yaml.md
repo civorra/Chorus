@@ -316,6 +316,27 @@ domain's actual slot names.
 > `_MAX_CYCLES` is reached. This is the root cause of the "conditional ACTION without
 > else" pitfall.
 
+> **Scope of "cycle" — inner loop only:**
+> Every occurrence of "cycle" in this section refers to the **inner inference loop of a
+> single agent** (`Chorus::Engine::loop()`). The lifecycle above (steps ①–⑥) is replayed
+> by one agent on its own rules until local convergence (all rules return 0).
+>
+> A multi-agent pipeline adds an **outer loop** (`Chorus::Expert::process()`): once Agent A
+> has converged locally, the Expert hands control to Agent B, then Agent C, etc. After all
+> agents have run, the Expert checks `BOARD->{SOLVED|FAILED}` and, if neither is set,
+> starts a new outer iteration from Agent A. Agent A may then fire new rules based on slots
+> written to BOARD by Agent B or C during the previous outer round.
+>
+> **Consequence for CONDITION guards:**
+> - `CONDITION: defined $p->{slot_from_other_rule}` → intra-agent dependency → resolved
+>   within the inner loop (the slot will be written by another rule in the same agent on a
+>   later inner cycle).
+> - A slot written by **another agent** is available only after the outer loop hands control
+>   back to this agent. It must be read from `$agent->BOARD` in ACTION — **not** via
+>   CONDITION, which operates inside the inner loop where the other agent has not yet run.
+>
+> Full two-level loop diagram: `chorus-engine-infra.md § Two-level inference loop`.
+
 ---
 
 ### Rule Structure
