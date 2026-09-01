@@ -125,7 +125,22 @@ gap types:
 |---|---|---|
 | **Rule too strict** | Expected CONFORME → got NON_CONFORME | A rule rejects a valid case — threshold wrong, CONDITION too narrow, or edge case not covered |
 | **Rule too permissive** | Expected NON_CONFORME → got CONFORME | No rule fires on this case — missing rule, threshold too high, or CONDITION excludes this type |
+| **Rule permanently blocked** | Expected NON_CONFORME → got CONFORME — no rule fired | A sibling rule wrote the EXCEPTION guard slot first in an earlier cycle, permanently blocking the veto/override rule via Pattern 1 (`defined $f->{slot}`). The veto rule will never fire on this Frame regardless of subsequent cycles. |
 | **Feed gap** | Element is `(unprocessed)` | Targeting slot not set by Feed for this element type — `besoin_<slug>` missing from `%SLOTS_REQUIS` or Feed logic |
+
+> **Distinguishing "Rule too permissive" from "Rule permanently blocked":**
+> Both produce `got CONFORME` when `NON_CONFORME` was expected. Diagnostic:
+> - If no rule mentions this element in the pipeline output → could be either.
+>   Check: did a sibling rule write the shared EXCEPTION guard slot for this Frame?
+>   If yes → permanently blocked (fix: Pattern 2 on the veto rule).
+>   If no → rule condition genuinely not met (fix: add/adjust rule or threshold).
+> - `CONDITION` is **always transient**: if the rule's prerequisite slot was not yet
+>   available, it retried every cycle. If it still didn't fire, the issue is that the
+>   prerequisite was never set (Feed gap or missing rule upstream) — not a CONDITION bug.
+> - `filtre` exclusion: if the veto rule uses `filtre` instead of `CONDITION` to test
+>   for its prerequisite, the Frame is permanently out of scope. Check whether the
+>   `filtre` expression references a slot that is computed by another rule (must be
+>   in `CONDITION`, never in `filtre`).
 
 For each element, identify:
 - The element `id` and `type_element`
@@ -185,6 +200,12 @@ For each gap, one entry:
 
   Suggested fix:
     → YAML: adjust CONDITION/threshold in <R0N-slug>.yml
+    → OR: EXCEPTION Pattern 1→2: replace `EXCEPTION: defined $f->{slot}`
+          with `EXCEPTION: '($f->{slot} // "") eq "<veto_value>"'`
+          (use when a sibling rule fired first and permanently blocked this rule)
+    → OR: filtre→CONDITION: move cross-rule slot tests from `filtre` to `CONDITION`
+          (use when the Frame was permanently excluded but should have waited for
+           another rule to set its prerequisite)
     → OR: add new rule R<NN>-<slug>.yml covering this case
     → OR: Feed: add 'besoin_<slug>' to %SLOTS_REQUIS for type <X>
 ```
@@ -194,9 +215,10 @@ After all gaps:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Summary by gap type
-  Rule too strict    : N gap(s)  → thresholds or CONDITION to relax
-  Rule too permissive: N gap(s)  → missing rules or thresholds to tighten
-  Feed gap           : N gap(s)  → %SLOTS_REQUIS or Feed logic to extend
+  Rule too strict       : N gap(s)  → thresholds or CONDITION to relax
+  Rule too permissive   : N gap(s)  → missing rules or thresholds to tighten
+  Rule perm. blocked    : N gap(s)  → EXCEPTION Pattern 1→2, or filtre→CONDITION
+  Feed gap              : N gap(s)  → %SLOTS_REQUIS or Feed logic to extend
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 

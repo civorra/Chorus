@@ -149,7 +149,7 @@ maximise the chance of exposing gaps in the YAML rules:
 | `projet-rules-iso.json` | Test each rule in isolation | 1 OK + 1 KO per rule R01, R02 … — one rule exercised per element |
 | `projet-edges.json` | Stress boundary values | value = threshold (OK) and threshold − ε / threshold + ε (KO) for every continuous slot |
 | `projet-cross.json` | Expose inter-rule interactions | elements that trigger R01 AND R02 simultaneously; conflict cases |
-| `projet-scale.json` | Calibrate `_MAX_CYCLES` | ≥ 100 elements, all types, all classes — stress test for the termination agent |
+| `projet-scale.json` | Calibrate `_MAX_CYCLES` | ≥ 100 elements, all types, all classes — stress test for the termination agent. Use the formula `N_frames × N_rules_total × D × 10` where D = depth of the longest cross-rule CONDITION chain in the KB (see `chorus-engine-yaml.md § Rule Evaluation Lifecycle`). |
 
 > **ID stability rule:** IDs must be stable across regenerations of the same project file.
 > Use deterministic conventions (`<TYPE>-<VARIANTE>-<NN>`) so that successive

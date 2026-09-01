@@ -121,7 +121,11 @@ sub build {
         _IDENT      => '<Nom>',
         _MAX_CYCLES => $opts{max_cycles} // 10_000,  # infinite loop safeguard
                                                       # increase for long pipelines
-                                                      # heuristic: N_frames × N_rules × N_agents × 10
+                                                      # heuristic: N_frames × N_rules × N_agents × D × 10
+                                                      # D = depth of the longest cross-rule dependency chain
+                                                      # (rules where CONDITION tests a slot written by another
+                                                      # rule — each such chain step requires one extra cycle)
+                                                      # D = 1 if no cross-rule dependencies
         # _LOCK_UNTIL_STABLE => 'Y',   # optional: skip this agent if a previous
                                        # agent already succeeded in the current
                                        # iteration (optimization)
@@ -275,10 +279,16 @@ my $fichier = shift @ARGV
 my @elements = load_projet($fichier);
 printf "Feed: %d element(s) loaded\n\n", scalar @elements;
 
-# Calibrate _MAX_CYCLES to the actual project volume
-# Heuristic: N_frames × N_rules_total_estimated × margin
-# Safe value: N_elements × 50 × 10 (50 rules max, margin ×10)
-my $max_cycles = scalar(@elements) * 50 * 10;
+# Calibrate _MAX_CYCLES to the actual project volume and rule chain depth.
+# Formula: N_frames × N_rules_total × D × 10
+#   N_rules_total : total rules across all agents (estimate 50 if unknown)
+#   D             : depth of the longest cross-rule dependency chain within one agent
+#                   (count CONDITION: defined $p->{slot_from_Rxx} chains — each level = +1)
+#                   D = 1 if no cross-rule slot dependencies
+# Minimum: 10_000 (engine default safeguard — always override in production)
+my $n_rules = 50;   # ← adjust to the actual rule count for this sandbox
+my $D       = 1;    # ← adjust to the longest CONDITION chain depth in the KB
+my $max_cycles = scalar(@elements) * $n_rules * $D * 10;
 $max_cycles = 10_000 if $max_cycles < 10_000;  # safety minimum
 
 # Pipeline

@@ -135,8 +135,12 @@ my $ok = $xprt->process($input);  # 1=solved, undef=failed
 > my $xprt = Chorus::Expert->new();
 > $xprt->{_MAX_ITER} = 50_000;
 > ```
-> Sizing heuristic: `N_frames × N_rules_total × safety_margin`.
-> For a production pipeline (100 frames, 40 rules): `_MAX_ITER ≥ 100_000`.
+> Sizing heuristic: `N_frames × N_rules_total × D × safety_margin`
+> where **D** = depth of the longest cross-rule dependency chain within one agent
+> (count CONDITION guards that test a slot written by another rule — each such level = +1 cycle per Frame).
+> D = 1 if all rules are independent.
+> For a production pipeline (100 frames, 40 rules, D = 1): `_MAX_ITER ≥ 100_000`.
+> For a pipeline with a 3-rule chain (D = 3): `_MAX_ITER ≥ 300_000`.
 
 ---
 
@@ -565,7 +569,9 @@ sub load_projet {
 ### ✅ Engine / Expert
 
 - [ ] At least one agent or rule must call `solved()` (otherwise infinite loop)
-- [ ] Calibrate `_MAX_CYCLES`: `N_frames × N_rules × N_agents × 10`
+- [ ] Calibrate `_MAX_CYCLES`: `N_frames × N_rules × N_agents × D × 10`
+      where D = depth of the longest intra-agent cross-rule dependency chain
+      (D = 1 if all rules are independent; D = N for a chain R01→R02→…→R0N)
 - [ ] **`Chorus::Expert->new()` ignores its arguments** — always force `_MAX_ITER` after `new()` (see §1.4)
 - [ ] Termination agent registered **last** in `register()`
 - [ ] Deduplicate `_ID`s: two rules with the same `REGLE` → 2nd silently ignored

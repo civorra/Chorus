@@ -240,6 +240,84 @@ domain's actual slot names.
 > processed by `chorus-feed` is in French.
 > Sub-keys `attribut` and `filtre` are invariant — no English alias exists in the engine.
 
+---
+
+### Rule Evaluation Lifecycle
+
+**Every cycle, for every rule, the engine executes the following sequence in strict order:**
+
+```
+① fmatch(attribut)
+      ↓  builds the pool of candidate Frames from %REPOSITORY
+      ↓  (one pool per FIND variable)
+
+② filtre  [optional, per variable]
+      ↓  grep { <expr on $_> } pool
+      ↓  Frames that fail filtre are EXCLUDED from the scope
+      ↓  they never reach EXCEPTION / CONDITION / ACTION this cycle
+
+③ Cartesian product
+      ↓  var1_pool × var2_pool × …
+      ↓  each combination binds the scope variables ($f, $p, $w …)
+
+④ EXCEPTION  [optional]
+      ↓  return if <EXCEPTION>
+      ↓  evaluated on the bound combination
+      ↓  if true → skip this combination (see permanence below)
+
+⑤ CONDITION  [optional]
+      ↓  return unless <CONDITION>
+      ↓  evaluated on the bound combination
+      ↓  if false → skip this combination this cycle; retry next cycle
+
+⑥ ACTION
+      ↓  business logic
+      ↓  return 0 → "nothing done" (does not count as a productive step)
+      ↓  return 1 → "something done" (engine schedules a new cycle)
+```
+
+**Who decides to bypass — synthesis table:**
+
+| Mechanism | Operates on | Scope vars available? | Bypass permanence | Decision owner |
+|---|---|---|---|---|
+| `attribut` absent | Individual Frame | ❌ | Permanent — Frame invisible to this rule | Frame (missing slot) |
+| `filtre` = false | Individual Frame | ❌ (`$_` only) | Quasi-permanent — until the Frame's slots change | Frame (slot value at scope-build time) |
+| `EXCEPTION` = true | Scope combination | ✅ | **Permanent** (Pattern 1) / **Transient** (Pattern 2) | Rule (idempotence guard) |
+| `CONDITION` = false | Scope combination | ✅ | **Always transient** — retried next cycle | Rule (prerequisite not yet met) |
+| `ACTION` returns 0 | Scope combination | ✅ | Transient — retried next cycle | Business logic |
+
+> **Key distinction — `filtre` vs `CONDITION`:**
+> `filtre` is a **structural eligibility criterion**: it determines which Frames can
+> participate in the rule at all. A Frame excluded by `filtre` never sees `EXCEPTION`,
+> `CONDITION`, or `ACTION`. It is not an optimisation — it is a scope definition.
+> `CONDITION` is a **temporal prerequisite**: it delays the rule's application until
+> the required data is available. The Frame is in scope; the rule simply waits.
+> Replacing one with the other produces incorrect behaviour.
+
+> **Multi-variable FIND:** `EXCEPTION` and `CONDITION` apply to the **bound combination
+> (var1, var2, …)**, not to individual Frames. The same Frame may participate in several
+> combinations with different results for each.
+
+> **Dependency direction is independent of rule numbering:**
+> The engine does not fire rules in alphabetical order — it retries **all** rules every
+> cycle until no further progress is possible. A rule R01 that reads a slot written by R02
+> is perfectly valid: R01's `CONDITION: defined $p->{slot_from_r02}` will simply be false
+> in cycle 1 (R02 has not yet fired), and the engine will retry R01 in cycle 2 after R02
+> has run. The dependency chain R03→R02→R01 (where R03 provides data to R02, which provides
+> data to R01) gives the same D = 3 and requires the same number of cycles as the
+> "natural order" chain R01→R02→R03. Rule numbers reflect load order only — never assume
+> that a lower-numbered rule fires first.
+
+> **`return 0` vs `return 1` — convergence mechanism:**
+> `return 1` signals "this rule produced an effect". The engine counts it as a productive
+> step and schedules a new cycle. `return 0` signals "nothing was done this time". If
+> **all** rules return 0 in a cycle, the engine stops (no progress possible). A rule that
+> unconditionally returns 1 without writing any slot causes an infinite loop until
+> `_MAX_CYCLES` is reached. This is the root cause of the "conditional ACTION without
+> else" pitfall.
+
+---
+
 ### Rule Structure
 
 ```yaml
@@ -277,8 +355,28 @@ FIND:
 # → _SCOPE => { p => sub { [ grep { $_->level < 5 } fmatch(slot => 'level') ] } }
 ```
 
-- **`attribut`**: slot passed to `fmatch` — defines the search space.
-- **`filtre`**: Perl expression on **`$_`** (the iterated Frame) — narrows the space **before** the combinatorial loop → critical optimization.
+- **`attribut`**: slot passed to `fmatch` — **eligibility criterion**: any Frame that does not
+  carry this slot is invisible to the rule. It never reaches `EXCEPTION`, `CONDITION`, or
+  `ACTION`, in this cycle or any subsequent one (unless the slot is later added via `set()`).
+
+- **`filtre`**: Perl expression on **`$_`** (the iterated Frame) — **structural scope definition**,
+  evaluated before the Cartesian product is built.
+  A Frame that fails `filtre` is **excluded from the rule's scope entirely**: it is never bound
+  to a scope variable, never evaluated by `EXCEPTION` or `CONDITION`, and never processed by
+  `ACTION`. This exclusion persists across cycles as long as the Frame's slots remain unchanged.
+  > ⚠️ `filtre` is **not** an optimisation of `CONDITION`. They have different semantics:
+  > - `filtre` = "which Frames are eligible to participate in this rule at all"
+  > - `CONDITION` = "when (in which cycle) should the rule fire for an eligible Frame"
+  > Using `filtre` where `CONDITION` is needed creates a **quasi-permanent** exclusion instead
+  > of a temporary wait: the Frame is re-evaluated by `filtre` each cycle, but only after its
+  > slots change — and by the time the prerequisite slot is written by another rule, the
+  > EXCEPTION guard (Pattern 1) may already have been set by a sibling rule, permanently
+  > blocking the dependent rule anyway. In typical classification pipelines this is
+  > functionally equivalent to a permanent exclusion.
+  >
+  > **Practical rule:** use `filtre` only for stable, structural criteria (element type, static
+  > threshold, slot presence guaranteed at Feed time). Use `CONDITION` for anything that depends
+  > on slots written by other rules during the inference cycle.
 
 > ⛔ **`$f` is not defined inside `filtre`** — `$f` (or any scope variable) only exists inside `ACTION`/`EFFET`, after `my $f = $opts{f}` is executed by `_APPLY`. Using `$f->` in a `filtre` expression causes `Global symbol "$f" requires explicit package name` at rule compilation time.
 > ```yaml
@@ -303,10 +401,33 @@ FIND:
 
 ### CONDITION vs EXCEPTION
 
-| Key | Semantics | Generated code |
-|---|---|---|
-| `CONDITION` | rule **must** be true to fire | `return unless <CONDITION>;` |
-| `EXCEPTION` | rule **must not** fire if true | `return if <EXCEPTION>;` |
+> **Evaluation order within `_APPLY`:** `EXCEPTION` is evaluated **first** (step ④ in the
+> lifecycle), then `CONDITION` (step ⑤). If `EXCEPTION` triggers, `CONDITION` is never reached.
+> Both operate on the **bound scope combination** (var1, var2, …), not on individual Frames.
+> A Frame that participates in N combinations may be bypassed by some and processed by others.
+
+| Key | Semantics | Generated code | Bypass scope | Permanence |
+|---|---|---|---|---|
+| `EXCEPTION` = true | rule **must not** fire | `return if <EXCEPTION>;` | Scope combination | **Permanent** (P1) / Transient (P2) |
+| `CONDITION` = false | rule **must** wait | `return unless <CONDITION>;` | Scope combination | **Always transient** — retry next cycle |
+
+> **`CONDITION` — transience rule:**
+> When `CONDITION` is false, the engine skips the current combination for this cycle and retries
+> it in the next. `CONDITION` is the correct mechanism for cross-rule slot dependencies:
+> if R03 requires a slot written by R01, guard it with `CONDITION: defined $p->{slot_from_r01}`.
+> The engine will retry R03 every cycle until R01 has fired and written the slot.
+> ⚠️ Never use `filtre` for this purpose — a Frame excluded by `filtre` is permanently out of
+> scope and will not be retried even after R01 fires.
+
+> **⚠️ `$var->{slot}` in EXCEPTION — the sole legitimate hash-access for domain slots:**
+> `EXCEPTION: defined $var->{slot}` intentionally uses `$var->{slot}` (not `$var->get('slot')`).
+> It tests "has `set()` explicitly written `_VALUE` on this Frame?" — bypassing `_DEFAULT` and `_ISA`
+> on purpose. Using `$var->get('slot')` instead would trigger the rule's idempotence guard even when
+> the slot value comes from a prototype `_DEFAULT`, preventing the rule from ever computing and
+> writing the actual `_VALUE`.
+> **Outside EXCEPTION guards, `$var->{slot}` is strictly forbidden for domain slot reads** —
+> always use `$var->get('slot')` (traverses `_VALUE → _DEFAULT → _NEEDED → _ISA`).
+> → Authoritative rule: `chorus-engine.md § Rule 1 — Always use $f->get('slot') for domain reads`.
 
 > **Idempotence — two patterns depending on rule semantics:**
 >
@@ -314,7 +435,9 @@ FIND:
 > ```yaml
 > EXCEPTION: defined $var->{slot_pose}
 > ```
-> Once any rule writes `slot_pose`, all rules sharing this guard are permanently blocked on this Frame.
+> Once any rule writes `slot_pose`, all rules sharing this guard are **permanently blocked** on
+> this Frame for the remainder of the inference (all future cycles). This is intentional for
+> classification rules where only one sibling should fire.
 > Use for: R01–R0N classification rules within the same agent when only one must fire.
 >
 > **Pattern 2 — "veto / override" rules:** rules that must be able to *overwrite* a value
@@ -350,7 +473,30 @@ ACTION:
   - '$p->set("done", "y"); 1'
 ```
 
-> ⚠️ Last instruction must return a truthy value. Use `|` (newlines preserved), never `>`.
+> **`return 0` vs `return 1` — engine convergence mechanism:**
+> - `return 1` (or any truthy value) → "this rule produced an effect this cycle". The engine
+>   records a productive step and schedules a new cycle after all rules have been tried.
+> - `return 0` (or any falsy value) → "nothing was done this time". The rule does not
+>   contribute to cycle productivity. If **all** rules return 0 in a cycle, the engine stops
+>   (convergence: no further progress is possible).
+>
+> This is the root cause of the **"conditional ACTION without else" pitfall**:
+> ```yaml
+> # ⛔ WRONG — always returns 1, even when nothing was written → infinite loop
+> ACTION: |
+>   if ($p->get('val') > 5) { $p->set('flag', 'KO') }
+>   1
+>
+> # ✅ CORRECT — returns 1 only when a slot was actually written
+> ACTION: |
+>   if ($p->get('val') > 5) { $p->set('flag', 'KO'); return 1 }
+>   0
+> ```
+> A rule that unconditionally returns `1` without writing any slot keeps the engine cycling
+> indefinitely until `_MAX_CYCLES` is reached — with no meaningful output.
+
+> ⚠️ Last instruction must return a truthy value **only when the rule has done useful work**.
+> Use `|` (newlines preserved), never `>`.
 
 ### TERMINAL — Automatic Termination
 

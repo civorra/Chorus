@@ -786,8 +786,16 @@ when the KB has not changed since the last `chorus-check --all`.
 - [ ] `run.pl`: `../../Engine/lib` path correct from the sandbox
 - [ ] `run.pl`: no hardcoded data
 - [ ] Report: no unexpected `(unprocessed)` elements
-- [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume.
-      Heuristic: `N_frames × N_rules_total × N_agents × 10 < _MAX_CYCLES`.
+- [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume **and rule chain depth**.
+      Heuristic: `N_frames × N_rules_total × N_agents × D × 10 < _MAX_CYCLES`
+      where **D** = depth of the longest intra-agent rule dependency chain
+      (if R03 reads a slot written by R02, which reads a slot written by R01 → D = 3).
+      A chain of depth D requires at least D cycles for a single Frame to converge.
+      Estimate D by counting the longest `CONDITION: defined $p->{slot_from_Rxx}` chain in the KB.
+      If no cross-rule dependencies → D = 1 (the formula reduces to the previous heuristic).
+      ⚠️ **Dependency direction is independent of rule numbering:** a chain where R01 reads
+      a slot written by R03 (which reads one written by R05) also gives D = 3 and requires
+      the same number of cycles. Rule numbers reflect load order only.
       In `run.pl`: compute from `scalar(@elements)` and pass via `Expert->run(max_cycles => ...)`.
       Never leave the default value (`10_000`) for a production pipeline.
 - [ ] Termination agent: use **YAML EXCEPTION pattern** (see Phase 3 template) — MCP-compatible, no infinite loop.
@@ -797,10 +805,30 @@ when the KB has not changed since the last `chorus-check --all`.
 - [ ] If `reorder()` is used: the sort function consults `_PREMISSES` — consistent with the YAML files
 - [ ] If `_LOCK_UNTIL_STABLE` is enabled: the agent may be skipped — verify this is the intended behaviour
 - [ ] BOARD: inter-agent keys are documented in `index.org`
+- [ ] **`return 0` vs `return 1` — convergence mechanism:** every ACTION must return `1` only when
+      it has written at least one slot. Returning `1` unconditionally signals "productive step" to the
+      engine, which schedules a new cycle — causing an infinite loop if no slot is actually written.
+      `return 0` signals "nothing done this cycle" and does not count toward cycle productivity.
+      The engine stops when **all** rules return `0` in the same cycle (no further progress possible).
+      → Check every YAML ACTION: any `if (...)` branch that writes a slot must `return 1` inside the
+      branch and fall through to `0` (or `return 0`) otherwise.
+      `if (...) { $p->set('slot', $val); return 1 }  0`
 - [ ] **YAML — conditional EFFET without `else`**: if the `if` modifies nothing and the rule returns `1`,
       the engine loops until `_MAX_CYCLES` (warning). Check every YAML whose EFFET
       contains an `if` without `else` → return `0` when no slot is modified:
       `if (...) { ...; return 1 } 0`
+- [ ] **EXCEPTION permanence (Pattern 1):** an `EXCEPTION: defined $f->{slot}` guard permanently blocks
+      the rule on this Frame once any sibling rule has written `slot`. This is intentional for
+      classification rules but is a **silent failure mode** when a veto/override rule uses Pattern 1
+      instead of Pattern 2. If a discordance shows "expected NON_CONFORME → got CONFORME" and no rule
+      fired for this element, check whether a sibling rule wrote the guard slot first in an earlier cycle,
+      permanently blocking the veto rule. Fix: switch to Pattern 2
+      (`EXCEPTION: '($f->{slot} // "") eq "<veto_value>"'`).
+- [ ] **CONDITION transience:** a `CONDITION: defined $p->{slot}` guard is always transient — the rule
+      is skipped this cycle and retried the next. If a discordance shows "rule never fired" despite the
+      prerequisite slot being eventually set, check whether `CONDITION` was incorrectly replaced by a
+      `filtre` expression. A Frame excluded by `filtre` is permanently out of scope and will never be
+      retried even after its prerequisite slot appears.
 - [ ] **Guard coherence:** handled automatically by `Chorus::Engine::loadRules()` —
       a `warn` is emitted at every `loadRules()` call for any rule whose `EXCEPTION`
       guard slot is not written by that rule's ACTION.

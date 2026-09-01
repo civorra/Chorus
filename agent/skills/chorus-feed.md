@@ -728,7 +728,14 @@ Points to watch:
   → `Chorus::Engine::loadRules()` emits a `warn` automatically if the guard slot is not written
   by the rule — immediate feedback at every `perl run.pl`, not deferred to `chorus-check`.
 - Termination: document in which rule and under what condition `solved()` is called
-- Naming: `R<NN>-<slug>.yml` — alphabetical order = load order
+- Naming: `R<NN>-<slug>.yml` — alphabetical order = **load order only**.
+  ⚠️ **Load order ≠ firing order.** The engine retries all rules every cycle. R03 can fire
+  before R01 within the same agent's inference, and equally, R01 can fire *after* R02 in a
+  later cycle (e.g. if R01 depends on a slot written by R02). Rule numbers reflect
+  load order only — **dependency direction is independent of rule numbering**.
+  Never design a rule that silently assumes a lower-numbered rule has already fired in the
+  current cycle, and never assume a higher-numbered rule fires last.
+  Cross-rule slot dependencies must be guarded explicitly — see checklist item below.
 
 ### Phase 4 — Create `agent/chorus/index.org`
 
@@ -913,7 +920,16 @@ YAML Checklist:
 - [ ] ⛔ **CONDITION too restrictive on `type_element`** → silently excludes Frames of other types — prefer testing slot presence → `chorus-engine §5`
 - [ ] ⛔ **Conditional ACTION without `else`** → returns `1` even when nothing modified → infinite loop at scale — always `return 1` inside the `if`, `0` as fallback → `chorus-engine §5`
 - [ ] Use `|` (block scalar) for multi-line `ACTION` — never `>`
-- [ ] Files named `R<NN>-<slug>.yml` (alphabetical = load order)
+- [ ] Files named `R<NN>-<slug>.yml` (alphabetical = **load order only** — not firing order)
+- [ ] ⛔ **Cross-rule slot dependency without CONDITION guard** → silent wrong verdict:
+      if rule Rxx reads a slot written by another rule in the same agent, it **must** guard
+      with `CONDITION: defined $p->{slot_from_other_rule}`. Without this guard, Rxx may fire
+      in cycle 1 with `undef`, write a wrong result, and be permanently blocked by its
+      EXCEPTION Pattern 1 — even after the other rule fires in a later cycle.
+      The engine handles ordering through cycles, not through rule numbers.
+      ⚠️ **This applies regardless of rule numbering:** R01 depending on a slot written by
+      R03 is equally valid — the CONDITION guard on R01 will hold until R03 fires, whatever
+      the cycle. Never assume a lower-numbered rule fires before a higher-numbered one.
 - [ ] ⛔ **`fmatch` in YAML ACTION** → guaranteed infinite loop — use the two-rule pattern (Rule A: per-Frame computation, Rule B: EXCEPTION fmatch + TERMINAL: solved + ACTION: "1") or pure Perl `addrule()` as fallback (see `chorus-check.md` Phase 3)
 - [ ] ⛔ **`TERMINAL: solved` on a per-Frame computation rule in multi-patient pipelines** → pipeline stops after the first patient — split into Rule A (computation, no TERMINAL) + Rule B (global termination via EXCEPTION fmatch)
 - [ ] If `PREMISES` present: consistent with the KB `Slot dictionary`
