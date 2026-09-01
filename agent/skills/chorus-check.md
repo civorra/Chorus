@@ -400,6 +400,9 @@ Create `$SANDBOX/lib/<Namespace>/Expert.pm` from template **T4** (`chorus-templa
 **Substitutions:** one `use` + one `->build()` per agent in `#+PIPELINE_POS` order.
 Force `$xprt->{_MAX_ITER}` after `new()` (known bug: `new()` ignores its arguments).
 Document BOARD inter-agent keys in `index.org` if agents communicate via BOARD slots.
+For each custom BOARD slot: key name, type, written by (agent), read by (agent).
+`register()` order must guarantee producers run before consumers.
+Full BOARD API + patterns: `chorus-engine-infra.md § 1.5 BOARD — Shared Publication Space`.
 
 
 ## Phase 5 — Generate `run.pl`
@@ -804,7 +807,11 @@ when the KB has not changed since the last `chorus-check --all`.
       ✅ `fmatch` in a YAML `EXCEPTION`/`CONDITION` block is safe (evaluated per-cycle, does not bind).
 - [ ] If `reorder()` is used: the sort function consults `_PREMISSES` — consistent with the YAML files
 - [ ] If `_LOCK_UNTIL_STABLE` is enabled: the agent may be skipped — verify this is the intended behaviour
-- [ ] BOARD: inter-agent keys are documented in `index.org`
+- [ ] BOARD: inter-agent keys documented in `index.org` (key, type, written by, read by)
+- [ ] BOARD: `register()` order guarantees producer agents before consumer agents
+- [ ] BOARD: custom slots reset between `process()` calls if Expert instance is reused
+- [ ] BOARD: YAML ACTION uses `$SELF->BOARD` — never `$agent->BOARD`
+- [ ] BOARD: no `CONDITION` guard on a slot written by another agent — use `register()` order + ACTION fallback
 - [ ] **`return 0` vs `return 1` — convergence mechanism:** every ACTION must return `1` only when
       it has written at least one slot. Returning `1` unconditionally signals "productive step" to the
       engine, which schedules a new cycle — causing an infinite loop if no slot is actually written.

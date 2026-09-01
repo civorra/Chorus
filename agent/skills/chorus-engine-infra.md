@@ -199,6 +199,127 @@ rounds, increase the margin accordingly.
 
 ---
 
+### 1.5 BOARD — Shared Publication Space
+
+The BOARD is a single `Chorus::Frame` instance injected by `register()` into every agent.
+It is the **only shared mutable state** between agents — `%REPOSITORY` (Frames) is also
+shared, but agents coordinate global pipeline state exclusively through BOARD slots.
+
+#### What belongs on the BOARD
+
+| Put on BOARD | Keep in Frames |
+|---|---|
+| Global pipeline flags (`SOLVED`, `FAILED`) | Per-element classification results |
+| Phase markers (`current_phase`, `pass_number`) | Inference slots computed by rules |
+| Aggregate results (counts, global scores, totals) | Individual element slots (`besoin_*`, `resultat_*`) |
+| Agent-to-agent signals (`agent_a_done`, `threshold_override`) | Prototype defaults (`_DEFAULT`, `_ISA`) |
+| The original input (`INPUT`) | Frame relationships (`_AFTER`, `_CONTAINER`) |
+
+> **Rule of thumb:** if the value is the same for all elements in the pipeline run → BOARD.
+> If it is specific to one Frame → Frame slot.
+
+#### Writing to the BOARD (Perl — in Agent.pm or addrule())
+
+```perl
+# In a rule closure (addrule) or Agent method:
+$agent->BOARD->{phase}        = 'scoring';      # set a phase marker
+$agent->BOARD->{total_ko}     = $count;         # publish an aggregate
+$agent->BOARD->{agent_a_done} = 1;              # signal completion to next agent
+```
+
+#### Reading from the BOARD (Perl)
+
+```perl
+my $phase = $agent->BOARD->{phase};             # read in same or other agent
+my $input = $agent->BOARD->{INPUT};             # original input passed to process()
+```
+
+#### Writing/Reading from BOARD in YAML ACTION / EFFET
+
+```yaml
+ACTION: |
+  # Write to BOARD from a YAML rule:
+  $SELF->BOARD->{total_ko} = ($SELF->BOARD->{total_ko} // 0) + 1;
+  1
+
+ACTION: |
+  # Read a value published by a previous agent:
+  my $threshold = $SELF->BOARD->{threshold_override} // 100;
+  $p->set('adjusted_threshold', $threshold);
+  1
+```
+
+> ⚠️ In YAML ACTION / EFFET, use **`$SELF`** (the agent) — never `$agent` (out of scope).
+> `$SELF->BOARD` is identical to `$agent->BOARD` — same Frame instance.
+
+#### Full inter-agent pattern: Agent A publishes → Agent B consumes
+
+```
+Outer iteration 1:
+  Agent A (inner loop):
+    R01 computes per-element scores → writes Frame slots
+    R02 accumulates total → $SELF->BOARD->{global_score} = $total; return 1
+    R03 signals done      → $SELF->BOARD->{scoring_done} = 1;      return 1
+    (all rules return 0 → Agent A converged)
+
+  Agent B (inner loop):
+    R01 reads BOARD: my $score = $SELF->BOARD->{global_score} // 0;
+        CONDITION: '$SELF->BOARD->{scoring_done}'   # ⛔ WRONG — see note below
+        → correct approach: read directly in ACTION, no CONDITION guard on BOARD
+    (all rules return 0 → Agent B converged)
+
+  Expert checks BOARD → not SOLVED yet → launches outer iteration 2
+  ...
+```
+
+> ⚠️ **Do not use CONDITION to wait for a BOARD slot written by another agent.**
+> `CONDITION` is evaluated inside Agent B's inner loop — at that point, Agent A has
+> already completed its inner loop (BOARD slot is set). So the CONDITION would actually
+> be satisfied immediately. However, if Agent B runs *before* Agent A in `register()`
+> order, the BOARD slot is not yet set when Agent B's inner loop starts in the first
+> outer iteration. The rule will fire immediately with `undef` (or be skipped), producing
+> a wrong result — not a deferred wait.
+>
+> **Correct pattern:** read the BOARD slot directly in ACTION with a `// default` fallback,
+> and use `register()` order to guarantee Agent A runs before Agent B.
+
+```perl
+# Expert.pm — register() order = execution order within each outer iteration
+$xprt->register($agent_scoring,   # 1st: computes and publishes to BOARD
+                $agent_decision);  # 2nd: reads BOARD slots already set by agent_scoring
+```
+
+#### BOARD slot lifecycle
+
+| Event | Effect on BOARD |
+|---|---|
+| `$xprt->register(...)` | BOARD Frame created and injected into all agents |
+| `$xprt->process($input)` called | `BOARD->{INPUT} = $input` set |
+| Any agent calls `solved()` | `BOARD->{SOLVED} = 'Y'` → Expert stops after current agent |
+| Any agent calls `failed()` | `BOARD->{FAILED} = 'Y'` → Expert stops after current agent |
+| `process()` returns | `BOARD->{SOLVED}` and `BOARD->{FAILED}` **deleted** (BOARD is reusable) |
+| Custom slots (`phase`, `total_ko` …) | **Not deleted** by `process()` — persist across calls if the same Expert instance is reused |
+
+> ⚠️ Custom BOARD slots survive `process()`. If the same `Chorus::Expert` instance
+> processes multiple inputs sequentially (batch), reset custom slots explicitly before
+> each call:
+> ```perl
+> delete $xprt->BOARD->{total_ko};
+> delete $xprt->BOARD->{scoring_done};
+> my $ok = $xprt->process($next_input);
+> ```
+
+#### Checklist — BOARD design
+
+- [ ] BOARD slots used only for global / inter-agent state — per-element data stays in Frames
+- [ ] `register()` order guarantees producer agents run before consumer agents
+- [ ] Custom BOARD slots documented in `index.org` (key, type, written by, read by)
+- [ ] Custom slots reset explicitly between `process()` calls if the Expert is reused
+- [ ] YAML ACTION uses `$SELF->BOARD` — never `$agent->BOARD`
+- [ ] No `CONDITION` guard on a BOARD slot written by another agent — use `register()` order + ACTION fallback
+
+---
+
 ## 2. Multi-Specialty Pattern
 
 ### 2.1 Recommended Project Structure
@@ -660,8 +781,11 @@ _MAX_CYCLES  _LOCK_UNTIL_STABLE  _IDENT
 ### BOARD Slots (Expert)
 
 ```
-SOLVED   FAILED   INPUT
+SOLVED   FAILED   INPUT   <custom inter-agent slots>
 ```
+
+> Reserved slots: `SOLVED`, `FAILED` (deleted by `process()` on return), `INPUT` (set by `process()`).
+> Custom slots (phase markers, aggregates, agent signals): see `§1.5 BOARD — Shared Publication Space`.
 
 ### Exported Symbols
 

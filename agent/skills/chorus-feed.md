@@ -152,6 +152,21 @@ Each group = one agent. Criteria:
 
 Result: ordered list of agents (slug + intent + pipeline position).
 
+> **BOARD — inter-agent coordination at design time:**
+> When defining agent groups, identify which results need to transit between agents.
+> - Results **specific to one Frame element** → Frame slot (set via `$f->set()`).
+> - Results **global to the pipeline run** (totals, phase flags, thresholds, signals) → BOARD slot.
+>
+> At this stage, list the BOARD slots required by the pipeline:
+> | BOARD slot | Written by agent | Read by agent | Type |
+> |---|---|---|---|
+> | `scoring_done` | `agent-scoring` | `agent-decision` | flag (1 / undef) |
+> | `total_ko` | `agent-scoring` | `agent-report` | integer count |
+>
+> This table will be transferred to `index.org` (Phase 4).
+> `register()` order must guarantee producer agents run before consumer agents.
+> Full API + patterns: `chorus-engine-infra.md § 1.5 BOARD — Shared Publication Space`.
+
 **1.2 Identify domain Frames**
 
 For each persistent concept in the corpus (≥ 2 slots, stable identity) → Frame.
