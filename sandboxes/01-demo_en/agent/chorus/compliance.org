@@ -1,123 +1,100 @@
-#+TITLE: Agent Compliance
-#+AGENT: CobIntro::Agent::Compliance
-#+PIPELINE_POS: 4
-#+RULES_DIR: rules/compliance/
+#+AGENT: TimberFrame::Agent::Compliance
+#+PIPELINE_POS: 5 / 5
+#+RULES_DIR: rules/compliance
 
 * Domain
-  Evaluates global compliance for each element and terminates the pipeline (§6):
-  - §6.1 — COMPLIANT if all applicable conditions are satisfied per element type
-  - §6.2 — Pipeline terminates when all elements with ~needs_compliance~ have been evaluated
+  Aggregates all per-domain verdicts into a final compliance_status per element
+  (§6.1). Terminates the pipeline when all elements carrying =needs_compliance=
+  have received their status (§6.2).
 
-  Receives ~needs_compliance~ from Agent::Fire.
-  Sets ~compliance_status = 'COMPLIANT'|'NON-COMPLIANT'~ and ~compliance_note~.
-  Terminates via a pure Perl ~addrule()~ termination rule (not via YAML fmatch).
+* Targeting slots
+** Strategy
+   Strategy B — presence slot =needs_compliance=.
+   Set by initial Feed on all elements. This is the entry-point slot — it
+   persists through the entire pipeline so this final agent can always locate
+   all elements regardless of intermediate processing.
 
-* Targeting Slots                                                        :SCOPE:
-** Chosen Strategy
-   Strategy B — presence slot ~needs_compliance~ set by Agent::Fire.
-   Chosen strategy : B
-   Justification   : Only fire-processed elements carry this slot.
+** Table
+   | Slot             | Set by       | Consumed by                        |
+   |------------------+--------------+------------------------------------|
+   | needs_compliance | initial feed | This agent (TimberFrame::Agent::Compliance) |
 
-** Targeting Slots Table
-   | Slot               | Strategy | Set by           | Value / condition        |
-   |--------------------+----------+------------------+--------------------------|
-   | needs_compliance   | B        | CobIntro::Agent::Fire | existence alone suffices |
+** Pre-population contract
+   Feed.pm sets =needs_compliance= on all elements at load time.
 
-** Pre-Population Contract
-   Before this agent becomes active, each Frame must carry:
-   - slot ~needs_compliance~ — set by: Agent::Fire (R01/R02/R03)
+* Pipeline I/O
+** Incoming slots
+   - =type_element= — element type
+   - =needs_compliance= — targeting slot
+   - =qualified= — from qualification agent (YES/NO)
+   - =frame_ok= — from geometry agent (YES/NO) — optional (not set on non-structural elements)
+   - =thermal_ok= — from thermal agent (YES/NO) — optional (set only on insulation/VCL)
+   - =fire_ok= — from fire agent (YES/NO)
+   - =collective= — project-level occupancy flag (0 or 1)
 
-* Pipeline — I/O Contract
-** Incoming Slots
-   | Slot               | Source  | Set by     | Description                                    |
-   |--------------------+---------+------------+------------------------------------------------|
-   | needs_compliance   | Element | Fire       | Targeting slot                                 |
-   | type_element       | Element | Feed       | Element type routing                           |
-   | qualified          | Element | Qualify    | 'YES' or 'NO'                                  |
-   | frame_ok           | Element | Domain     | 'YES' or 'NO'                                  |
-   | fire_ok            | Element | Fire       | 'YES' or 'NO'                                  |
-   | collective         | Element | Feed       | 1 = multi-occupancy, 0 = single dwelling       |
+** Outgoing slots
+   - =compliance_status= — 'COMPLIANT' or 'NON-COMPLIANT'
+   - =compliance_summary= — comma-separated list of failed checks (if any)
 
-** Outgoing Slots
-   | Slot               | Target  | Type / values          | Description               |
-   |--------------------+---------+------------------------+---------------------------|
-   | compliance_status  | Element | COMPLIANT/NON-COMPLIANT| Final compliance verdict   |
-   | compliance_note    | Element | string                 | Explanation of result      |
+* Ontologie
 
-* Ontology
-  Same ~Element~ Frame; no new Frame types.
+** Aliases
+   Sources: corpus §6.1, §6.2
+   | Canonical KB form (slot / type_element value) | Project-side variants                 | Source       |
+   |-----------------------------------------------+---------------------------------------+--------------|
+   | compliance_status                             | status, verdict, result, final result | corpus §6.1  |
+   | collective                                    | multi-occupancy, occupancy type       | corpus §6.1  |
 
-* Frame Catalogue
-** Frame: Element (continued — compliance slots)
-   | Slot               | Type | Values                    | Constraint  | Description                |
-   |--------------------+------+---------------------------+-------------+----------------------------|
-   | needs_compliance   | flag | 1 / undef                 | set upstream | Targeting slot            |
-   | compliance_status  | str  | COMPLIANT/NON-COMPLIANT   | set here     | Final verdict             |
-   | compliance_note    | str  | free text                 | set here     | Explanation               |
+* Catalogue des Frames
 
-* Slot Dictionary
-  | Slot               | Frame   | Role                     | fmatch target? |
-  |--------------------+---------+--------------------------+----------------|
-  | needs_compliance   | Element | _SCOPE targeting         | yes            |
-  | type_element       | Element | read — type routing      | no             |
-  | qualified          | Element | read — condition §6.1a   | no             |
-  | frame_ok           | Element | read — condition §6.1b   | no             |
-  | fire_ok            | Element | read — condition §6.1c   | no             |
-  | collective         | Element | read — fire condition    | no             |
-  | compliance_status  | Element | write — final verdict    | no             |
-  | compliance_note    | Element | write — explanation      | no             |
+** Element
+   Slots d'entrée  : type_element, needs_compliance
+   Slots calculés  : compliance_status, compliance_summary
+   Slots optionnels: qualified, frame_ok, thermal_ok, fire_ok, collective
 
-* Rule Catalogue
-** Rule: R01-compliance-evaluate
-   Intent    : Evaluate global compliance per §6.1 conditions by element type
-   FIND      : ~f~ → attribut: ~needs_compliance~
-   EXCEPTION : ~defined $f->{compliance_status}~
-   ACTION    :
-   #+BEGIN_SRC perl
-   my $type = $f->{type_element} // '';
-   my @failures;
+   *** type_element = load_bearing_stud
+       Requires: qualified=YES + frame_ok=YES + fire_ok=YES (+ thermal_ok if insulation — N/A here).
+   *** type_element = non_load_bearing_stud
+       Requires: qualified=YES + frame_ok=YES + fire_ok=YES.
+   *** type_element = sole_plate
+       Requires: qualified=YES + frame_ok=YES + fire_ok=YES.
+   *** type_element = top_plate
+       Requires: qualified=YES + frame_ok=YES + fire_ok=YES.
+   *** type_element = rafter
+       Requires: qualified=YES + frame_ok=YES + fire_ok=YES.
+   *** type_element = joist
+       Requires: qualified=YES + frame_ok=YES + fire_ok=YES.
+   *** type_element = insulation
+       Requires: thermal_ok=YES + fire_ok=YES (no frame_ok needed).
+   *** type_element = vapour_control_layer
+       Requires: thermal_ok=YES (fire_ok not applicable to VCL).
 
-   # §6.1a — all elements: qualified = 'YES'
-   push @failures, "not qualified (§6.1a)"
-       unless ($f->{qualified}//'') eq 'YES';
+* Slot dictionary
+  | Slot               | Type   | Description                                                        |
+  |--------------------+--------+--------------------------------------------------------------------|
+  | type_element       | enum   | Element type — invariant canonical slot                            |
+  | needs_compliance   | bool   | Targeting slot — set by initial feed on all elements               |
+  | qualified          | enum   | YES/NO — from qualification agent                                  |
+  | frame_ok           | enum   | YES/NO — from geometry agent (structural only)                     |
+  | thermal_ok         | enum   | YES/NO — from thermal agent (insulation/VCL only)                  |
+  | fire_ok            | enum   | YES/NO — from fire agent (all elements except VCL)                 |
+  | collective         | int    | 0 = non-collective, 1 = multi-occupancy                            |
+  | compliance_status  | enum   | COMPLIANT / NON-COMPLIANT                                          |
+  | compliance_summary | string | Comma-separated failed checks (empty if COMPLIANT)                 |
 
-   # §6.1b — structural elements: frame_ok = 'YES'
-   if ($type =~ /^(load_bearing_stud|sole_plate|top_plate)$/) {
-       push @failures, "frame geometry non-compliant (§6.1b)"
-           unless ($f->{frame_ok}//'') eq 'YES';
-   }
-
-   # §6.1c — thermal/vapour: thermal_ok = 'YES' (mapped to frame_ok for insulation/vcl)
-   if ($type =~ /^(insulation|vapour_control_layer)$/) {
-       push @failures, "thermal/vapour non-compliant (§6.1c)"
-           unless ($f->{frame_ok}//'') eq 'YES';
-   }
-
-   # §6.1d — fire: all elements require fire_ok = 'YES' (REI 30 applies to all)
-   push @failures, "fire non-compliant (§6.1d)"
-       unless ($f->{fire_ok}//'') eq 'YES';
-
-   if (@failures) {
-       $f->set('compliance_status', 'NON-COMPLIANT');
-       $f->set('compliance_note', join('; ', @failures));
-   } else {
-       $f->set('compliance_status', 'COMPLIANT');
-       $f->set('compliance_note', 'All applicable conditions satisfied (§6.1)');
-   }
-   $f->delete('needs_compliance');
-   1
-   #+END_SRC
-   Notes : Termination is handled by a pure Perl addrule() in chorus-check generated Expert,
-           not via YAML — avoids infinite loop via global fmatch.
+* Rule catalog
+  | Rule                        | Corpus | Purpose                                             |
+  |-----------------------------+--------+-----------------------------------------------------|
+  | R01-compliance-verdict      | §6.1   | Compute compliance_status from all domain verdicts  |
+  | R02-compliance-termination  | §6.2   | Terminate pipeline when all elements have status    |
 
 * Perl Helpers
-  None — compliance logic is purely combinatorial (AND of upstream slot values).
-  No normative tables required at this stage.
+  (none — compliance verdict is a pure logic aggregation, no normative table)
 
 * Constraints & Pitfalls
-  - [ ] R01 handles ALL element types in a single rule — type-specific conditions via ~if~ blocks
-  - [ ] ~needs_compliance~ is deleted after processing (consumed targeting slot)
-  - [ ] Termination rule MUST be a pure Perl ~addrule()~ (not YAML) — see chorus-check Phase 3
-  - [ ] ~frame_ok~ serves double duty: geometry for structural, thermal for insulation/VCL
-  - [ ] Elements that failed qualification still reach this agent and are marked NON-COMPLIANT
-  - [ ] _MAX_CYCLES = N_elements × 16 rules × 4 agents × 10
+  - R01 must wait for all upstream agents to have written their verdict slots.
+    CONDITION guards ensure slots are present before computing compliance.
+  - For structural elements: frame_ok must be present; thermal_ok may be absent (not applicable).
+  - For insulation/VCL: frame_ok absent is normal; rule must not treat absence as failure.
+  - R02 termination rule uses two-rule pattern: R01 per-element, R02 EXCEPTION fmatch.
+  - _MAX_CYCLES recommended: engine default 10 000 sufficient for demo.

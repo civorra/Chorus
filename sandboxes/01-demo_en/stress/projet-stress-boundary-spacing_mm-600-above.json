@@ -1,0 +1,37 @@
+{
+  "projet": "stress-boundary-spacing_mm-high-above",
+  "description": "Boundary: spacing_mm = 600.1 (T+ε, above upper bound) — expect NON_CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "spacing_mm",
+    "threshold": 600,
+    "direction": "<=",
+    "epsilon": 0.1,
+    "source": "geo R01 §3.1",
+    "agent": "geometry",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-SPACING-HIGH-ABOVE",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 600.1,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective": 0,
+      "_resultats_attendus": {
+        "spacing_ok": "NO",
+        "frame_ok": "NO",
+        "compliance_status": "NON-COMPLIANT"
+      },
+      "_stress_note": "spacing=600.1 > 600 (T+ε). Rule: spacing > 600 → spacing_ok=NO → frame_ok=NO → NON-COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

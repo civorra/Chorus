@@ -1,0 +1,48 @@
+##
+# RULE: R02-moisture-content
+# AGENT: TimberFrame::Agent::Qualification  (pos. 1 / 5)
+# CORPUS: §2.2 — BS EN 1995-1-1 §2.3 — Moisture content at installation
+#
+# PURPOSE
+#   Checks that the timber moisture content at time of installation is within
+#   the acceptable range [10%, 18%]. Applies to all elements with a
+#   moisture_pct slot; elements without this slot are skipped silently.
+#
+# INPUTS  (slots read)
+#   needs_compliance  : targeting slot — set by initial feed
+#   moisture_pct      : float — moisture content (%)
+#
+# OUTPUTS (slots written)
+#   moisture_ok      : 'YES' or 'NO' — moisture verdict
+#   rejection_reason : string — failure reason (written only on rejection,
+#                      appended if rejection_reason already set)
+#
+# GUARD — EXCEPTION: defined $f->{moisture_ok}
+#   Idempotence — prevents re-processing a Frame already handled.
+##
+RULE: R02-moisture-content
+FIND:
+  f:
+    attribut: needs_compliance
+    filtre: "defined $_->get('moisture_pct')"
+EXCEPTION: defined $f->{moisture_ok}
+ACTION: |
+  # Read moisture content — §2.2 valid range [10%, 18%]
+  my $mc = $f->get('moisture_pct');
+
+  # Check lower bound: < 10% risks excessive moisture uptake
+  if ($mc < 10) {
+    $f->set('moisture_ok', 'NO');
+    $f->set('rejection_reason', "moisture $mc% below 10% minimum (§2.2)");
+    return 1;
+  }
+
+  # Check upper bound: > 18% risks fungal development and shrinkage
+  if ($mc > 18) {
+    $f->set('moisture_ok', 'NO');
+    $f->set('rejection_reason', "moisture $mc% above 18% maximum (§2.2)");
+    return 1;
+  }
+
+  $f->set('moisture_ok', 'YES');
+  1

@@ -1,0 +1,27 @@
+{
+  "projet": "stress-missing-service_class",
+  "description": "Missing input slot service_class on vapour_control_layer — R02-vapour-sd FIND requires defined service_class; skips → thermal_ok absent → compliance R01 thermal_ok // 'YES' → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "service_class",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "thermal"
+  },
+  "elements": [
+    {
+      "id":                      "VCL-STRESS-MISSING-SERVICE_CLASS",
+      "type_element":            "vapour_control_layer",
+      "needs_compliance":        1,
+      "needs_thermal":           1,
+      "sd_value":                18,
+      "_resultats_attendus": {
+        "thermal_ok":        null,
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot service_class — R02-vapour-sd FIND requires defined service_class → skips silently. thermal_ok absent. Compliance R01: thermal_ok // 'YES' → COMPLIANT. VCL exempt from fire check.",
+      "_expected_uncertain": false
+    }
+  ]
+}

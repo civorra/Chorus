@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KB Coverage Review — 01b-demo_en — 001</title>
+<style>
+  :root {
+    --green: #2e7d32; --green-light: #e8f5e9;
+    --orange: #e65100; --orange-light: #fff3e0;
+    --red: #c62828; --red-light: #ffebee;
+    --blue: #1565c0; --blue-light: #e3f2fd;
+    --grey: #546e7a; --grey-light: #eceff1;
+    --border: #cfd8dc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         font-size: 14px; background: #f5f7f8; color: #263238; }
+  h1 { font-size: 1.3em; padding: 16px 20px 8px; color: #1a237e; }
+  .subtitle { font-size: 0.85em; color: var(--grey); padding: 0 20px 12px; }
+
+  /* Summary bar */
+  .summary {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    padding: 12px 20px; background: #fff;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat { padding: 6px 14px; border-radius: 20px; font-weight: 600; font-size: 0.9em; }
+  .stat.total    { background: var(--grey-light);  color: var(--grey); }
+  .stat.covered  { background: var(--green-light); color: var(--green); }
+  .stat.uncovered{ background: var(--red-light);   color: var(--red); }
+  .stat.pct      { background: var(--green-light); color: var(--green); font-size: 1em; }
+  .stat.orphan   { background: var(--orange-light);color: var(--orange); }
+
+  /* Filter bar */
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 20px; background: #fff;
+    border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 100;
+  }
+  .filters button {
+    padding: 5px 14px; border: 1px solid var(--border); border-radius: 16px;
+    background: #fff; cursor: pointer; font-size: 0.85em; color: var(--grey);
+    transition: all 0.15s;
+  }
+  .filters button:hover, .filters button.active {
+    background: var(--blue); color: #fff; border-color: var(--blue);
+  }
+  .filters input[type=text] {
+    padding: 5px 12px; border: 1px solid var(--border); border-radius: 16px;
+    font-size: 0.85em; min-width: 200px; margin-left: auto;
+  }
+
+  /* Article panels */
+  #articles { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+
+  .article {
+    display: grid; grid-template-columns: 1fr 1fr 260px;
+    gap: 12px; background: #fff; border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; transition: box-shadow 0.2s;
+  }
+  .article:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .article[data-status="covered"]   { border-left: 4px solid var(--green); }
+  .article[data-status="uncovered"] { border-left: 4px solid var(--red); }
+  .article[data-decision="validated"]{ border-left: 4px solid #4caf50; background: #f9fef9; }
+  .article[data-decision="flagged"]  { border-left: 4px solid #f44336; background: #fff9f9; }
+
+  .art-ref   { font-weight: 700; color: var(--blue); font-size: 1em; display: block; margin-bottom: 4px; }
+  .art-title { font-weight: 600; font-size: 0.95em; display: block; margin-bottom: 4px; }
+  .art-source{ font-size: 0.78em; color: var(--grey); display: block; margin-bottom: 8px; }
+  blockquote.excerpt {
+    font-size: 0.82em; color: #546e7a; border-left: 3px solid var(--border);
+    padding-left: 10px; margin: 0; line-height: 1.5;
+    max-height: 100px; overflow: hidden;
+  }
+
+  .rules-mapped { display: flex; flex-direction: column; gap: 6px; }
+  .rule-chip {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+    background: var(--grey-light); transition: background 0.15s;
+  }
+  .rule-chip:hover { background: var(--blue-light); }
+  .rule-chip.missing {
+    background: var(--red-light); border-color: #ef9a9a; cursor: default;
+  }
+  .agent-tag {
+    font-size: 0.72em; font-weight: 700; padding: 2px 7px;
+    border-radius: 10px; background: var(--blue); color: #fff; white-space: nowrap;
+  }
+  .rule-id { font-size: 0.82em; font-weight: 600; flex: 1; }
+  .confidence { font-size: 0.9em; }
+  .missing-label { font-size: 0.82em; color: var(--red); font-weight: 600; }
+
+  /* Rule detail panel */
+  .rule-detail {
+    display: none; grid-column: 1 / -1;
+    background: #fafafa; border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; font-size: 0.82em; margin-top: 6px;
+  }
+  .rule-detail.open { display: block; }
+  .rule-detail table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  .rule-detail th, .rule-detail td {
+    border: 1px solid var(--border); padding: 4px 8px; text-align: left;
+  }
+  .rule-detail th { background: var(--grey-light); font-weight: 600; }
+
+  /* Decision column */
+  .decision { display: flex; flex-direction: column; gap: 8px; }
+  .btn-validate, .btn-flag {
+    padding: 7px 10px; border: none; border-radius: 6px; cursor: pointer;
+    font-weight: 600; font-size: 0.85em; transition: opacity 0.15s;
+  }
+  .btn-validate { background: var(--green-light); color: var(--green); }
+  .btn-validate:hover { background: #c8e6c9; }
+  .btn-flag     { background: var(--red-light);   color: var(--red); }
+  .btn-flag:hover { background: #ffcdd2; }
+  .comment {
+    resize: vertical; border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px; font-size: 0.82em; min-height: 56px; font-family: inherit;
+    flex: 1;
+  }
+
+  /* Uncovered section */
+  #uncovered-section {
+    margin: 0 20px 20px; background: var(--red-light);
+    border: 1px solid #ef9a9a; border-radius: 8px; padding: 14px;
+  }
+  #uncovered-section h2 { color: var(--red); font-size: 1em; margin-bottom: 10px; }
+  .gap-item {
+    background: #fff; border: 1px solid #ef9a9a; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 8px;
+  }
+  .gap-priority { font-size: 0.75em; font-weight: 700; padding: 2px 8px;
+    border-radius: 10px; margin-left: 8px; }
+  .gap-priority.HIGH   { background: #f44336; color: #fff; }
+  .gap-priority.MEDIUM { background: #ff9800; color: #fff; }
+  .gap-priority.LOW    { background: #9e9e9e; color: #fff; }
+
+  /* Export bar */
+  .export-bar {
+    position: sticky; bottom: 0; background: #fff;
+    border-top: 2px solid var(--border); padding: 12px 20px;
+    display: flex; align-items: center; gap: 12px; z-index: 100;
+  }
+  .btn-export {
+    padding: 9px 22px; background: var(--blue); color: #fff;
+    border: none; border-radius: 6px; cursor: pointer; font-weight: 700;
+    font-size: 0.9em;
+  }
+  .btn-export:hover { background: #1976d2; }
+  .export-info { font-size: 0.82em; color: var(--grey); }
+  #export-fallback { margin: 12px 20px; padding: 12px; background: var(--orange-light);
+    border: 1px solid #ffcc02; border-radius: 8px; display: none; }
+  #export-fallback p { margin-bottom: 8px; font-size: 0.85em; }
+  #export-textarea { width: 100%; font-family: monospace; font-size: 0.8em; }
+
+  /* Hidden utility */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<h1>📋 KB Coverage Review — <code>01b-demo_en</code></h1>
+<p class="subtitle">Generated: 2025-07-14 · Corpus: 001-timber-frame-intro-simul.txt · Review ID: kb-review-001</p>
+
+<div class="summary">
+  <span class="stat total">14 articles total</span>
+  <span class="stat covered">12 covered ✅</span>
+  <span class="stat uncovered">2 uncovered ⚠️</span>
+  <span class="stat pct">🟢 Coverage: 86%</span>
+  <span class="stat orphan">0 orphan refs</span>
+  <span class="stat total">0 rules without CORPUS</span>
+</div>
+
+<div class="filters">
+  <button onclick="filterArticles('all')" class="active" id="btn-all">All (14)</button>
+  <button onclick="filterArticles('covered')" id="btn-covered">Covered ✅ (12)</button>
+  <button onclick="filterArticles('uncovered')" id="btn-uncovered">Uncovered ⚠️ (2)</button>
+  <button onclick="filterArticles('flagged')" id="btn-flagged">Flagged ❌</button>
+  <button onclick="filterArticles('validated')" id="btn-validated">Validated ✓</button>
+  <input type="text" id="search-input" placeholder="Search article…" oninput="searchArticles(this.value)">
+</div>
+
+<div id="articles">
+
+<!-- §1.1 -->
+<div class="article" id="art-§1.1" data-status="uncovered">
+  <div class="corpus-text">
+    <span class="art-ref">§1.1</span>
+    <span class="art-title">Scope</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">This document applies to timber-frame buildings up to 2 storeys (ground + first floor), in wind zones 1 to 4 and climate zones A, B, C. Main structural element types: load-bearing studs, non-load-bearing studs, sole plates, top plates, rafters, joists, insulation, vapour control layers.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip missing"><span class="missing-label">⚠️ No rule mapped to this article</span></div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§1.1','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§1.1','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §1.2 -->
+<div class="article" id="art-§1.2" data-status="uncovered">
+  <div class="corpus-text">
+    <span class="art-ref">§1.2</span>
+    <span class="art-title">Contractor qualification</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">The contractor must hold a recognised timber frame construction qualification (e.g. UKTFA member or equivalent) before commencing structural works.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip missing"><span class="missing-label">⚠️ No rule mapped to this article</span></div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§1.2','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§1.2','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §2.1 -->
+<div class="article" id="art-§2.1" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§2.1</span>
+    <span class="art-title">Strength classes (BS EN 338)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Minimum strength class required by element type: Load-bearing stud, sole plate, top plate: C24 minimum · Non-load-bearing stud: C16 minimum · Rafter: C18 minimum · Joist: C24 minimum. Any element below minimum is REJECTED.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('qualification-R01-strength-class')">
+      <span class="agent-tag">qualification</span>
+      <span class="rule-id">R01 — strength-class</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-qualification-R01-strength-class">
+      <b>File:</b> rules/qualification/R01-strength-class.yml<br>
+      <b>Agent:</b> qualification (pos. 1 / 5)<br>
+      <b>CORPUS:</b> §2.1 — BS EN 338 — Minimum strength class by element type<br><br>
+      <b>Inputs:</b> element_type, strength_class<br>
+      <b>Outputs:</b> qualified (enum: YES / NO)<br>
+      <table><tr><th>Element type</th><th>Min. class</th></tr>
+        <tr><td>load-bearing stud / sole plate / top plate</td><td>C24</td></tr>
+        <tr><td>non-load-bearing stud</td><td>C16</td></tr>
+        <tr><td>rafter</td><td>C18</td></tr>
+        <tr><td>joist</td><td>C24</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§2.1','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§2.1','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §2.2 -->
+<div class="article" id="art-§2.2" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§2.2</span>
+    <span class="art-title">Moisture content (BS EN 1995-1-1 §2.3)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Timber moisture content at time of installation must be between 10% and 18%. Below 10%: risk of excessive moisture uptake. Above 18%: risk of fungal development. Any element outside [10%, 18%] is REJECTED.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('qualification-R02-moisture-content')">
+      <span class="agent-tag">qualification</span>
+      <span class="rule-id">R02 — moisture-content</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-qualification-R02-moisture-content">
+      <b>File:</b> rules/qualification/R02-moisture-content.yml<br>
+      <b>Agent:</b> qualification (pos. 1 / 5)<br>
+      <b>CORPUS:</b> §2.2 — BS EN 1995-1-1 §2.3 — Moisture content at installation<br><br>
+      <b>Inputs:</b> moisture_pct<br>
+      <b>Outputs:</b> moisture_ok (enum: YES / NO)<br>
+      <table><tr><th>Condition</th><th>Result</th></tr>
+        <tr><td>10 ≤ moisture_pct ≤ 18</td><td>moisture_ok = YES</td></tr>
+        <tr><td>moisture_pct &lt; 10 or &gt; 18</td><td>moisture_ok = NO → REJECTED</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§2.2','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§2.2','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §2.3 -->
+<div class="article" id="art-§2.3" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§2.3</span>
+    <span class="art-title">Allowable deflection (EC5 §7.2)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Instantaneous deflection under load must satisfy: allowable = L / 300. Minimum floor value: 5 mm over 2 m span. Any element whose measured deflection exceeds L/300 is REJECTED.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('qualification-R03-deflection')">
+      <span class="agent-tag">qualification</span>
+      <span class="rule-id">R03 — deflection</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-qualification-R03-deflection">
+      <b>File:</b> rules/qualification/R03-deflection.yml<br>
+      <b>Agent:</b> qualification (pos. 1 / 5)<br>
+      <b>CORPUS:</b> §2.3 — EC5 §7.2 — Allowable instantaneous deflection<br><br>
+      <b>Inputs:</b> deflection_mm, span_mm<br>
+      <b>Outputs:</b> deflection_ok (enum: YES / NO)<br>
+      <table><tr><th>Condition</th><th>Result</th></tr>
+        <tr><td>deflection_mm ≤ span_mm / 300</td><td>deflection_ok = YES</td></tr>
+        <tr><td>deflection_mm &gt; span_mm / 300</td><td>deflection_ok = NO → REJECTED</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§2.3','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§2.3','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §3.1 -->
+<div class="article" id="art-§3.1" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§3.1</span>
+    <span class="art-title">Stud spacing (BS EN 1995-1-1 §5.1)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Stud centre-to-centre spacing must be between 300 mm and 600 mm. Standard values: 400 mm or 600 mm (± 5 mm tolerance). Spacing exceeding 600 mm is non-compliant.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('geometry-R01-stud-spacing')">
+      <span class="agent-tag">geometry</span>
+      <span class="rule-id">R01 — stud-spacing</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-geometry-R01-stud-spacing">
+      <b>File:</b> rules/geometry/R01-stud-spacing.yml<br>
+      <b>Agent:</b> geometry (pos. 2 / 5)<br>
+      <b>CORPUS:</b> §3.1 — BS EN 1995-1-1 §5.1 — Stud centre-to-centre spacing<br><br>
+      <b>Inputs:</b> spacing_mm<br>
+      <b>Outputs:</b> spacing_ok (enum: YES / NO)<br>
+      <table><tr><th>Condition</th><th>Result</th></tr>
+        <tr><td>300 ≤ spacing_mm ≤ 600</td><td>spacing_ok = YES</td></tr>
+        <tr><td>spacing_mm &lt; 300 or &gt; 600</td><td>spacing_ok = NO</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§3.1','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§3.1','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §3.2 -->
+<div class="article" id="art-§3.2" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§3.2</span>
+    <span class="art-title">Min. cross-sections — load-bearing studs (BS EN 1995-1-1 §5.2)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Minimum cross-sections depend on clear height and spacing: ≤2700mm/≤400mm: 38×89mm · ≤2700mm/≤600mm: 38×140mm · ≤3000mm/≤400mm: 38×140mm · ≤3000mm/≤600mm: 44×140mm · &gt;3000mm/any: 44×184mm.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('geometry-R02-lb-cross-section')">
+      <span class="agent-tag">geometry</span>
+      <span class="rule-id">R02 — lb-cross-section</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-geometry-R02-lb-cross-section">
+      <b>File:</b> rules/geometry/R02-lb-cross-section.yml<br>
+      <b>Agent:</b> geometry (pos. 2 / 5)<br>
+      <b>CORPUS:</b> §3.2 — BS EN 1995-1-1 §5.2 — Minimum cross-sections for load-bearing studs<br><br>
+      <b>Inputs:</b> clear_height_mm, spacing_mm, width_mm, depth_mm, load_bearing<br>
+      <b>Outputs:</b> section_ok (enum: YES / NO)<br>
+      <table><tr><th>Height</th><th>Spacing</th><th>Min. b×h</th></tr>
+        <tr><td>≤ 2700</td><td>≤ 400</td><td>38 × 89 mm</td></tr>
+        <tr><td>≤ 2700</td><td>≤ 600</td><td>38 × 140 mm</td></tr>
+        <tr><td>≤ 3000</td><td>≤ 400</td><td>38 × 140 mm</td></tr>
+        <tr><td>≤ 3000</td><td>≤ 600</td><td>44 × 140 mm</td></tr>
+        <tr><td>&gt; 3000</td><td>any</td><td>44 × 184 mm</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§3.2','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§3.2','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §3.3 -->
+<div class="article" id="art-§3.3" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§3.3</span>
+    <span class="art-title">Min. cross-sections — non-load-bearing studs</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Non-load-bearing studs require a minimum cross-section of 38 × 63 mm, regardless of clear height.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('geometry-R03-nlb-cross-section')">
+      <span class="agent-tag">geometry</span>
+      <span class="rule-id">R03 — nlb-cross-section</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-geometry-R03-nlb-cross-section">
+      <b>File:</b> rules/geometry/R03-nlb-cross-section.yml<br>
+      <b>Agent:</b> geometry (pos. 2 / 5)<br>
+      <b>CORPUS:</b> §3.3 — BS EN 1995-1-1 — Minimum cross-sections for non-load-bearing studs<br><br>
+      <b>Inputs:</b> width_mm, depth_mm, load_bearing<br>
+      <b>Outputs:</b> section_ok (enum: YES / NO)<br>
+      <table><tr><th>Condition</th><th>Min. b×h</th></tr>
+        <tr><td>non-load-bearing stud (any height)</td><td>38 × 63 mm</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§3.3','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§3.3','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §3.4 -->
+<div class="article" id="art-§3.4" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§3.4</span>
+    <span class="art-title">Continuity of load-bearing studs (BS EN 1995-1-1 §5.4)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">A load-bearing stud must not contain a longitudinal splice within the storey height. The presence of a longitudinal splice on a load-bearing stud is a structural non-conformity.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('geometry-R04-lb-splice')">
+      <span class="agent-tag">geometry</span>
+      <span class="rule-id">R04 — lb-splice</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-geometry-R04-lb-splice">
+      <b>File:</b> rules/geometry/R04-lb-splice.yml<br>
+      <b>Agent:</b> geometry (pos. 2 / 5)<br>
+      <b>CORPUS:</b> §3.4 — BS EN 1995-1-1 §5.4 — Continuity of load-bearing studs<br><br>
+      <b>Inputs:</b> load_bearing, has_longitudinal_splice<br>
+      <b>Outputs:</b> splice_ok (enum: YES / NO)<br>
+      <table><tr><th>Condition</th><th>Result</th></tr>
+        <tr><td>load_bearing = YES and has_longitudinal_splice = YES</td><td>splice_ok = NO</td></tr>
+        <tr><td>load_bearing = NO or has_longitudinal_splice = NO</td><td>splice_ok = YES</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§3.4','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§3.4','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §4.1 -->
+<div class="article" id="art-§4.1" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§4.1</span>
+    <span class="art-title">Minimum thermal resistance (Part L + BS EN ISO 6946)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">R = thickness (mm) / (1000 × lambda). Minimum R by climate zone: Zone A ≥ 6.5 m²·K/W · Zone B ≥ 4.5 m²·K/W · Zone C ≥ 3.5 m²·K/W.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('thermal-R01-thermal-resistance')">
+      <span class="agent-tag">thermal</span>
+      <span class="rule-id">R01 — thermal-resistance</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-thermal-R01-thermal-resistance">
+      <b>File:</b> rules/thermal/R01-thermal-resistance.yml<br>
+      <b>Agent:</b> thermal (pos. 3 / 5)<br>
+      <b>CORPUS:</b> §4.1 — Part L + BS EN ISO 6946 — Minimum thermal resistance by climate zone<br><br>
+      <b>Inputs:</b> thickness_mm, lambda, climate_zone<br>
+      <b>Outputs:</b> thermal_ok (enum: YES / NO)<br>
+      <table><tr><th>Climate zone</th><th>R_min (m²·K/W)</th></tr>
+        <tr><td>A (severe cold)</td><td>6.5</td></tr>
+        <tr><td>B (temperate)</td><td>4.5</td></tr>
+        <tr><td>C (mild coastal)</td><td>3.5</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§4.1','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§4.1','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §4.2 -->
+<div class="article" id="art-§4.2" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§4.2</span>
+    <span class="art-title">Vapour control layer — minimum Sd value (BS 5250 / BS EN ISO 13788)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Sd value by service class: SC1 (dry) ≥ 5 m · SC2 (humid) ≥ 18 m · SC3 (very humid) ≥ 50 m. Any VCL with Sd below required minimum is NON-COMPLIANT.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('thermal-R02-vapour-sd')">
+      <span class="agent-tag">thermal</span>
+      <span class="rule-id">R02 — vapour-sd</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-thermal-R02-vapour-sd">
+      <b>File:</b> rules/thermal/R02-vapour-sd.yml<br>
+      <b>Agent:</b> thermal (pos. 3 / 5)<br>
+      <b>CORPUS:</b> §4.2 — BS 5250 / BS EN ISO 13788 — Vapour control layer minimum Sd value<br><br>
+      <b>Inputs:</b> service_class, sd_value<br>
+      <b>Outputs:</b> vapour_ok (enum: YES / NO)<br>
+      <table><tr><th>Service class</th><th>Sd_min (m)</th></tr>
+        <tr><td>1 (dry interior)</td><td>5</td></tr>
+        <tr><td>2 (humid interior)</td><td>18</td></tr>
+        <tr><td>3 (very humid)</td><td>50</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§4.2','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§4.2','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §5.1 -->
+<div class="article" id="art-§5.1" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§5.1</span>
+    <span class="art-title">Required fire resistance period (Building Regs Part B / BS EN 13501-2)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Structural elements must achieve minimum fire resistance: Single occupancy (non-collective): REI 30 min · Multi-occupancy (collective=1): REI 60 min.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('fire-R01-rei-period')">
+      <span class="agent-tag">fire</span>
+      <span class="rule-id">R01 — rei-period</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-fire-R01-rei-period">
+      <b>File:</b> rules/fire/R01-rei-period.yml<br>
+      <b>Agent:</b> fire (pos. 4 / 5)<br>
+      <b>CORPUS:</b> §5.1 — Building Regs Part B / BS EN 13501-2 — Required fire resistance period<br><br>
+      <b>Inputs:</b> collective, rei_period<br>
+      <b>Outputs:</b> rei_ok (enum: YES / NO)<br>
+      <table><tr><th>Collective</th><th>REI_min</th></tr>
+        <tr><td>0 (non-collective)</td><td>30 min</td></tr>
+        <tr><td>1 (collective)</td><td>60 min</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§5.1','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§5.1','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §5.2 -->
+<div class="article" id="art-§5.2" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§5.2</span>
+    <span class="art-title">Reaction to fire of internal lining (BS EN 13501-1)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">Internal wall lining must satisfy: Reaction to fire class A1 or A2 minimum (Euroclasses). Surface mass ≥ 8 kg/m². Any lining with reaction class below A2 or insufficient mass is NON-COMPLIANT.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('fire-R02-lining-class')">
+      <span class="agent-tag">fire</span>
+      <span class="rule-id">R02 — lining-class</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-fire-R02-lining-class">
+      <b>File:</b> rules/fire/R02-lining-class.yml<br>
+      <b>Agent:</b> fire (pos. 4 / 5)<br>
+      <b>CORPUS:</b> §5.2 — BS EN 13501-1 — Reaction to fire of internal lining<br><br>
+      <b>Inputs:</b> reaction_class, surface_mass_kg_m2<br>
+      <b>Outputs:</b> lining_ok (enum: YES / NO)<br>
+      <table><tr><th>Condition</th><th>Result</th></tr>
+        <tr><td>reaction_class ∈ {A1, A2} AND surface_mass ≥ 8</td><td>lining_ok = YES</td></tr>
+        <tr><td>reaction_class not in {A1, A2} OR surface_mass &lt; 8</td><td>lining_ok = NO</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§5.2','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§5.2','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §5.3 -->
+<div class="article" id="art-§5.3" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§5.3</span>
+    <span class="art-title">Plasterboard thickness (Building Regs Part B §B3)</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">To achieve fire resistance: REI 30 (non-collective): plasterboard ≥ 12.5 mm · REI 60 (collective): plasterboard ≥ 25 mm (two layers).</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('fire-R03-pb-thickness')">
+      <span class="agent-tag">fire</span>
+      <span class="rule-id">R03 — pb-thickness</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-fire-R03-pb-thickness">
+      <b>File:</b> rules/fire/R03-pb-thickness.yml<br>
+      <b>Agent:</b> fire (pos. 4 / 5)<br>
+      <b>CORPUS:</b> §5.3 — Building Regs Part B §B3 — Plasterboard thickness by REI<br><br>
+      <b>Inputs:</b> collective, plasterboard_thickness_mm<br>
+      <b>Outputs:</b> pb_ok (enum: YES / NO)<br>
+      <table><tr><th>Collective</th><th>PB_min (mm)</th></tr>
+        <tr><td>0 (REI 30)</td><td>12.5</td></tr>
+        <tr><td>1 (REI 60)</td><td>25</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§5.3','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§5.3','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §6.1 -->
+<div class="article" id="art-§6.1" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§6.1</span>
+    <span class="art-title">Compliance conditions by element type</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">An element is COMPLIANT if all applicable conditions for its type are satisfied: all elements → qualified='YES'; structural → frame_ok='YES'; insulation/VCL → thermal_ok='YES'; collective → fire_ok='YES'.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('qualification-R04-qualification-result')">
+      <span class="agent-tag">qualification</span>
+      <span class="rule-id">R04 — qualification-result</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-chip" onclick="toggleRule('compliance-R01-compliance-verdict')">
+      <span class="agent-tag">compliance</span>
+      <span class="rule-id">R01 — compliance-verdict</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-qualification-R04-qualification-result">
+      <b>File:</b> rules/qualification/R04-qualification-result.yml<br>
+      <b>Agent:</b> qualification (pos. 1 / 5)<br>
+      <b>CORPUS:</b> §6.1 — Compliance conditions by element type<br>
+    </div>
+    <div class="rule-detail" id="detail-compliance-R01-compliance-verdict">
+      <b>File:</b> rules/compliance/R01-compliance-verdict.yml<br>
+      <b>Agent:</b> compliance (pos. 5 / 5)<br>
+      <b>CORPUS:</b> §6.1 — Compliance conditions by element type<br>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§6.1','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§6.1','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+<!-- §6.2 -->
+<div class="article" id="art-§6.2" data-status="covered">
+  <div class="corpus-text">
+    <span class="art-ref">§6.2</span>
+    <span class="art-title">Pipeline termination</span>
+    <span class="art-source">001-timber-frame-intro-simul.txt</span>
+    <blockquote class="excerpt">The pipeline terminates (solved) when all elements carrying the slot needs_compliance have received their compliance_status.</blockquote>
+  </div>
+  <div class="rules-mapped">
+    <div class="rule-chip" onclick="toggleRule('compliance-R02-compliance-termination')">
+      <span class="agent-tag">compliance</span>
+      <span class="rule-id">R02 — compliance-termination</span>
+      <span class="confidence">✅</span>
+    </div>
+    <div class="rule-detail" id="detail-compliance-R02-compliance-termination">
+      <b>File:</b> rules/compliance/R02-compliance-termination.yml<br>
+      <b>Agent:</b> compliance (pos. 5 / 5)<br>
+      <b>CORPUS:</b> §6.2 — Pipeline termination condition<br>
+    </div>
+  </div>
+  <div class="decision">
+    <button class="btn-validate" onclick="mark('§6.2','validated')">✅ Correct</button>
+    <button class="btn-flag"     onclick="mark('§6.2','flagged')">❌ Rule missing / wrong</button>
+    <textarea class="comment" placeholder="Expert note…"></textarea>
+  </div>
+</div>
+
+</div>
+
+<div id="uncovered-section">
+  <h2>⚠️ Uncovered articles — candidates for <code>chorus-feed --enrich</code></h2>
+  <div class="gap-item">
+    <span class="art-ref">§1.1</span> — <b>Scope</b>
+    <span class="gap-priority LOW">LOW</span>
+    <p style="font-size:0.85em;margin-top:6px;color:#546e7a;">
+      Narrative/definitional scope article (building types, zones, element types listed).
+      Difficult to encode as a binary compliance rule. Likely intentionally out of scope.
+    </p>
+    <button class="btn-flag" style="margin-top:8px;font-size:0.8em;padding:4px 10px;"
+      onclick="mark('§1.1','flagged');document.querySelector('#art-§1\\.1 .comment').value='Flagged from gap section'">
+      ❌ Flag as gap
+    </button>
+  </div>
+
+  <div class="gap-item">
+    <span class="art-ref">§1.2</span> — <b>Contractor qualification</b>
+    <span class="gap-priority HIGH">HIGH</span>
+    <p style="font-size:0.85em;margin-top:6px;color:#546e7a;">
+      The contractor must hold a recognised timber frame construction qualification
+      (UKTFA member or equivalent). This is a binary conditional requirement encodable as a YAML rule.
+      <b>Recommended: add a rule in agent <code>qualification</code> checking slot <code>contractor_qualified</code>.</b>
+    </p>
+    <button class="btn-flag" style="margin-top:8px;font-size:0.8em;padding:4px 10px;"
+      onclick="mark('§1.2','flagged');document.querySelector('#art-§1\\.2 .comment').value='Flagged from gap section'">
+      ❌ Flag as gap
+    </button>
+  </div>
+</div>
+
+<div class="export-bar">
+  <button class="btn-export" onclick="exportValidatedReport()">📤 Export report</button>
+  <span class="export-info">Export decisions as JSON → pass to <code>chorus-review-kb --decisions</code></span>
+</div>
+
+<div id="export-fallback">
+  <p>⚠️ Automatic download blocked by browser. Copy the JSON below and save as <code>kb-review-001-decisions.json</code>:</p>
+  <textarea id="export-textarea" rows="20"></textarea>
+</div>
+
+<script>
+const REVIEW_ID    = 'kb-review-001';
+const SANDBOX_NAME = '01b-demo_en';
+
+function filterArticles(status) {
+  document.querySelectorAll('.article').forEach(el => {
+    if (status === 'all') { el.classList.remove('hidden'); return; }
+    const s = el.dataset.status;
+    const d = el.dataset.decision || '';
+    if (status === 'covered'   && s === 'covered'   && d !== 'flagged') el.classList.remove('hidden');
+    else if (status === 'uncovered' && s === 'uncovered') el.classList.remove('hidden');
+    else if (status === 'flagged'   && d === 'flagged')   el.classList.remove('hidden');
+    else if (status === 'validated' && d === 'validated') el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  });
+  ['all','covered','uncovered','flagged','validated'].forEach(k => {
+    document.getElementById('btn-'+k).classList.remove('active');
+  });
+  document.getElementById('btn-'+status).classList.add('active');
+}
+
+function searchArticles(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.article').forEach(el => {
+    el.classList.toggle('hidden', q && !el.textContent.toLowerCase().includes(q));
+  });
+}
+
+function toggleRule(id) {
+  const el = document.getElementById('detail-' + id);
+  if (el) el.classList.toggle('open');
+}
+
+function mark(artId, decision) {
+  const el = document.getElementById('art-' + artId);
+  if (!el) return;
+  el.dataset.decision = decision;
+  // Visual feedback
+  el.querySelectorAll('.btn-validate,.btn-flag').forEach(b => b.style.opacity = '0.5');
+  const btn = decision === 'validated'
+    ? el.querySelector('.btn-validate')
+    : el.querySelector('.btn-flag');
+  if (btn) btn.style.opacity = '1';
+}
+
+function exportValidatedReport() {
+  const data = {
+    review: REVIEW_ID, sandbox: SANDBOX_NAME,
+    exported: new Date().toISOString(), decisions: []
+  };
+  document.querySelectorAll('.article').forEach(el => {
+    const decision = el.dataset.decision || 'pending';
+    if (decision !== 'pending') {
+      data.decisions.push({
+        article_ref: el.id.replace('art-', ''),
+        decision:    decision,
+        note:        (el.querySelector('.comment') || {}).value || ''
+      });
+    }
+  });
+  const json = JSON.stringify(data, null, 2);
+  try {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = REVIEW_ID + '-decisions.json';
+    a.click(); URL.revokeObjectURL(url);
+  } catch(e) {
+    document.getElementById('export-fallback').style.display = 'block';
+    document.getElementById('export-textarea').value = json;
+  }
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1586 @@
+{
+  "collective": 0,
+  "elements": [
+    {
+      "id": "S-LBS-OK-C24-H2700-S400-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Structural stud"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-C30-H2700-S600-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud"
+      },
+      "strength_class": "C30",
+      "moisture_pct": 12,
+      "clear_height_mm": 2700,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-C24-H3000-S400-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Structural stud"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 15,
+      "clear_height_mm": 3000,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-C35-H3000-S600-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud"
+      },
+      "strength_class": "C35",
+      "moisture_pct": 16,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 44,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-C40-H3500-ANY-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "High-rise bearing stud"
+      },
+      "strength_class": "C40",
+      "moisture_pct": 13,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 184,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-C24-NOSPLICE-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Structural stud"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "has_longitudinal_splice": 0,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-SPACING-MIN-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud",
+        "spacing_mm": "centre-to-centre"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 300,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-SPACING-MAX-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud",
+        "spacing_mm": "stud spacing"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-C24-DEFLECT-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Structural stud",
+        "deflection_mm": "measured deflection",
+        "span_mm": "clear span"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "deflection_mm": 10,
+      "span_mm": 3600,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-OK-C24-LINING-A2-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud",
+        "reaction_class": "EN 13501 class",
+        "surface_mass_kg_m2": "surface density",
+        "rei_period": "EI period"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "reaction_class": "A2",
+      "surface_mass_kg_m2": 10.0
+    },
+    {
+      "id": "S-LBS-KO-C16-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud",
+        "strength_class": "Timber class"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-LBS-KO-C14-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Structural stud",
+        "strength_class": "grade"
+      },
+      "strength_class": "C14",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-LBS-KO-MOIST-HIGH-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud",
+        "moisture_pct": "MC%"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 20,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-LBS-KO-MOIST-LOW-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Structural stud",
+        "moisture_pct": "MC%"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 8,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-LBS-KO-SEC-H2700-S400-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "bearing stud",
+        "clear_height_mm": "floor height",
+        "spacing_mm": "c/c",
+        "width_mm": "breadth",
+        "depth_mm": "section depth"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-SEC-H3000-S600-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "structural stud",
+        "clear_height_mm": "storey height",
+        "spacing_mm": "stud spacing"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-SEC-H3500-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "bearing stud",
+        "clear_height_mm": "floor height",
+        "rei_period": "fire period"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-SPACING-LOW-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Structural stud",
+        "spacing_mm": "c-t-c"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 250,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-SPACING-HIGH-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "Bearing stud",
+        "spacing_mm": "c-t-c"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 650,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-SPLICE-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "bearing stud",
+        "has_longitudinal_splice": "longitudinal joint"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "has_longitudinal_splice": 1,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-DEFLECT-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "structural stud",
+        "deflection_mm": "\u03b4",
+        "span_mm": "Clear span L"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "deflection_mm": 15.0,
+      "span_mm": 3600,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-REI-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "rei_period": "EI period"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 20,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-LBS-KO-PB-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "plasterboard_thickness_mm": "Board thickness"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 9.5
+    },
+    {
+      "id": "S-LBS-KO-LINING-B-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "bearing stud",
+        "reaction_class": "Euroclass",
+        "surface_mass_kg_m2": "surface density",
+        "rei_period": "fire period"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "reaction_class": "B",
+      "surface_mass_kg_m2": 10.0
+    },
+    {
+      "id": "S-LBS-KO-SURFMASS-01",
+      "type_element": "load_bearing_stud",
+      "_labels": {
+        "type_element": "bearing stud",
+        "reaction_class": "fire class",
+        "surface_mass_kg_m2": "mass",
+        "rei_period": "fire resistance"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "reaction_class": "A1",
+      "surface_mass_kg_m2": 5.0
+    },
+    {
+      "id": "S-NLBS-OK-C16-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "NLBS",
+        "strength_class": "Strength grade",
+        "spacing_mm": "Stud spacing",
+        "width_mm": "Section width",
+        "depth_mm": "Section height"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-NLBS-OK-C18-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "Partition stud"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 12,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-NLBS-OK-C24-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "Non-structural stud",
+        "strength_class": "grade"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 15,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 140
+    },
+    {
+      "id": "S-NLBS-OK-C30-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "NLBS",
+        "spacing_mm": "c-t-c"
+      },
+      "strength_class": "C30",
+      "moisture_pct": 13,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-NLBS-OK-C35-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "Partition stud",
+        "spacing_mm": "centre-to-centre"
+      },
+      "strength_class": "C35",
+      "moisture_pct": 14,
+      "spacing_mm": 300,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-NLBS-OK-C40-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "Non-structural stud",
+        "strength_class": "grade"
+      },
+      "strength_class": "C40",
+      "moisture_pct": 14,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-NLBS-OK-NOFIRE-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "NLBS",
+        "rei_period": "Fire protection",
+        "plasterboard_thickness_mm": "board thickness"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-NLBS-OK-MOIST-10-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "Partition stud",
+        "moisture_pct": "moisture content"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 10,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-NLBS-OK-MOIST-18-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "NLBS",
+        "moisture_pct": "MC%"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 18,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-NLBS-KO-C14-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "partition stud",
+        "strength_class": "timber class"
+      },
+      "strength_class": "C14",
+      "moisture_pct": 14,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-NLBS-KO-SEC-W-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "non-structural stud",
+        "width_mm": "breadth",
+        "spacing_mm": "c/c"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "spacing_mm": 400,
+      "width_mm": 35,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-NLBS-KO-SEC-D-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "NLBS",
+        "depth_mm": "section depth",
+        "spacing_mm": "stud spacing"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 50
+    },
+    {
+      "id": "S-NLBS-KO-SPACING-HIGH-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "partition stud",
+        "spacing_mm": "Centre-to-centre"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "spacing_mm": 700,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-NLBS-KO-MOIST-01",
+      "type_element": "non_load_bearing_stud",
+      "_labels": {
+        "type_element": "non-structural stud",
+        "moisture_pct": "Moisture content"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 22,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-SP-OK-C24-H2700-S400-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "type_element": "Sill plate"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-SP-OK-C30-H2700-S600-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "type_element": "Bottom plate",
+        "spacing_mm": "c/c"
+      },
+      "strength_class": "C30",
+      "moisture_pct": 13,
+      "clear_height_mm": 2700,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-SP-OK-C35-H3000-S400-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "type_element": "Sole plate"
+      },
+      "strength_class": "C35",
+      "moisture_pct": 15,
+      "clear_height_mm": 3000,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-SP-OK-C40-H3000-S600-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "type_element": "Sill plate",
+        "strength_class": "grade"
+      },
+      "strength_class": "C40",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 44,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-SP-OK-H3500-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "type_element": "Bottom plate",
+        "clear_height_mm": "floor height"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 184,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-SP-KO-C16-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "strength_class": "Grade"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-SP-KO-C18-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "strength_class": "Strength grade"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-SP-KO-MOIST-HIGH-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "moisture_pct": "MC%"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 19,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-SP-KO-MOIST-LOW-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "moisture_pct": "MC%"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 7,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-SP-KO-SEC-H2700-S400-01",
+      "type_element": "sole_plate",
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 63
+    },
+    {
+      "id": "S-SP-KO-SEC-H3000-S600-01",
+      "type_element": "sole_plate",
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140
+    },
+    {
+      "id": "S-SP-KO-REI-01",
+      "type_element": "sole_plate",
+      "_labels": {
+        "rei_period": "EI period"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 25,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-TP-OK-C24-H2700-S400-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "type_element": "Head plate",
+        "rei_period": "Fire period"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-TP-OK-C30-H2700-S600-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "type_element": "Wall plate",
+        "spacing_mm": "c-t-c"
+      },
+      "strength_class": "C30",
+      "moisture_pct": 13,
+      "clear_height_mm": 2700,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-TP-OK-C35-H3000-S400-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "type_element": "Top plate",
+        "clear_height_mm": "storey height"
+      },
+      "strength_class": "C35",
+      "moisture_pct": 15,
+      "clear_height_mm": 3000,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-TP-OK-C40-H3000-S600-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "type_element": "Head plate",
+        "spacing_mm": "c/c"
+      },
+      "strength_class": "C40",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 44,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-TP-OK-H3500-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "type_element": "Wall plate"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 184,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-TP-OK-C24-MOIST-OK-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "type_element": "Top plate",
+        "moisture_pct": "moisture content"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 16,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-TP-KO-C14-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "strength_class": "Strength grade"
+      },
+      "strength_class": "C14",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-TP-KO-C18-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "strength_class": "Timber class"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-TP-KO-SEC-H3000-S600-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "width_mm": "section width",
+        "depth_mm": "b \u00d7 section depth"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140
+    },
+    {
+      "id": "S-TP-KO-SEC-H3500-01",
+      "type_element": "top_plate",
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 140
+    },
+    {
+      "id": "S-TP-KO-MOIST-HIGH-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "moisture_pct": "MC"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 21,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-TP-KO-PB-01",
+      "type_element": "top_plate",
+      "_labels": {
+        "plasterboard_thickness_mm": "Board thickness"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 10.0
+    },
+    {
+      "id": "S-RAF-OK-C18-H2700-S400-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "Roof rafter",
+        "strength_class": "Strength grade",
+        "clear_height_mm": "Clear height",
+        "deflection_mm": "Defl.",
+        "span_mm": "Span L",
+        "rei_period": "Fire resist."
+      },
+      "strength_class": "C18",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "deflection_mm": 10,
+      "span_mm": 3600,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-RAF-OK-C24-H2700-S600-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "Rafter",
+        "strength_class": "grade",
+        "spacing_mm": "c/c"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 13,
+      "clear_height_mm": 2700,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "deflection_mm": 8,
+      "span_mm": 3000,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-RAF-OK-C30-H3000-S400-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "Roof rafter",
+        "clear_height_mm": "clear height"
+      },
+      "strength_class": "C30",
+      "moisture_pct": 15,
+      "clear_height_mm": 3000,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-RAF-OK-C35-H3000-S600-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "Rafter",
+        "spacing_mm": "centre-to-centre"
+      },
+      "strength_class": "C35",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 44,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-RAF-OK-C40-H3500-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "Roof rafter",
+        "clear_height_mm": "floor height"
+      },
+      "strength_class": "C40",
+      "moisture_pct": 14,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 184,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-RAF-KO-C14-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "roof rafter",
+        "strength_class": "strength grade",
+        "clear_height_mm": "storey height",
+        "spacing_mm": "c-t-c"
+      },
+      "strength_class": "C14",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-RAF-KO-C16-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "rafter",
+        "strength_class": "timber class",
+        "clear_height_mm": "clear height",
+        "spacing_mm": "stud spacing"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-RAF-KO-DEFLECT-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "roof rafter",
+        "strength_class": "class",
+        "deflection_mm": "\u03b4",
+        "span_mm": "Clear span L"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "deflection_mm": 18.0,
+      "span_mm": 4200
+    },
+    {
+      "id": "S-RAF-KO-SPACING-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "rafter",
+        "spacing_mm": "Stud spacing",
+        "clear_height_mm": "storey height"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 700,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-RAF-KO-SEC-H3000-S600-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "roof rafter",
+        "strength_class": "class",
+        "clear_height_mm": "clear height",
+        "spacing_mm": "centre-to-centre"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140
+    },
+    {
+      "id": "S-RAF-KO-REI-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "rafter",
+        "rei_period": "Fire period"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 15,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-RAF-KO-MOIST-01",
+      "type_element": "rafter",
+      "_labels": {
+        "type_element": "roof rafter",
+        "moisture_pct": "moisture content",
+        "spacing_mm": "stud spacing"
+      },
+      "strength_class": "C18",
+      "moisture_pct": 25,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-JOI-OK-C24-H2700-S400-01",
+      "type_element": "joist",
+      "_labels": {
+        "type_element": "Floor joist",
+        "deflection_mm": "measured deflection",
+        "span_mm": "Clear span"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "deflection_mm": 8,
+      "span_mm": 3000,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-JOI-OK-C30-H2700-S600-01",
+      "type_element": "joist",
+      "_labels": {
+        "type_element": "Joist",
+        "spacing_mm": "c/c",
+        "deflection_mm": "defl.",
+        "span_mm": "span"
+      },
+      "strength_class": "C30",
+      "moisture_pct": 12,
+      "clear_height_mm": 2700,
+      "spacing_mm": 600,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "deflection_mm": 5,
+      "span_mm": 2400,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-JOI-OK-C35-H3000-S400-01",
+      "type_element": "joist",
+      "_labels": {
+        "type_element": "Floor joist",
+        "clear_height_mm": "storey height"
+      },
+      "strength_class": "C35",
+      "moisture_pct": 15,
+      "clear_height_mm": 3000,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-JOI-OK-C40-H3000-S600-01",
+      "type_element": "joist",
+      "_labels": {
+        "type_element": "Joist",
+        "spacing_mm": "c-t-c"
+      },
+      "strength_class": "C40",
+      "moisture_pct": 14,
+      "clear_height_mm": 3000,
+      "spacing_mm": 600,
+      "width_mm": 44,
+      "depth_mm": 140,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-JOI-OK-H3500-01",
+      "type_element": "joist",
+      "_labels": {
+        "type_element": "Floor joist"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 184,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5
+    },
+    {
+      "id": "S-JOI-KO-C14-01",
+      "type_element": "joist",
+      "_labels": {
+        "strength_class": "Grade"
+      },
+      "strength_class": "C14",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-JOI-KO-C16-01",
+      "type_element": "joist",
+      "_labels": {
+        "strength_class": "Grade"
+      },
+      "strength_class": "C16",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-JOI-KO-DEFLECT-01",
+      "type_element": "joist",
+      "_labels": {
+        "deflection_mm": "Defl.",
+        "span_mm": "L"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "deflection_mm": 20,
+      "span_mm": 3600
+    },
+    {
+      "id": "S-JOI-KO-SEC-H3500-01",
+      "type_element": "joist",
+      "_labels": {
+        "depth_mm": "Depth"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 3500,
+      "spacing_mm": 400,
+      "width_mm": 44,
+      "depth_mm": 140
+    },
+    {
+      "id": "S-JOI-KO-SPACING-LOW-01",
+      "type_element": "joist",
+      "_labels": {
+        "spacing_mm": "c/c"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 200,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-JOI-KO-MOIST-01",
+      "type_element": "joist",
+      "_labels": {
+        "moisture_pct": "MC"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 5,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89
+    },
+    {
+      "id": "S-JOI-KO-PB-01",
+      "type_element": "joist",
+      "_labels": {
+        "plasterboard_thickness_mm": "Board thickness"
+      },
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 6.0
+    },
+    {
+      "id": "S-INS-OK-ZONE-A-01",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation layer",
+        "thickness_mm": "ep",
+        "lambda": "Conductivity \u03bb",
+        "climate_zone": "Climate class"
+      },
+      "thickness_mm": 200,
+      "lambda": 0.03,
+      "climate_zone": "A"
+    },
+    {
+      "id": "S-INS-OK-ZONE-A-02",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation panel",
+        "thickness_mm": "ep"
+      },
+      "thickness_mm": 250,
+      "lambda": 0.038,
+      "climate_zone": "A"
+    },
+    {
+      "id": "S-INS-OK-ZONE-B-01",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation layer"
+      },
+      "thickness_mm": 150,
+      "lambda": 0.03,
+      "climate_zone": "B"
+    },
+    {
+      "id": "S-INS-OK-ZONE-B-02",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation panel"
+      },
+      "thickness_mm": 180,
+      "lambda": 0.04,
+      "climate_zone": "B"
+    },
+    {
+      "id": "S-INS-OK-ZONE-C-01",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation layer"
+      },
+      "thickness_mm": 120,
+      "lambda": 0.03,
+      "climate_zone": "C"
+    },
+    {
+      "id": "S-INS-OK-ZONE-C-02",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation panel"
+      },
+      "thickness_mm": 140,
+      "lambda": 0.04,
+      "climate_zone": "C"
+    },
+    {
+      "id": "S-INS-KO-ZONE-A-01",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation layer",
+        "thickness_mm": "Thickness e",
+        "lambda": "\u03bb",
+        "climate_zone": "Thermal zone"
+      },
+      "thickness_mm": 150,
+      "lambda": 0.035,
+      "climate_zone": "A"
+    },
+    {
+      "id": "S-INS-KO-ZONE-A-02",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation panel",
+        "thickness_mm": "e"
+      },
+      "thickness_mm": 190,
+      "lambda": 0.03,
+      "climate_zone": "A"
+    },
+    {
+      "id": "S-INS-KO-ZONE-B-01",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation layer",
+        "thickness_mm": "Thickness e",
+        "lambda": "k value"
+      },
+      "thickness_mm": 100,
+      "lambda": 0.035,
+      "climate_zone": "B"
+    },
+    {
+      "id": "S-INS-KO-ZONE-C-01",
+      "type_element": "insulation",
+      "_labels": {
+        "type_element": "Insulation panel",
+        "thickness_mm": "ep"
+      },
+      "thickness_mm": 80,
+      "lambda": 0.035,
+      "climate_zone": "C"
+    },
+    {
+      "id": "S-VCL-OK-SC1-01",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "VCL",
+        "sd_value": "Vapour resistance Sd",
+        "service_class": "Humidity class (SC)"
+      },
+      "sd_value": 5,
+      "service_class": 1
+    },
+    {
+      "id": "S-VCL-OK-SC1-02",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour check layer",
+        "sd_value": "Sd"
+      },
+      "sd_value": 10,
+      "service_class": 1
+    },
+    {
+      "id": "S-VCL-OK-SC1-03",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour barrier",
+        "sd_value": "Sd"
+      },
+      "sd_value": 50,
+      "service_class": 1
+    },
+    {
+      "id": "S-VCL-OK-SC2-01",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "VCL",
+        "sd_value": "Vapour resistance Sd",
+        "service_class": "service class"
+      },
+      "sd_value": 18,
+      "service_class": 2
+    },
+    {
+      "id": "S-VCL-OK-SC2-02",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour check layer",
+        "sd_value": "Sd"
+      },
+      "sd_value": 30,
+      "service_class": 2
+    },
+    {
+      "id": "S-VCL-OK-SC3-01",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour barrier",
+        "sd_value": "Sd",
+        "service_class": "SC"
+      },
+      "sd_value": 50,
+      "service_class": 3
+    },
+    {
+      "id": "S-VCL-OK-SC3-02",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "VCL",
+        "sd_value": "diffusion resistance",
+        "service_class": "service class"
+      },
+      "sd_value": 100,
+      "service_class": 3
+    },
+    {
+      "id": "S-VCL-OK-SC2-HIGH-01",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour check layer",
+        "sd_value": "Sd",
+        "service_class": "humid exposure class"
+      },
+      "sd_value": 200,
+      "service_class": 2
+    },
+    {
+      "id": "S-VCL-KO-SC1-01",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour barrier",
+        "sd_value": "Sd",
+        "service_class": "dry interior"
+      },
+      "sd_value": 3,
+      "service_class": 1
+    },
+    {
+      "id": "S-VCL-KO-SC1-02",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "VCL",
+        "sd_value": "Sd",
+        "service_class": "humidity class"
+      },
+      "sd_value": 4,
+      "service_class": 1
+    },
+    {
+      "id": "S-VCL-KO-SC2-01",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour check layer",
+        "sd_value": "Sd",
+        "service_class": "SC"
+      },
+      "sd_value": 10,
+      "service_class": 2
+    },
+    {
+      "id": "S-VCL-KO-SC2-02",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "VCL",
+        "sd_value": "Sd",
+        "service_class": "exposure class"
+      },
+      "sd_value": 17,
+      "service_class": 2
+    },
+    {
+      "id": "S-VCL-KO-SC3-01",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "Vapour barrier",
+        "sd_value": "Sd",
+        "service_class": "SC"
+      },
+      "sd_value": 30,
+      "service_class": 3
+    },
+    {
+      "id": "S-VCL-KO-SC3-02",
+      "type_element": "vapour_control_layer",
+      "_labels": {
+        "type_element": "VCL",
+        "sd_value": "Sd",
+        "service_class": "service class"
+      },
+      "sd_value": 49,
+      "service_class": 3
+    }
+  ]
+}

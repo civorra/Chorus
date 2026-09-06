@@ -1,0 +1,36 @@
+{
+  "projet": "stress-missing-strength_class",
+  "description": "Missing input slot strength_class on load_bearing_stud — R01 FIND filter requires defined strength_class, so rule skips; R04 sees no failures → qualified=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "strength_class",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "qualification"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-STRENGTH_CLASS",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "span_mm":                 3000,
+      "clear_height_mm":         2700,
+      "spacing_mm":              400,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective":              0,
+      "_resultats_attendus": {
+        "strength_class_ok":  null,
+        "qualified":          "YES",
+        "compliance_status":  "COMPLIANT"
+      },
+      "_stress_note": "Missing slot strength_class — R01 FIND filtre requires defined strength_class → rule skips silently. R04 sees no failures → qualified=YES. No _DEFAULT/_NEEDED — element skips check and passes.",
+      "_expected_uncertain": false
+    }
+  ]
+}

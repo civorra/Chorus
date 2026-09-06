@@ -1,0 +1,37 @@
+{
+  "projet": "stress-missing-spacing_mm",
+  "description": "Missing input slot spacing_mm on load_bearing_stud — R01-stud-spacing FIND filter requires defined spacing_mm; R02-lb-cross-section also requires it → both skip silently → frame_ok=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "spacing_mm",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "geometry"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-SPACING_MM",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "strength_class":          "C24",
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "span_mm":                 3000,
+      "clear_height_mm":         2700,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective":              0,
+      "_resultats_attendus": {
+        "spacing_ok":        null,
+        "section_ok":        null,
+        "frame_ok":          "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot spacing_mm — R01-stud-spacing FIND requires defined spacing_mm → skips. R02-lb-cross-section also requires spacing_mm → skips. R05-geometry-pass fires: no geometry_rejection → frame_ok=YES → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

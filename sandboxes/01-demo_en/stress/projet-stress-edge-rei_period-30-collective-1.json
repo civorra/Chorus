@@ -1,0 +1,38 @@
+{
+  "projet": "stress-edge-rei_period-30-collective-1",
+  "description": "Edge: rei_period=30 (CONFORME for coll=0) does NOT satisfy collective=1 requirement (needs REI 60) — rei_ok=NO dominates",
+  "_stress": {
+    "family":             "edge",
+    "pattern":            "A",
+    "slots":              ["rei_period", "collective"],
+    "source":             "fire R01 §5.1",
+    "agent":              "fire",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id":                        "LBS-STRESS-EDGE-REI30-COLL1",
+      "type_element":              "load_bearing_stud",
+      "needs_compliance":          1,
+      "strength_class":            "C24",
+      "moisture_pct":              14,
+      "clear_height_mm":           2700,
+      "spacing_mm":                400,
+      "width_mm":                  38,
+      "depth_mm":                  89,
+      "has_longitudinal_splice":   0,
+      "rei_period":                30,
+      "collective":                1,
+      "reaction_class":            "A1",
+      "surface_mass_kg_m2":        10,
+      "plasterboard_thickness_mm": 25,
+      "_resultats_attendus": {
+        "rei_ok":             "NO",
+        "fire_ok":            "NO",
+        "compliance_status":  "NON-COMPLIANT"
+      },
+      "_stress_note": "counter-intuitive: rei_period=30 is CONFORME for non-collective buildings (§5.1 min=30) but does NOT satisfy collective=1 requirement (min=60) — R01 evaluates min_rei_required(collective=1)=60; REI 30 < 60 → rei_ok=NO → fire_ok=NO → NON-COMPLIANT",
+      "_expected_uncertain": false
+    }
+  ]
+}

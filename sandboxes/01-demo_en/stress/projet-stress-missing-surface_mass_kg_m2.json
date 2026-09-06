@@ -1,0 +1,39 @@
+{
+  "projet": "stress-missing-surface_mass_kg_m2",
+  "description": "Missing input slot surface_mass_kg_m2 on load_bearing_stud — R02-lining-class FIND requires reaction_class OR surface_mass_kg_m2; reaction_class present (A1) → rule fires but only checks mass if defined → mass check skipped → lining_ok=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "surface_mass_kg_m2",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "fire"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-SURFACE_MASS",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "needs_fire":              1,
+      "strength_class":          "C24",
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "span_mm":                 3000,
+      "clear_height_mm":         2700,
+      "spacing_mm":              400,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "reaction_class":          "A1",
+      "plasterboard_thickness_mm": 12.5,
+      "collective":              0,
+      "_resultats_attendus": {
+        "lining_ok":         "YES",
+        "fire_ok":           "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot surface_mass_kg_m2 — R02-lining-class: reaction_class=A1 (rank=1 ≤ 2 → OK); surface_mass check: `if (defined $mass)` — absent → skipped. No failures → lining_ok=YES → fire_ok=YES → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

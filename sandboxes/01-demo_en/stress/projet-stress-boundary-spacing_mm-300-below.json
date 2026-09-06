@@ -1,0 +1,37 @@
+{
+  "projet": "stress-boundary-spacing_mm-low-below",
+  "description": "Boundary: spacing_mm = 299.9 (T-ε, below lower bound) — expect NON_CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "spacing_mm",
+    "threshold": 300,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "geo R01 §3.1",
+    "agent": "geometry",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-SPACING-LOW-BELOW",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 299.9,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective": 0,
+      "_resultats_attendus": {
+        "spacing_ok": "NO",
+        "frame_ok": "NO",
+        "compliance_status": "NON-COMPLIANT"
+      },
+      "_stress_note": "spacing=299.9 < 300 (T-ε). Rule: spacing < 300 → spacing_ok=NO → frame_ok=NO → NON-COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

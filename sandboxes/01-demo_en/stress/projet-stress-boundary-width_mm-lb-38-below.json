@@ -1,0 +1,37 @@
+{
+  "projet": "stress-boundary-width_mm-lb-below",
+  "description": "Boundary: width_mm = 37.9 (T-ε, below b_min=38 for LB h≤2700 s≤400) — expect NON_CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "width_mm",
+    "threshold": 38,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "geo R02 §3.2 min_lb_section(h=2700,s=400)=(38,89)",
+    "agent": "geometry",
+    "expected_uncertain": true
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-WIDTH-LB-BELOW",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 37.9,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective": 0,
+      "_resultats_attendus": {
+        "section_ok": "NO",
+        "frame_ok": "NO",
+        "compliance_status": "NON-COMPLIANT"
+      },
+      "_stress_note": "LB: width=37.9 < b_min=38 (T-ε). Rule: b < b_min → section_ok=NO → frame_ok=NO → NON-COMPLIANT.",
+      "_expected_uncertain": true
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "projet": "stress-edge-geometry-ok-splice-present",
+  "description": "Edge: all geometry slots CONFORME (spacing=400, width=38, depth=89) does NOT prevent NON-COMPLIANT when has_longitudinal_splice=1 — splice dominates",
+  "_stress": {
+    "family":             "edge",
+    "pattern":            "A",
+    "slots":              ["spacing_mm", "width_mm", "depth_mm", "has_longitudinal_splice"],
+    "source":             "geometry R04 §3.4",
+    "agent":              "geometry",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id":                        "LBS-STRESS-EDGE-GEOMOK-SPLICE",
+      "type_element":              "load_bearing_stud",
+      "needs_compliance":          1,
+      "strength_class":            "C24",
+      "moisture_pct":              14,
+      "clear_height_mm":           2700,
+      "spacing_mm":                400,
+      "width_mm":                  38,
+      "depth_mm":                  89,
+      "has_longitudinal_splice":   1,
+      "rei_period":                30,
+      "collective":                0,
+      "reaction_class":            "A1",
+      "surface_mass_kg_m2":        10,
+      "plasterboard_thickness_mm": 12.5,
+      "_resultats_attendus": {
+        "splice_ok":          "NO",
+        "frame_ok":           "NO",
+        "compliance_status":  "NON-COMPLIANT"
+      },
+      "_stress_note": "counter-intuitive: spacing=400 (CONFORME §3.1), width=38 and depth=89 (CONFORME §3.2 for h≤2700 s≤400) do NOT prevent NON-COMPLIANT — has_longitudinal_splice=1 triggers R04 splice rejection (§3.4) regardless of all other geometry slots; splice_ok=NO → frame_ok=NO → NON-COMPLIANT",
+      "_expected_uncertain": false
+    }
+  ]
+}

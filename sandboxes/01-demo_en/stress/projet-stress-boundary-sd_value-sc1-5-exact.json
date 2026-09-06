@@ -1,0 +1,30 @@
+{
+  "projet": "stress-boundary-sd_value-sc1-exact",
+  "description": "Boundary: sd_value = 5 (exact lower bound SC1, T=5, direction >=) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "sd_value",
+    "threshold": 5,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "thermal R02 §4.2 SC1",
+    "agent": "thermal",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id": "VCL-STRESS-BOUNDARY-SD-SC1-EXACT",
+      "type_element": "vapour_control_layer",
+      "needs_compliance": 1,
+      "needs_thermal": 1,
+      "sd_value": 5,
+      "service_class": 1,
+      "_resultats_attendus": {
+        "thermal_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "sd_value=5 = Sd_min(SC1)=5 (exact boundary). Rule: sd >= 5 → YES.",
+      "_expected_uncertain": false
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+##
+# RULE: R02-lining-class
+# AGENT: TimberFrame::Agent::Fire  (pos. 4 / 5)
+# CORPUS: §5.2 — BS EN 13501-1 — Reaction to fire of internal lining
+#
+# PURPOSE
+#   Checks that internal lining elements (typically plasterboard) meet
+#   Euroclass A1 or A2 minimum and a surface mass of ≥ 8 kg/m².
+#   Applies to elements with reaction_class and/or surface_mass_kg_m2 present.
+#   Does not apply to insulation and vapour_control_layer elements.
+#
+# INPUTS  (slots read)
+#   needs_fire          : targeting slot — set by initial feed
+#   type_element        : insulation and VCL excluded
+#   reaction_class      : enum — Euroclass (A1, A2, B, C, D, E, F)
+#   surface_mass_kg_m2  : float — surface mass (kg/m²)
+#
+# OUTPUTS (slots written)
+#   lining_ok       : 'YES' or 'NO'
+#   fire_rejection  : string — failure reason (written only on rejection)
+#
+# HELPERS
+#   reaction_class_rank($class) → int rank (1=A1 best, 7=F worst)
+#
+# GUARD — EXCEPTION: defined $f->{lining_ok}
+##
+RULE: R02-lining-class
+FIND:
+  f:
+    attribut: needs_fire
+    filtre: |
+      ($_->get('type_element') // '') !~ /^(insulation|vapour_control_layer)$/
+      && (defined $_->get('reaction_class') || defined $_->get('surface_mass_kg_m2'))
+EXCEPTION: defined $f->{lining_ok}
+ACTION: |
+  my @failures;
+
+  # Check reaction to fire class ≥ A2 — §5.2
+  my $class = $f->get('reaction_class');
+  if (defined $class) {
+    my $rank = reaction_class_rank($class);
+    if ($rank > 2) {
+      push @failures, "reaction class $class below A2 minimum (§5.2)";
+    }
+  }
+
+  # Check surface mass ≥ 8 kg/m² — §5.2
+  my $mass = $f->get('surface_mass_kg_m2');
+  if (defined $mass && $mass < 8) {
+    push @failures, sprintf("surface mass %.1f kg/m² below 8 kg/m² minimum (§5.2)", $mass);
+  }
+
+  if (@failures) {
+    $f->set('lining_ok', 'NO');
+    $f->set('fire_rejection', join('; ', @failures));
+    return 1;
+  }
+
+  $f->set('lining_ok', 'YES');
+  1

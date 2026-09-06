@@ -1,0 +1,109 @@
+#+AGENT: TimberFrame::Agent::Thermal
+#+PIPELINE_POS: 3 / 5
+#+RULES_DIR: rules/thermal
+
+* Domain
+  Verifies thermal performance compliance: minimum insulation thermal resistance R
+  by climate zone (§4.1) and vapour control layer minimum Sd value by service
+  class (§4.2). Operates on insulation and vapour control layer elements that
+  carry the =needs_thermal= targeting slot.
+
+* Targeting slots
+** Strategy
+   Strategy B — presence slot =needs_thermal=.
+   Set by Feed.pm initial load on insulation and vapour_control_layer elements.
+
+** Table
+   | Slot          | Set by       | Consumed by                      |
+   |---------------+--------------+----------------------------------|
+   | needs_thermal | initial feed | This agent (TimberFrame::Agent::Thermal) |
+
+** Pre-population contract
+   Feed.pm sets =needs_thermal= on all elements of type =insulation= and
+   =vapour_control_layer=.
+
+* Pipeline I/O
+** Incoming slots
+   - =type_element= — element type
+   - =needs_thermal= — targeting slot
+   - =thickness_mm= — insulation thickness (mm)
+   - =lambda= — thermal conductivity W/(m·K)
+   - =climate_zone= — 'A', 'B', or 'C'
+   - =sd_value= — vapour resistance Sd (m)
+   - =service_class= — 1, 2, or 3
+
+** Outgoing slots
+   - =thermal_ok= — 'YES' or 'NO'
+   - =thermal_rejection= — human-readable reason if thermal_ok='NO'
+
+* Ontologie
+
+** Aliases
+   Sources: corpus §4.1, §4.2
+   | Canonical KB form (slot / type_element value) | Project-side variants                          | Source       |
+   |-----------------------------------------------+------------------------------------------------+--------------|
+   | climate_zone                                  | zone, climate, thermal zone, climate class     | corpus §4.1  |
+   | thickness_mm                                  | e, ep, thickness, insulation thickness         | corpus §4.1  |
+   | lambda                                        | λ, conductivity, thermal conductivity, k value | corpus §4.1  |
+   | sd_value                                      | Sd, vapour resistance, diffusion resistance    | corpus §4.2  |
+   | service_class                                 | SC, exposure class, humidity class             | corpus §4.2  |
+
+* Catalogue des Frames
+
+** ThermalElement
+   Slots d'entrée  : type_element, needs_thermal
+   Slots calculés  : thermal_ok, thermal_rejection
+   Slots optionnels: thickness_mm, lambda, climate_zone, sd_value, service_class
+
+   *** type_element = insulation
+       Thermal resistance check: R = thickness_mm / (1000 × lambda) ≥ R_min(climate_zone).
+   *** type_element = vapour_control_layer
+       Vapour resistance check: sd_value ≥ Sd_min(service_class).
+
+* Slot dictionary
+  | Slot              | Type   | Description                                                         |
+  |-------------------+--------+---------------------------------------------------------------------|
+  | type_element      | enum   | Element type — invariant canonical slot                             |
+  | needs_thermal     | bool   | Targeting slot — set by initial feed on insulation/VCL              |
+  | thickness_mm      | float  | Insulation thickness (mm)                                           |
+  | lambda            | float  | Thermal conductivity W/(m·K)                                        |
+  | climate_zone      | enum   | Climate zone: A (severe), B (temperate), C (mild)                  |
+  | sd_value          | float  | Vapour resistance Sd value (m)                                      |
+  | service_class     | int    | Service class: 1 (dry), 2 (humid), 3 (very humid)                  |
+  | thermal_ok        | enum   | YES / NO — thermal compliance verdict                               |
+  | thermal_rejection | string | Human-readable rejection reason (set when thermal_ok=NO)            |
+
+* Rule catalog
+  | Rule                     | Corpus | Purpose                                                |
+  |--------------------------+--------+--------------------------------------------------------|
+  | R01-thermal-resistance   | §4.1   | Check R = thickness/(1000×lambda) ≥ R_min(climate_zone) |
+  | R02-vapour-sd            | §4.2   | Check sd_value ≥ Sd_min(service_class)                 |
+
+* Perl Helpers
+
+** r_min_by_zone
+   # Source corpus: §4.1 — Part L + BS EN ISO 6946 — Minimum R by climate zone
+   # Signature: r_min_by_zone($climate_zone) → float (R_min in m²·K/W)
+   # Called by: R01-thermal-resistance.yml (ACTION)
+   Returns minimum required R value:
+     A (highland/severe cold) → 6.5
+     B (temperate)            → 4.5
+     C (mild coastal south)   → 3.5
+     undef zone               → undef (skip check)
+
+** sd_min_by_service_class
+   # Source corpus: §4.2 — BS 5250 / BS EN ISO 13788 — Minimum Sd by service class
+   # Signature: sd_min_by_service_class($service_class) → float (Sd_min in m)
+   # Called by: R02-vapour-sd.yml (ACTION)
+   Returns minimum required Sd:
+     1 (dry interior)   → 5
+     2 (humid interior) → 18
+     3 (very humid)     → 50
+     undef class        → undef (skip check)
+
+* Constraints & Pitfalls
+  - R01 requires both thickness_mm and lambda — skip silently if either absent.
+  - R01 requires climate_zone — skip silently if absent.
+  - R02 requires both sd_value and service_class — skip silently if either absent.
+  - R02 applies only to vapour_control_layer type.
+  - _MAX_CYCLES recommended: 50 × 2 × 5 × 10 = 5 000 (engine default sufficient for demo).

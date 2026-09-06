@@ -1,0 +1,154 @@
+#+TITLE: Stress Test Manifest — 01b-demo_en
+#+GENERATED: 2025-09-01 (boundary) / 2025-09-01 (missing) / 2025-09-01 (edge) / 2025-09-01 (cascade)
+#+SANDBOX: 01b-demo_en
+#+KB_HASH: 32acd63c5c9994ac30301873bab761a5b440bacee22f46f49fc5a40c94c16fec  /home/civorra/Chorus/sandboxes/01b-demo_en/agent/chorus/compliance.org
+6d6dae66f1b56691be50585c3434baf8b108002a162e491cd98509538adb591e  /home/civorra/Chorus/sandboxes/01b-demo_en/agent/chorus/fire.org
+b98837d2c28a00cb1742f3e4382f7968ea89d1787cefec72a4fd01c25e6dee32  /home/civorra/Chorus/sandboxes/01b-demo_en/agent/chorus/geometry.org
+def10d58adb1eeb9b1c81e8eef503c865c667d77a3e231da7f67f774ac0374ad  /home/civorra/Chorus/sandboxes/01b-demo_en/agent/chorus/index.org
+3038394eced07273efe485a43cce95e4a9a06379a1667f8aa7cbe0307dca4809  /home/civorra/Chorus/sandboxes/01b-demo_en/agent/chorus/qualification.org
+3b0caa3cf72a6088632d693ed35433be8a3c90879fd33849916cdedd486b1a0c  /home/civorra/Chorus/sandboxes/01b-demo_en/agent/chorus/thermal.org
+
+* Summary
+  | Family    | Files | Thresholds/slots | Uncertain |
+  |-----------+-------+------------------+-----------|
+  | boundary  |    60 |               20 |        36 |
+  | missing   |    19 |               19 |         0 |
+  | edge      |     6 |                6 |         0 |
+  | cascade   |     1 |                2 |         0 |
+  | qualifier |  n/a  |              n/a |       n/a |
+  | TOTAL     |    86 |               47 |        36 |
+
+* Thresholds covered
+  | Slot                      | Threshold | Direction | Corpus source               | Files |
+  |---------------------------+-----------+-----------+-----------------------------+-------|
+  | moisture_pct (low)        |        10 | >=        | qual R02 §2.2               |     3 |
+  | moisture_pct (high)       |        18 | <=        | qual R02 §2.2               |     3 |
+  | deflection_mm             |      10.0 | <=        | qual R03 §2.3 (span=3000mm) |     3 |
+  | spacing_mm (low)          |       300 | >=        | geo R01 §3.1                |     3 |
+  | spacing_mm (high)         |       600 | <=        | geo R01 §3.1                |     3 |
+  | width_mm (NLB)            |        38 | >=        | geo R03 §3.3                |     3 |
+  | depth_mm (NLB)            |        63 | >=        | geo R03 §3.3                |     3 |
+  | width_mm (LB h≤2700 s≤400)|        38 | >=        | geo R02 §3.2                |     3 |
+  | depth_mm (LB h≤2700 s≤400)|        89 | >=        | geo R02 §3.2                |     3 |
+  | sd_value (SC1)            |         5 | >=        | thermal R02 §4.2            |     3 |
+  | sd_value (SC2)            |        18 | >=        | thermal R02 §4.2            |     3 |
+  | sd_value (SC3)            |        50 | >=        | thermal R02 §4.2            |     3 |
+  | thickness_mm (zone A)     |       195 | >=        | thermal R01 §4.1 (λ=0.030)  |     3 |
+  | thickness_mm (zone B)     |       135 | >=        | thermal R01 §4.1 (λ=0.030)  |     3 |
+  | thickness_mm (zone C)     |       105 | >=        | thermal R01 §4.1 (λ=0.030)  |     3 |
+  | rei_period (coll=0)       |        30 | >=        | fire R01 §5.1               |     3 |
+  | rei_period (coll=1)       |        60 | >=        | fire R01 §5.1               |     3 |
+  | surface_mass_kg_m2        |         8 | >=        | fire R02 §5.2               |     3 |
+  | plasterboard_thickness_mm |      12.5 | >=        | fire R03 §5.3 (coll=0)      |     3 |
+  | plasterboard_thickness_mm |      25.0 | >=        | fire R03 §5.3 (coll=1)      |     3 |
+
+* Mandatory slots tested (Family: missing)
+  All 19 mandatory/input slots tested — all expected CONFORME (COMPLIANT).
+  Behaviour: every rule uses skip-when-absent (FIND filtre guards or `// 'YES'` defaults in aggregation).
+  No slot has _DEFAULT or _NEEDED annotation — all skip patterns produce pass-through compliance.
+
+  | Slot                      | Agent          | type_element          | has_default | has_needed | Expected verdict |
+  |---------------------------+----------------+-----------------------+-------------+------------+------------------|
+  | strength_class            | qualification  | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | moisture_pct              | qualification  | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | deflection_mm             | qualification  | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | span_mm                   | qualification  | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | spacing_mm                | geometry       | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | clear_height_mm           | geometry       | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | width_mm                  | geometry       | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | depth_mm                  | geometry       | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | has_longitudinal_splice   | geometry       | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | rei_period                | fire           | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | collective                | fire           | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | reaction_class            | fire           | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | surface_mass_kg_m2        | fire           | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | plasterboard_thickness_mm | fire           | load_bearing_stud     | false       | false      | COMPLIANT        |
+  | thickness_mm              | thermal        | insulation            | false       | false      | COMPLIANT        |
+  | lambda                    | thermal        | insulation            | false       | false      | COMPLIANT        |
+  | climate_zone              | thermal        | insulation            | false       | false      | COMPLIANT        |
+  | sd_value                  | thermal        | vapour_control_layer  | false       | false      | COMPLIANT        |
+  | service_class             | thermal        | vapour_control_layer  | false       | false      | COMPLIANT        |
+
+  ⚠️ Observation: ALL missing-slot scenarios produce COMPLIANT because every rule implements
+  skip-when-absent logic. The compliance aggregation rule R01-compliance-verdict defaults
+  absent verdict slots to 'YES'. This means the pipeline is "lenient by default" — a missing
+  slot is never treated as a failure. This is a deliberate design choice (not a defect) but
+  means the stress suite confirms leniency rather than rejection behaviour for missing data.
+
+* Uncertain expected results (manual review required before convergence claim)
+  | File                                                        | Element id                              | Reason for uncertainty |
+  |-------------------------------------------------------------+-----------------------------------------+------------------------|
+  | projet-stress-boundary-deflection_mm-10-exact.json         | RAF-STRESS-BOUNDARY-DEFLECTION-EXACT    | Compound condition: deflection_mm/span_mm ratio — real R value depends on runtime float division |
+  | projet-stress-boundary-deflection_mm-10-below.json         | RAF-STRESS-BOUNDARY-DEFLECTION-BELOW    | Compound condition: deflection_mm/span_mm ratio |
+  | projet-stress-boundary-deflection_mm-10-above.json         | RAF-STRESS-BOUNDARY-DEFLECTION-ABOVE    | Compound condition: deflection_mm/span_mm ratio |
+  | projet-stress-boundary-width_mm-lb-38-exact.json           | LBS-STRESS-BOUNDARY-WIDTH-LB-EXACT      | Compound condition: min_lb_section(h,s) → depends on both clear_height_mm + spacing_mm table lookup |
+  | projet-stress-boundary-width_mm-lb-38-below.json           | LBS-STRESS-BOUNDARY-WIDTH-LB-BELOW      | Compound condition: min_lb_section(h,s) table lookup |
+  | projet-stress-boundary-width_mm-lb-38-above.json           | LBS-STRESS-BOUNDARY-WIDTH-LB-ABOVE      | Compound condition: min_lb_section(h,s) table lookup |
+  | projet-stress-boundary-depth_mm-lb-89-exact.json           | LBS-STRESS-BOUNDARY-DEPTH-LB-EXACT      | Compound condition: min_lb_section(h,s) table lookup |
+  | projet-stress-boundary-depth_mm-lb-89-below.json           | LBS-STRESS-BOUNDARY-DEPTH-LB-BELOW      | Compound condition: min_lb_section(h,s) table lookup |
+  | projet-stress-boundary-depth_mm-lb-89-above.json           | LBS-STRESS-BOUNDARY-DEPTH-LB-ABOVE      | Compound condition: min_lb_section(h,s) table lookup |
+  | projet-stress-boundary-thickness_mm-zoneA-195-exact.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEA-EXACT | Compound: R = thickness/(1000×lambda) — float precision at exact boundary |
+  | projet-stress-boundary-thickness_mm-zoneA-195-below.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEA-BELOW | Float precision in R computation |
+  | projet-stress-boundary-thickness_mm-zoneA-195-above.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEA-ABOVE | Float precision in R computation |
+  | projet-stress-boundary-thickness_mm-zoneB-135-exact.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEB-EXACT | Compound: R float computation |
+  | projet-stress-boundary-thickness_mm-zoneB-135-below.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEB-BELOW | Float precision in R computation |
+  | projet-stress-boundary-thickness_mm-zoneB-135-above.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEB-ABOVE | Float precision in R computation |
+  | projet-stress-boundary-thickness_mm-zoneC-105-exact.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEC-EXACT | Compound: R float computation |
+  | projet-stress-boundary-thickness_mm-zoneC-105-below.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEC-BELOW | Float precision in R computation |
+  | projet-stress-boundary-thickness_mm-zoneC-105-above.json   | INS-STRESS-BOUNDARY-THICKNESS-ZONEC-ABOVE | Float precision in R computation |
+  | projet-stress-boundary-rei_period-coll0-30-exact.json      | LBS-STRESS-BOUNDARY-REI-COLL0-EXACT     | CONDITION combines numeric (rei_period) + int (collective) from another BOARD slot |
+  | projet-stress-boundary-rei_period-coll0-30-below.json      | LBS-STRESS-BOUNDARY-REI-COLL0-BELOW     | Compound condition: collective slot written by Feed, not qualification agent |
+  | projet-stress-boundary-rei_period-coll0-30-above.json      | LBS-STRESS-BOUNDARY-REI-COLL0-ABOVE     | Compound condition: collective |
+  | projet-stress-boundary-rei_period-coll1-60-exact.json      | LBS-STRESS-BOUNDARY-REI-COLL1-EXACT     | Compound: rei_period + collective=1 + plasterboard at boundary simultaneously |
+  | projet-stress-boundary-rei_period-coll1-60-below.json      | LBS-STRESS-BOUNDARY-REI-COLL1-BELOW     | Compound condition: collective=1 |
+  | projet-stress-boundary-rei_period-coll1-60-above.json      | LBS-STRESS-BOUNDARY-REI-COLL1-ABOVE     | Compound condition: collective=1 |
+  | projet-stress-boundary-plasterboard_thickness_mm-coll0-125-exact.json | LBS-STRESS-BOUNDARY-PB-COLL0-EXACT | R03 aggregates rei_ok + lining_ok + pb_ok — multi-slot CONDITION in fire_ok |
+  | projet-stress-boundary-plasterboard_thickness_mm-coll0-125-below.json | LBS-STRESS-BOUNDARY-PB-COLL0-BELOW | Multi-slot aggregate fire verdict |
+  | projet-stress-boundary-plasterboard_thickness_mm-coll0-125-above.json | LBS-STRESS-BOUNDARY-PB-COLL0-ABOVE | Multi-slot aggregate fire verdict |
+  | projet-stress-boundary-plasterboard_thickness_mm-coll1-25-exact.json  | LBS-STRESS-BOUNDARY-PB-COLL1-EXACT | R03 + coll=1 + rei=60 compound boundary |
+  | projet-stress-boundary-plasterboard_thickness_mm-coll1-25-below.json  | LBS-STRESS-BOUNDARY-PB-COLL1-BELOW | Multi-slot aggregate fire verdict (coll=1) |
+  | projet-stress-boundary-plasterboard_thickness_mm-coll1-25-above.json  | LBS-STRESS-BOUNDARY-PB-COLL1-ABOVE | Multi-slot aggregate fire verdict (coll=1) |
+  | projet-stress-boundary-width_mm-lb-38-exact.json           | LBS-STRESS-BOUNDARY-WIDTH-LB-EXACT      | min_lb_section() table lookup — compound h+s |
+  | projet-stress-boundary-width_mm-lb-38-below.json           | LBS-STRESS-BOUNDARY-WIDTH-LB-BELOW      | min_lb_section() compound |
+  | projet-stress-boundary-width_mm-lb-38-above.json           | LBS-STRESS-BOUNDARY-WIDTH-LB-ABOVE      | min_lb_section() compound |
+  | projet-stress-boundary-depth_mm-lb-89-exact.json           | LBS-STRESS-BOUNDARY-DEPTH-LB-EXACT      | min_lb_section() compound |
+  | projet-stress-boundary-depth_mm-lb-89-below.json           | LBS-STRESS-BOUNDARY-DEPTH-LB-BELOW      | min_lb_section() compound |
+  | projet-stress-boundary-depth_mm-lb-89-above.json           | LBS-STRESS-BOUNDARY-DEPTH-LB-ABOVE      | min_lb_section() compound |
+
+* Edge cases tested
+  | Slug                               | Pattern | Source            | Agent         | Expected verdict | Uncertain |
+  |------------------------------------+---------+-------------------+---------------+------------------+-----------|
+  | reaction_class-a1-surface_mass-low | A       | fire R02 §5.2     | fire          | NON-COMPLIANT    | false     |
+  | surface_mass-ok-reaction_class-c   | A       | fire R02 §5.2     | fire          | NON-COMPLIANT    | false     |
+  | rei_period-30-collective-1         | A       | fire R01 §5.1     | fire          | NON-COMPLIANT    | false     |
+  | pb_thickness-15-collective-1       | A       | fire R03 §5.3     | fire          | NON-COMPLIANT    | false     |
+  | geometry-ok-splice-present         | A       | geometry R04 §3.4 | geometry      | NON-COMPLIANT    | false     |
+  | strength_class-c16-on-load-bearing | B       | qual R01 §2.1     | qualification | NON-COMPLIANT    | false     |
+
+  Pattern A (good slot / bad slot): 5 cases
+  Pattern B (Contraintes & Pitfalls): 1 case
+  Pattern C (compound condition): 0 cases
+
+* Cascade chains tested
+  | Trigger slot | Trigger value | Propagated slots          | Agent         | Presence certain | Value certain |
+  |--------------+---------------+---------------------------+---------------+------------------+---------------|
+  | qualified    | YES           | needs_geometry, frame_ok  | qualification | true             | true          |
+
+  Chain detail:
+  - =qualified= → =needs_geometry= : R04-qualification-result.yml writes =needs_geometry=1= on structural
+    elements (load_bearing_stud, non_load_bearing_stud, sole_plate, top_plate, rafter, joist) when
+    qualified=YES. Formula fully documented: qualification.org §Targeting slots + R04 ACTION Perl.
+  - =needs_geometry= → =frame_ok= : geometry agent then processes element and writes =frame_ok=YES/NO=.
+    With mid-range safe values (spacing=400, w=38, d=89, h=2700, no splice) → =frame_ok=YES= certain.
+  - No =_AFTER= slot triggers found in any YAML rule file.
+  - 1 file generated: =projet-stress-cascade-qualified.json=
+
+* Families skipped
+  qualifier — --families filter applied (boundary, missing, edge, cascade already generated).
+
+* Next steps
+  #+BEGIN_EXAMPLE
+  perl /home/civorra/Chorus/sandboxes/01b-demo_en/run.pl <any-projet-stress-file.json>
+  chorus-check 01b-demo_en --all
+  chorus-strengthen 01b-demo_en
+  #+END_EXAMPLE

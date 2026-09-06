@@ -1,0 +1,37 @@
+{
+  "projet": "stress-missing-has_longitudinal_splice",
+  "description": "Missing input slot has_longitudinal_splice on load_bearing_stud — R04-lb-splice FIND requires defined has_longitudinal_splice; skips silently → frame_ok=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "has_longitudinal_splice",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "geometry"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-HAS_SPLICE",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "strength_class":          "C24",
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "span_mm":                 3000,
+      "clear_height_mm":         2700,
+      "spacing_mm":              400,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective":              0,
+      "_resultats_attendus": {
+        "splice_ok":         null,
+        "frame_ok":          "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot has_longitudinal_splice — R04-lb-splice FIND requires defined has_longitudinal_splice → skips silently. R05: no rejection → frame_ok=YES → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

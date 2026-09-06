@@ -1,0 +1,41 @@
+{
+  "projet": "stress-cascade-qualified",
+  "description": "Cascade: qualified=YES on structural element propagates needs_geometry=1 to geometry agent (R04 inter-agent targeting slot propagation)",
+  "_stress": {
+    "family":             "cascade",
+    "trigger_slot":       "qualified",
+    "trigger_value":      "YES",
+    "propagated_slots":   ["needs_geometry", "frame_ok"],
+    "presence_certain":   true,
+    "value_certain":      true,
+    "agent":              "qualification",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id":                        "LBS-STRESS-CASCADE-QUALIFIED",
+      "type_element":              "load_bearing_stud",
+      "needs_compliance":          1,
+      "strength_class":            "C24",
+      "moisture_pct":              14,
+      "spacing_mm":                400,
+      "clear_height_mm":           2700,
+      "width_mm":                  38,
+      "depth_mm":                  89,
+      "has_longitudinal_splice":   0,
+      "rei_period":                30,
+      "collective":                0,
+      "reaction_class":            "A1",
+      "surface_mass_kg_m2":        10,
+      "plasterboard_thickness_mm": 12.5,
+      "_resultats_attendus": {
+        "qualified":          "YES",
+        "needs_geometry":     1,
+        "frame_ok":           "YES",
+        "compliance_status":  "COMPLIANT"
+      },
+      "_stress_note": "tests _AFTER propagation: qualified → needs_geometry. R04 sets qualified=YES (strength_class=C24≥C24, moisture_pct=14∈[10,18], no deflection data → skip) then writes needs_geometry=1 on type=load_bearing_stud. Geometry agent then processes element (spacing=400≤600, width=38≥38, depth=89≥89 for h≤2700 s≤400, no splice) → frame_ok=YES. presence: deterministic / value: certain — formula documented in qualification.org §Targeting slots + R04-qualification-result.yml ACTION",
+      "_expected_uncertain": false
+    }
+  ]
+}

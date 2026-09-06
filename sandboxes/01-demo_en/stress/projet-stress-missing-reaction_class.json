@@ -1,0 +1,38 @@
+{
+  "projet": "stress-missing-reaction_class",
+  "description": "Missing input slot reaction_class on load_bearing_stud — R02-lining-class FIND requires reaction_class OR surface_mass_kg_m2; if surface_mass absent too, skips → lining_ok absent → R03 aggregates lining_ok // 'YES' → fire_ok=YES → COMPLIANT",
+  "_stress": {
+    "family":             "missing",
+    "slot":               "reaction_class",
+    "has_default":        false,
+    "has_needed":         false,
+    "expected_uncertain": false,
+    "agent":              "fire"
+  },
+  "elements": [
+    {
+      "id":                      "LBS-STRESS-MISSING-REACTION_CLASS",
+      "type_element":            "load_bearing_stud",
+      "needs_compliance":        1,
+      "needs_fire":              1,
+      "strength_class":          "C24",
+      "moisture_pct":            14,
+      "deflection_mm":           8,
+      "span_mm":                 3000,
+      "clear_height_mm":         2700,
+      "spacing_mm":              400,
+      "width_mm":                38,
+      "depth_mm":                89,
+      "rei_period":              30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective":              0,
+      "_resultats_attendus": {
+        "lining_ok":         null,
+        "fire_ok":           "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "Missing slot reaction_class (surface_mass also absent) — R02-lining-class FIND requires reaction_class OR surface_mass_kg_m2 → both absent → skips. lining_ok absent. R03 aggregates lining_ok // 'YES' → fire_ok=YES → COMPLIANT.",
+      "_expected_uncertain": false
+    }
+  ]
+}

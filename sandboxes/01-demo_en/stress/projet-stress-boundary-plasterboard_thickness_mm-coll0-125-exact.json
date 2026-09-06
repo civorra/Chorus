@@ -1,0 +1,38 @@
+{
+  "projet": "stress-boundary-plasterboard_thickness_mm-coll0-exact",
+  "description": "Boundary: plasterboard_thickness_mm = 12.5 (exact min_pb(coll=0)=12.5) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "plasterboard_thickness_mm",
+    "threshold": 12.5,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "fire R03 §5.3 coll=0 → min_pb=12.5mm",
+    "agent": "fire",
+    "expected_uncertain": true
+  },
+  "elements": [
+    {
+      "id": "LBS-STRESS-BOUNDARY-PB-COLL0-EXACT",
+      "type_element": "load_bearing_stud",
+      "needs_compliance": 1,
+      "needs_fire": 1,
+      "strength_class": "C24",
+      "moisture_pct": 14,
+      "clear_height_mm": 2700,
+      "spacing_mm": 400,
+      "width_mm": 38,
+      "depth_mm": 89,
+      "rei_period": 30,
+      "plasterboard_thickness_mm": 12.5,
+      "collective": 0,
+      "_resultats_attendus": {
+        "pb_thickness_ok": "YES",
+        "fire_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "pb_thickness=12.5 = min_pb(coll=0)=12.5 (exact boundary). Rule: pb >= 12.5 → YES.",
+      "_expected_uncertain": true
+    }
+  ]
+}

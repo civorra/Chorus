@@ -1,0 +1,48 @@
+##
+# RULE: R01-stud-spacing
+# AGENT: TimberFrame::Agent::Geometry  (pos. 2 / 5)
+# CORPUS: §3.1 — BS EN 1995-1-1 §5.1 — Stud centre-to-centre spacing
+#
+# PURPOSE
+#   Checks that stud centre-to-centre spacing is within [300, 600] mm
+#   (tolerance ±5 mm on standard values of 400 and 600 mm).
+#   Applies to all structural elements with a spacing_mm slot.
+#   Elements without spacing_mm are skipped silently.
+#
+# INPUTS  (slots read)
+#   needs_geometry  : targeting slot — set by qualification R04
+#   spacing_mm      : float — stud centre-to-centre spacing (mm)
+#
+# OUTPUTS (slots written)
+#   spacing_ok         : 'YES' or 'NO' — spacing verdict
+#   geometry_rejection : string — failure reason (written only on rejection)
+#
+# GUARD — EXCEPTION: defined $f->{spacing_ok}
+#   Idempotence — prevents re-processing a Frame already handled.
+##
+RULE: R01-stud-spacing
+FIND:
+  f:
+    attribut: needs_geometry
+    filtre: "defined $_->get('spacing_mm')"
+EXCEPTION: defined $f->{spacing_ok}
+ACTION: |
+  # Read stud spacing — §3.1 valid range [300, 600] mm
+  my $spacing = $f->get('spacing_mm');
+
+  # Check lower bound: < 300 mm non-compliant
+  if ($spacing < 300) {
+    $f->set('spacing_ok', 'NO');
+    $f->set('geometry_rejection', "spacing $spacing mm below 300 mm minimum (§3.1)");
+    return 1;
+  }
+
+  # Check upper bound: > 600 mm non-compliant — §3.1
+  if ($spacing > 600) {
+    $f->set('spacing_ok', 'NO');
+    $f->set('geometry_rejection', "spacing $spacing mm exceeds 600 mm maximum (§3.1)");
+    return 1;
+  }
+
+  $f->set('spacing_ok', 'YES');
+  1

@@ -1,0 +1,30 @@
+{
+  "projet": "stress-boundary-sd_value-sc2-above",
+  "description": "Boundary: sd_value = 18.1 (T+ε, above Sd_min=18 for SC2) — expect CONFORME",
+  "_stress": {
+    "family": "boundary",
+    "slot": "sd_value",
+    "threshold": 18,
+    "direction": ">=",
+    "epsilon": 0.1,
+    "source": "thermal R02 §4.2 SC2",
+    "agent": "thermal",
+    "expected_uncertain": false
+  },
+  "elements": [
+    {
+      "id": "VCL-STRESS-BOUNDARY-SD-SC2-ABOVE",
+      "type_element": "vapour_control_layer",
+      "needs_compliance": 1,
+      "needs_thermal": 1,
+      "sd_value": 18.1,
+      "service_class": 2,
+      "_resultats_attendus": {
+        "thermal_ok": "YES",
+        "compliance_status": "COMPLIANT"
+      },
+      "_stress_note": "sd_value=18.1 > 18 (T+ε). Rule: sd >= 18 → YES.",
+      "_expected_uncertain": false
+    }
+  ]
+}

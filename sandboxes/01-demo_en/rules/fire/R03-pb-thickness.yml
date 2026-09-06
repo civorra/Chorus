@@ -1,0 +1,72 @@
+##
+# RULE: R03-pb-thickness
+# AGENT: TimberFrame::Agent::Fire  (pos. 4 / 5)
+# CORPUS: §5.3 — Building Regs Part B §B3 — Plasterboard thickness by REI
+#         §5.1 — BS EN 13501-2 — Fire resistance period requirements
+#
+# PURPOSE
+#   Checks that plasterboard thickness meets the minimum required to achieve
+#   the fire resistance period: ≥ 12.5 mm for REI 30 (non-collective),
+#   ≥ 25 mm for REI 60 (collective). Also sets fire_ok aggregating
+#   all fire check results for this element.
+#   Skipped silently if plasterboard_thickness_mm or collective is absent.
+#   Does not apply to insulation and vapour_control_layer.
+#
+# INPUTS  (slots read)
+#   needs_fire                 : targeting slot
+#   type_element               : insulation and VCL excluded
+#   plasterboard_thickness_mm  : float — plasterboard thickness (mm)
+#   collective                 : int — 0 or 1
+#   rei_ok                     : from R01 — fire resistance verdict
+#   lining_ok                  : from R02 — lining class verdict
+#
+# OUTPUTS (slots written)
+#   pb_thickness_ok : 'YES' or 'NO'
+#   fire_ok         : 'YES' or 'NO' — aggregate fire verdict
+#   fire_rejection  : string — appended failure if pb check fails
+#
+# HELPERS
+#   min_pb_thickness($collective) → float (mm) or undef
+#
+# GUARD — EXCEPTION: defined $f->{fire_ok}
+##
+RULE: R03-pb-thickness
+FIND:
+  f:
+    attribut: needs_fire
+    filtre: |
+      ($_->get('type_element') // '') !~ /^(insulation|vapour_control_layer)$/
+EXCEPTION: defined $f->{fire_ok}
+ACTION: |
+  # Check plasterboard thickness if data present — §5.3
+  my $pb = $f->get('plasterboard_thickness_mm');
+  my $collective = $f->get('collective') // 0;
+
+  if (defined $pb) {
+    my $pb_min = min_pb_thickness($collective);
+    if (defined $pb_min && $pb < $pb_min) {
+      $f->set('pb_thickness_ok', 'NO');
+      # Append to existing fire_rejection if already set
+      my $existing = $f->get('fire_rejection') // '';
+      my $sep = $existing ? '; ' : '';
+      $f->set('fire_rejection',
+        $existing . $sep .
+        sprintf("plasterboard %.1f mm below minimum %.1f mm for %s (§5.3)",
+          $pb, $pb_min, $collective ? 'REI 60' : 'REI 30'));
+    } else {
+      $f->set('pb_thickness_ok', 'YES');
+    }
+  }
+
+  # Aggregate fire verdict from all fire checks
+  my $rei_ok    = $f->get('rei_ok')    // 'YES';  # absent = not checked = pass
+  my $lining_ok = $f->get('lining_ok') // 'YES';
+  my $pb_ok     = $f->get('pb_thickness_ok') // 'YES';
+
+  if ($rei_ok eq 'YES' && $lining_ok eq 'YES' && $pb_ok eq 'YES') {
+    $f->set('fire_ok', 'YES');
+  } else {
+    $f->set('fire_ok', 'NO');
+  }
+
+  1
