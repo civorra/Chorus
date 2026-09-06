@@ -515,6 +515,21 @@ Report the sanity check results to the user before proceeding.
 
 ### 4.1 Update `README.org`
 
+> ⛔ **`[skip-readme-update]` guard:** if this skill was invoked automatically by
+> `chorus-import-project`'s auto-conversion mechanism (see `chorus-import-project.md`
+> § Auto-conversion algorithm), **skip this entire step** — do not touch `README.org`
+> at all. The caller records the converted file itself, under its own
+> `* Imported project documents (not corpus — chorus-import-project artefacts)`
+> section, never under `* Corpus`. A converted project document is never normative
+> corpus, even though it lands in the same `corpus/` output directory.
+> (Incident precedent: sandbox `07c-cyber-sec-CC-PART1-INTRO+FUNCTIONAL+ASSURANCE`,
+> file `005-SIMUL-ID-PKI-ADV-FSP2-fiche-vision.md` wrongly listed in `* Corpus`
+> after an auto-invoked `chorus-word` call ran this step unconditionally.)
+>
+> Proceed with the row-add below **only** when invoked directly by the user
+> (or by any other caller that does not pass `[skip-readme-update]`) to feed
+> normative corpus material.
+
 ```org
 | <NNN> | corpus/<NNN>-<slug>-content.md  | DOM extraction (html) from <source.html>          | <date> |
 | <NNN> | corpus/<NNN>-<slug>-vision.md   | hybrid(DOM+Claude vision) from <source.xml>       | <date> |

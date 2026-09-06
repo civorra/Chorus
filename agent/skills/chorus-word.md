@@ -357,18 +357,27 @@ def cell_text(cell):
 
 def table_to_markdown(tbl):
     """Convert a python-docx Table to a Markdown pipe table.
-    Handles merged cells by tracking unique _tc XML elements per row.
+    Handles horizontally merged cells by tracking unique _tc XML elements
+    scoped PER ROW (not per table — see warning below).
     """
     if not tbl.rows:
         return ""
-    seen_cells = set()
+    # ⚠️ Dedup must be scoped per-row. A table-wide `seen_cells` set keyed by
+    # id(cell._tc) causes false-positive collisions across rows: Python's
+    # id() values can be reused once a previous row's Cell wrapper object is
+    # garbage-collected, so a later row may spuriously match an id from an
+    # earlier row and get silently dropped. Horizontal cell merges only ever
+    # occur within a single row, so per-row scoping is both correct and
+    # sufficient — it still de-duplicates real horizontal merges without
+    # risking cross-row data loss.
     deduped = []
     for row in tbl.rows:
+        seen_in_row = set()
         row_cells = []
         for cell in row.cells:
             cell_id = id(cell._tc)
-            if cell_id not in seen_cells:
-                seen_cells.add(cell_id)
+            if cell_id not in seen_in_row:
+                seen_in_row.add(cell_id)
                 row_cells.append(cell_text(cell))
         if row_cells:
             deduped.append(row_cells)
@@ -1167,6 +1176,21 @@ Report the sanity check results to the user before proceeding.
 ## Phase 4 — Update sandbox metadata
 
 ### 4.1 Update `README.org`
+
+> ⛔ **`[skip-readme-update]` guard:** if this skill was invoked automatically by
+> `chorus-import-project`'s auto-conversion mechanism (see `chorus-import-project.md`
+> § Auto-conversion algorithm), **skip this entire step** — do not touch `README.org`
+> at all. The caller records the converted file itself, under its own
+> `* Imported project documents (not corpus — chorus-import-project artefacts)`
+> section, never under `* Corpus`. A converted project document is never normative
+> corpus, even though it lands in the same `corpus/` output directory.
+> (Incident precedent: sandbox `07c-cyber-sec-CC-PART1-INTRO+FUNCTIONAL+ASSURANCE`,
+> file `005-SIMUL-ID-PKI-ADV-FSP2-fiche-vision.md` wrongly listed in `* Corpus`
+> after an auto-invoked `chorus-word` call ran this step unconditionally.)
+>
+> Proceed with the row-add below **only** when invoked directly by the user
+> (or by any other caller that does not pass `[skip-readme-update]`) to feed
+> normative corpus material.
 
 Add a row for the new file in the `Corpus` table:
 

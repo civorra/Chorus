@@ -45,6 +45,14 @@
 > - `chorus-feed <sandbox-name>` must have been run (org KB + YAML rules present)
 > - `chorus-check <sandbox-name> <any-project>` must have been run at least once (infrastructure present)
 > - `chorus-create-project <sandbox-name> --batch` should have been run first — stress complements, never replaces, the standard suite
+>
+> ⚠️ **`_MAX_CYCLES` for cascade families:** Family 4 (`cascade`) tests `_AFTER` propagation chains
+> that require multiple engine cycles per Frame to converge. If the sandbox `run.pl` was calibrated
+> without a chain-depth factor (D = 1), stress-cascade tests may hit `_MAX_CYCLES` prematurely and
+> produce false `FAILED` results or `(unprocessed)` elements.
+> Before running stress-cascade files, verify that `_MAX_CYCLES` in `run.pl` uses the formula
+> `N_frames × N_rules_total × D × 10` where D accounts for the longest `_AFTER` propagation chain.
+> See `chorus-engine-yaml.md § Rule Evaluation Lifecycle` and `chorus-templates.md T5`.
 
 > ⚠️ **Sources — strict order:**
 > 1. `$SANDBOX/agent/chorus/index.org` → Frame types, pipeline, namespace

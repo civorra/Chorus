@@ -69,22 +69,42 @@ for subsequent phases.
 
 **Auto-conversion algorithm:**
 
+> ⚠️ **`README.org` ownership — do NOT let the invoked conversion skill touch `* Corpus`.**
+> `chorus-word`/`chorus-pdf`/`chorus-excel`/`chorus-xml` each have their own Phase 4.1
+> ("Update `README.org`") which unconditionally appends a row to the `* Corpus` table.
+> That table is reserved for **normative texts that fed `chorus-feed`** — a project
+> document routed through `chorus-import-project` is never normative corpus, even
+> though it physically lands in `corpus/` (shared conversion output directory) and even
+> though the same conversion skill is reused. Silently letting the invoked skill run its
+> own Phase 4.1 here would misclassify the file as corpus (see incident: sandbox
+> `07c-cyber-sec-CC-PART1-INTRO+FUNCTIONAL+ASSURANCE`, file
+> `005-SIMUL-ID-PKI-ADV-FSP2-fiche-vision.md` wrongly listed in `* Corpus` after an
+> auto-invoked `chorus-word` call).
+>
+> **Rule:** when invoking a conversion skill from this algorithm, instruct it explicitly
+> to **skip its own Phase 4.1** (pass this instruction as part of the call context —
+> e.g. "invoked by chorus-import-project — do not update README.org § Corpus, the
+> caller will record this file itself"). `chorus-import-project` performs the
+> `README.org` update itself, under the dedicated section described in Step 4 below —
+> never under `* Corpus`.
+
 ```
 For each source in <source…>:
   If source is a directory:
     # Preserve directory mode — will be expanded later
     Add to sources list as-is
   Else if source ends in .pdf, .docx, .xlsx, .csv, .xml, .html, .htm:
-    # Invoke conversion skill
+    # Invoke conversion skill — instruct it to skip its own README.org Phase 4.1
+    # (this algorithm records the file itself, see Step 4 below)
     ext = source file extension
     if ext == .pdf:
-      Call: chorus-pdf <sandbox> <source> --auto
+      Call: chorus-pdf <sandbox> <source> --auto   [skip-readme-update]
     elif ext == .docx:
-      Call: chorus-word <sandbox> <source>
+      Call: chorus-word <sandbox> <source>          [skip-readme-update]
     elif ext in (.xlsx, .csv):
-      Call: chorus-excel <sandbox> <source>
+      Call: chorus-excel <sandbox> <source>         [skip-readme-update]
     elif ext in (.xml, .html, .htm):
-      Call: chorus-xml <sandbox> <source>
+      Call: chorus-xml <sandbox> <source>           [skip-readme-update]
 
     Wait for skill to complete (expected exit code 0)
 
@@ -95,6 +115,23 @@ For each source in <source…>:
     # Replace source with converted file for subsequent phases
     source = converted_path
     Print: "[import] Auto-converted <original.ext> → <converted_path>"
+
+    # Step 4 — Record the converted file under the dedicated section
+    # (NOT under * Corpus — see warning above). Done once per source, here,
+    # regardless of Single/Merge/Batch mode. The produced projet-import-*.json
+    # name is not yet known at this point in Single/Merge mode — write it as
+    # "(pending)" and patch the row in Phase 6 once the output filename is final.
+    Ensure $SANDBOX/README.org contains a
+      "* Imported project documents (not corpus — chorus-import-project artefacts)"
+      heading (create it, with the explanatory preamble below, if absent):
+        "⚠️ These files are not normative corpus — they never fed chorus-feed and
+         never influenced the KB, YAML rules, or Helper catalogues. They are
+         project-side documents aligned against the existing KB terminology by
+         chorus-import-project. Kept in corpus/ only because that is where the
+         conversion skills write their Markdown output — physical location, not
+         classification."
+    Append a row:
+      | <NNN> | <converted_path> | <original source description> | <produced projet-import-*.json, or "(pending)"> | <date> |
 
   Else:
     # Plain .txt, .md, or inline content — use as-is
@@ -1943,6 +1980,18 @@ Create `$SANDBOX/agent/import-report-<NNN>.org`:
 
 > This report is the **alignment decision memory** for this sandbox.
 > It is automatically re-read during the next `chorus-import-project` run on the same sandbox.
+
+### Patch the `README.org` imported-documents row
+
+If Phase 0 (auto-conversion) recorded a row with `(pending)` in the
+`* Imported project documents (not corpus — chorus-import-project artefacts)`
+section (see Phase 0 Step 4), replace `(pending)` with the actual output filename
+(e.g. `projet-import-<NNN>.json`) now that it is known.
+
+⛔ Never add or move this row into `* Corpus` — that table is reserved for
+normative texts read by `chorus-feed` (see Phase 0 warning). An imported project
+document stays under the dedicated section regardless of format or mode
+(Single/Merge/Batch).
 
 ### Post-import — thesaurus consolidation (automatic)
 

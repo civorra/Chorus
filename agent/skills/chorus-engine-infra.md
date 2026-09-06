@@ -125,6 +125,61 @@ my $ok = $xprt->process($input);  # 1=solved, undef=failed
 - Inter-agent communication: write/read slots on `$agent->BOARD`.
 - `_LOCK_UNTIL_STABLE`: agent skipped if a previous agent already succeeded in the current iteration.
 
+#### Two-level inference loop
+
+The engine operates on **two nested loops** that must not be confused:
+
+```
+┌─── Chorus::Expert::process() — OUTER loop ──────────────────────────────┐
+│                                                                          │
+│  do {                                                                    │
+│    for each agent in register() order:                                   │
+│    │                                                                     │
+│    │  ┌─── Chorus::Engine::loop() — INNER loop ────────────────────┐    │
+│    │  │  applyrules() until all rules return 0 (local convergence)  │    │
+│    │  │  = one agent iterates over its own rules until stable       │    │
+│    │  └────────────────────────────────────────────────────────────┘    │
+│    │                                                                     │
+│    └─ then: next agent                                                   │
+│                                                                          │
+│  } until BOARD->{SOLVED} or BOARD->{FAILED}                             │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**What this means in practice:**
+
+- **Inner loop** (`Chorus::Engine`): one agent iterates over its own YAML rules, cycle after
+  cycle, until no rule produces an effect in a full pass. This is the level described in
+  `chorus-engine-yaml.md § Rule Evaluation Lifecycle`. The term "cycle" always refers to this
+  inner loop.
+
+- **Outer loop** (`Chorus::Expert`): once Agent A has converged locally (inner loop finished),
+  control passes to Agent B — which runs its own inner loop. After all agents have run, the
+  Expert checks `BOARD->{SOLVED|FAILED}`. If neither flag is set, it launches **another outer
+  iteration**, starting again from Agent A.
+
+**Inter-agent slot dependencies** work through the outer loop, not the inner cycle:
+
+| Dependency type | Mechanism | Loop level |
+|---|---|---|
+| Rule Rxx depends on slot written by Rule Ryy **in the same agent** | `CONDITION: defined $p->{slot_from_Ryy}` | Inner loop — resolved within one agent's inference |
+| Rule Rxx depends on slot written by **another agent** via BOARD | Read `$agent->BOARD->{key}` in ACTION | Outer loop — available only after the other agent's inner loop has completed |
+
+> ⚠️ **CONDITION cannot wait for another agent's output.**
+> `CONDITION: defined $p->{slot_from_agent_B}` will never be satisfied within Agent A's inner
+> loop if the slot is written by Agent B — because Agent B has not yet run in this outer
+> iteration. Cross-agent data must transit via **BOARD** slots, read in ACTION (not CONDITION).
+
+**Why `N_agents` appears in the `_MAX_CYCLES` formula:**
+
+`_MAX_CYCLES = N_frames × N_rules_total × N_agents × D × 10`
+
+Each outer iteration runs all agents. If the Expert needs K outer iterations to converge
+(e.g. because Agent B's output unlocks new rules in Agent A on the next round), the total
+number of inner cycles is multiplied by N_agents × K. The `N_agents` factor approximates
+this overhead assuming K ≈ 1 (single outer pass). If the pipeline requires multiple outer
+rounds, increase the margin accordingly.
+
 > ⚠️ **Known bug: `Chorus::Expert->new()` ignores its arguments.**
 > Always force `_MAX_ITER` via direct assignment after `new()`:
 > ```perl
@@ -135,8 +190,183 @@ my $ok = $xprt->process($input);  # 1=solved, undef=failed
 > my $xprt = Chorus::Expert->new();
 > $xprt->{_MAX_ITER} = 50_000;
 > ```
-> Sizing heuristic: `N_frames × N_rules_total × safety_margin`.
-> For a production pipeline (100 frames, 40 rules): `_MAX_ITER ≥ 100_000`.
+> Sizing heuristic: `N_frames × N_rules_total × D × safety_margin`
+> where **D** = depth of the longest cross-rule dependency chain within one agent
+> (count CONDITION guards that test a slot written by another rule — each such level = +1 cycle per Frame).
+> D = 1 if all rules are independent.
+> For a production pipeline (100 frames, 40 rules, D = 1): `_MAX_ITER ≥ 100_000`.
+> For a pipeline with a 3-rule chain (D = 3): `_MAX_ITER ≥ 300_000`.
+
+---
+
+### 1.5 BOARD — Shared Publication Space
+
+The BOARD is a single `Chorus::Frame` instance injected by `register()` into every agent.
+It is the **only shared mutable state** between agents — `%REPOSITORY` (Frames) is also
+shared, but agents coordinate global pipeline state exclusively through BOARD slots.
+
+#### What belongs on the BOARD
+
+| Put on BOARD | Keep in Frames |
+|---|---|
+| Global pipeline flags (`SOLVED`, `FAILED`) | Per-element classification results |
+| Phase markers (`current_phase`, `pass_number`) | Inference slots computed by rules |
+| Aggregate results (counts, global scores, totals) | Individual element slots (`besoin_*`, `resultat_*`) |
+| Agent-to-agent signals (`agent_a_done`, `threshold_override`) | Prototype defaults (`_DEFAULT`, `_ISA`) |
+| The original input (`INPUT`) | Frame relationships (`_AFTER`, `_CONTAINER`) |
+
+> **Rule of thumb:** if the value is the same for all elements in the pipeline run → BOARD.
+> If it is specific to one Frame → Frame slot.
+
+#### Writing to the BOARD (Perl — in Agent.pm or addrule())
+
+```perl
+# In a rule closure (addrule) or Agent method:
+$agent->BOARD->{phase}        = 'scoring';      # set a phase marker
+$agent->BOARD->{total_ko}     = $count;         # publish an aggregate
+$agent->BOARD->{agent_a_done} = 1;              # signal completion to next agent
+```
+
+#### Reading from the BOARD (Perl)
+
+```perl
+my $phase = $agent->BOARD->{phase};             # read in same or other agent
+my $input = $agent->BOARD->{INPUT};             # original input passed to process()
+```
+
+#### Writing/Reading from BOARD in YAML ACTION / EFFET
+
+```yaml
+ACTION: |
+  # Write to BOARD from a YAML rule:
+  $SELF->BOARD->{total_ko} = ($SELF->BOARD->{total_ko} // 0) + 1;
+  1
+
+ACTION: |
+  # Read a value published by a previous agent:
+  my $threshold = $SELF->BOARD->{threshold_override} // 100;
+  $p->set('adjusted_threshold', $threshold);
+  1
+```
+
+> ⚠️ In YAML ACTION / EFFET, use **`$SELF`** (the agent) — never `$agent` (out of scope).
+> `$SELF->BOARD` is identical to `$agent->BOARD` — same Frame instance.
+
+#### BOARD access from Perl helpers
+
+Helpers are installed in the `Chorus::Engine` namespace via typeglob. Their ability to
+access the BOARD depends on **how they are called** from a YAML ACTION.
+
+**Two calling conventions:**
+
+```yaml
+# Convention 1 — plain function call: NO agent reference passed
+ACTION: |
+  my $val = helper1($p);          # $_[0] = $p (Frame) — no BOARD access possible
+  $p->set('result', $val);
+  1
+
+# Convention 2 — method call via $SELF: agent is $_[0]
+ACTION: |
+  my $val = $SELF->helper2($p);   # $_[0] = $SELF (agent), $_[1] = $p (Frame)
+  $p->set('result', $val);
+  1
+```
+
+**Helper signatures:**
+
+```perl
+# Pure computation helper — no BOARD access (called as plain function or method)
+sub helper1 {
+    my ($frame) = @_;             # or: my (undef, $frame) = @_ if called as $SELF->helper1($p)
+    return compute($frame);
+}
+
+# BOARD-aware helper — must be called as $SELF->helper2($frame, ...)
+sub helper2 {
+    my ($agent, $frame) = @_;     # $agent = Chorus::Engine instance = $SELF
+    my $threshold = $agent->BOARD->{threshold_override} // 100;
+    $agent->BOARD->{total_processed}++;
+    return compute($frame, $threshold);
+}
+```
+
+> **Choosing the right convention:**
+> - Helper that **only computes** from Frame data → plain function signature `($frame, ...)`,
+>   call as `helper1($p)`. Simpler, no coupling to the agent.
+> - Helper that **reads or writes BOARD** (global threshold, counter, phase flag) → method
+>   signature `($agent, $frame, ...)`, call as `$SELF->helper2($p)`.
+>   Document this calling convention in the `Helpers.pm` header comment.
+
+> ⚠️ A helper that expects `($agent, $frame)` but is called as `helper($frame)` will
+> receive the Frame as `$agent` and crash silently (or produce wrong results) when
+> calling `$agent->BOARD`. Always match the signature to the calling convention.
+
+#### Full inter-agent pattern: Agent A publishes → Agent B consumes
+
+```
+Outer iteration 1:
+  Agent A (inner loop):
+    R01 computes per-element scores → writes Frame slots
+    R02 accumulates total → $SELF->BOARD->{global_score} = $total; return 1
+    R03 signals done      → $SELF->BOARD->{scoring_done} = 1;      return 1
+    (all rules return 0 → Agent A converged)
+
+  Agent B (inner loop):
+    R01 reads BOARD: my $score = $SELF->BOARD->{global_score} // 0;
+        CONDITION: '$SELF->BOARD->{scoring_done}'   # ⛔ WRONG — see note below
+        → correct approach: read directly in ACTION, no CONDITION guard on BOARD
+    (all rules return 0 → Agent B converged)
+
+  Expert checks BOARD → not SOLVED yet → launches outer iteration 2
+  ...
+```
+
+> ⚠️ **Do not use CONDITION to wait for a BOARD slot written by another agent.**
+> `CONDITION` is evaluated inside Agent B's inner loop — at that point, Agent A has
+> already completed its inner loop (BOARD slot is set). So the CONDITION would actually
+> be satisfied immediately. However, if Agent B runs *before* Agent A in `register()`
+> order, the BOARD slot is not yet set when Agent B's inner loop starts in the first
+> outer iteration. The rule will fire immediately with `undef` (or be skipped), producing
+> a wrong result — not a deferred wait.
+>
+> **Correct pattern:** read the BOARD slot directly in ACTION with a `// default` fallback,
+> and use `register()` order to guarantee Agent A runs before Agent B.
+
+```perl
+# Expert.pm — register() order = execution order within each outer iteration
+$xprt->register($agent_scoring,   # 1st: computes and publishes to BOARD
+                $agent_decision);  # 2nd: reads BOARD slots already set by agent_scoring
+```
+
+#### BOARD slot lifecycle
+
+| Event | Effect on BOARD |
+|---|---|
+| `$xprt->register(...)` | BOARD Frame created and injected into all agents |
+| `$xprt->process($input)` called | `BOARD->{INPUT} = $input` set |
+| Any agent calls `solved()` | `BOARD->{SOLVED} = 'Y'` → Expert stops after current agent |
+| Any agent calls `failed()` | `BOARD->{FAILED} = 'Y'` → Expert stops after current agent |
+| `process()` returns | `BOARD->{SOLVED}` and `BOARD->{FAILED}` **deleted** (BOARD is reusable) |
+| Custom slots (`phase`, `total_ko` …) | **Not deleted** by `process()` — persist across calls if the same Expert instance is reused |
+
+> ⚠️ Custom BOARD slots survive `process()`. If the same `Chorus::Expert` instance
+> processes multiple inputs sequentially (batch), reset custom slots explicitly before
+> each call:
+> ```perl
+> delete $xprt->BOARD->{total_ko};
+> delete $xprt->BOARD->{scoring_done};
+> my $ok = $xprt->process($next_input);
+> ```
+
+#### Checklist — BOARD design
+
+- [ ] BOARD slots used only for global / inter-agent state — per-element data stays in Frames
+- [ ] `register()` order guarantees producer agents run before consumer agents
+- [ ] Custom BOARD slots documented in `index.org` (key, type, written by, read by)
+- [ ] Custom slots reset explicitly between `process()` calls if the Expert is reused
+- [ ] YAML ACTION uses `$SELF->BOARD` — never `$agent->BOARD`
+- [ ] No `CONDITION` guard on a BOARD slot written by another agent — use `register()` order + ACTION fallback
 
 ---
 
@@ -174,8 +404,21 @@ use Exporter 'import';
 
 our @EXPORT_OK = qw($agent helper1 helper2);
 
-sub helper1 { my ($frame) = @_; return $result; }
-sub helper2 { ... }
+# Pure computation helper — called as: helper1($frame)
+# No BOARD access — receives Frame only.
+sub helper1 {
+    my ($frame) = @_;
+    return compute($frame);
+}
+
+# BOARD-aware helper — called as: $SELF->helper2($frame)
+# Receives agent as $_[0] → can read/write BOARD.
+sub helper2 {
+    my ($agent, $frame) = @_;    # $agent = Chorus::Engine ($SELF in YAML)
+    my $threshold = $agent->BOARD->{threshold_override} // 100;
+    $agent->BOARD->{total_processed}++;
+    return compute($frame, $threshold);
+}
 
 our $agent;
 
@@ -565,7 +808,9 @@ sub load_projet {
 ### ✅ Engine / Expert
 
 - [ ] At least one agent or rule must call `solved()` (otherwise infinite loop)
-- [ ] Calibrate `_MAX_CYCLES`: `N_frames × N_rules × N_agents × 10`
+- [ ] Calibrate `_MAX_CYCLES`: `N_frames × N_rules × N_agents × D × 10`
+      where D = depth of the longest intra-agent cross-rule dependency chain
+      (D = 1 if all rules are independent; D = N for a chain R01→R02→…→R0N)
 - [ ] **`Chorus::Expert->new()` ignores its arguments** — always force `_MAX_ITER` after `new()` (see §1.4)
 - [ ] Termination agent registered **last** in `register()`
 - [ ] Deduplicate `_ID`s: two rules with the same `REGLE` → 2nd silently ignored
@@ -599,8 +844,11 @@ _MAX_CYCLES  _LOCK_UNTIL_STABLE  _IDENT
 ### BOARD Slots (Expert)
 
 ```
-SOLVED   FAILED   INPUT
+SOLVED   FAILED   INPUT   <custom inter-agent slots>
 ```
+
+> Reserved slots: `SOLVED`, `FAILED` (deleted by `process()` on return), `INPUT` (set by `process()`).
+> Custom slots (phase markers, aggregates, agent signals): see `§1.5 BOARD — Shared Publication Space`.
 
 ### Exported Symbols
 

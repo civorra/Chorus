@@ -67,6 +67,15 @@ No API key available
 
 > **`--hybrid` is the recommended mode** for building/structural standards
 > (Approved Document A, DTU, EC5, NF EN…) when an API key is available.
+
+> ⛔ **Known blind spot — rotated-header matrix tables** (cross-reference /
+> dependency matrices with column headers printed one character per line,
+> rotated 90°): silently flattened into unreadable text by **all** modes
+> (no mode is immune — the failure is in `pdfminer`/`pdfplumber` layout
+> analysis, upstream of the mode-specific rendering). See § 1.4c for
+> detection heuristic, `pdftotext -layout` fallback, and manual verification
+> method. Always independently verify any table containing "X"/"-" marks
+> mixed inline with a run of column-header-like tokens.
 > It combines pdfminer precision on text (exact characters, no OCR risk) with
 > Claude vision on cropped figures only (smaller payload, lower cost, no text
 > re-interpretation). On pages with both text and figures, text fidelity is
@@ -312,6 +321,132 @@ After mixing text blocks and `[FIGURE N]` placeholders, sort all elements by the
 **Dependency:** `pdfplumber` — installed in the pipx venv at
 `~/.local/share/pipx/venvs/pdfplumber/bin/python3` if not available system-wide.
 The script must detect the correct interpreter or fall back gracefully.
+
+### 1.4c Rotated-header table detection — `pdftotext -layout` fallback
+
+**⛔ Known failure mode:** normative standards frequently include **cross-reference /
+dependency matrices** whose column headers are printed **rotated 90°** (one character
+per line, e.g. a column header `ADV_FSP.1` rendered as a vertical stack `A`/`D`/`V`/`_`/
+`F`/`S`/`P`/`.`/`1`). `pdfminer`'s `LTTextBox` grouping and `pdfplumber`'s
+`find_tables()` both assume horizontal reading order — they silently **flatten** this
+layout into a single incoherent line of text (row label + first data mark + all column
+headers concatenated), with no error, no warning, and no `quality_check()` rejection
+(the flattened output does not match any of Filters 0-3, since it exits as an
+`LTTextBox` never routed through `extract_tables_from_page()` at all — `has_table`
+detection via H/V-line curves may not fire either, if the matrix uses hairline
+borders instead of the H+V curve pattern of § 1.4b).
+
+**Symptom in the generated `.md` file:** a single line mixing a row label, one or two
+"X"/"-" marks, and a run of column header tokens with no visual separation, e.g.:
+```
+ADV_ARC.1   X  ADV_FSP.1   ADV_FSP.2   ADV_FSP.3   ADV_FSP.4   ADV_FSP.5   ADV_FSP.6 ...
+```
+This is **not** a garbled/corrupt PDF — the underlying content is fully recoverable
+(see verification method below) — it is a **structural blind spot** in the current
+`analyse_pages()` / `extract_tables_from_page()` pipeline.
+
+**Detection heuristic — applied during `analyse_pages` on every page:**
+
+A page is flagged `rotated_header_suspect = True` when pdfminer reports ≥ 6
+`LTChar` (or single-character `LTTextLineHorizontal`) elements that are:
+- vertically stacked (each char's `y0`/`y1` adjacent to the next, same `x0` ±2pt), AND
+- collectively spell a token matching the corpus's own component-id pattern
+  (`[A-Z]+_[A-Z]+\.\d+`, e.g. `ADV_FSP.1`) when read top-to-bottom.
+
+```python
+def detect_rotated_headers(layout, page_num):
+    """Detect vertically-stacked single-character columns spelling out
+    component-id-like tokens (e.g. rotated 'ADV_FSP.1' column headers).
+    Returns True if the page likely contains a rotated-header matrix table.
+    """
+    import re
+    from pdfminer.layout import LTChar, LTTextLineHorizontal
+
+    chars = []
+    for el in layout:
+        if isinstance(el, LTTextLineHorizontal) and len(el.get_text().strip()) <= 2:
+            chars.append((el.get_text().strip(), el.x0, el.y0, el.y1))
+
+    # Cluster by x0 (same column) — chars sharing x0 ±2pt stacked in Y
+    from collections import defaultdict
+    columns = defaultdict(list)
+    for text, x0, y0, y1 in chars:
+        key = round(x0 / 2) * 2   # snap to 2pt buckets
+        columns[key].append((text, y0, y1))
+
+    id_pattern = re.compile(r'^[A-Z]+_[A-Z]+\.\d+$')
+    for x0, entries in columns.items():
+        if len(entries) < 6:
+            continue
+        entries.sort(key=lambda e: -e[1])   # top-to-bottom (descending y)
+        spelled = ''.join(t for t, _, _ in entries)
+        if id_pattern.match(spelled.replace(' ', '')):
+            return True
+    return False
+```
+
+Store `rotated_header_suspect` in the `analyse_pages()` per-page result dict
+(alongside `has_table`), so downstream assembly can trigger the fallback.
+
+**Fallback — `pdftotext -layout` reconstruction:**
+
+When `rotated_header_suspect` is `True` for a page, **do not** attempt to reconstruct
+the table via `pdfplumber`/`pdfminer` — both preserve the same broken reading order.
+Instead, shell out to `pdftotext -layout`, which uses Poppler's own layout-preserving
+text extraction (character-position-aware, handles rotated/pivoted headers correctly
+because it lays out the *page's absolute X/Y grid* rather than grouping text runs):
+
+```python
+def extract_page_via_pdftotext_layout(pdf_path, page_num):
+    """Fallback extraction for pages with rotated-header matrix tables.
+    Returns the raw -layout text for the page, or None on failure.
+    """
+    import subprocess
+    result = subprocess.run(
+        ["pdftotext", "-f", str(page_num), "-l", str(page_num), "-layout", pdf_path, "-"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout
+```
+
+Insert the raw `pdftotext -layout` output for that page as a fenced block, clearly
+labelled, instead of the (broken) reconstructed Markdown table:
+
+```
+[MATRIX TABLE — extracted via pdftotext -layout (rotated column headers detected)]
+<raw -layout text, monospace-aligned>
+[END MATRIX TABLE]
+```
+
+> ⚠️ **Do not attempt to convert this into a Markdown pipe table automatically.**
+> `pdftotext -layout` preserves alignment via whitespace positioning only — reliably
+> readable by a human or by a downstream LLM pass, but converting it losslessly into
+> `| col | col |` syntax requires column-boundary inference that is exactly the failure
+> mode being avoided here. Downstream tools (`chorus-feed`) must read the monospace
+> block as-is and may ask a human to confirm the row/column mapping before codifying
+> it into rules — never auto-derive `dependencies` arrays from this block without
+> explicit confirmation.
+
+**Verification method (manual, for auditing an already-generated `.md`):**
+
+If a suspicious flattened line is spotted in a generated `-vision.md` or `-text.md`
+file (row label immediately followed by marks and a run-on of column tokens), verify
+independently **before** trusting or rejecting the content:
+
+```bash
+pdftotext -f <page> -l <page> -layout <source.pdf> - | less
+```
+
+- If `pdftotext -layout` produces a clean, aligned grid → the PDF source is fine;
+  the extraction pipeline (`chorus-pdf`) failed on this page — apply the fallback above.
+- If `pdftotext -layout` **also** produces garbled output → the PDF itself has a
+  genuine rendering problem (non-standard font encoding, requires OCR) — escalate,
+  do not attempt automated reconstruction.
+
+> **This check adds zero API cost** — `pdftotext` is a local, offline tool
+> (part of `poppler-utils`, already a hard dependency of this skill).
 
 ## Phase 1.5 — nohup gate (hybrid mode only)
 
@@ -1886,6 +2021,21 @@ Report the sanity check results to the user before proceeding.
 ## Phase 4 — Update sandbox metadata
 
 ### 4.1 Update `README.org`
+
+> ⛔ **`[skip-readme-update]` guard:** if this skill was invoked automatically by
+> `chorus-import-project`'s auto-conversion mechanism (see `chorus-import-project.md`
+> § Auto-conversion algorithm), **skip this entire step** — do not touch `README.org`
+> at all. The caller records the converted file itself, under its own
+> `* Imported project documents (not corpus — chorus-import-project artefacts)`
+> section, never under `* Corpus`. A converted project document is never normative
+> corpus, even though it lands in the same `corpus/` output directory.
+> (Incident precedent: sandbox `07c-cyber-sec-CC-PART1-INTRO+FUNCTIONAL+ASSURANCE`,
+> file `005-SIMUL-ID-PKI-ADV-FSP2-fiche-vision.md` wrongly listed in `* Corpus`
+> after an auto-invoked `chorus-word` call ran this step unconditionally.)
+>
+> Proceed with the row-add below **only** when invoked directly by the user
+> (or by any other caller that does not pass `[skip-readme-update]`) to feed
+> normative corpus material.
 
 Add a row for the new file in the `Corpus` table:
 

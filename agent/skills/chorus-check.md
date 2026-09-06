@@ -1,6 +1,6 @@
 # Skill — chorus-check
 
-> Trigger: `chorus-check <sandbox-name> <fichier-projet> [--all]`
+> Trigger: `chorus-check <sandbox-name> <fichier-projet> [--all] [--explain] [--summary]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing the KB and YAML rules (produced by `chorus-feed`)
@@ -8,6 +8,14 @@
 >                      or data provided inline by the user
 >                      (ignored when `--all` is present — all `projet-*.json` are used)
 > `--all`: run all `projet-*.json` files found in `$SANDBOX/` and produce a synthesis report
+> `--explain`: produce a human-readable, rule-by-rule explanation file for every
+>              NON_CONFORME (and optionally `_a_confirmer`) element — see § Option
+>              `--explain` below. Compatible with both single-file mode and `--all`
+>              (one consolidated explanation file covering all runs in the latter case).
+> `--summary`: produce a one-page, consultation-friendly synthesis document (headline
+>              figures, substantive vs. mapping-anomaly breakdown, recommendation) — see
+>              § Option `--summary` below. Can be combined with `--explain` (recommended)
+>              or used standalone.
 >
 > **Single responsibility: validate a project against the knowledge base.**
 > The project file is **runtime input data** — it does not influence
@@ -400,6 +408,9 @@ Create `$SANDBOX/lib/<Namespace>/Expert.pm` from template **T4** (`chorus-templa
 **Substitutions:** one `use` + one `->build()` per agent in `#+PIPELINE_POS` order.
 Force `$xprt->{_MAX_ITER}` after `new()` (known bug: `new()` ignores its arguments).
 Document BOARD inter-agent keys in `index.org` if agents communicate via BOARD slots.
+For each custom BOARD slot: key name, type, written by (agent), read by (agent).
+`register()` order must guarantee producers run before consumers.
+Full BOARD API + patterns: `chorus-engine-infra.md § 1.5 BOARD — Shared Publication Space`.
 
 
 ## Phase 5 — Generate `run.pl`
@@ -576,7 +587,290 @@ If **NOT CONVERGED** → recommend:
 ```
 
 
+## Option `--explain` — Human-readable non-conformity explanations
+
+> Runs **after** Phase 6 (single-file mode) or Phase 6-all (`--all` mode), once the
+> compliance report has been produced and the convergence verdict is known.
+> Never replaces the verbatim `run.pl` output or the structured report — it is an
+> **additional, optional artefact** aimed at a non-technical reader (product owner,
+> quality engineer, technical director) who needs to understand *why* an element was
+> classified NON_CONFORME without reading YAML or Perl.
+>
+> ⚠️ **Skip this option entirely if `--explain` is absent** — it must never run by default,
+> to avoid slowing down routine `chorus-check` invocations during iterative debugging.
+
+### Rationale
+
+The verbatim `motif_*` slot printed by `run.pl` (e.g. *"Unrecognised completion state
+for a PP assignment (§8.1.2 para 254)"*) is accurate but terse: it does not show
+*which* rule fired, *what* input values it read, *why* that specific rule applied
+rather than a neighbouring one, nor *what corpus paragraph* it encodes. Reconstructing
+this context today requires manually cross-referencing `agent/chorus/<slug>.org`,
+`rules/<slug>/R*.yml`, and the project JSON — exactly the work an ECA session does
+ad hoc in chat, with no persistent, reusable trace once the conversation ends.
+`--explain` formalises and automates that reconstruction into a durable file.
+
+### Phase E1 — Select elements to explain
+
+From the elements collected in Phase 6 (or Phase 6-all across all files):
+
+```
+TARGETS = { e | element_status(e) == 'NON_CONFORME' }
+        ∪ { e | e has "_a_confirmer": 1 in the project JSON }   (if present)
+```
+
+> `_a_confirmer` elements are included because an uncertain terminology mapping
+> (e.g. produced by `chorus-import-project`) can silently produce a NON_CONFORME
+> verdict for reasons unrelated to genuine non-compliance — the reader needs to see
+> both the verdict **and** the mapping uncertainty side by side.
+
+If `TARGETS` is empty → print `[explain] No NON_CONFORME or _a_confirmer element — nothing to explain.` and skip Phases E2–E4 entirely (no file written).
+
+### Phase E2 — Reconstruct the explanation for each target element
+
+For each element `e` in `TARGETS`:
+
+1. **Identify the agent and rule that produced the verdict.**
+   - Determine `e.type_element` → look up the owning agent via `agent/chorus/index.org`.
+   - Identify the verdict slot that is `KO` (or the `_a_confirmer` flag) on `e`.
+   - Read `agent/chorus/<slug>.org` § Rule Catalogue to find the rule(s) whose
+     `Outputs (slots written)` include that slot.
+   - Confirm by reading the matching `rules/<slug>/R*.yml` file — the rule that
+     actually wrote the `KO` value is identifiable by its `FIND.filtre` condition
+     matching `e`'s own slot values (e.g. `document_type`, `operation_kind`).
+
+2. **Extract the exact corpus reference.**
+   - From the rule's YAML header (`# CORPUS: §N — ...`) or inline comment
+     referencing `§N para M`.
+   - Quote the referenced paragraph number verbatim — do not paraphrase the
+     article number.
+
+3. **List the input values read by the rule.**
+   - From the rule's `INPUTS (slots read)` header, read each corresponding value
+     directly from the project JSON element `e`.
+
+4. **Identify neighbouring rules that were NOT applied, and why.**
+   - Scan sibling rules in the same agent (rules sharing the same targeting slot
+     but a different `FIND.filtre` on `type`/`kind`/`document_type`).
+   - For each sibling rule whose value domain *would* have accepted the element's
+     actual input value, note it explicitly — this surfaces terminology-mapping
+     errors (see chorus-audit-import precedent: a value valid for "selection" but
+     used on an "assignment" element).
+   - Example pattern (Operations agent): if `e.completion_status = "restricted"`
+     failed under `R02-assignment-pp-flexible` (assignment domain), check whether
+     `R04-selection-pp-flexible` (selection domain) would have accepted it — if so,
+     flag this explicitly as a likely terminology-mapping issue, not a genuine
+     substantive non-conformity.
+
+5. **Classify the non-conformity nature** (new — not present in the base report):
+
+   | Class | Meaning |
+   |---|---|
+   | 📋 Non-conformité substantielle | The element's data is correctly captured; the rule correctly identifies a genuine gap against the normative requirement (e.g. OP-03: assignment genuinely left uncompleted in an ST). |
+   | 🔤 Anomalie de mapping terminologique | The KO verdict stems from a value that is valid in the KB grammar but for a *different* branch/type than the one carrying it (e.g. OP-07: "restricted" valid only for `selection`, misapplied to `assignment`) — likely a `chorus-import-project` alignment error, not a real defect. |
+   | ❓ Incertain | Element carries `_a_confirmer: 1` — verdict may change once the ambiguous mapping is resolved by the engineer. |
+
+   > This classification is the single most valuable addition of `--explain` over
+   > the base compliance report: it separates *"the product genuinely fails this
+   > requirement"* from *"the import tooling mis-translated a term"* — two very
+   > different actions for the reader (fix the product vs. fix the JSON).
+
+### Phase E3 — Per-element explanation block format
+
+For each target element, produce a block using this template (language: corpus
+language, per the canonical rule in `chorus-engine.md`):
+
+```markdown
+### <id> — <type_element>  [<classe: 📋 substantielle | 🔤 mapping | ❓ incertain>]
+
+**Verdict :** <verdict_slot> = KO
+**Motif (run.pl) :** "<motif_* verbatim string>"
+
+**Règle appliquée :** `rules/<slug>/<R0N-rule-name>.yml`  (agent `<Nom>`, position <N>)
+**Référence normative :** §<N> para <M> — <one-line summary of the requirement>
+
+**Valeurs d'entrée lues par la règle :**
+| Slot | Valeur dans le projet |
+|---|---|
+| <slot_a> | <valeur> |
+| <slot_b> | <valeur> |
+
+**Pourquoi cette règle s'applique (et pas une autre) :**
+<one or two sentences: which FIND.filtre condition matched, contrasted with the
+nearest sibling rule's filtre that did NOT match>
+
+<if class == 🔤 mapping:>
+**⚠️ Anomalie de mapping suspectée :** la valeur `<value>` est valide dans le
+référentiel KB, mais uniquement pour `<other branch>` (règle
+`<sibling-rule-name>.yml`, §<N> para <M>) — non pour `<this element's branch>`.
+Vérifier le terme source d'origine (`<project term>`, cf. thesaurus.org / import-report)
+avant de considérer cet élément comme réellement non conforme.
+
+<if _a_confirmer present:>
+**❓ Élément marqué à confirmer :** <note field from the project JSON>
+```
+
+### Phase E4 — Assemble and write the explanation file
+
+Assemble all per-element blocks (Phase E3) preceded by a short summary header:
+
+```markdown
+# Explication des non-conformités — <sandbox-name> / <fichier-projet ou "--all">
+Date : <YYYY-MM-DD>
+Pipeline : SOLVED ✅ / FAILED ❌
+Éléments expliqués : <N> (📋 <n_subst> substantielle(s) · 🔤 <n_map> mapping · ❓ <n_unc> incertain(s))
+
+---
+
+<per-element blocks from Phase E3, one per target, in project-file order>
+
+---
+
+## Synthèse
+
+| Élément | Classe | Motif court | Action recommandée |
+|---|---|---|---|
+| <id> | 📋/🔤/❓ | <motif tronqué> | <"Corriger le produit" \| "Vérifier le mapping <term>" \| "Valider avec l'ingénieur"> |
+| ... | | | |
+
+**Bilan :** <N> non-conformité(s) substantielle(s) réelle(s) sur <N_total> élément(s)
+évaluable(s) (<X>%) — <N> anomalie(s) de mapping terminologique détectée(s)
+séparément, ne comptant pas comme défaut produit.
+```
+
+Write to: `$SANDBOX/agent/explain-<projet-slug>-<NNN>.md`
+(`<projet-slug>` derived from the project filename; `<NNN>` = next available
+3-digit counter in `agent/`, matching the numbering convention of
+`import-report-*.org` / `audit-import-*.md`.)
+
+For `--all` mode, produce a single consolidated file:
+`$SANDBOX/agent/explain-all-<NNN>.md`, with per-project-file sub-sections.
+
+Print: `[explain] Explanation file written → agent/explain-<projet-slug>-<NNN>.md (<N> element(s))`
+
+
+## Option `--summary` — Consultation-friendly synthesis document
+
+> Runs **after** `--explain` (Phase E1–E4) if both flags are present, or standalone
+> after Phase 6/6-all if `--summary` is passed without `--explain`. In the latter
+> case, Phase E1–E2 (element selection + reconstruction) still run internally
+> (silently, without producing the full `--explain` file) to gather the data needed
+> for the synthesis — only the detailed per-element blocks (Phase E3) are skipped.
+>
+> **Purpose:** a single, short, skimmable document — one screen, no scrolling
+> through YAML/corpus cross-references — intended for a reader who wants the
+> verdict and the headline reasons in under a minute (e.g. a technical director
+> reviewing a compliance dossier before a meeting), as opposed to `--explain`'s
+> engineer-facing per-rule traceability.
+
+### Phase S1 — Compute headline figures
+
+From the same `element_status()` results as Phase 6:
+
+```
+n_total       = elements evaluable (excluding reference-catalogue / sentinel types)
+n_conforme    = count CONFORME
+n_non_conforme = count NON_CONFORME
+n_incertain   = count elements with _a_confirmer: 1
+taux          = round(100 * n_conforme / n_total)
+```
+
+Classify each NON_CONFORME element per Phase E2 step 5 (📋 substantielle / 🔤 mapping)
+to compute:
+
+```
+n_subst = count NON_CONFORME classified 📋 substantielle
+n_map   = count NON_CONFORME classified 🔤 mapping
+taux_reel = round(100 * (n_conforme + n_map) / n_total)   # optimistic rate if all
+                                                            # mapping anomalies turn
+                                                            # out to be import errors,
+                                                            # not real defects
+```
+
+### Phase S2 — One-page synthesis document
+
+Write `$SANDBOX/agent/synthese-<projet-slug>-<NNN>.md` using this exact template
+(language: corpus language):
+
+```markdown
+# Synthèse de conformité — <Nom du produit / dossier, from project JSON if available>
+
+**Dossier :** <fichier-projet>
+**Date :** <YYYY-MM-DD>
+**Statut du pipeline :** SOLVED ✅ / FAILED ❌
+
+## Résultat en un coup d'œil
+
+┌─────────────────────────────────────────────────────────┐
+│   Taux de conformité observé  :  <taux>%  (<n_conforme>/<n_total>)  │
+│   Taux de conformité corrigé* :  <taux_reel>%  (si anomalies de mapping résolues) │
+└─────────────────────────────────────────────────────────┘
+
+| Indicateur | Valeur |
+|---|---|
+| Éléments évalués | <n_total> |
+| ✅ Conformes | <n_conforme> |
+| ❌ Non conformes | <n_non_conforme> |
+| — dont non-conformités substantielles 📋 | <n_subst> |
+| — dont anomalies de mapping terminologique 🔤 | <n_map> |
+| ❓ Éléments à confirmer | <n_incertain> |
+
+## Non-conformités substantielles (action requise sur le produit/dossier)
+
+| Réf. | Domaine | Motif | Référence normative |
+|---|---|---|---|
+| <id> | <agent/domaine> | <motif court, 1 ligne> | §<N> |
+| ... | | | |
+
+<if n_subst == 0:>
+Aucune non-conformité substantielle détectée.
+
+## Anomalies de mapping terminologique (action requise sur l'import, pas le produit)
+
+| Réf. | Terme projet | Mapping actuel | Anomalie |
+|---|---|---|---|
+| <id> | "<terme source>" | <slot>=<valeur> | <résumé 1 ligne> |
+| ... | | | |
+
+<if n_map == 0:>
+Aucune anomalie de mapping détectée.
+
+## Éléments à confirmer
+
+| Réf. | Champ | Note |
+|---|---|---|
+| <id> | <slot> | <note du JSON> |
+| ... | | |
+
+<if n_incertain == 0:>
+Aucun élément à confirmer.
+
+## Recommandation
+
+<one short paragraph, auto-generated from the figures above, e.g.:>
+"<n_subst> point(s) substantiel(s) à corriger avant soumission. <n_map>
+anomalie(s) de mapping à lever avec l'équipe d'import — leur résolution
+porterait le taux de conformité de <taux>% à <taux_reel>%.
+<Next step: chorus-strengthen <sandbox-name> si des règles sont jugées trop
+strictes/permissives, ou correction directe du document projet sinon.>"
+
+---
+*Document généré automatiquement par `chorus-check --summary` — voir
+`agent/explain-<projet-slug>-<NNN>.md` pour le détail règle-par-règle de
+chaque élément.
+```
+
+Print: `[summary] Synthesis written → agent/synthese-<projet-slug>-<NNN>.md`
+
+> **Consultation ergonomics:** this file is deliberately kept under one printed
+> page. It never repeats the full YAML/corpus traceability of `--explain` —
+> it only links to it. If both `--explain` and `--summary` are requested, generate
+> `--explain` first (Phase E1–E4) so `--summary`'s classification (Phase S1) can
+> reuse its per-element classification without recomputing it twice.
+
+
 ## Phase 6-all — `--all` mode (batch run)
+
 
 > This phase is used **instead of Phase 6** when `--all` is present.
 > Infrastructure detection (Step 0) is shared — the hash check runs once.
@@ -786,8 +1080,16 @@ when the KB has not changed since the last `chorus-check --all`.
 - [ ] `run.pl`: `../../Engine/lib` path correct from the sandbox
 - [ ] `run.pl`: no hardcoded data
 - [ ] Report: no unexpected `(unprocessed)` elements
-- [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume.
-      Heuristic: `N_frames × N_rules_total × N_agents × 10 < _MAX_CYCLES`.
+- [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume **and rule chain depth**.
+      Heuristic: `N_frames × N_rules_total × N_agents × D × 10 < _MAX_CYCLES`
+      where **D** = depth of the longest intra-agent rule dependency chain
+      (if R03 reads a slot written by R02, which reads a slot written by R01 → D = 3).
+      A chain of depth D requires at least D cycles for a single Frame to converge.
+      Estimate D by counting the longest `CONDITION: defined $p->{slot_from_Rxx}` chain in the KB.
+      If no cross-rule dependencies → D = 1 (the formula reduces to the previous heuristic).
+      ⚠️ **Dependency direction is independent of rule numbering:** a chain where R01 reads
+      a slot written by R03 (which reads one written by R05) also gives D = 3 and requires
+      the same number of cycles. Rule numbers reflect load order only.
       In `run.pl`: compute from `scalar(@elements)` and pass via `Expert->run(max_cycles => ...)`.
       Never leave the default value (`10_000`) for a production pipeline.
 - [ ] Termination agent: use **YAML EXCEPTION pattern** (see Phase 3 template) — MCP-compatible, no infinite loop.
@@ -796,11 +1098,35 @@ when the KB has not changed since the last `chorus-check --all`.
       ✅ `fmatch` in a YAML `EXCEPTION`/`CONDITION` block is safe (evaluated per-cycle, does not bind).
 - [ ] If `reorder()` is used: the sort function consults `_PREMISSES` — consistent with the YAML files
 - [ ] If `_LOCK_UNTIL_STABLE` is enabled: the agent may be skipped — verify this is the intended behaviour
-- [ ] BOARD: inter-agent keys are documented in `index.org`
+- [ ] BOARD: inter-agent keys documented in `index.org` (key, type, written by, read by)
+- [ ] BOARD: `register()` order guarantees producer agents before consumer agents
+- [ ] BOARD: custom slots reset between `process()` calls if Expert instance is reused
+- [ ] BOARD: YAML ACTION uses `$SELF->BOARD` — never `$agent->BOARD`
+- [ ] BOARD: no `CONDITION` guard on a slot written by another agent — use `register()` order + ACTION fallback
+- [ ] **`return 0` vs `return 1` — convergence mechanism:** every ACTION must return `1` only when
+      it has written at least one slot. Returning `1` unconditionally signals "productive step" to the
+      engine, which schedules a new cycle — causing an infinite loop if no slot is actually written.
+      `return 0` signals "nothing done this cycle" and does not count toward cycle productivity.
+      The engine stops when **all** rules return `0` in the same cycle (no further progress possible).
+      → Check every YAML ACTION: any `if (...)` branch that writes a slot must `return 1` inside the
+      branch and fall through to `0` (or `return 0`) otherwise.
+      `if (...) { $p->set('slot', $val); return 1 }  0`
 - [ ] **YAML — conditional EFFET without `else`**: if the `if` modifies nothing and the rule returns `1`,
       the engine loops until `_MAX_CYCLES` (warning). Check every YAML whose EFFET
       contains an `if` without `else` → return `0` when no slot is modified:
       `if (...) { ...; return 1 } 0`
+- [ ] **EXCEPTION permanence (Pattern 1):** an `EXCEPTION: defined $f->{slot}` guard permanently blocks
+      the rule on this Frame once any sibling rule has written `slot`. This is intentional for
+      classification rules but is a **silent failure mode** when a veto/override rule uses Pattern 1
+      instead of Pattern 2. If a discordance shows "expected NON_CONFORME → got CONFORME" and no rule
+      fired for this element, check whether a sibling rule wrote the guard slot first in an earlier cycle,
+      permanently blocking the veto rule. Fix: switch to Pattern 2
+      (`EXCEPTION: '($f->{slot} // "") eq "<veto_value>"'`).
+- [ ] **CONDITION transience:** a `CONDITION: defined $p->{slot}` guard is always transient — the rule
+      is skipped this cycle and retried the next. If a discordance shows "rule never fired" despite the
+      prerequisite slot being eventually set, check whether `CONDITION` was incorrectly replaced by a
+      `filtre` expression. A Frame excluded by `filtre` is permanently out of scope and will never be
+      retried even after its prerequisite slot appears.
 - [ ] **Guard coherence:** handled automatically by `Chorus::Engine::loadRules()` —
       a `warn` is emitted at every `loadRules()` call for any rule whose `EXCEPTION`
       guard slot is not written by that rule's ACTION.
