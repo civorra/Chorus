@@ -496,6 +496,56 @@ If this pattern is found:
 5. Document the incident in the KB Constraints & Pitfalls for the affected agent,
    referencing the page number and the verification command used.
 
+**1.3c ⛔ Grammar rule cross-check (mandatory before finalizing any "well-formed identifier" rule)**
+
+Whenever a YAML rule validates the **grammar/shape** of a domain identifier (a regex or
+enum check on a `type_element` value meant to reject/accept a string format — e.g.
+"well-formed class/family/component identifier", "valid reference code", "valid
+serial format", "valid product/article number"), before finalizing that rule:
+
+1. **Search the full corpus set (all files integrated so far, not just the section
+   the base rule came from) for exception/extension/alternate-form clauses** related to
+   the same identifier family. Search terms: the identifier's domain noun (e.g.
+   "component", "identifier", "reference", "code") combined with words like *extended*,
+   *exception*, *alternate*, *variant*, *augmented*, *custom*, *author-defined*,
+   *special case*, *derogation*.
+2. If such a clause exists and **describes a distinguishable alternate grammar** (not
+   just prose guidance with no fixed shape) → **encode it as an accepted alternate
+   pattern in the same rule** (e.g. an optional infix/suffix in the regex), not as a
+   separate rule — the check remains "is this identifier well-formed", regardless of
+   which of the two legitimate forms it takes.
+3. If such a clause exists but the alternate form has **no fixed, checkable shape**
+   (pure prose guidance, case-by-case judgment required) → do not attempt to encode it;
+   document the limitation explicitly in the KB org `Constraints & Pitfalls` section
+   (what the rule does NOT check, and why), so `chorus-check`/`chorus-strengthen` runs
+   do not silently misattribute resulting gaps to "rule too strict" without this context.
+4. If no such clause is found after the search → proceed with the single-form grammar
+   as normal; document in the rule's YAML header comment that the cross-check was
+   performed and found nothing (one line: `# Cross-checked corpus for alternate/extended
+   forms — none found`), so a future `chorus-strengthen` pass does not need to repeat
+   the full-corpus search from scratch.
+
+> **This is a discipline check, not a blocking gate** — it costs one full-text search
+> per grammar rule at authoring time, and prevents an entire class of false
+> NON_CONFORME verdicts that only surface once a real project (as opposed to synthetic
+> test data) exercises the un-encoded alternate form — often much later, and far more
+> expensive to diagnose than to prevent.
+
+<details>
+<summary>Illustrative incident (domain-specific example, not part of the rule itself)</summary>
+
+A Common Criteria sandbox once shipped a `component_identifier` grammar rule covering
+only the standard catalogue form. A different corpus section documented a legitimate
+alternate form for author-defined extended components, not cross-checked at rule
+authoring time. Result: 15 false NON_CONFORME verdicts, invisible until a real project
+(as opposed to synthetic test data) exercised that alternate form. This is one example
+of the general failure pattern above — any domain with a base grammar + an
+unencoded legitimate alternate form documented elsewhere in the corpus is exposed to it.
+
+</details>
+
+
+
 **1.4 Extract XREF INDEX (hybrid corpus only)**
 
 If the corpus file is a `-vision.md` produced by `chorus-pdf --hybrid`, it may contain

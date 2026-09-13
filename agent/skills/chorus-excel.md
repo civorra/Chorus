@@ -467,7 +467,7 @@ def main():
     print(f"[chorus-excel] CSV mode — {CSV_PATH}", file=sys.stderr)
     md = csv_to_markdown_safe(CSV_PATH)
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
-        f.write(md)
+        f.write(f"# ORIGINAL: {CSV_PATH}\n\n" + md)
     line_count = md.count('\n') + 1
     print(f"[chorus-excel] ✅ CSV → Markdown ({line_count} lines). Written to {OUTPUT_PATH}",
           file=sys.stderr)
@@ -524,7 +524,7 @@ def main():
     print(f"[chorus-excel] Text mode — {XLSX_PATH}", file=sys.stderr)
     wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
     sheets = [SHEET_FILTER] if SHEET_FILTER else wb.sheetnames
-    parts = []
+    parts = [f"# ORIGINAL: {XLSX_PATH}"]
 
     for sheet_name in sheets:
         if sheet_name not in wb.sheetnames:
@@ -1114,7 +1114,7 @@ def main():
         xref_index = None
 
     # Merge annotated descriptions back into sheet_parts
-    output_parts = []
+    output_parts = [f"# ORIGINAL: {XLSX_PATH}"]
     for sheet_name, md_table, fig_descs_for_sheet in sheet_parts:
         updated_figs = []
         for (fig_idx, row, col, kind, orig_desc) in fig_descs_for_sheet:

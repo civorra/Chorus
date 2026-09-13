@@ -877,6 +877,9 @@ def main():
     plumber_pdf = pdfplumber_mod.open(PDF_PATH) if HAS_PDFPLUMBER else None
 
     parts = []
+    # Provenance header — enables chorus-check (Phase E0.b) to resolve the original
+    # document without basename-matching heuristics. See chorus-check.md § Phase E0.b.
+    parts.append(f"# ORIGINAL: {PDF_PATH}")
     fig_pages   = 0
     total_tables = 0
 
@@ -1405,6 +1408,7 @@ def main():
     # --------------------------------------------------------------------------
 
     parts = []
+    parts.append(f"# ORIGINAL: {PDF_PATH}")
     all_figure_descs = {}
     total_tables = 0
 
@@ -1734,7 +1738,7 @@ def main():
                       file=sys.stderr)
 
     # --- Assemble in page order ---
-    parts = [results[p] for p in sorted(results)]
+    parts = [f"# ORIGINAL: {PDF_PATH}"] + [results[p] for p in sorted(results)]
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n\n".join(parts))
     print(f"[chorus-pdf] ✅ Written to {OUTPUT_PATH}", file=sys.stderr)
@@ -1870,7 +1874,7 @@ def main():
             print(f"[chorus-pdf]   → {len(text)} chars", file=sys.stderr)
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        f.write("\n\n".join(all_text))
+        f.write(f"# ORIGINAL: {PDF_PATH}\n\n" + "\n\n".join(all_text))
     print(f"[chorus-pdf] ✅ Written to {OUTPUT_PATH}", file=sys.stderr)
 
 

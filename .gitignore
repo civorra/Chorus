@@ -13,4 +13,5 @@ Build
 *.saved
 mcp
 sandboxes/demo_en/**/.kb-hash
+.venv-*/
 

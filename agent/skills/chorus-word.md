@@ -502,6 +502,11 @@ def main():
             elements.append(IMAGE_PLACEHOLDER)
             n_images += 1
 
+    # Provenance header — always first line, machine-readable, enables
+    # chorus-check (Phase E0.b) to resolve the original document without
+    # relying on basename-matching heuristics. See chorus-check.md § Phase E0.b.
+    provenance = [f"# ORIGINAL: {DOCX_PATH}"]
+
     # Optional: prepend header/footer info
     preamble = []
     if header_lines:
@@ -509,7 +514,7 @@ def main():
     if footer_lines:
         preamble.append("[FOOTER: " + " | ".join(footer_lines) + "]")
 
-    output_parts = preamble + elements
+    output_parts = provenance + preamble + elements
     output = "\n\n".join(output_parts)
 
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
@@ -995,6 +1000,8 @@ def main():
 
     # --- Assemble output ---
     parts = []
+    # Provenance header — same rationale as text mode, see chorus-check.md § Phase E0.b
+    parts.append(f"# ORIGINAL: {DOCX_PATH}")
     if header_lines:
         parts.append("[HEADER: " + " | ".join(header_lines) + "]")
     if footer_lines:

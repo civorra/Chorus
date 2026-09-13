@@ -610,6 +610,113 @@ this context today requires manually cross-referencing `agent/chorus/<slug>.org`
 ad hoc in chat, with no persistent, reusable trace once the conversation ends.
 `--explain` formalises and automates that reconstruction into a durable file.
 
+### Phase E0 — KB recap and project recap (mandatory header data)
+
+> Runs once, before Phase E1. Produces **one identical header block** consumed by
+> **both** `--explain` (Phase E4) and `--summary` (Phase S2) — the two options
+> must render the exact same KB/project recap tables, verbatim, so a reader
+> switching between the two documents sees consistent context. Only the content
+> *below* this header differs between the two options (per-rule detail vs.
+> one-page synthesis).
+>
+> Keep this header **essential only** — no narrative paragraphs, no architecture/
+> engineering notes, no historical commentary. It answers exactly two questions:
+> "what corpus built this KB" and "what document produced this project". Anything
+> else belongs in `index.org` itself, not in a generated report header.
+
+**a) KB recap — read from `$SANDBOX/agent/chorus/index.org`:**
+
+- `#+TITLE` → pipeline name
+- `* Pipeline global` table → agent count and ordered slug list (one line, not
+  the full table: `<N> agents : <slug1> → <slug2> → …`)
+- `* Integrated corpus` table → reproduce as-is (Num / Fichier / Agents concernés),
+  dropping the enrichment-pass narrative if it makes a cell unwieldy — one
+  short clause per cell is enough (e.g. "operations (R06 étendu)", not the
+  full pass history paragraph)
+
+If `index.org` is missing or has no `* Integrated corpus` table → record
+`KB recap: unavailable (index.org incomplete)` and continue (never block
+`--explain`/`--summary` generation on this).
+
+**b) Project recap — read from the project JSON file(s) being checked:**
+
+- `projet` (name) field
+- `description` field, truncated to one sentence if longer (first `.` or first
+  120 characters, whichever comes first) — the full description belongs in the
+  JSON, not repeated verbatim in every generated report
+- `_import` block if present → resolve the **full provenance chain**, not just
+  `source_document` verbatim:
+  1. `source_document` in `_import` almost always points to a **generated
+     intermediate corpus file** (e.g. `enterprise/confluence/<NNN>-<slug>-vision.md`
+     produced by `chorus-pdf`/`chorus-word`/`chorus-excel`), not the original
+     document handed to the engineer. Displaying only this path silently hides
+     which real-world document (docx/pdf/xlsx) the analysis actually traces back to.
+  2. **Preferred method — read the provenance header:** open `source_document`
+     and read its first line. Files produced by `chorus-pdf`/`chorus-word`/
+     `chorus-excel` (all modes) always start with `# ORIGINAL: <path-to-original-document>`
+     (see each skill's Phase — "Assemble output" step). If present, use this
+     path directly — no heuristic needed.
+  3. **Fallback heuristic** (only if the header is absent — e.g. corpus file
+     predates this convention, or was hand-written): look for a file with the
+     **same basename** (stripping any `<NNN>-` numeric prefix and `-vision`/`-text`
+     suffix) and a document extension (`.docx`, `.pdf`, `.xlsx`) in the **same
+     directory** as `source_document`. E.g. `005-common-criteria-security-target-id-ca-v7.3-vision.md`
+     → look for `common-criteria-security-target-id-ca-v7.3.{docx,pdf,xlsx}`
+     (case-insensitive match) in the same folder.
+  4. If resolved (header or unique heuristic match) → display both: the
+     generated corpus file (traceable, versioned in the sandbox) **and** the
+     resolved original document.
+  5. If unresolved (no header, zero or multiple heuristic matches) → display
+     `source_document` alone and add `(document original non résolu — vérifier <dossier>)`.
+  → Render as: `Import — document: <original ou "non résolu"> (converti en <source_document>, mode: <mode>, date: <date>)`
+- If `_import` is absent → one line, corpus language:
+  French: `Origine : projet synthétique (chorus-create-project/chorus-stress)`
+  English: `Origin: synthetic project (chorus-create-project/chorus-stress)`
+- For `--all` / multi-file synthesis (`explain-all-*.md`) → one such project
+  recap block **per project file**, not merged — each file may have a distinct
+  origin and conflating them would mislead the reader.
+
+**c) Canonical header block format** (identical in both `--explain` and `--summary`,
+inserted verbatim after the document's own title/date/status lines).
+
+> ⚠️ **Language:** this block (section heading + field labels) must be rendered
+> in the **corpus language** (`#+CORPUS_LANG` in `index.org`, or inferred from
+> corpus content — see `chorus-engine.md § Canonical Language Rule`), exactly
+> like every other artefact in the sandbox. The French labels below are the
+> **default illustration** for a French-corpus sandbox; for an English-corpus
+> sandbox, render the English equivalent shown beneath it. Do not mix languages
+> within a single generated file.
+
+French corpus (default template):
+```markdown
+## 📚 KB & Projet
+
+**Pipeline :** <N> agents : <slug1> → <slug2> → … → <slugN>
+
+| Corpus | Fichier | Agents concernés |
+|---|---|---|
+| <NNN> | <fichier> | <agents, résumé court> |
+| ... | | |
+
+**Projet :** <projet> — <description tronquée>
+**Origine :** <Import — document: ... (converti en ...) | projet synthétique>
+```
+
+English corpus:
+```markdown
+## 📚 KB & Project
+
+**Pipeline:** <N> agents: <slug1> → <slug2> → … → <slugN>
+
+| Corpus | File | Agents involved |
+|---|---|---|
+| <NNN> | <file> | <agents, short summary> |
+| ... | | |
+
+**Project:** <name> — <truncated description>
+**Origin:** <Import — document: ... (converted to ...) | synthetic project>
+```
+
 ### Phase E1 — Select elements to explain
 
 From the elements collected in Phase 6 (or Phase 6-all across all files):
@@ -677,9 +784,12 @@ For each element `e` in `TARGETS`:
 
 ### Phase E3 — Per-element explanation block format
 
-For each target element, produce a block using this template (language: corpus
-language, per the canonical rule in `chorus-engine.md`):
+> ⚠️ **Language:** render this block in the **corpus language**, per the
+> canonical rule in `chorus-engine.md § Canonical Language Rule`. The French
+> template below is the default illustration; use the English equivalent
+> beneath it for an English-corpus sandbox. Never mix languages within one file.
 
+French corpus (default template):
 ```markdown
 ### <id> — <type_element>  [<classe: 📋 substantielle | 🔤 mapping | ❓ incertain>]
 
@@ -710,15 +820,53 @@ avant de considérer cet élément comme réellement non conforme.
 **❓ Élément marqué à confirmer :** <note field from the project JSON>
 ```
 
+English corpus:
+```markdown
+### <id> — <type_element>  [<class: 📋 substantial | 🔤 mapping | ❓ uncertain>]
+
+**Verdict:** <verdict_slot> = KO
+**Reason (run.pl):** "<motif_* verbatim string>"
+
+**Rule applied:** `rules/<slug>/<R0N-rule-name>.yml`  (agent `<Name>`, position <N>)
+**Normative reference:** §<N> para <M> — <one-line summary of the requirement>
+
+**Input values read by the rule:**
+| Slot | Value in the project |
+|---|---|
+| <slot_a> | <value> |
+| <slot_b> | <value> |
+
+**Why this rule applies (and not another):**
+<one or two sentences: which FIND filtre condition matched, contrasted with the
+nearest sibling rule's filtre that did NOT match>
+
+<if class == 🔤 mapping:>
+**⚠️ Suspected mapping anomaly:** the value `<value>` is valid in the KB
+reference, but only for `<other branch>` (rule `<sibling-rule-name>.yml`,
+§<N> para <M>) — not for `<this element's branch>`. Verify the original source
+term (`<project term>`, see thesaurus.org / import-report) before treating this
+element as genuinely non-compliant.
+
+<if _a_confirmer present:>
+**❓ Element marked to confirm:** <note field from the project JSON>
+```
+
 ### Phase E4 — Assemble and write the explanation file
 
-Assemble all per-element blocks (Phase E3) preceded by a short summary header:
+> ⚠️ **Language:** render section headings, labels, and free text below in the
+> **corpus language** (see canonical rule). French template is the default
+> illustration; use the English equivalent for an English-corpus sandbox.
 
+French corpus (default template):
 ```markdown
 # Explication des non-conformités — <sandbox-name> / <fichier-projet ou "--all">
 Date : <YYYY-MM-DD>
 Pipeline : SOLVED ✅ / FAILED ❌
 Éléments expliqués : <N> (📋 <n_subst> substantielle(s) · 🔤 <n_map> mapping · ❓ <n_unc> incertain(s))
+
+---
+
+<canonical header block from Phase E0.c — identical format to --summary>
 
 ---
 
@@ -738,6 +886,35 @@ Pipeline : SOLVED ✅ / FAILED ❌
 séparément, ne comptant pas comme défaut produit.
 ```
 
+English corpus:
+```markdown
+# Non-Conformity Explanation — <sandbox-name> / <project-file or "--all">
+Date: <YYYY-MM-DD>
+Pipeline: SOLVED ✅ / FAILED ❌
+Elements explained: <N> (📋 <n_subst> substantial · 🔤 <n_map> mapping · ❓ <n_unc> uncertain)
+
+---
+
+<canonical header block from Phase E0.c — identical format to --summary>
+
+---
+
+<per-element blocks from Phase E3, one per target, in project-file order>
+
+---
+
+## Summary
+
+| Element | Class | Short reason | Recommended action |
+|---|---|---|---|
+| <id> | 📋/🔤/❓ | <truncated reason> | <"Fix the product" \| "Verify the <term> mapping" \| "Validate with the engineer"> |
+| ... | | | |
+
+**Bottom line:** <N> genuine substantial non-conformit(y/ies) out of <N_total>
+evaluable element(s) (<X>%) — <N> terminology-mapping anomaly/ies detected
+separately, not counted as product defects.
+```
+
 Write to: `$SANDBOX/agent/explain-<projet-slug>-<NNN>.md`
 (`<projet-slug>` derived from the project filename; `<NNN>` = next available
 3-digit counter in `agent/`, matching the numbering convention of
@@ -752,8 +929,11 @@ Print: `[explain] Explanation file written → agent/explain-<projet-slug>-<NNN>
 ## Option `--summary` — Consultation-friendly synthesis document
 
 > Runs **after** `--explain` (Phase E1–E4) if both flags are present, or standalone
-> after Phase 6/6-all if `--summary` is passed without `--explain`. In the latter
-> case, Phase E1–E2 (element selection + reconstruction) still run internally
+> after Phase 6/6-all if `--summary` is passed without `--explain`. **Phase E0
+> (KB recap + project recap) always runs first, in both cases** — it is cheap
+> (no per-element reasoning) and is mandatory header content for `--summary`'s
+> own output, independently of whether `--explain` also runs. In standalone mode,
+> Phase E1–E2 (element selection + reconstruction) still run internally
 > (silently, without producing the full `--explain` file) to gather the data needed
 > for the synthesis — only the detailed per-element blocks (Phase E3) are skipped.
 >
@@ -789,15 +969,28 @@ taux_reel = round(100 * (n_conforme + n_map) / n_total)   # optimistic rate if a
 
 ### Phase S2 — One-page synthesis document
 
-Write `$SANDBOX/agent/synthese-<projet-slug>-<NNN>.md` using this exact template
-(language: corpus language):
+Write `$SANDBOX/agent/synthese-<projet-slug>-<NNN>.md` using this exact template.
 
+> ⚠️ **Language:** render section headings, labels, and free text in the
+> **corpus language** (see canonical rule). French template is the default
+> illustration; use the English equivalent for an English-corpus sandbox.
+> Never mix languages within one file. The filename itself
+> (`synthese-<slug>-<NNN>.md`) keeps its French-derived name regardless of
+> corpus language, for numbering-convention consistency with `explain-*`.
+
+French corpus (default template):
 ```markdown
 # Synthèse de conformité — <Nom du produit / dossier, from project JSON if available>
 
 **Dossier :** <fichier-projet>
 **Date :** <YYYY-MM-DD>
 **Statut du pipeline :** SOLVED ✅ / FAILED ❌
+
+---
+
+<canonical header block from Phase E0.c — identical format to --explain>
+
+---
 
 ## Résultat en un coup d'œil
 
@@ -858,6 +1051,81 @@ strictes/permissives, ou correction directe du document projet sinon.>"
 *Document généré automatiquement par `chorus-check --summary` — voir
 `agent/explain-<projet-slug>-<NNN>.md` pour le détail règle-par-règle de
 chaque élément.
+```
+
+English corpus:
+```markdown
+# Compliance Synthesis — <Product/dossier name, from project JSON if available>
+
+**File:** <project-file>
+**Date:** <YYYY-MM-DD>
+**Pipeline status:** SOLVED ✅ / FAILED ❌
+
+---
+
+<canonical header block from Phase E0.c — identical format to --explain>
+
+---
+
+## Result at a glance
+
+┌─────────────────────────────────────────────────────────────────┐
+│   Observed compliance rate  :  <taux>%  (<n_conforme>/<n_total>) │
+│   Adjusted compliance rate* :  <taux_reel>%  (if mapping issues resolved) │
+└─────────────────────────────────────────────────────────────────┘
+
+| Indicator | Value |
+|---|---|
+| Elements evaluated | <n_total> |
+| ✅ Compliant | <n_conforme> |
+| ❌ Non-compliant | <n_non_conforme> |
+| — of which substantial non-conformities 📋 | <n_subst> |
+| — of which terminology-mapping anomalies 🔤 | <n_map> |
+| ❓ Elements to confirm | <n_incertain> |
+
+## Substantial non-conformities (action required on the product/document)
+
+| Ref. | Domain | Reason | Normative reference |
+|---|---|---|---|
+| <id> | <agent/domain> | <short reason, 1 line> | §<N> |
+| ... | | | |
+
+<if n_subst == 0:>
+No substantial non-conformity detected.
+
+## Terminology-mapping anomalies (action required on the import, not the product)
+
+| Ref. | Project term | Current mapping | Anomaly |
+|---|---|---|---|
+| <id> | "<source term>" | <slot>=<value> | <1-line summary> |
+| ... | | | |
+
+<if n_map == 0:>
+No mapping anomaly detected.
+
+## Elements to confirm
+
+| Ref. | Field | Note |
+|---|---|---|
+| <id> | <slot> | <note from the JSON> |
+| ... | | |
+
+<if n_incertain == 0:>
+No element to confirm.
+
+## Recommendation
+
+<one short paragraph, auto-generated from the figures above, e.g.:>
+"<n_subst> substantial point(s) to correct before submission. <n_map>
+mapping anomaly/ies to resolve with the import team — resolving them would
+raise the compliance rate from <taux>% to <taux_reel>%.
+<Next step: chorus-strengthen <sandbox-name> if rules are judged too
+strict/permissive, or direct correction of the project document otherwise.>"
+
+---
+*Document automatically generated by `chorus-check --summary` — see
+`agent/explain-<projet-slug>-<NNN>.md` for the full rule-by-rule detail of
+each element.*
 ```
 
 Print: `[summary] Synthesis written → agent/synthese-<projet-slug>-<NNN>.md`
