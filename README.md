@@ -1,6 +1,5 @@
 # Chorus
 
-[![CPAN version](https://badge.fury.io/pl/Chorus.svg)](https://metacpan.org/dist/Chorus)
 [![CI](https://github.com/civorra/Chorus/actions/workflows/ci.yml/badge.svg)](https://github.com/civorra/Chorus/actions/workflows/ci.yml)
 [![Perl](https://img.shields.io/badge/perl-5.006%2B-blue)](https://www.perl.org/)
 [![License](https://img.shields.io/badge/license-Artistic--2.0-green)](LICENSE)
@@ -351,52 +350,18 @@ control priority. Multiple `loadRules()` calls accumulate.
 
 ---
 
-## Installation
-
-### Perl modules only (CPAN)
-
-For the inference engine and API only — no skills, no agents, no KB:
-
-```sh
-cpanm Chorus
-```
-
-This installs `Chorus`, `Chorus::Engine`, `Chorus::Frame`, and `Chorus::Expert`.
-You can then use the engine directly in Perl code (see *Direct API* above).
-
-### Complete framework (git)
-
-For the full AI-assisted pipeline — skills, agents, KB templates, sandbox architecture:
-
-```sh
-git clone https://github.com/civorra/Chorus
-cd Chorus
-perl Makefile.PL && make && make test && make install
-```
-
-The complete framework includes:
-- `lib/` — Perl modules (same as CPAN)
-- `agent/skills/` — ECA skills for `chorus-feed`, `chorus-check`, etc.
-- `agent/org/` — KB templates and agent ontology
-- `sandboxes/01-demo_en` — working example (timber-frame building compliance)
-- `sandboxes/02-nephro-KDIGO-compliance` — second example (CKD compliance, KDIGO 2024)
-
-> **Note:** CPAN distributions contain only `.pm` files. Non-Perl assets
-> (skills, KB templates) are only available via git. This is by design: the
-> engine (modules) is independent of the pipeline (skills).
-
----
-
 ## Documentation
 
 - [`doc/en/01-intro.md`](doc/en/01-intro.md) — concepts, architecture, YAML DSL
 - [`doc/en/02-ai-agent.md`](doc/en/02-ai-agent.md) — LLM + Chorus pipeline, AI agent integration
 - [`doc/en/03-applications.md`](doc/en/03-applications.md) — application domains (construction, CSRD, MDR, DO-178C…)
 - [`doc/en/04-chorus-commands.md`](doc/en/04-chorus-commands.md) — `chorus-*` commands reference
+- [`doc/en/05-installation.md`](doc/en/05-installation.md) — installation & runtime environment
 - [`doc/fr/01-intro.md`](doc/fr/01-intro.md) — concepts, architecture, DSL YAML (fr)
 - [`doc/fr/02-ai-agent.md`](doc/fr/02-ai-agent.md) — pipeline LLM + Chorus (fr)
 - [`doc/fr/03-applications.md`](doc/fr/03-applications.md) — domaines d'application (fr)
 - [`doc/fr/04-chorus-commands.md`](doc/fr/04-chorus-commands.md) — référence des commandes `chorus-*` (fr)
+- [`doc/fr/05-installation.md`](doc/fr/05-installation.md) — installation & environnement d'exécution (fr)
 
 ---
 
@@ -409,7 +374,6 @@ or rule engine improvements.
 - **Pull requests** — target the `devel` branch; make sure `make test` passes
 - **Good first issues** — look for the [`good first issue`](https://github.com/civorra/Chorus/issues?q=label%3A%22good+first+issue%22) label
 - **Questions** — use [GitHub Discussions](https://github.com/civorra/Chorus/discussions)
-  or the CPAN RT queue: <https://rt.cpan.org/Dist/Display.html?Name=Chorus>
 
 ---
 
