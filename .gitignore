@@ -15,3 +15,6 @@ mcp
 sandboxes/demo_en/**/.kb-hash
 .venv-*/
 
+# User sandbox working areas (unversioned, may host independent git repos)
+sandboxes-*/
+

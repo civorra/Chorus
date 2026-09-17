@@ -103,6 +103,37 @@ The `--enrich` flag is required to activate Mode B.
 
 Used when `<sandbox-name>` does not yet exist or does not contain a KB.
 
+### Phase -1 — Corpus directives (conditional, before any corpus reading)
+
+**Trigger check first — do not load the skill unconditionally.** Before
+touching the corpus, determine whether this sandbox involves more than one
+independently-versioned normative source: e.g. a binding text (law, CIR,
+standard body) referencing a separately-versioned technical toolbox or
+external standard (an ARF, an ETSI TS, a referenced framework) — as opposed
+to a single standard's own parts/volumes (e.g. CC Part 1/2/3, same
+publication, same version, same date).
+
+| Situation | Action |
+|---|---|
+| Single normative source (one standard, all parts/volumes share the same version and publication date) | Skip this phase entirely — proceed directly to Phase 0. Nothing to pin, no cross-source thesaurus, no `no_auto_rules` arbitration needed. |
+| Two or more independently-versioned sources (e.g. binding text + referenced technical toolbox/standard) | Load `chorus-corpus-directives.md` and apply its detection logic on `<sandbox-name>` before proceeding to Phase 0. This settles version pinning, `no_auto_rules` scope, thesaurus seed, and cross-reference format up front — do not generate any rule before this gate is cleared. |
+| Unclear / operator has not stated the corpus composition | Ask the operator to confirm whether a second independently-versioned source is involved before deciding. |
+
+### Phase -0.5 — Corpus scoping gate (conditional, before Phase 1)
+
+**Applies to Mode A only** (initialization) — never on `--enrich` runs.
+
+| Condition | Action |
+|---|---|
+| Corpus ≤ 2 files **and** ≤ ~50 pages (or equivalent plain-text size) | Skip — proceed directly to Phase 1 inline analysis (§1.1–1.3), no `SCOPING.md` required. |
+| Corpus > 2 files, **or** > ~50 pages, **or** operator explicitly requests it | Load `chorus-corpus-scoping.md`. If `sandboxes/<sandbox-name>/SCOPING.md` does not exist yet, generate it and **stop** — present it to the operator and wait for confirmation (status `CONFIRMED`) before proceeding to Phase 1. |
+| `SCOPING.md` exists with status `CONFIRMED` | Skip inline §1.1–1.3 analysis — use `SCOPING.md`'s agents/Frames/relationships/control-slots/BOARD decisions directly as the basis for KB org / YAML / Helpers.pm generation. |
+| `SCOPING.md` exists with status `DRAFT` (from a prior, unconfirmed run) | Stop — ask the operator to confirm or revise it before generating anything. |
+
+This gate settles the same structural decisions as §1.1–1.3 below, but as a
+persistent, human-reviewable artefact produced **before** any KB/YAML/
+Helpers.pm write — see `chorus-corpus-scoping.md` for the full method.
+
 ### Phase 0 — Sandbox Initialization
 
 Create the directory structure:
@@ -1300,6 +1331,27 @@ overwrite the existing WIP file and proceed to Phase B0 without stopping.
 > left in a partially consistent state (YAMLs generated but KB org not updated, or
 > README coverage report missing). The WIP file is the only reliable signal that a
 > previous pass did not reach completion.
+
+### Phase B-1 — Corpus directives check (conditional)
+
+After the WIP check clears, check whether `sandboxes/<sandbox-name>/CORPUS-DIRECTIVES.md`
+exists:
+
+- **File absent** → this sandbox was never flagged as multi-source (see Phase -1
+  trigger check). If the incoming `corpus-fix.txt` still comes from the same single
+  normative source as the rest of the KB, skip this phase — proceed directly to
+  Phase B0. If it introduces a genuinely new, independently-versioned source, load
+  `chorus-corpus-directives.md`, bootstrap the file, classify the new source, then
+  proceed to Phase B0.
+- **File present** → check the corpus's declared source (header, or explicit
+  operator statement) against the `Sources` table:
+  - **Already listed** → proceed directly to Phase B0, no reload needed.
+  - **Not listed** → load `chorus-corpus-directives.md`, classify the new source
+    against its four structuring questions, update the file, then proceed to
+    Phase B0.
+
+This mirrors Phase -1's conditionality: the gate only ever loads when a
+second independently-versioned source is actually in play.
 
 ### Phase B0 — Read existing KB
 

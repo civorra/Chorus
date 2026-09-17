@@ -49,6 +49,54 @@
 > ⛔ **Never invent** a value absent from the source document — report the gap.
 
 
+## Phase -0.1 — Sandbox-local extension discovery (optional)
+
+> **Purpose:** allow a sandbox to plug in source-format-specific pre-fill logic
+> (e.g. a CBOM/OID registry, a domain-specific unit-conversion table) **without
+> touching this generic skill**. This core skill stays domain-agnostic — any
+> sandbox-specific knowledge lives in the sandbox itself, never here.
+
+**Before Phase 0**, check whether `$SANDBOX/skills/` exists and contains one or
+more files matching `chorus-*-import.md`.
+
+```
+extensions = glob("$SANDBOX/skills/chorus-*-import.md")
+```
+
+- **No match** → proceed directly to Phase 0. No behavior change (this is the
+  case for every sandbox that has no such extension — the default, unchanged path).
+- **One or more matches** → read each matching file. Each extension file
+  documents:
+  - which source format(s) it targets (e.g. CBOM/CycloneDX JSON),
+  - a pre-fill data table or reference file it provides (e.g. an OID → KB-slot
+    mapping),
+  - at which phase of the standard pipeline (0/2/3) its data should be
+    consulted, and how (first-class candidate vs. fallback — same spirit as
+    `xref_map` in the PDF/Excel/Word pipelines).
+  Apply the extension's instructions **in addition to**, never instead of, the
+  standard phases below — an extension only pre-fills candidate values; the
+  standard Phase 3 alignment table, gap detection (Phase 4), and `_a_confirmer`
+  flagging rules still apply unchanged on top of it.
+- **Ambiguous match (source format not covered by any extension)** → ignore
+  extensions silently, proceed with the standard pipeline.
+- **Multiple matches** → apply all applicable extensions, in the ordering each
+  extension file itself declares (an extension may state a dependency on
+  another extension's output — e.g. "runs after a source-format extension has
+  resolved `famille_probleme_math`/size slots"). If no ordering is declared by
+  any of them, apply source-format extensions (those tied to a specific file
+  format, e.g. CBOM/CycloneDX) before format-agnostic enrichment extensions
+  (those operating on already-resolved slots, e.g. a size→security-strength
+  proxy table). Never let two extensions silently overwrite the same slot for
+  the same element without surfacing the conflict — if both would set the same
+  slot with different values, flag the element `_a_confirmer: 1` and report
+  both candidate values.
+
+> ⛔ This skill (`chorus-import-project.md`) never hardcodes any sandbox-specific
+> registry, mapping, or vocabulary. If you find yourself about to add a
+> domain-specific table here (OID lists, unit tables, etc.) — stop: it belongs
+> in `$SANDBOX/skills/chorus-<domain>-import.md` instead.
+
+
 ## Phase 0 — Source Data Acquisition
 
 ### Format Detection & Auto-conversion

@@ -1,0 +1,235 @@
+# chorus-corpus-scoping
+
+> Trigger: `chorus-corpus-scoping <sandbox-name> [--corpus <file(s)>]`
+> Agent: `architect`
+>
+> Also loads **automatically** as a gate inside `chorus-feed <sandbox> <corpus>`
+> **Mode A** (first initialization), before any KB/YAML/Helpers.pm is written —
+> see "Integration with `chorus-feed`" below for the exact trigger condition.
+
+## Purpose
+
+Generic, domain-agnostic skill that produces a **structural scoping pass** —
+agents, Frames, inter-Frame relationships, control slots, BOARD slots, pipeline
+order — as a standalone, human-reviewable artefact **before** any KB org file,
+YAML rule, or Helper is generated.
+
+It contains **no domain knowledge** — only the analytical method already used
+internally by `chorus-feed` §1.1–1.3 (agents, Frames, relationships, control
+slots, pipeline ordering), extracted into an explicit gate with a persistent
+artefact and a validation checkpoint. Applicable to any corpus, any sector.
+
+## Why a separate gate
+
+`chorus-feed` Mode A already performs this analysis internally (§1.1 Corpus
+Analysis), but as an in-flight step immediately followed by generation — there
+is no persistent artefact and no pause for human validation before KB/YAML/
+Helpers.pm are written. On a large or structurally complex corpus, a scoping
+error (wrong agent split, missed Frame relationship, wrong control-slot choice)
+is expensive to unwind once artefacts already exist. This skill inserts a
+checkpoint: produce the scoping decisions, write them down, let a human confirm
+them, **then** run `chorus-feed` for actual generation.
+
+## When this skill loads
+
+- **On demand:** `chorus-corpus-scoping <sandbox-name> [--corpus <file(s)>]` —
+  run standalone, any time, on any sandbox.
+- **Automatically, inside `chorus-feed <sandbox> <corpus>` Mode A only**, when
+  the corpus crosses a complexity threshold (see below) and no `SCOPING.md`
+  exists yet in the sandbox. `chorus-feed` **pauses after generating
+  `SCOPING.md`** and waits for explicit human confirmation before proceeding
+  to KB/YAML/Helpers.pm generation.
+- **Never triggers on `--enrich` runs** — scoping is a Mode A (initialization)
+  concern only. Enrichment works within an already-scoped structure.
+
+### Auto-trigger threshold (inside `chorus-feed` Mode A)
+
+| Condition | Action |
+|---|---|
+| Corpus ≤ 2 files **and** ≤ ~50 pages (or equivalent plain-text size) | Skip — proceed directly to `chorus-feed` §1.1 inline, no gate, no `SCOPING.md` required |
+| Corpus > 2 files, **or** > ~50 pages, **or** operator explicitly requests it | Run this skill first — block generation until `SCOPING.md` exists and is confirmed |
+| `SCOPING.md` already exists in the sandbox | Skip re-generation — load it and proceed directly to `chorus-feed` generation using its decisions |
+
+> The threshold is deliberately approximate — when in doubt, run the gate.
+> The cost of an unnecessary scoping pass on a small corpus is low; the cost of
+> skipping it on a large one is high (KB/YAML/Helpers.pm rework).
+
+## The five structuring questions
+
+These are the same analytical questions as `chorus-feed.md` §1.1–1.3, made
+explicit and given a persistent, reviewable form. No domain vocabulary is
+prescribed here — only the structural questions to answer using the actual
+corpus's own vocabulary.
+
+### 1. Agents (specialties)
+
+Group rules by coherent theme. Criteria:
+- Rules concerning the same types of Frames.
+- Same incoming/outgoing slots.
+- Orderable sequentially without cyclic dependencies.
+
+Result: an ordered list of agents (slug + intent + pipeline position).
+
+### 2. Domain Frames
+
+For each persistent concept in the corpus (≥ 2 slots, stable identity) →
+candidate Frame. Intermediate calculations remain plain slots, not Frames.
+
+> ⛔ The slot identifying an element's type must always be named
+> `type_element` (engine-wide convention — not a scoping decision, a hard
+> constraint). All other slot names use the corpus's own language and
+> vocabulary — never translate or normalize into a different language than
+> the source corpus.
+
+### 3. Inter-Frame relationships
+
+Examine whether any Frame *belongs to* or *depends on* another Frame for key
+properties. Signs of a relationship:
+- A slot on Frame A duplicates a property of Frame B.
+- A rule would need a cross-product scope (`FIND: var1 / var2`) to relate two
+  Frame types — this usually signals a missing structural link.
+- Multiple Frames of type A share the same normative thresholds coming from a
+  static catalog indexed by some key tuple.
+
+For each relationship found, classify it:
+
+| Relationship type | Pattern |
+|---|---|
+| Element A structurally belongs to / is connected to B | **slot→Frame** (`*_ref` field, resolved at load time) |
+| Multiple Frames share a normative threshold catalog | **`_ISA` prototype** (shared catalog + inheritance) |
+
+### 4. Control slots (only if the corpus explicitly signals them)
+
+Do **not** add these speculatively — only when a corpus pattern explicitly
+motivates each one:
+
+| Control slot | Corpus signal that motivates it |
+|---|---|
+| `_DEFAULT` | "default value X unless otherwise specified", "applies if not stated" |
+| `_NEEDED` | An explicit derivation formula ("= sum of", "= computed from") for a slot not always supplied |
+| `_AFTER` | An explicit stated dependency: "when X changes on A, Y on B must be re-evaluated" — last resort, strict guardrails (see `chorus-feed.md` §1.2c) |
+| `_BEFORE` | Explicit need to normalize inconsistent input formats before storage |
+| `_REQUIRE` | Explicit hard domain constraints (min/max, enum, non-empty) stated as "must never" |
+
+### 5. BOARD slots and pipeline order
+
+- **BOARD slots:** results global to the pipeline run (totals, phase flags,
+  cross-agent signals) rather than specific to one Frame element. List each
+  with its producer agent, consumer agent(s), and type.
+- **Pipeline order:** order agents by data dependency — agent N sets slot X,
+  agent N+1 consumes X, so N+1 runs after N. `register()` order in the
+  generated shell Agent must respect this.
+
+## Mandatory pre-checks before finalizing the scoping
+
+Two discipline checks from `chorus-feed.md` apply during scoping, not only
+during rule authoring — flag any suspect section now, before generation:
+
+- **Rotated-header matrix tables** (`chorus-pdf.md` §1.4c / `chorus-feed.md`
+  §1.3b): if any table earmarked for a Frame catalog or threshold source shows
+  the flattened-row-label-plus-column-tokens symptom, do not use it as a
+  scoping source — verify independently via `pdftotext -layout` first, or mark
+  the concept `⛔ Out of scope (pending table verification)`.
+- **Grammar/identifier rules spanning multiple forms** (`chorus-feed.md`
+  §1.3c): if scoping identifies a Frame whose type-identifying slot has a
+  documented "well-formed identifier" shape, note whether the corpus has
+  alternate/extended forms to search for — so the eventual rule-authoring
+  pass in `chorus-feed` knows to check before finalizing.
+
+## Output — `SCOPING.md`
+
+Written at the sandbox root: `sandboxes/<sandbox-name>/SCOPING.md`.
+
+```markdown
+# Corpus scoping — <sandbox-name>
+
+## Corpus reviewed
+| File | Pages / size | Notes |
+|---|---|---|
+| corpus/<file> | <n> | <one-line content summary> |
+
+## Agents (proposed pipeline order)
+| # | Slug | Intent | Consumes (slots) | Produces (slots) |
+|---|---|---|---|---|
+| 1 | <slug> | <intent> | — | <slot, slot> |
+| 2 | <slug> | <intent> | <slot> | <slot> |
+
+## Domain Frames
+| Frame | Key slots | Notes |
+|---|---|---|
+| <frame_type> | <slot, slot, type_element> | <persistent concept, stable identity> |
+
+## Inter-Frame relationships
+| From | To | Pattern | Notes |
+|---|---|---|---|
+| <frame_a>.<slot> | <frame_b> | slot→Frame / _ISA prototype | <justification> |
+
+## Control slots
+| Frame.slot | Control slot | Corpus justification |
+|---|---|---|
+| <frame>.<slot> | _DEFAULT / _NEEDED / _AFTER / _BEFORE / _REQUIRE | <quoted or paraphrased corpus signal> |
+
+## BOARD slots
+| BOARD slot | Written by | Read by | Type |
+|---|---|---|---|
+| <slot> | <agent> | <agent> | flag / count / … |
+
+## Pre-checks performed
+- [ ] Rotated-header matrix table scan — <result: none found / N flagged, see below>
+- [ ] Grammar/identifier alternate-form search — <result per identifier family>
+
+## Open questions for the operator
+- <anything the agent could not resolve unambiguously from the corpus alone>
+
+## Status
+`DRAFT` — awaiting operator confirmation
+`CONFIRMED — <date>` — cleared for `chorus-feed` generation
+```
+
+## Integration with `chorus-feed`
+
+`chorus-feed.md` Mode A, Phase 1 (Corpus Analysis) is amended as follows:
+
+```
+Before Phase 1 (Corpus Analysis):
+  1. Check the auto-trigger threshold (see above).
+  2. If threshold crossed and sandboxes/<sandbox-name>/SCOPING.md absent:
+     → run chorus-corpus-scoping, write SCOPING.md with status DRAFT.
+     → STOP. Do not proceed to KB/YAML/Helpers.pm generation.
+     → Present SCOPING.md to the operator, request confirmation.
+  3. If SCOPING.md exists with status CONFIRMED:
+     → skip §1.1–1.3 inline analysis — use SCOPING.md's decisions directly
+       as the basis for KB org / YAML / Helpers.pm generation.
+  4. If SCOPING.md exists with status DRAFT (unconfirmed from a prior run):
+     → STOP. Do not proceed. Ask the operator to confirm or revise it first.
+```
+
+This does not change `chorus-feed`'s single responsibility (it still never
+generates infrastructure code) — it only relocates *when* the structural
+decisions of §1.1–1.3 are made and gives them a persistent, confirmable form.
+
+## Relationship to other skills
+
+- **`chorus-corpus-directives.md`** — orthogonal, not overlapping. Directives
+  settle **inter-source** structuring (version pinning, `no_auto_rules` scope,
+  thesaurus seed, cross-reference format) for corpora combining ≥2
+  independently-versioned sources. Scoping settles **intra-domain** structuring
+  (agents, Frames, relationships) for any corpus, single- or multi-source.
+  When both apply (a large multi-source corpus), run directives first (source
+  boundaries and rule-generation eligibility), then scoping (internal
+  structure) — in that order, since scoping's agent/Frame analysis benefits
+  from already knowing which sources are `no_auto_rules`.
+- **`chorus-feed.md`** — consumes `SCOPING.md` when present and confirmed;
+  otherwise performs its own inline §1.1–1.3 analysis for small corpora that
+  did not cross the auto-trigger threshold.
+- **`chorus-engine-infra.md` §1.5, §3** — full technical reference for BOARD
+  and inter-Frame relationship *implementation* (this skill only decides
+  *what* relationships/slots exist, not their Perl implementation).
+
+## Output guarantees
+
+- Creates or updates `sandboxes/<sandbox-name>/SCOPING.md` only.
+- Never touches `KB/`, `rules/`, `lib/`, or `agent/chorus/` — pre-flight
+  analysis only, no generation.
+- Never reads another sandbox's `SCOPING.md` or KB (strict sandbox isolation,
+  same rule as every other skill in this repository).

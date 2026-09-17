@@ -76,6 +76,29 @@ No API key available
 > detection heuristic, `pdftotext -layout` fallback, and manual verification
 > method. Always independently verify any table containing "X"/"-" marks
 > mixed inline with a run of column-header-like tokens.
+
+> ⛔ **Known blind spot — borderless (whitespace-only) tables — the majority
+> case on cleanly-typeset modern standards** (CC:2022, ISO-style documents):
+> the `has_table` heuristic (§1.4b) only fires on tables with drawn vector
+> borders (`LTCurve` H/V lines). Tables aligned purely by whitespace, with
+> no drawn cell lines, are **never detected** — they silently fall through
+> to plain text extraction and are flattened into a long sequence of
+> single-line paragraphs (no `|` pipe syntax at all), with **no warning in
+> the extraction log** (the log only reports pages where `has_table` fired).
+> This is more common, and more silent, than the rotated-header case above.
+> See §1.4d for detection heuristic and fallback. **Always run the §1.4g
+> checklist** on every table-bearing page after generation — do not rely on
+> the extraction log's table count as a completeness signal.
+
+> ⛔ **Known blind spot — mis-split header cells** (`pdfplumber` column
+> detection places a boundary mid-word inside a merged header cell) and
+> **unstitched multi-page tables** (each page processed independently, no
+> automatic continuation): both pass `quality_check()` silently since
+> neither triggers the existing empty-cell/fragment filters. See §1.4e and
+> §1.4f. Manual review of header rows and page-boundary row counts is
+> required — these are not filterable defects at generation time with the
+> current `quality_check()` heuristics.
+
 > It combines pdfminer precision on text (exact characters, no OCR risk) with
 > Claude vision on cropped figures only (smaller payload, lower cost, no text
 > re-interpretation). On pages with both text and figures, text fidelity is
@@ -448,6 +471,202 @@ pdftotext -f <page> -l <page> -layout <source.pdf> - | less
 > **This check adds zero API cost** — `pdftotext` is a local, offline tool
 > (part of `poppler-utils`, already a hard dependency of this skill).
 
+### 1.4d Borderless (whitespace-only) tables — undetected by `has_table` — flattened to a vertical list
+
+**⛔ Known failure mode, distinct from §1.4c:** many modern normative standards
+(CC:2022 Parts 2/3/5, ISO-style documents, and similar "clean" typesetting) render
+tables **without any drawn cell borders** — columns are aligned purely by
+whitespace positioning (visible in `pdftotext -layout`), with no `LTCurve` H/V
+lines at all. The `has_table` heuristic (§1.4b) requires ≥2 aligned H-lines +
+≥2 V-lines — it **never fires** on this table style, so `pdfplumber` is never
+invoked and the page falls through to plain `LTTextBox` extraction.
+
+**Symptom in the generated `.md` file:** every cell of a real multi-column
+table appears as its own paragraph/line, in Y-order, with **no `|` pipe
+syntax at all** — e.g. a 6×7 EAL summary matrix (component vs. assurance
+level) becomes ~200 consecutive single-line blocks:
+```
+Assurance class
+
+Assurance components by evaluation assurance level
+
+Assurance family
+
+EAL1
+
+EAL2
+...
+ADV_ARC
+
+1
+
+1
+```
+This is **not** a garbled/corrupt PDF and **not** the rotated-header case
+(§1.4c) — the underlying table has a completely ordinary horizontal layout;
+it is simply undetectable by the vector-line heuristic because no vectors
+exist in the source PDF.
+
+**Detection heuristic — applied during `analyse_pages` on every page:**
+
+A page is flagged `borderless_table_suspect = True` when `has_table` is
+`False` (no vector lines found) **and** the page's `LTTextBox` elements show
+a numeric-density pattern consistent with a data matrix:
+
+```python
+def detect_borderless_table(texts, page_width):
+    """Detect a likely borderless (whitespace-aligned) table on a page where
+    the vector-line heuristic (has_table) found nothing.
+
+    Signal: a high proportion of very short text blocks (<=3 chars, mostly
+    numeric or single tokens like class/family codes) clustered into
+    repeating X-bands across the page width — typical of a matrix flattened
+    into single-cell text boxes with no drawn borders.
+
+    Returns True if the page likely contains an undetected borderless table.
+    """
+    if not texts:
+        return False
+
+    short_blocks = [(t, x0, x1) for (t, y, x0, x1) in texts if len(t.strip()) <= 3]
+    if len(short_blocks) < 15:          # too few short blocks to be a matrix
+        return False
+
+    # Cluster short-block x0 into bands (same column reused across many rows)
+    from collections import defaultdict
+    bands = defaultdict(int)
+    for _, x0, _ in short_blocks:
+        band = round(x0 / 15) * 15      # snap to 15pt bands
+        bands[band] += 1
+
+    # A real matrix reuses the same handful of X-bands many times (one per
+    # numeric column); scattered/unique X positions suggest ordinary prose.
+    repeated_bands = [b for b, count in bands.items() if count >= 5]
+    return len(repeated_bands) >= 3      # at least 3 recurring numeric columns
+```
+
+Store `borderless_table_suspect` in the `analyse_pages()` per-page result
+dict, alongside `has_table` and `rotated_header_suspect`.
+
+**Fallback — `pdftotext -layout` reconstruction (same principle as §1.4c):**
+
+When `borderless_table_suspect` is `True`, do not rely on the flattened
+`LTTextBox` dump. Use the same `extract_page_via_pdftotext_layout()` helper
+already defined in §1.4c to pull the whitespace-aligned grid for that page,
+and insert it as a fenced block:
+
+```
+[MATRIX TABLE — extracted via pdftotext -layout (no vector borders detected)]
+<raw -layout text, monospace-aligned>
+[END MATRIX TABLE]
+```
+
+> ⚠️ Same rule as §1.4c applies: **do not** auto-convert this monospace block
+> into a Markdown pipe table inside the generation script. Column boundaries
+> in a borderless table are only reliable via manual/LLM-assisted column
+> inference — a downstream pass (human review, or a `chorus-feed` pre-check)
+> must confirm row/column mapping before any rule references specific cells.
+> Unlike §1.4c (rare, cross-reference matrices only), this failure mode is
+> the **majority case** for cleanly-typeset modern standards — expect it on
+> most non-legacy PDFs with numeric summary tables (e.g. an EAL/CAP/PPA/STA
+> catalogue, a dependency matrix without drawn cell lines).
+
+**Verification method — identical to §1.4c:**
+
+```bash
+pdftotext -f <page> -l <page> -layout <source.pdf> - | less
+```
+
+If the layout output is clean and aligned, the failure is in the extraction
+pipeline (apply the fallback above); if it is also garbled, escalate as a
+genuine PDF rendering problem — do not attempt automated reconstruction.
+
+### 1.4e Header cell split mid-word — `quality_check()` blind spot
+
+**⛔ Known failure mode:** even when `has_table` correctly fires and
+`pdfplumber` successfully reconstructs a table, the **column-boundary
+detection** (`detect_table_columns()`, explicit V-edge clustering at 3pt)
+can place a boundary **in the middle of a word** when a header cell spans
+multiple logical columns (e.g. "Assurance components by protection profile
+assurance package" merged across 2 columns in the source). The result is a
+header row where the phrase is split character-run by character-run:
+```
+| Assurance components by p pack | rotation profile assurance age |
+```
+**Why `quality_check()` does not catch this:** the four existing filters
+(§ "Shared utilities") reject tables based on empty-cell ratio, short
+lowercase fragments, or single-column long-text — none of them test for
+*"a word straddling a cell boundary"*. A single mis-split header row does
+not push the overall empty/fragment ratios past any threshold, so the
+table passes quality control despite the header being unreadable.
+
+**Detection heuristic (informational — no automated fix, human check
+required):** after table reconstruction, if any two adjacent cells in the
+**first one or two rows** each end/start with a sub-word fragment (i.e.
+concatenating `cell[i][-N:] + cell[i+1][:M]` reconstitutes a dictionary
+word or a corpus-recurring compound term not present in either cell alone),
+flag the table for manual header review before trusting it.
+
+**Practical mitigation until an automated filter exists:** always visually
+scan the **header row(s)** of every `pdfplumber`-reconstructed table (not
+just the empty-cell ratio) during the manual `pdftotext -layout` audit pass
+(§1.4c/§1.4d) — this failure mode has been observed even on tables that pass
+every existing `quality_check()` filter.
+
+### 1.4f Multi-page table continuity — no automatic stitching
+
+**⛔ Known limitation:** neither the vector-detection path (§1.4b) nor the
+borderless fallback (§1.4d) currently stitches a table that spans a page
+break into a single continuous Markdown table. Each page is processed
+independently by `analyse_pages()` / `assemble_page()`, so a table split
+across pages N and N+1 produces two separate fragments — sometimes with a
+repeated header row on the continuation page, sometimes with none.
+
+**Recommended practice:** when manually auditing a generated `.md` (§1.4c/
+§1.4d method), check whether a table's row count on the last page matches
+the source's expected total (cross-check against `pdftotext -layout` output
+spanning both pages). If a table is split, merge the fragments manually and
+insert an explicit marker at the point of continuation:
+
+```
+[TABLE CONTINUED — <table title/number> — merged into single table above, see note]
+```
+
+This is a manual/human-review step, not an automated one — automatic
+stitching would require reliably detecting "same table resumes" across a
+page-break event, which is out of scope for the current `analyse_pages()`
+per-page architecture.
+
+### 1.4g Practical checklist — auditing a generated `.md` for table integrity
+
+Given that §1.4c–§1.4f are all **manual-verification** failure modes (no
+fully automated fix exists yet for any of them), apply this checklist to
+**every** table-bearing page of a newly generated `.md`, not only to pages
+that "look suspicious" at first glance — borderless tables (§1.4d) in
+particular produce no visually obvious warning sign in the raw log output
+(`chorus-pdf` only reports pages where `has_table` fired, silently omitting
+pages with undetected borderless tables):
+
+1. Search the generated `.md` for every `Table \d+` / `Tableau \d+` heading
+   in the corpus's own numbering scheme.
+2. For each, confirm the surrounding text renders as a proper `| ... | ... |`
+   Markdown table — not a flat sequence of single-line paragraphs (§1.4d
+   symptom).
+3. For each detected pipe table, re-read the **header row** specifically —
+   confirm no word is split across adjacent cells (§1.4e symptom).
+4. Check whether the table's last row on a page looks truncated (fewer
+   columns filled than expected, or the very next page continues with more
+   rows of the same shape) — if so, apply the §1.4f merge/continuation
+   marker.
+5. For any doubt, cross-check against `pdftotext -f <page> -l <page>
+   -layout <source.pdf>` — never trust the flattened extraction over the
+   verified source layout.
+
+> **Cost note:** this checklist is manual and does not require any API
+> call — `pdftotext` is local/offline. On a large corpus (dozens of tables),
+> budget this as an explicit post-extraction review pass before handing the
+> `.md` to `chorus-feed`, not as an afterthought.
+
 ## Phase 1.5 — nohup gate (hybrid mode only)
 
 After the layout analysis (`analyse_pages`), the script knows the **exact number of
@@ -488,6 +707,15 @@ whether it is running inside the IDE or not.
 
 Create `$SANDBOX/agent/` if it does not exist.
 writes `$SANDBOX/agent/extract-pdf-<slug>.py`, then executes it
+
+> ⚠️ **Mandatory post-generation step:** once the script completes and the
+> `.md` file is written, run the §1.4g audit checklist on **every** page
+> containing a `Table`/`Tableau` heading in the corpus's own numbering —
+> not only pages flagged suspicious by eye. The extraction log's reported
+> table count (`has_table` hits) is **not** a reliable completeness signal:
+> borderless tables (§1.4d) produce zero log signal while still being
+> silently flattened. Treat this checklist as part of the extraction task
+> itself, not an optional follow-up.
 
 ### Vision extraction prompt (used verbatim in `--auto` and `--images` scripts)
 
