@@ -1,0 +1,81 @@
+#+TITLE: KB Coverage Review — test-kb-multiSource
+#+GENERATED: test
+#+CORPUS: corpus/001-cir-binding.md (CIR-1.0), corpus/002-arf-toolbox.md (ARF-2.1 v2.1 pinned)
+#+COVERAGE: 100% (3/3 articles)
+
+* Coverage summary
+
+  | Status    | Count | Pct  |
+  |-----------+-------+------|
+  | Covered   |     3 | 100% |
+  | Uncovered |     0 |   0% |
+  | Orphan    |     0 |   0% |
+  | No CORPUS |     0 |   0% |
+
+  🟢 *Full coverage* — all normative articles have at least one YAML rule.
+
+  Note: 3 sections excluded as out-of-scope (no_auto_rules):
+  §3.1 ARF (CHORUS:no_auto_rules marker), §4.1 ARF (CORPUS-DIRECTIVES override),
+  Scope + Annexes (CHORUS:no_auto_rules markers).
+  These are not counted in total_articles — correctly excluded by Axe 4 + Axe 5 mechanisms.
+
+* Covered articles (validated rules)
+
+  | Article ref | Title                              | Rules                                  | Agents      | Status |
+  |-------------+------------------------------------+----------------------------------------+-------------+--------|
+  | Art.5@cir   | Load conformance (CIR-1.0)         | R01-load-conformance.yml               | agent-load  | ✅     |
+  | Art.6@cir   | Cryptographic parameters (CIR-1.0) | R01-algo-approved.yml                  | agent-algo  | ✅     |
+  |             |                                    | R02-algo-keylength.yml                 | agent-algo  | ✅     |
+  | §3.2@arf    | Approved algorithm list (ARF-2.1)  | R01-algo-approved.yml                  | agent-algo  | ✅     |
+  |             |                                    | R02-algo-keylength.yml                 | agent-algo  | ✅     |
+
+* Uncovered articles (gaps → candidates for chorus-feed --enrich)
+
+  (none — 0 uncovered articles)
+
+* Orphan rule references (rules pointing to non-existent corpus articles)
+
+  (none — all CORPUS: references resolved in corpus)
+
+* Rules without CORPUS reference (traceability gap)
+
+  (none — all 3 rules carry a resolved CORPUS: header)
+
+* Out-of-scope sections (excluded from coverage count)
+
+  | Section        | Source     | Reason                                              |
+  |----------------+------------+-----------------------------------------------------|
+  | §3.1           | ARF-2.1    | CHORUS:no_auto_rules — definitions, thesaurus only  |
+  | §4.1           | ARF-2.1    | CORPUS-DIRECTIVES override — prose, no threshold    |
+  | Scope          | ARF-2.1    | CHORUS:no_auto_rules — informative                  |
+  | Annex B        | ARF-2.1    | CHORUS:no_auto_rules — informative                  |
+  | Foreword       | CIR-1.0    | CHORUS:no_auto_rules — informative                  |
+  | Terms & defs   | CIR-1.0    | CHORUS:no_auto_rules — thesaurus only               |
+  | Annex A        | CIR-1.0    | CHORUS:no_auto_rules — informative                  |
+
+* Expert decisions (populated after HTML review)
+
+  (this section is filled when kb-review-001-decisions.json is loaded)
+
+* Next steps
+
+  #+BEGIN_EXAMPLE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    chorus-review-kb — test-kb-multiSource
+    Coverage : 100% (3/3)   Uncovered: 0   Orphan: 0
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Uncovered = 0 AND Orphan = 0 — no chorus-feed --enrich needed.
+
+  # Convergence exit criteria status:
+  #   ✅ ⏭ Deferred          = 0   (README.org)
+  #   ✅ ⚠️ CORPUS: unresolved = 0   (README.org)
+  #   ✅ Uncovered            = 0   (this review)
+  #   ✅ Orphan               = 0   (this review)
+  #   ⏳ Strengthen gaps      = ?   (not yet run)
+
+  # One criterion remaining:
+  chorus-check test-kb-multiSource <any-projet.json>
+  chorus-strengthen test-kb-multiSource
+  chorus-stress test-kb-multiSource
+  #+END_EXAMPLE
