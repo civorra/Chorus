@@ -1,0 +1,59 @@
+#+TITLE: Agent Load — Widget load conformance
+#+CORPUS_LANG: EN
+#+CORPUS_FILE: corpus/003-agent-load.md
+#+DATE: test
+#+STATUS: draft
+
+* Domaine
+  Load conformance for certified widgets per CIR-1.0 Art.5.
+  Checks that measured load meets the minimum threshold for each performance class.
+
+* Ontologie
+
+** Frames
+   | Frame  | type_element | Description          |
+   |--------+--------------+----------------------|
+   | widget | widget       | A certified widget   |
+
+** Slots d'entrée
+   | Slot       | Type   | Description                                 |
+   |------------+--------+---------------------------------------------|
+   | perf_class | string | Performance class: P1, P2, P3 (CIR Art.5)  |
+   | load_n     | float  | Measured load in Newtons                    |
+
+** Slots calculés
+   | Slot      | Type   | Valeurs         | Description                          |
+   |-----------+--------+-----------------+--------------------------------------|
+   | load_ok   | string | OUI / NON       | Load conformance verdict             |
+   | motif_load| string | free            | Justification string for load_ok     |
+
+** Aliases
+   Sources: CIR-1.0 Art.5, ARF-2.1 §3.1 (CONTEXT)
+   | Project term      | KB slot / value          | Confidence |
+   |-------------------+--------------------------|------------|
+   | performance class | perf_class               | ✅         |
+   | certified widget  | type_element = widget    | ✅         |
+   | grade             | perf_class               | ✅         |
+   | load test result  | load_n                   | ✅         |
+
+* Catalogue des Frames
+  Frame: widget
+  | Slot       | Type   | Default | Derived | Description                |
+  |------------+--------+---------+---------+----------------------------|
+  | perf_class | string | —       | no      | P1 / P2 / P3               |
+  | load_n     | float  | —       | no      | Measured Newtons           |
+  | load_ok    | string | —       | yes     | Set by R01-load-conformance|
+  | motif_load | string | —       | yes     | Set by R01-load-conformance|
+
+* Catalogue des règles
+  | Rule                   | File                                  | CORPUS             |
+  |------------------------+---------------------------------------+--------------------|
+  | R01-load-conformance   | rules/agent-load/R01-load-conformance.yml | CIR-1.0 Art.5  |
+
+* Constraints & Pitfalls
+  - _NEEDED on load_n: NOT implementable — load_n is a physical measurement,
+    not derivable from perf_class alone. SCOPING.md §Control slots was speculative.
+    If load_n is absent from a project JSON, the rule fires its EXCEPTION guard
+    and the element is left unscored (no verdict). Document this in import instructions.
+  - perf_class values are P1/P2/P3 — no alternate form found in corpus (CIR Art.5
+    + ARF §3.1 cross-checked — both use P1/P2/P3 consistently).

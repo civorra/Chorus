@@ -1,0 +1,50 @@
+##
+# RULE: R01-load-conformance
+# AGENT: WidgetCompliance::Agent::AgentLoad  (pos. 1 / 2)
+# CORPUS: CIR-1.0 Art.5 — Load conformance
+#
+# PURPOSE
+#   Checks that a widget's measured load meets the minimum threshold
+#   for its performance class. CIR Art.5 defines:
+#     P1 >= 500 N  |  P2 >= 300 N  |  P3 >= 150 N
+#
+# INPUTS  (slots read)
+#   perf_class  : string — P1/P2/P3 (from project JSON)
+#   load_n      : float  — measured load in Newtons (from project JSON)
+#
+# OUTPUTS (slots written)
+#   load_ok     : "OUI" | "NON" — conformance verdict
+#   motif_load  : string        — human-readable justification
+#
+# HELPERS
+#   Helpers::min_load_for_class($perf_class) → integer (min Newtons)
+#
+# GUARD — EXCEPTION: defined $var->{load_ok}
+#   Pattern 1 — "first writer wins": only one sibling rule for load_ok.
+#
+# Cross-checked corpus for alternate/extended perf_class forms — none found.
+##
+RULE: R01-load-conformance
+FIND:
+  var: FIND type_element EQUAL widget
+CONDITION: "defined $var->get('perf_class') && defined $var->get('load_n')"
+EXCEPTION: "defined $var->{load_ok}"
+ACTION: |
+  my $class = $var->get('perf_class');
+  my $load  = $var->get('load_n');
+  my $min   = Helpers::min_load_for_class($class);
+
+  unless (defined $min) {
+      $var->set('load_ok',    'NON');
+      $var->set('motif_load', "unknown performance class '$class' — not in CIR Art.5");
+      return 1;
+  }
+
+  if ($load >= $min) {
+      $var->set('load_ok',    'OUI');
+      $var->set('motif_load', "load ${load} N >= minimum ${min} N for class $class (CIR-1.0 Art.5)");
+  } else {
+      $var->set('load_ok',    'NON');
+      $var->set('motif_load', "load ${load} N < minimum ${min} N for class $class (CIR-1.0 Art.5) — NON_CONFORME");
+  }
+  1
