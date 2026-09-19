@@ -1345,7 +1345,7 @@ when the KB has not changed since the last `chorus-check --all`.
 - [ ] `Feed.pm`: unknown types → `warn + next` (not `die`) — safety net for mixed-sandbox JSON
 - [ ] `Expert.pm`: `register()` order = `#+PIPELINE_POS` order
 - [ ] `Expert.pm`: `$xprt->{_MAX_ITER}` forced **after** `new()` (known bug: `new()` ignores its arguments)
-- [ ] `run.pl`: `../../Engine/lib` path correct from the sandbox
+- [ ] `run.pl`: `Chorus::*` resolved via system install (no `use lib` pointing to Engine sourcetree)
 - [ ] `run.pl`: no hardcoded data
 - [ ] Report: no unexpected `(unprocessed)` elements
 - [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume **and rule chain depth**.

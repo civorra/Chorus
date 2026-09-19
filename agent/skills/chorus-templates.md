@@ -265,7 +265,6 @@ use strict;
 use warnings;
 
 use FindBin qw($Bin);
-use lib "$Bin/../../Engine/lib";   # Chorus::Engine, Frame, Expert, Collection
 use lib "$Bin/lib";                 # <Namespace>::*
 
 use <Namespace>::Feed   qw(load_projet);

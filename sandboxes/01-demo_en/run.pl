@@ -5,7 +5,6 @@ use utf8;
 use open ':std', ':encoding(UTF-8)';
 
 use FindBin qw($Bin);
-use lib "$Bin/../../lib";   # Chorus::Engine, Frame, Expert, Collection
 use lib "$Bin/lib";         # TimberFrame::*
 
 use TimberFrame::Feed   qw(load_projet);
