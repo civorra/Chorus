@@ -1,13 +1,13 @@
 # Skill — chorus-check
 
-> Trigger: `chorus-check <sandbox-name> <fichier-projet> [--all] [--explain] [--summary]`
+> Trigger: `chorus-check <sandbox-name> <fichier-project> [--all] [--explain] [--summary]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing the KB and YAML rules (produced by `chorus-feed`)
-> `<fichier-projet>`: JSON file describing the project elements to validate,
+> `<fichier-project>`: JSON file describing the project elements to validate,
 >                      or data provided inline by the user
->                      (ignored when `--all` is present — all `projet-*.json` are used)
-> `--all`: run all `projet-*.json` files found in `$SANDBOX/` and produce a synthesis report
+>                      (ignored when `--all` is present — all `project-*.json` are used)
+> `--all`: run all `project-*.json` files found in `$SANDBOX/` and produce a synthesis report
 > `--explain`: produce a human-readable, rule-by-rule explanation file for every
 >              NON_CONFORME (and optionally `_a_confirmer`) element — see § Option
 >              `--explain` below. Compatible with both single-file mode and `--all`
@@ -115,7 +115,7 @@ Extract from `index.org`:
 
 ```json
 {
-  "projet": "<nom>",
+  "project": "<nom>",
   "elements": [
     {
       "id": "<identifiant unique>",
@@ -128,7 +128,7 @@ Extract from `index.org`:
 ```
 
 If the project file is provided **inline** (data pasted in the message) →
-write it to `$SANDBOX/projet.json` before continuing.
+write it to `$SANDBOX/project.json` before continuing.
 
 ### 1.2 Deduce input-required slots
 
@@ -462,7 +462,7 @@ chorus_engine_loadrules (h1, "$SANDBOX/rules/<slug1>/")
 chorus_engine_loadrules (h2, "$SANDBOX/rules/<slug2>/")
 chorus_expert_create (engine_handles: [h1, h2])  →  hX
 chorus_feed_load (namespace: "<Namespace>",
-                  json_path:  "$SANDBOX/projet.json",
+                  json_path:  "$SANDBOX/project.json",
                   lib_paths:  ["$SANDBOX/lib", "$ENGINE/lib"])
 chorus_board_set (hX, { INPUT: <project_data> })   ← if agents read BOARD->INPUT
 chorus_process   (hX)                               →  "solved" | "failed"
@@ -480,7 +480,7 @@ chorus_reset                                  ← cleanup after collection
 Build the compliance report from the collected frame data.
 Apply the same report structure as Phase 6B (blocks 1–4 from T5).
 
-> **`_labels` — termes projet d'origine (MCP mode) :**
+> **`_labels` — termes project d'origine (MCP mode) :**
 > Si `_labels` est présent sur un frame (hashref `{ slot_kb → terme_projet }`),
 > afficher le terme d'origine entre guillemets après la valeur de chaque slot concerné :
 > ```
@@ -522,7 +522,7 @@ If `chorus_process` returns `failed`:
 Run the pipeline via the generated `run.pl`:
 
 ```bash
-perl $SANDBOX/run.pl $SANDBOX/projet.json
+perl $SANDBOX/run.pl $SANDBOX/project.json
 ```
 
 Capture the output. If Perl errors occur:
@@ -539,7 +539,7 @@ After the verbatim output, always produce the following structured report:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  chorus-check  <sandbox-name>  <fichier-projet>
+  chorus-check  <sandbox-name>  <fichier-project>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Status       : SOLVED ✅ / FAILED ❌
   Éléments     : N total  (Bat:N  Voie:N  Fac:N  …)
@@ -640,7 +640,7 @@ If `index.org` is missing or has no `* Integrated corpus` table → record
 
 **b) Project recap — read from the project JSON file(s) being checked:**
 
-- `projet` (name) field
+- `project` (name) field
 - `description` field, truncated to one sentence if longer (first `.` or first
   120 characters, whichever comes first) — the full description belongs in the
   JSON, not repeated verbatim in every generated report
@@ -670,7 +670,7 @@ If `index.org` is missing or has no `* Integrated corpus` table → record
      `source_document` alone and add `(document original non résolu — vérifier <dossier>)`.
   → Render as: `Import — document: <original ou "non résolu"> (converti en <source_document>, mode: <mode>, date: <date>)`
 - If `_import` is absent → one line, corpus language:
-  French: `Origine : projet synthétique (chorus-create-project/chorus-stress)`
+  French: `Origine : project synthétique (chorus-create-project/chorus-stress)`
   English: `Origin: synthetic project (chorus-create-project/chorus-stress)`
 - For `--all` / multi-file synthesis (`explain-all-*.md`) → one such project
   recap block **per project file**, not merged — each file may have a distinct
@@ -689,7 +689,7 @@ inserted verbatim after the document's own title/date/status lines).
 
 French corpus (default template):
 ```markdown
-## 📚 KB & Projet
+## 📚 KB & Project
 
 **Pipeline :** <N> agents : <slug1> → <slug2> → … → <slugN>
 
@@ -698,8 +698,8 @@ French corpus (default template):
 | <NNN> | <fichier> | <agents, résumé court> |
 | ... | | |
 
-**Projet :** <projet> — <description tronquée>
-**Origine :** <Import — document: ... (converti en ...) | projet synthétique>
+**Project :** <project> — <description tronquée>
+**Origine :** <Import — document: ... (converti en ...) | project synthétique>
 ```
 
 English corpus:
@@ -800,7 +800,7 @@ French corpus (default template):
 **Référence normative :** §<N> para <M> — <one-line summary of the requirement>
 
 **Valeurs d'entrée lues par la règle :**
-| Slot | Valeur dans le projet |
+| Slot | Valeur dans le project |
 |---|---|
 | <slot_a> | <valeur> |
 | <slot_b> | <valeur> |
@@ -859,7 +859,7 @@ element as genuinely non-compliant.
 
 French corpus (default template):
 ```markdown
-# Explication des non-conformités — <sandbox-name> / <fichier-projet ou "--all">
+# Explication des non-conformités — <sandbox-name> / <fichier-project ou "--all">
 Date : <YYYY-MM-DD>
 Pipeline : SOLVED ✅ / FAILED ❌
 Éléments expliqués : <N> (📋 <n_subst> substantielle(s) · 🔤 <n_map> mapping · ❓ <n_unc> incertain(s))
@@ -915,15 +915,15 @@ evaluable element(s) (<X>%) — <N> terminology-mapping anomaly/ies detected
 separately, not counted as product defects.
 ```
 
-Write to: `$SANDBOX/agent/explain-<projet-slug>-<NNN>.md`
-(`<projet-slug>` derived from the project filename; `<NNN>` = next available
+Write to: `$SANDBOX/agent/explain-<project-slug>-<NNN>.md`
+(`<project-slug>` derived from the project filename; `<NNN>` = next available
 3-digit counter in `agent/`, matching the numbering convention of
 `import-report-*.org` / `audit-import-*.md`.)
 
 For `--all` mode, produce a single consolidated file:
 `$SANDBOX/agent/explain-all-<NNN>.md`, with per-project-file sub-sections.
 
-Print: `[explain] Explanation file written → agent/explain-<projet-slug>-<NNN>.md (<N> element(s))`
+Print: `[explain] Explanation file written → agent/explain-<project-slug>-<NNN>.md (<N> element(s))`
 
 
 ## Option `--summary` — Consultation-friendly synthesis document
@@ -969,7 +969,7 @@ taux_reel = round(100 * (n_conforme + n_map) / n_total)   # optimistic rate if a
 
 ### Phase S2 — One-page synthesis document
 
-Write `$SANDBOX/agent/synthese-<projet-slug>-<NNN>.md` using this exact template.
+Write `$SANDBOX/agent/synthese-<project-slug>-<NNN>.md` using this exact template.
 
 > ⚠️ **Language:** render section headings, labels, and free text in the
 > **corpus language** (see canonical rule). French template is the default
@@ -982,7 +982,7 @@ French corpus (default template):
 ```markdown
 # Synthèse de conformité — <Nom du produit / dossier, from project JSON if available>
 
-**Dossier :** <fichier-projet>
+**Dossier :** <fichier-project>
 **Date :** <YYYY-MM-DD>
 **Statut du pipeline :** SOLVED ✅ / FAILED ❌
 
@@ -1020,7 +1020,7 @@ Aucune non-conformité substantielle détectée.
 
 ## Anomalies de mapping terminologique (action requise sur l'import, pas le produit)
 
-| Réf. | Terme projet | Mapping actuel | Anomalie |
+| Réf. | Terme project | Mapping actuel | Anomalie |
 |---|---|---|---|
 | <id> | "<terme source>" | <slot>=<valeur> | <résumé 1 ligne> |
 | ... | | | |
@@ -1045,11 +1045,11 @@ Aucun élément à confirmer.
 anomalie(s) de mapping à lever avec l'équipe d'import — leur résolution
 porterait le taux de conformité de <taux>% à <taux_reel>%.
 <Next step: chorus-strengthen <sandbox-name> si des règles sont jugées trop
-strictes/permissives, ou correction directe du document projet sinon.>"
+strictes/permissives, ou correction directe du document project sinon.>"
 
 ---
 *Document généré automatiquement par `chorus-check --summary` — voir
-`agent/explain-<projet-slug>-<NNN>.md` pour le détail règle-par-règle de
+`agent/explain-<project-slug>-<NNN>.md` pour le détail règle-par-règle de
 chaque élément.
 ```
 
@@ -1124,11 +1124,11 @@ strict/permissive, or direct correction of the project document otherwise.>"
 
 ---
 *Document automatically generated by `chorus-check --summary` — see
-`agent/explain-<projet-slug>-<NNN>.md` for the full rule-by-rule detail of
+`agent/explain-<project-slug>-<NNN>.md` for the full rule-by-rule detail of
 each element.*
 ```
 
-Print: `[summary] Synthesis written → agent/synthese-<projet-slug>-<NNN>.md`
+Print: `[summary] Synthesis written → agent/synthese-<project-slug>-<NNN>.md`
 
 > **Consultation ergonomics:** this file is deliberately kept under one printed
 > page. It never repeats the full YAML/corpus traceability of `--explain` —
@@ -1151,12 +1151,12 @@ Print: `[summary] Synthesis written → agent/synthese-<projet-slug>-<NNN>.md`
 ### 6-all.1 Discover project files
 
 ```bash
-ls $SANDBOX/projet-*.json
+ls $SANDBOX/project-*.json
 ```
 
-If no `projet-*.json` file is found → stop and report:
+If no `project-*.json` file is found → stop and report:
 ```
-⛔ No projet-*.json file found in $SANDBOX/.
+⛔ No project-*.json file found in $SANDBOX/.
    Run chorus-create-project <sandbox-name> --batch first.
 ```
 
@@ -1223,12 +1223,12 @@ returned structured blocks:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Project file         │ Status      │ CONFORME │ NON_CONF │ Unproc │ Disc │ Uncertain⁺
   ─────────────────────┼─────────────┼──────────┼──────────┼────────┼──────┼───────────
-  projet-rules-iso     │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
-  projet-edges         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
-  projet-cross         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
-  projet-scale         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
-  projet-stress-*      │ SOLVED ✅   │    N     │    N     │   0    │  0   │  N
-  <other-projet>       │ FAILED ❌   │    N     │    N     │   N    │  N   │  —
+  project-rules-iso     │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  project-edges         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  project-cross         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  project-scale         │ SOLVED ✅   │    N     │    N     │   0    │  0   │  —
+  project-stress-*      │ SOLVED ✅   │    N     │    N     │   0    │  0   │  N
+  <other-project>       │ FAILED ❌   │    N     │    N     │   N    │  N   │  —
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Overall: SOLVED ✅ / FAILED ❌     Discordances: N / N_total
   ⁺ Uncertain: stress elements with _expected_uncertain=true — excluded from Disc count.
@@ -1248,7 +1248,7 @@ For each file with `Disc > 0`, list the discordant elements
 (from sub-agent `DISC_DETAIL`):
 
 ```
-  projet-edges — 2 discordances:
+  project-edges — 2 discordances:
     E-MUR-OK-SLEND-01  expected CONFORME   → got NON_CONFORME  (R03-slenderness)
     E-POT-KO-THICK-02  expected NON_CONF   → got CONFORME      (no rule fired)
 ```
@@ -1257,7 +1257,7 @@ For each file with `Unproc > 0`, list the unprocessed elements
 (from sub-agent `UNPROC_DETAIL`):
 
 ```
-  projet-scale — 3 unprocessed:
+  project-scale — 3 unprocessed:
     S-OSS-OK-C24-11    → targeting slot 'besoin_ossature' probably missing from Feed
 ```
 
@@ -1286,7 +1286,7 @@ when the KB has not changed since the last `chorus-check --all`.
   "timestamp": "<ISO-8601 UTC>",
   "files": [
     {
-      "file": "projet-rules-iso.json",
+      "file": "project-rules-iso.json",
       "status": "SOLVED",
       "conforme": N,
       "non_conforme": N,
@@ -1317,7 +1317,7 @@ when the KB has not changed since the last `chorus-check --all`.
 > No timeout risk regardless of pipeline complexity or number of project files.
 > Running N projects costs exactly N sub-agent spawns + N × `perl run.pl`.
 > If a sub-agent fails (token error, crash) → re-run
-> `chorus-check <sandbox> <projet-file>` (single-file mode) for the failed
+> `chorus-check <sandbox> <project-file>` (single-file mode) for the failed
 > project only — no need to rerun the whole batch.
 
 

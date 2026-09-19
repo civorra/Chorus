@@ -1,10 +1,10 @@
 # Skill — chorus-audit-import
 
-> Trigger: `chorus-audit-import <sandbox-name> <projet.json> [--patch] [--source <file.md>] [--kb]`
+> Trigger: `chorus-audit-import <sandbox-name> <project.json> [--patch] [--source <file.md>] [--kb]`
 > Agent: `code`
 >
 > `<sandbox-name>`   : sandbox whose KB was used to produce the JSON
-> `<projet.json>`    : imported project JSON (result of `chorus-import-project`)
+> `<project.json>`    : imported project JSON (result of `chorus-import-project`)
 >                      Accepted as relative path inside the sandbox or absolute path.
 > `--patch`          : apply ✅ comblable corrections directly into the JSON file
 > `--source <file>`  : add an extra source document to search (beyond `_import.source`)
@@ -20,7 +20,7 @@
 > chorus-import-project → [chorus-audit-import] → (corrections) → chorus-check
 > ```
 >
-> Prerequisites: `chorus-import-project` must have been run — a `<projet.json>` with
+> Prerequisites: `chorus-import-project` must have been run — a `<project.json>` with
 > `_import` metadata block must exist.
 
 
@@ -30,14 +30,14 @@
 
 ```
 SANDBOX = $SANDBOXES/<sandbox-name>/
-JSON    = resolve <projet.json> against SANDBOX if not absolute
+JSON    = resolve <project.json> against SANDBOX if not absolute
 ```
 
 Read `$SANDBOX/agent/chorus/index.org` → namespace, agent slugs, pipeline order.
 
 ### 0.2 Read the project JSON
 
-Read `<projet.json>` and extract:
+Read `<project.json>` and extract:
 
 | Field | Purpose |
 |---|---|
@@ -167,7 +167,7 @@ Assemble the full audit report. Produce one row per gap/confirm entry.
 ### Output format
 
 ```markdown
-## Audit — <projet.json> vs <sandbox-name> KB
+## Audit — <project.json> vs <sandbox-name> KB
 Date: <YYYY-MM-DD>
 Source(s): <list>
 Import coverage: <couverture_kb from JSON>
@@ -238,7 +238,7 @@ For each patchable entry:
 
 Print a summary of all patches:
 ```
-[audit --patch] Ready to apply N corrections to <projet.json>:
+[audit --patch] Ready to apply N corrections to <project.json>:
   BAT-A.nb_niveaux          : null → 4
   FAC-3B-bois.has_ouvertures: null → true
   ...
@@ -254,8 +254,8 @@ For each confirmed patch:
 - Remove `_incomplet: 1` flag if all mandatory slots are now filled
 - Add `_patched_by: "chorus-audit-import"` and `_patched_date: "<YYYY-MM-DD>"` to the element
 
-Write the patched JSON back to `<projet.json>` (overwrite).
-Print: `[audit --patch] <N> corrections applied → <projet.json>`
+Write the patched JSON back to `<project.json>` (overwrite).
+Print: `[audit --patch] <N> corrections applied → <project.json>`
 
 ### 4.4 Update audit report
 
@@ -267,25 +267,25 @@ Add a `### Patches applied` section to the report listing all changes made.
 | File | Description |
 |---|---|
 | `$SANDBOX/agent/audit-import-<NNN>.md` | Full audit report (always produced) |
-| `<projet.json>` | Patched JSON (only with `--patch` after confirmation) |
+| `<project.json>` | Patched JSON (only with `--patch` after confirmation) |
 
 > **NNN** is a zero-padded 3-digit counter matching the source JSON number
-> (e.g. `projet-ZAC-Ferney-001.json` → `audit-import-001.md`).
+> (e.g. `project-ZAC-Ferney-001.json` → `audit-import-001.md`).
 > If the JSON filename contains no number, use the next available counter in `agent/`.
 
 ## Usage examples
 
 ```bash
 # Basic audit — report only
-chorus-audit-import test-04 projets/projet-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json
+chorus-audit-import test-04 projects/project-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json
 
 # Audit with KB coherence check
-chorus-audit-import test-04 projets/projet-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json --kb
+chorus-audit-import test-04 projects/project-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json --kb
 
 # Audit + apply comblable corrections
-chorus-audit-import test-04 projets/projet-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json --patch
+chorus-audit-import test-04 projects/project-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json --patch
 
 # Audit with an additional source document
-chorus-audit-import test-04 projets/projet-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json \
-  --source projets/004b-sortie-securite-incendie-1-pages1-16-vision.md
+chorus-audit-import test-04 projects/project-ZAC-Ferney—Lot-B32—Sortie-sécurité-incendie-1.json \
+  --source projects/004b-sortie-securite-incendie-1-pages1-16-vision.md
 ```

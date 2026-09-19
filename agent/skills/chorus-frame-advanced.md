@@ -96,10 +96,10 @@ it as `_ISA`:
 
 ```perl
 sub load_projet {
-    my ($projet) = @_;
+    my ($project) = @_;
     
     # Build Frame from JSON
-    my $frame = Chorus::Frame->new(%$projet);
+    my $frame = Chorus::Frame->new(%$project);
     
     # Find best-matching prototype
     my $proto = fselect(

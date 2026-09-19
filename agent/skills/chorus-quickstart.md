@@ -58,12 +58,12 @@ Use this path when you have **an actual project document** to validate against t
 ```
 chorus-pdf  <sandbox> <file.pdf>          # only if corpus is PDF
 chorus-feed <sandbox> <corpus.txt>        # build or update the KB
-chorus-import-project <sandbox> <doc>     # align engineer terms → KB slots → projet-import-NNN.json
-chorus-check <sandbox> projet-import-NNN.json
+chorus-import-project <sandbox> <doc>     # align engineer terms → KB slots → project-import-NNN.json
+chorus-check <sandbox> project-import-NNN.json
 ```
 
 `chorus-import-project` reads the engineer's document, maps its terminology to KB slots,
-and produces a `projet-*.json` ready for `chorus-check`.
+and produces a `project-*.json` ready for `chorus-check`.
 
 ---
 
@@ -76,7 +76,7 @@ the rules cover the full domain (conforming, edge cases, cross-type, scale).
 chorus-pdf  <sandbox> <file.pdf>          # only if corpus is PDF
 chorus-feed <sandbox> <corpus.txt>        # build or update the KB
 chorus-create-project <sandbox> --batch   # generate 4 coverage files
-chorus-check <sandbox> --all              # validate all projet-*.json
+chorus-check <sandbox> --all              # validate all project-*.json
 ```
 
 `chorus-create-project` synthesises conforming and non-conforming elements from the KB —
@@ -93,7 +93,7 @@ it never reads a real project document.
 | You want to verify domain coverage after enrichment | **B** — `chorus-create-project --batch` |
 | You have both a real doc AND want coverage tests | Run both paths on the same sandbox |
 
-> ⚠️ Both skills produce a `projet-*.json` consumed by `chorus-check`,
+> ⚠️ Both skills produce a `project-*.json` consumed by `chorus-check`,
 > but they serve opposite purposes. Do not confuse them.
 
 ---
@@ -153,11 +153,11 @@ See: `chorus-review-kb.md`
 ### Step 2A — Import a real project (Path A)
 
 ```
-chorus-import-project <sandbox-name> <source> [--out projet-import.json]
+chorus-import-project <sandbox-name> <source> [--out project-import.json]
 ```
 
 - Accepts PDF, Word, Excel, CSV, or inline text.
-- Maps engineer terminology to KB slots → produces `projet-import-<NNN>.json`.
+- Maps engineer terminology to KB slots → produces `project-import-<NNN>.json`.
 - **Recommended next step:** run `chorus-audit-import` to validate the JSON before `chorus-check`.
 - Proceed to `chorus-check` with this file.
 
@@ -172,10 +172,10 @@ chorus-create-project <sandbox-name> --batch
 ```
 
 Produces four project files in `$SANDBOX/`:
-- `projet-rules-iso.json` — one element per rule, isolated
-- `projet-edges.json` — boundary / threshold values
-- `projet-cross.json` — multi-rule interactions
-- `projet-scale.json` — large-scale volume test
+- `project-rules-iso.json` — one element per rule, isolated
+- `project-edges.json` — boundary / threshold values
+- `project-cross.json` — multi-rule interactions
+- `project-scale.json` — large-scale volume test
 
 Use `--strategy <iso|edges|cross|scale>` to generate a single file (recommended for large sandboxes).
 
@@ -189,7 +189,7 @@ See: `chorus-create-project.md`
 chorus-stress <sandbox-name>
 ```
 
-- Generates adversarial `projet-stress-*.json` files: boundary values, missing mandatory slots,
+- Generates adversarial `project-stress-*.json` files: boundary values, missing mandatory slots,
   rare edge combinations, `_AFTER` propagation chains, qualifier-sensitive rules.
 - Expected results are computed **deterministically** from `threshold_registry` — never by LLM inference.
 - **Run after `chorus-create-project --batch`, before `chorus-check --all`.**
@@ -202,8 +202,8 @@ See: `chorus-stress.md`
 ### Step 3 — Validate
 
 ```
-chorus-check <sandbox-name> <projet-file.json>   # single project
-chorus-check <sandbox-name> --all                # all projet-*.json + synthesis table
+chorus-check <sandbox-name> <project-file.json>   # single project
+chorus-check <sandbox-name> --all                # all project-*.json + synthesis table
 ```
 
 - Generates infrastructure (`Feed.pm`, shell Agent, `Expert`, `run.pl`) from the KB on first run.
@@ -261,9 +261,9 @@ $SANDBOXES/<sandbox-name>/
 │   └── Helpers.pm           ← business knowledge helpers  (chorus-feed)
 ├── Feed.pm                  ← generated infrastructure    (chorus-check)
 ├── run.pl                   ← pipeline runner             (chorus-check)
-├── projet-rules-iso.json    ← synthetic coverage          (chorus-create-project)
-├── projet-stress-001.json   ← adversarial stress tests    (chorus-stress)
-├── projet-import-001.json   ← real project                (chorus-import-project)
+├── project-rules-iso.json    ← synthetic coverage          (chorus-create-project)
+├── project-stress-001.json   ← adversarial stress tests    (chorus-stress)
+├── project-import-001.json   ← real project                (chorus-import-project)
 ├── stress-manifest.org      ← stress test manifest        (chorus-stress)
 └── reports/
     └── <timestamp>-report.md
@@ -288,6 +288,6 @@ chorus-pdf            myproject corpus/spec.pdf
 chorus-feed           myproject corpus/001-spec-text.txt
 chorus-review-kb      myproject                          # expert coverage review
 chorus-import-project myproject project-doc.pdf
-chorus-audit-import   myproject projet-import-001.json   # validate before check
-chorus-check          myproject projet-import-001.json
+chorus-audit-import   myproject project-import-001.json   # validate before check
+chorus-check          myproject project-import-001.json
 ```

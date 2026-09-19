@@ -10,10 +10,10 @@
 > `--out <dir>` : output directory for generated stress files (default: `$SANDBOX/`)
 >
 > ⚠️ **`--out` and `chorus-check --all` compatibility:** `chorus-check --all` discovers
-> `projet-*.json` files only in `$SANDBOX/` (not in subdirectories). If `--out` points to
+> `project-*.json` files only in `$SANDBOX/` (not in subdirectories). If `--out` points to
 > a subdirectory (e.g. `$SANDBOX/stress/`), generated files will **not** be picked up by
 > `--all`. Use the default `$SANDBOX/` unless you intend to run stress files manually.
-> The naming convention (`projet-stress-*.json`) keeps them distinguishable from typical files.
+> The naming convention (`project-stress-*.json`) keeps them distinguishable from typical files.
 >
 > **Single responsibility: generate a suite of boundary, missing-slot, edge-combination,
 > cascade, and qualifier stress-test project JSON files whose expected results are computed
@@ -30,7 +30,7 @@
 > | | `--strategy edges` | `chorus-stress --families boundary` |
 > |---|---|---|
 > | Expected results | LLM-inferred from KB | Deterministic from threshold_registry |
-> | Output | One multi-element file (`projet-edges.json`) | One file per (slot × variant) |
+> | Output | One multi-element file (`project-edges.json`) | One file per (slot × variant) |
 > | Direction source | KB prose | YAML `CONDITION` operator (exact Perl comparison) |
 > | Uncertain handling | None | `_expected_uncertain` flag + manifest |
 >
@@ -79,9 +79,9 @@ Confirm:
   ```
 - `$SANDBOX/run.pl` → infrastructure present; if absent → stop: `⛔ Run chorus-check <sandbox-name> <any-project> first.`
 - `$SANDBOX/agent/.kb-hash` → hash present (infrastructure up to date with current KB)
-- `$SANDBOX/projet-*.json` → standard suite exists; if absent → warn (not a hard stop):
+- `$SANDBOX/project-*.json` → standard suite exists; if absent → warn (not a hard stop):
   ```
-  ⚠️ No standard projet-*.json found. chorus-stress will run, but results are most
+  ⚠️ No standard project-*.json found. chorus-stress will run, but results are most
      meaningful when combined with chorus-create-project --batch.
   ```
 - List of `<slug>.org` files and `rules/<slug>/` directories
@@ -91,7 +91,7 @@ Confirm:
   - **Mismatch** → KB was enriched since the last `chorus-stress` run. Warn and continue:
     ```
     ⚠️ KB enriched since the last chorus-stress run (hash mismatch in stress-manifest.org).
-       Existing projet-stress-*.json files may test outdated threshold values.
+       Existing project-stress-*.json files may test outdated threshold values.
        Recommended: re-run chorus-stress <sandbox-name> [--families boundary] to refresh.
     ```
   - **Manifest absent** → first run, no check needed.
@@ -345,7 +345,7 @@ for each element E:
 > ⚠️ **Downstream impact of uncertain elements:** `chorus-strengthen` will classify
 > discordances from uncertain elements as real gaps unless explicitly filtered.
 > Always cross-reference the `stress-manifest.org` uncertain list before acting on
-> any gap reported by `chorus-strengthen` on a `projet-stress-*.json` file.
+> any gap reported by `chorus-strengthen` on a `project-stress-*.json` file.
 
 ---
 
@@ -376,7 +376,7 @@ status: IN_PROGRESS
 
 ```json
 {
-  "projet": "stress-<family>-<slot>-<variant>",
+  "project": "stress-<family>-<slot>-<variant>",
   "description": "<one-line human-readable description of what this test exercises>",
   "_stress": {
     "family":             "boundary",
@@ -409,21 +409,21 @@ status: IN_PROGRESS
 ### File naming convention
 
 ```
-projet-stress-<family>-<slot>-<variant>.json
+project-stress-<family>-<slot>-<variant>.json
 ```
 
 Examples:
 ```
-projet-stress-boundary-eGFR-60-exact.json
-projet-stress-boundary-eGFR-60-below.json
-projet-stress-boundary-UACR-30-above.json
-projet-stress-missing-eGFR.json
-projet-stress-missing-UACR.json
-projet-stress-edge-G4-A1.json
-projet-stress-edge-G2-A3.json
-projet-stress-cascade-ckd-stage.json
-projet-stress-qualifier-reduction-observed.json
-projet-stress-qualifier-reduction-inferred.json
+project-stress-boundary-eGFR-60-exact.json
+project-stress-boundary-eGFR-60-below.json
+project-stress-boundary-UACR-30-above.json
+project-stress-missing-eGFR.json
+project-stress-missing-UACR.json
+project-stress-edge-G4-A1.json
+project-stress-edge-G2-A3.json
+project-stress-cascade-ckd-stage.json
+project-stress-qualifier-reduction-observed.json
+project-stress-qualifier-reduction-inferred.json
 ```
 
 ### Element ID convention
@@ -461,7 +461,7 @@ trigger any other rule (to isolate the stress condition).
 
 Write (or update) `$SANDBOX/stress-manifest.org`:
 
-> **Location rationale:** the manifest lives at `$SANDBOX/` root (alongside `projet-*.json` files),
+> **Location rationale:** the manifest lives at `$SANDBOX/` root (alongside `project-*.json` files),
 > not inside `$SANDBOX/agent/` (generated infrastructure) or `$SANDBOX/agent/chorus/` (KB files).
 > It is a human-readable analysis artefact, not versioned infrastructure or a KB template.
 
@@ -496,7 +496,7 @@ Write (or update) `$SANDBOX/stress-manifest.org`:
 
 * Next steps
   #+BEGIN_EXAMPLE
-  perl $SANDBOX/run.pl <any-projet-stress-file.json>    # spot-check one file
+  perl $SANDBOX/run.pl <any-project-stress-file.json>    # spot-check one file
   chorus-check <sandbox-name> --all                     # full validation
   chorus-strengthen <sandbox-name>                      # gap diagnosis
   #+END_EXAMPLE

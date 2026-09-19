@@ -3,7 +3,7 @@
 > Trigger: `chorus-strengthen <sandbox-name>`
 > Agent: `architect`
 >
-> `<sandbox-name>`: sandbox with a KB, YAML rules, and a coverage suite (`projet-*.json`)
+> `<sandbox-name>`: sandbox with a KB, YAML rules, and a coverage suite (`project-*.json`)
 >
 > **Single responsibility: identify rule gaps and produce an enrichment roadmap.**
 > This skill runs the full project suite, analyses every discordance and unprocessed
@@ -15,7 +15,7 @@
 > Prerequisites:
 > - `chorus-feed <sandbox-name>` must have been run (KB + YAML present)
 > - `chorus-check <sandbox-name> <any-project>` must have been run at least once (infra present)
-> - At least one `projet-*.json` file must exist in `$SANDBOX/`
+> - At least one `project-*.json` file must exist in `$SANDBOX/`
 >   (ideally the full batch from `chorus-create-project <sandbox-name> --batch`)
 
 ---
@@ -26,7 +26,7 @@ Read the directory tree $SANDBOX/ (max_depth=3) to confirm:
 
 - `$SANDBOX/run.pl` — infrastructure present
 - `$SANDBOX/agent/.kb-hash` — hash present (infra is up to date)
-- `$SANDBOX/projet-*.json` — at least one project file
+- `$SANDBOX/project-*.json` — at least one project file
 
 If the infrastructure is absent or the hash is missing → stop:
 ```
@@ -34,7 +34,7 @@ If the infrastructure is absent or the hash is missing → stop:
    Run: chorus-check <sandbox-name> <any-project.json>
 ```
 
-If no `projet-*.json` → stop:
+If no `project-*.json` → stop:
 ```
 ⛔ No coverage suite found in $SANDBOX/.
    Run: chorus-create-project <sandbox-name> --batch
@@ -66,7 +66,7 @@ hash of `$SANDBOX/agent/chorus/*.org`:
 ### 1.2 — Run the full suite (fallback)
 
 Execute `chorus-check <sandbox-name> --all` (fast path — no infrastructure
-regeneration, but spawns one sub-agent per `projet-*.json`).
+regeneration, but spawns one sub-agent per `project-*.json`).
 
 This produces the synthesis table with CONFORME / NON_CONFORME / Unproc / Disc
 counts per project file, and writes a fresh `.last-check-results.json`.
@@ -91,13 +91,13 @@ and stop. No gap report is needed.
 
 ### 2.0 — Uncertain-elements pre-filter (stress files only)
 
-Before classifying any discordance, scan all `projet-stress-*.json` files in `$SANDBOX/`
+Before classifying any discordance, scan all `project-stress-*.json` files in `$SANDBOX/`
 and build the **uncertain-elements exclusion set**:
 
 ```
 uncertain_ids = Set()
 
-for each projet-stress-*.json in $SANDBOX/:
+for each project-stress-*.json in $SANDBOX/:
   for each element in elements[]:
     if element._expected_uncertain == true:
       uncertain_ids.add(element.id)
@@ -114,7 +114,7 @@ classification below** — it does NOT count as a gap, is NOT listed in Phase 4,
 and does NOT appear in the enrichment roadmap. It is reported separately in Phase 4
 under a dedicated section (§ Uncertain stress results).
 
-If no `projet-stress-*.json` file exists → skip this step silently.
+If no `project-stress-*.json` file exists → skip this step silently.
 
 ### 2.1 — Gap classification
 
@@ -148,7 +148,7 @@ For each element, identify:
 - The actual result (from the pipeline output)
 - The rule that fired (if any) — visible in the pipeline output as `raison_non_conformite`
   or from the absence of any firing rule
-- The project file it belongs to (`projet-rules-iso`, `projet-edges`, etc.)
+- The project file it belongs to (`project-rules-iso`, `project-edges`, etc.)
 
 ---
 
@@ -185,7 +185,7 @@ For each gap, one entry:
 
 ```
   ── Gap #N — <gap-type> ─────────────────────────────────────
-  Element    : <id>  (<type_element>)  in <projet-file>
+  Element    : <id>  (<type_element>)  in <project-file>
   Expected   : <CONFORME|NON_CONFORME>
   Got        : <CONFORME|NON_CONFORME|unprocessed>
   Rule fired : <R0N-slug> — "<rule name>"  (or: none)
@@ -235,7 +235,7 @@ For each element in `uncertain_ids` that produced a discordance:
 
 ```
   ── Uncertain #N ────────────────────────────────────────────────
-  Element   : <id>  in <projet-stress-file>
+  Element   : <id>  in <project-stress-file>
   Got       : <CONFORME|NON_CONFORME|unprocessed>
   Stress    : family=<family>  slot=<slot>  threshold=<value>
   Note      : <_stress_note content from the JSON>
@@ -306,8 +306,8 @@ Reinforcement loop:
   chorus-strengthen <sb>                      ← check convergence
        ↓
   ✅ CONVERGED  — all projects pass, 0 discordances, 0 unprocessed
-     (typical suite: projet-rules-iso / edges / cross / scale
-      stress suite:  projet-stress-* with _expected_uncertain=false)
+     (typical suite: project-rules-iso / edges / cross / scale
+      stress suite:  project-stress-* with _expected_uncertain=false)
 ```
 
 ---
@@ -317,7 +317,7 @@ Reinforcement loop:
 | | `chorus-feed` | `chorus-create-project` | `chorus-stress` | `chorus-check` | `chorus-strengthen` |
 |---|---|---|---|---|---|
 | **Reads** | corpus | sandbox org KB | org KB + YAML CONDITIONs | org KB + YAML | pipeline output + org KB |
-| **Produces** | KB org, YAML, Helpers.pm | `projet-*.json` (typical) | `projet-stress-*.json` (adversarial) | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap |
+| **Produces** | KB org, YAML, Helpers.pm | `project-*.json` (typical) | `project-stress-*.json` (adversarial) | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap |
 | **Expected results** | — | LLM + KB inference | **Deterministic from threshold_registry** | — | — |
 | **Modifies KB** | ✅ | ✗ | ✗ | ✗ | ✗ |
 | **Modifies YAML** | ✅ | ✗ | ✗ | ✗ | ✗ |

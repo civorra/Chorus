@@ -15,7 +15,7 @@
 >                    Document files (PDF/DOCX/XLSX/CSV/XML/HTML) are automatically converted
 >                    to plain text before semantic processing.
 > `--out`          : output JSON filename (merge mode only;
->                    default: `projet-import-<NNN>.json`)
+>                    default: `project-import-<NNN>.json`)
 > `--batch`        : force batch mode even if a single source is provided
 >
 > ### Invocation Modes
@@ -166,7 +166,7 @@ For each source in <source…>:
 
     # Step 4 — Record the converted file under the dedicated section
     # (NOT under * Corpus — see warning above). Done once per source, here,
-    # regardless of Single/Merge/Batch mode. The produced projet-import-*.json
+    # regardless of Single/Merge/Batch mode. The produced project-import-*.json
     # name is not yet known at this point in Single/Merge mode — write it as
     # "(pending)" and patch the row in Phase 6 once the output filename is final.
     Ensure $SANDBOX/README.org contains a
@@ -179,7 +179,7 @@ For each source in <source…>:
          conversion skills write their Markdown output — physical location, not
          classification."
     Append a row:
-      | <NNN> | <converted_path> | <original source description> | <produced projet-import-*.json, or "(pending)"> | <date> |
+      | <NNN> | <converted_path> | <original source description> | <produced project-import-*.json, or "(pending)"> | <date> |
 
   Else:
     # Plain .txt, .md, or inline content — use as-is
@@ -207,7 +207,7 @@ chorus-import-project test-05-RGPD dctp.docx isolations.xlsx norms.txt
 chorus-import-project test-05-RGPD ./sources/
 → [auto] Processing sources/norme.pdf → corpus/006-norme-vision.md
 → [auto] Processing sources/dossier.docx → corpus/007-dossier-vision.md
-→ [batch] Generating projet-import-001.json, projet-import-002.json...
+→ [batch] Generating project-import-001.json, project-import-002.json...
 ```
 
 After format detection and auto-conversion (if any), proceed to Mode Detection.
@@ -242,7 +242,7 @@ If N > 1 sources without --batch:
 For each file `f` in `files`:
 1. Extract plain text (Phase 0B below)
 2. Run Phases 1–6 **autonomously** for this file
-3. Name the outputs: `projet-import-<NNN>.json` and `import-report-<NNN>.org`
+3. Name the outputs: `project-import-<NNN>.json` and `import-report-<NNN>.org`
    (increment NNN independently for each file)
 4. At the end of the batch → produce the **batch summary report** (see Phase 6-BATCH)
 
@@ -1474,11 +1474,11 @@ Project term                  KB slot / type_element    KB value         Confide
 >
 > ```bash
 > # Mixed project → two targeted imports
-> chorus-import-project sandbox-structurel ./dossier-projet/ --batch
+> chorus-import-project sandbox-structurel ./dossier-project/ --batch
 >     # → JSON containing only montant_porteur, lisse_basse, ...
 >     # → elements isolant_laine, membrane_etanche → ⬜ excluded + report
 >
-> chorus-import-project sandbox-thermique ./dossier-projet/ --batch
+> chorus-import-project sandbox-thermique ./dossier-project/ --batch
 >     # → JSON containing only isolant_laine, membrane_etanche, ...
 >     # → elements montant_porteur, lisse_basse → ⬜ excluded + report
 > ```
@@ -1840,7 +1840,7 @@ construire pour chaque élément l'objet `_labels` selon l'algorithme suivant :
 For each element E in the alignment table:
   labels = {}
 
-  # 1. type_element : inclure si terme projet ≠ valeur KB
+  # 1. type_element : inclure si terme project ≠ valeur KB
   if alignment[E].project_term_type != alignment[E].kb_type_element:
     labels["type_element"] = alignment[E].project_term_type
 
@@ -1877,7 +1877,7 @@ are **kept** — they serve as the audit trail for this import and are reference
 
 ---
 
-> **⚠️ Language rule — JSON annotation values:** technical structural keys (`"projet"`,
+> **⚠️ Language rule — JSON annotation values:** technical structural keys (`"project"`,
 > `"elements"`, `"id"`, `"type_element"`, `"_a_confirmer"`, `"_conflit"`, `"_incomplet"`,
 > `"_hors_perimetre"`, `"_labels"`, etc.) are invariant; but all **annotation string values**
 > (descriptions, notes, conflict messages, out-of-scope reasons) must be written in the
@@ -1890,7 +1890,7 @@ Once all ❓ items are resolved and critical gaps are filled:
 
 ```json
 {
-  "projet": "<nom-projet-ingenieur>",
+  "project": "<nom-project-ingenieur>",
   "description": "Import from <source> — <date> — <N> elements",
   "_import": {
     "source": "<nom-fichier-ou-inline>",
@@ -1907,8 +1907,8 @@ Once all ❓ items are resolved and critical gaps are filled:
       "type_element": "<type_kb>",
       "<slot_1>": "<valeur>",
       "_labels": {
-        "type_element": "<terme projet d'origine, si différent de type_kb>",
-        "<slot_1>": "<terme projet d'origine, si différent du nom de slot KB>"
+        "type_element": "<terme project d'origine, si différent de type_kb>",
+        "<slot_1>": "<terme project d'origine, si différent du nom de slot KB>"
       },
       "_source_fichier": "<nom-fichier>",
       "_a_confirmer": 1,
@@ -1922,7 +1922,7 @@ Once all ❓ items are resolved and critical gaps are filled:
 > **`_labels` — règle de population :**
 > `_labels` est un objet plat `{ slot_kb → terme_projet_original }`.
 > Il est construit lors de la Phase 5 à partir de la table d'alignement (Phase 3).
-> **Seuls** les slots pour lesquels le terme projet diffère du nom de slot KB sont inclus.
+> **Seuls** les slots pour lesquels le terme project diffère du nom de slot KB sont inclus.
 > Un slot dont le nom source est identique au slot KB (ex. `"id"`) n'est pas listé dans `_labels`.
 > Si aucun slot n'a subi de substitution terminologique, `_labels` est omis (pas de clé vide `{}`).
 >
@@ -1951,7 +1951,7 @@ Once all ❓ items are resolved and critical gaps are filled:
 
 ### Batch Mode — one JSON per file
 
-Each file produces its own JSON named `projet-import-<NNN>.json`.
+Each file produces its own JSON named `project-import-<NNN>.json`.
 The `_import.mode` field is `"batch"`.
 No cross-file merging — each JSON is self-contained and can be piped independently.
 
@@ -2022,7 +2022,7 @@ Create `$SANDBOX/agent/import-report-<NNN>.org`:
   |---|---|---|---|---|
 
 * Output file
-  <path projet-*.json>
+  <path project-*.json>
   N elements retained / N complete / N with gaps / N to confirm / N out-of-scope (excluded)
 ```
 
@@ -2034,7 +2034,7 @@ Create `$SANDBOX/agent/import-report-<NNN>.org`:
 If Phase 0 (auto-conversion) recorded a row with `(pending)` in the
 `* Imported project documents (not corpus — chorus-import-project artefacts)`
 section (see Phase 0 Step 4), replace `(pending)` with the actual output filename
-(e.g. `projet-import-<NNN>.json`) now that it is known.
+(e.g. `project-import-<NNN>.json`) now that it is known.
 
 ⛔ Never add or move this row into `* Corpus` — that table is reserved for
 normative texts read by `chorus-feed` (see Phase 0 warning). An imported project
@@ -2131,8 +2131,8 @@ In addition to the individual reports, create `$SANDBOX/agent/import-batch-<NNN>
 * Results per file
   | File    | JSON produced | Elements | Retained | Gaps | To confirm | Conflicts | Out-of-scope |
   |---|---|---|---|---|---|---|---|
-  | f1.pdf  | projet-import-001.json | 34 | 26 | 6 | 2 | 0 | 0 |
-  | f2.xlsx | projet-import-002.json | 18 | 15 | 3 | 0 | 0 | 3 |
+  | f1.pdf  | project-import-001.json | 34 | 26 | 6 | 2 | 0 | 0 |
+  | f2.xlsx | project-import-002.json | 18 | 15 | 3 | 0 | 0 | 3 |
   | ...     | ...                    | .. | .. | . | . | . | . |
 
 * Totals
@@ -2170,7 +2170,7 @@ In addition to the individual reports, create `$SANDBOX/agent/import-batch-<NNN>
 If the engineer explicitly requests it, follow up with `chorus-check`:
 
 ```bash
-perl $SANDBOX/run.pl $SANDBOX/<projet-import-NNN.json>
+perl $SANDBOX/run.pl $SANDBOX/<project-import-NNN.json>
 ```
 
 If `run.pl` does not yet exist → indicate that `chorus-check` should be run first.
@@ -2181,7 +2181,7 @@ If `run.pl` does not yet exist → indicate that `chorus-check` should be run fi
 | | `chorus-feed` | `chorus-import-project` | `chorus-create-project` | `chorus-check` |
 |---|---|---|---|---|
 | **Reads** | normative corpus | engineer project docs + org KB | org KB | org KB + YAML |
-| **Produces** | KB org, YAML, Helpers.pm | `projet-import-*.json` + `.org` report | `projet-*.json` | Feed.pm, shells, Expert.pm, run.pl |
+| **Produces** | KB org, YAML, Helpers.pm | `project-import-*.json` + `.org` report | `project-*.json` | Feed.pm, shells, Expert.pm, run.pl |
 | **Threshold source** | corpus | org KB only | org KB only | org KB |
 | **Gaps** | n/a | reported, never invented | computed from KB | n/a |
 | **Never reads** | — | Helpers.pm, Feed.pm | Helpers.pm, Feed.pm | — |
@@ -2199,22 +2199,22 @@ Out-of-scope elements (⬜) are cleanly excluded at import time; `run.pl` and
 `Feed.pm` only receive the types they know.
 
 ```
-dossier-projet/                      ← single source (all domains mixed)
+dossier-project/                      ← single source (all domains mixed)
   charpente.pdf
   isolation.xlsx
   bardage.docx
 
-  ↓ chorus-import-project sandbox-structurel ./dossier-projet/ --batch
-projet-structurel-001.json           ← montants, lisses, chevrons
+  ↓ chorus-import-project sandbox-structurel ./dossier-project/ --batch
+project-structurel-001.json           ← montants, lisses, chevrons
                                         # → elements isolant_laine, membrane_etanche → ⬜ excluded + report
 
-  ↓ chorus-import-project sandbox-thermique ./dossier-projet/ --batch
-projet-thermique-001.json            ← isolants, membranes
+  ↓ chorus-import-project sandbox-thermique ./dossier-project/ --batch
+project-thermique-001.json            ← isolants, membranes
                                         # → elements montant_porteur, lisse_basse → ⬜ excluded + report
 
   ↓
-perl sandbox-structurel/run.pl projet-structurel-001.json → rapport_struct.txt
-perl sandbox-thermique/run.pl  projet-thermique-001.json  → rapport_thermo.txt
+perl sandbox-structurel/run.pl project-structurel-001.json → rapport_struct.txt
+perl sandbox-thermique/run.pl  project-thermique-001.json  → rapport_thermo.txt
 ```
 
 **Consequence for `Feed.pm`** (generated by `chorus-check`):
