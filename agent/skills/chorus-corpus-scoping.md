@@ -1,6 +1,6 @@
 # chorus-corpus-scoping
 
-> Trigger: `chorus-corpus-scoping <sandbox-name> [--corpus <file(s)>]`
+> Trigger: `chorus-corpus-scoping <sandbox-name> [--corpus <file(s)>] [--split] [--rescan]`
 > Agent: `architect`
 >
 > Also loads **automatically** as a gate inside `chorus-feed <sandbox> <corpus>`
@@ -49,23 +49,56 @@ decision table **before doing anything else**. Never re-run Phase 1 if
 `SCOPING.md` already exists — re-analysis wastes tokens and risks overwriting
 a previously confirmed structure.
 
-| `SCOPING.md` state | `--split` flag | Agent files present? | Action |
+| `SCOPING.md` state | Flags | Agent files present? | Action |
 |---|---|---|---|
 | **Absent** | any | — | Run Phase 1 — analyse corpus, write `SCOPING.md` as `DRAFT`, stop and ask for confirmation |
-| **`DRAFT`** | any | — | Display existing `SCOPING.md`, ask operator to confirm or revise. Do NOT re-run Phase 1. |
-| **`CONFIRMED`** | absent | **absent** | Run Phase 2 automatically — same as `--split`. Display Phase 2 summary, ask review before proceeding to `chorus-feed`. |
-| **`CONFIRMED`** | absent | **present** | Check idempotence (Step 6): if source corpus unchanged → display "Agent files up to date", suggest `chorus-feed` next step. If changed → re-run Phase 2. |
-| **`CONFIRMED`** | `--split` | absent | Run Phase 2 — explicit trigger, same as automatic above. |
-| **`CONFIRMED`** | `--split` | present | Force re-run Phase 2 (override idempotence check) — operator explicitly requested regeneration. |
+| **`DRAFT`** | none / `--split` | — | Display existing `SCOPING.md`, ask operator to confirm or revise. Do NOT re-run Phase 1. |
+| **`CONFIRMED`** | none | **absent** | Run Phase 2 automatically. Display Phase 2 summary, ask review before proceeding to `chorus-feed`. |
+| **`CONFIRMED`** | none | **present** (all) | Check idempotence (Step 6): if source corpus unchanged → display "Agent files up to date", suggest `chorus-feed` next step. If changed → re-run Phase 2. |
+| **`CONFIRMED`** | none | **partial** | ⚠️ Partial pre-split — see recovery rule below. |
+| **`CONFIRMED`** | `--split` | absent / partial | Run Phase 2 — explicit trigger, force full regeneration of all agent files. |
+| **`CONFIRMED`** | `--split` | present (all) | Force re-run Phase 2 (override idempotence check). |
+| **any** | `--rescan` | any | Force re-run Phase 1 — see `--rescan` rules below. |
 
 > **Key rule:** `--split` is **never needed to trigger Phase 2** when `SCOPING.md`
 > is `CONFIRMED` and no agent files exist — Phase 2 runs automatically. `--split`
-> is useful only to **force regeneration** when agent files already exist (e.g.
-> after manually editing `SCOPING.md ## Corpus section assignment`).
->
-> **Never re-run Phase 1** on a `CONFIRMED` or `DRAFT` `SCOPING.md` unless the
-> operator explicitly requests it with `--rescan`. Re-running Phase 1 silently
-> overwrites the confirmed structure and resets the status to `DRAFT`.
+> forces regeneration when agent files already exist.
+
+#### `--rescan` flag — forced Phase 1 re-analysis
+
+`--rescan` is the only way to re-run Phase 1 when `SCOPING.md` already exists.
+Use it when the corpus has changed substantially and the confirmed structure needs
+to be re-derived from scratch (new agent, new Frame discovered, scoping error
+identified post-generation).
+
+**Behaviour:**
+1. Warn explicitly: `"⚠️ --rescan will overwrite SCOPING.md and delete all agent corpus files. Proceed? [y/N]"` — stop if not confirmed.
+2. Delete all existing agent corpus files (`corpus/<NNN>-<slug>.md` files bearing `# AGENT:` headers).
+3. Reset `SCOPING.md` status to `DRAFT` (preserve the file as a starting point — the operator can keep useful sections and revise the rest).
+4. Run Phase 1 — re-analyse corpus, propose updated agents/Frames/slots.
+5. Stop and present new `SCOPING.md (DRAFT)` for operator confirmation.
+
+**When NOT to use `--rescan`:**
+- The corpus wording changed but the structure (agents, Frames) is unchanged → just re-run `chorus-feed --enrich`.
+- Only the `## Corpus section assignment` table needs adjusting → use `--split` to force Phase 2 regeneration.
+- `SCOPING.md` is `DRAFT` → just edit it and set `CONFIRMED`, no `--rescan` needed.
+
+#### Partial pre-split recovery rule
+
+**When `SCOPING.md` is `CONFIRMED` and agent files are partially present** (some agents have a `corpus/NNN-<slug>.md` file, others do not) — this indicates an interruption between two Phase 2 agent file writes (session timeout, crash):
+
+1. Identify which agents are **missing** by comparing `SCOPING.md ## Agents` table against existing `corpus/NNN-*.md` files with `# AGENT:` headers.
+2. Display a recovery summary:
+   ```
+   ⚠️ Partial pre-split detected:
+     Present  : corpus/003-agent-load.md (agent-load)
+     Missing  : corpus/004-agent-algo.md (agent-algo)
+   Options:
+     [default] Resume — generate missing agent files only, keep existing ones.
+     --split   Regenerate all agent files from scratch.
+   ```
+3. Default (no flag): generate **only the missing agent files** — do not re-generate files that already exist and whose source corpus is unchanged.
+4. `--split`: full regeneration (existing files deleted and re-created).
 
 ### Auto-trigger threshold (inside `chorus-feed` Mode A)
 
