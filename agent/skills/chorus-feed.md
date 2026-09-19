@@ -146,9 +146,42 @@ agent_files = glob("$SANDBOX/corpus/???-<slug>*.md")
 
 | Situation | Action |
 |---|---|
-| **Agent files present** (at least one `corpus/NNN-<slug>.md` with `# AGENT:` header) | **Pre-split mode** — do not use the original corpus file for this run. Instead use the agent file matching the `<corpus>` argument's slug, or the first unprocessed agent file if `<corpus>` is the original. Apply `no_auto_rules` to all `CONTEXT` and `SHARED` sections (see below). Run Phase 1 on this agent file only. |
-| **Agent files absent** — `SCOPING.md` confirmed but Phase 2 not yet run | **Trigger Phase 2** — load `chorus-corpus-scoping.md` and run Phase 2 (corpus pre-split) now. Stop after Phase 2 completes and present the split summary. Do not proceed to Phase 0/1 yet — the operator must review the split before proceeding. |
-| **Agent files absent** — small corpus (Phase -0.5 threshold not crossed) | **Standard mode** — proceed with Phase 1 inline analysis on the original corpus file, as before. No change to existing behavior. |
+| **Agent files present — all agents** (every agent in `SCOPING.md ## Agents` has a `corpus/NNN-<slug>.md` file) | **Pre-split mode** — use the agent file matching the `<corpus>` argument's slug, or the next unprocessed agent file. Apply `no_auto_rules` to CONTEXT/SHARED sections. Run Phase 1 on this agent file only. |
+| **Agent files present — partial** (some agents have files, others do not) | **⚠️ Partial pre-split — recovery mode.** See rules below. |
+| **Agent files absent** — `SCOPING.md` confirmed but Phase 2 not yet run | **Trigger Phase 2** — load `chorus-corpus-scoping.md` and run Phase 2 now. Stop after Phase 2 completes and present the split summary. Do not proceed to Phase 0/1 yet. |
+| **Agent files absent** — small corpus (Phase -0.5 threshold not crossed) | **Standard mode** — Phase 1 inline on the original corpus file. No change. |
+
+#### Partial pre-split recovery (some agent files missing)
+
+**Detection:** `SCOPING.md` is `CONFIRMED` and at least one agent from the `## Agents`
+table is missing its `corpus/NNN-<slug>.md` file (no file with `# AGENT: <slug>` header).
+
+**Do NOT silently proceed** as if the pre-split is complete — missing agent files mean
+the KB would be generated on an incomplete corpus slice. Display:
+
+```
+⚠️ Partial pre-split detected in <sandbox-name>:
+  Present : corpus/<NNN>-<slug-A>.md (agent-A)
+  Missing : corpus/<NNN>-<slug-B>.md (agent-B)
+            corpus/<NNN>-<slug-C>.md (agent-C)
+
+This indicates a Phase 2 interruption (session timeout or crash).
+Options:
+  [default] Resume Phase 2 — generate missing agent files only (existing unchanged).
+            Then re-run: chorus-feed <sandbox> corpus/<NNN>-<slug-A>.md
+  --force   Proceed with current agent file as-is (⚠️ KB will be incomplete until
+            missing agents are processed). Use only if you intend to run the
+            missing agents manually in subsequent sessions.
+```
+
+Default (no `--force`): load `chorus-corpus-scoping.md`, run Phase 2 for missing agents
+only (same as the "Resume" path in `chorus-corpus-scoping` partial recovery rule), then
+stop. Do not proceed to Phase 0/1 until the operator re-runs `chorus-feed` explicitly.
+
+`--force`: bypass the warning and proceed with the current agent file. The KB will be
+incomplete until missing agents are processed — this is an explicit operator override.
+Emit a visible reminder at the end of the pass: `"⚠️ KB incomplete — N agent(s) still
+missing their pre-split corpus file. Run chorus-feed for each missing agent."`
 
 #### `no_auto_rules` enforcement for CONTEXT and SHARED sections
 
