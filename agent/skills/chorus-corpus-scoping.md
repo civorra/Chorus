@@ -42,13 +42,40 @@ them, **then** run `chorus-feed` for actual generation.
 - **Never triggers on `--enrich` runs** — scoping is a Mode A (initialization)
   concern only. Enrichment works within an already-scoped structure.
 
+### Standalone invocation — decision table
+
+When called as `chorus-corpus-scoping <sandbox-name> [--split]`, apply this
+decision table **before doing anything else**. Never re-run Phase 1 if
+`SCOPING.md` already exists — re-analysis wastes tokens and risks overwriting
+a previously confirmed structure.
+
+| `SCOPING.md` state | `--split` flag | Agent files present? | Action |
+|---|---|---|---|
+| **Absent** | any | — | Run Phase 1 — analyse corpus, write `SCOPING.md` as `DRAFT`, stop and ask for confirmation |
+| **`DRAFT`** | any | — | Display existing `SCOPING.md`, ask operator to confirm or revise. Do NOT re-run Phase 1. |
+| **`CONFIRMED`** | absent | **absent** | Run Phase 2 automatically — same as `--split`. Display Phase 2 summary, ask review before proceeding to `chorus-feed`. |
+| **`CONFIRMED`** | absent | **present** | Check idempotence (Step 6): if source corpus unchanged → display "Agent files up to date", suggest `chorus-feed` next step. If changed → re-run Phase 2. |
+| **`CONFIRMED`** | `--split` | absent | Run Phase 2 — explicit trigger, same as automatic above. |
+| **`CONFIRMED`** | `--split` | present | Force re-run Phase 2 (override idempotence check) — operator explicitly requested regeneration. |
+
+> **Key rule:** `--split` is **never needed to trigger Phase 2** when `SCOPING.md`
+> is `CONFIRMED` and no agent files exist — Phase 2 runs automatically. `--split`
+> is useful only to **force regeneration** when agent files already exist (e.g.
+> after manually editing `SCOPING.md ## Corpus section assignment`).
+>
+> **Never re-run Phase 1** on a `CONFIRMED` or `DRAFT` `SCOPING.md` unless the
+> operator explicitly requests it with `--rescan`. Re-running Phase 1 silently
+> overwrites the confirmed structure and resets the status to `DRAFT`.
+
 ### Auto-trigger threshold (inside `chorus-feed` Mode A)
 
 | Condition | Action |
 |---|---|
 | Corpus ≤ 2 files **and** ≤ ~50 pages (or equivalent plain-text size) | Skip — proceed directly to `chorus-feed` §1.1 inline, no gate, no `SCOPING.md` required |
 | Corpus > 2 files, **or** > ~50 pages, **or** operator explicitly requests it | Run this skill first — block generation until `SCOPING.md` exists and is confirmed |
-| `SCOPING.md` already exists in the sandbox | Skip re-generation — load it and proceed directly to `chorus-feed` generation using its decisions |
+| `SCOPING.md` exists with status `DRAFT` | Stop — display it, ask operator to confirm |
+| `SCOPING.md` exists with status `CONFIRMED`, no agent files | Run Phase 2 then stop — present split summary before proceeding to generation |
+| `SCOPING.md` exists with status `CONFIRMED`, agent files present | Load agent files directly — skip Phase 1 and Phase 2, proceed to `chorus-feed` generation |
 
 > The threshold is deliberately approximate — when in doubt, run the gate.
 > The cost of an unnecessary scoping pass on a small corpus is low; the cost of
