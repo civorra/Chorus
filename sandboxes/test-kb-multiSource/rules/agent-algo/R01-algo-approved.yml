@@ -1,0 +1,48 @@
+##
+# RULE: R01-algo-approved
+# AGENT: WidgetCompliance::Agent::AgentAlgo  (pos. 2 / 2)
+# CORPUS: CIR-1.0 Art.6 — Cryptographic parameters ⇒ ARF-2.1 §3.2 — Approved algorithm list
+#
+# PURPOSE
+#   Checks that the algorithm used in widget firmware is not deprecated.
+#   ARF §3.2: DES and 3DES are deprecated — any widget using them is NON_CONFORME.
+#   Approved algorithms: AES, RSA, ECC (key length checked by R02).
+#
+# INPUTS  (slots read)
+#   algorithm : string — algorithm identifier (from project JSON)
+#
+# OUTPUTS (slots written)
+#   algo_ok    : "OUI" | "NON"  — algorithm conformance verdict
+#   motif_algo : string          — human-readable justification
+#
+# HELPERS
+#   Helpers::algo_status($algorithm) → 'approved' | 'deprecated' | undef
+#
+# GUARD — EXCEPTION: defined $var->{algo_ok}
+#   Pattern 1 — "first writer wins": R01 fires first (deprecated check);
+#   R02 fires only if algo_ok is still unset (approved algo, key length check).
+#
+# Cross-checked corpus for alternate/extended algorithm identifier forms — none found.
+##
+RULE: R01-algo-approved
+FIND:
+  var: FIND type_element EQUAL widget
+CONDITION: "defined $var->get('algorithm')"
+EXCEPTION: "defined $var->{algo_ok}"
+ACTION: |
+  my $algo   = $var->get('algorithm');
+  my $status = Helpers::algo_status($algo);
+
+  unless (defined $status) {
+      $var->set('algo_ok',    'NON');
+      $var->set('motif_algo', "unknown algorithm '$algo' — not listed in ARF-2.1 §3.2");
+      return 1;
+  }
+
+  if ($status eq 'deprecated') {
+      $var->set('algo_ok',    'NON');
+      $var->set('motif_algo', "algorithm '$algo' is deprecated per ARF-2.1 §3.2 "
+                             ."(CIR-1.0 Art.6) — NON_CONFORME");
+  }
+  # If approved: do NOT set algo_ok yet — R02 will check key length first.
+  1
