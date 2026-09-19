@@ -1278,6 +1278,48 @@ Re-read the corpus index (table of contents, section headings, article numbers)
 to build an exhaustive list of every normative section / article / table /
 diagram present in the corpus.
 
+**Step 1b — CORPUS: header audit (mandatory, runs in parallel with Step 1)**
+
+Scan every `.yml` file generated during this Mode A session
+(`rules/<slug>/R<NN>-*.yml`) and check the `# CORPUS:` header line:
+
+| State | Classification | Action |
+|---|---|---|
+| `# CORPUS: §<N> — …` fully resolved | ✅ OK | No action |
+| `# CORPUS: TODO — …` with explanation | ⚠️ Unresolved | Add to CORPUS-TODO list below |
+| `# CORPUS:` line absent | ⛔ Missing | Add to CORPUS-TODO list, treat as defect |
+
+If the CORPUS-TODO list is non-empty, attempt to resolve each entry now by
+re-reading the corresponding corpus section and identifying the exact article:
+
+```
+For each rule R in CORPUS-TODO:
+  Re-read the rule's FIND/CONDITION/ACTION body.
+  Search the corpus .md for the section most likely to have produced this rule.
+  If a unique §-match is found → update the # CORPUS: line in R, mark ✅ resolved.
+  If ambiguous or not found    → leave as TODO, record in the coverage report (see below).
+```
+
+Append a `** ⚠️ CORPUS: unresolved (<N> rules)` sub-section to the coverage
+report for any rule still unresolved after the resolution attempt:
+
+```org
+** ⚠️ CORPUS: unresolved (<N> rules)
+   These rules were generated but their corpus traceability is incomplete.
+   chorus-review-kb will classify them as Orphan.
+   Resolve before the next chorus-check run.
+
+   | Rule file                  | Agent   | CORPUS: line (current)                  |
+   |----------------------------+---------+-----------------------------------------|
+   | rules/<slug>/R<NN>-xxx.yml | <slug>  | TODO — <explanation>                    |
+```
+
+> **Why this matters:** `chorus-review-kb` uses `# CORPUS:` fields as the sole
+> mechanical link between rules and corpus articles. A rule with `TODO` or no
+> `CORPUS:` line is classified `Orphan` — it appears in the KB but has no
+> traceable normative justification. On a large corpus, unresolved `TODO` entries
+> accumulate silently and undermine the coverage audit's reliability.
+
 **Step 2 — Classify each section**
 
 > ⚠️ **`too-ambiguous` is a last resort — never a first reflex.**
@@ -1401,6 +1443,11 @@ Append the following block to `README.org`:
    | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent       |
    |-----------------------+-----------------+-----------------------------------+----------------------------------|
    | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
+
+** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
+   | Rule file                  | Agent   | CORPUS: line (current)   |
+   |----------------------------+---------+--------------------------|
+   | rules/<slug>/R<NN>-xxx.yml | <slug>  | TODO — <explanation>     |
 
 ** ⛔ Out of scope (<N> sections)
    | Section / Article     | Reason                                  |
@@ -1637,6 +1684,13 @@ For each section in the `⏭ Deferred` list:
 For any **new section** discovered in the corpus during this pass that was not
 in the previous coverage report → add it to the appropriate bucket.
 
+**Step 2b — CORPUS: header audit on newly generated rules**
+
+For every `.yml` file created or modified during this `--enrich` pass, apply
+the same Step 1b audit as Phase 6.5: resolve `TODO` entries now if possible,
+update the `** ⚠️ CORPUS: unresolved` sub-section of the coverage report
+(removing resolved entries, adding newly unresolved ones).
+
 **Step 3 — Update `README.org`**
 
 Replace the `* Coverage` block with the updated version:
@@ -1655,6 +1709,11 @@ Replace the `* Coverage` block with the updated version:
    | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent       |
    |-----------------------+-----------------+-----------------------------------+----------------------------------|
    | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
+
+** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
+   | Rule file                  | Agent   | CORPUS: line (current)   |
+   |----------------------------+---------+--------------------------|
+   | rules/<slug>/R<NN>-xxx.yml | <slug>  | TODO — <explanation>     |
 
 ** ⛔ Out of scope (<N> sections)
    | Section / Article     | Reason                                  |
