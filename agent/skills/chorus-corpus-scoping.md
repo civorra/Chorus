@@ -178,13 +178,168 @@ Written at the sandbox root: `sandboxes/<sandbox-name>/SCOPING.md`.
 - [ ] Rotated-header matrix table scan — <result: none found / N flagged, see below>
 - [ ] Grammar/identifier alternate-form search — <result per identifier family>
 
+## Corpus section assignment
+  Filled by Phase 2 (corpus pre-split) after operator confirms `CONFIRMED` status.
+  Each corpus section maps to one primary agent (generates rules) and zero or more
+  context agents (section included for context, `no_auto_rules` for those agents).
+
+  | Section corpus | Agent primaire | Agents contexte | Statut |
+  |---|---|---|---|
+  | <§N — title> | <slug> | <slug, slug> | PRIMARY / SHARED / CONTEXT-ONLY |
+
+  Statut values:
+  - `PRIMARY`      — section generates YAML rules for the primary agent
+  - `SHARED`       — section included in all agents as context (e.g. intro, glossary,
+                     composition tables) — `no_auto_rules` everywhere
+  - `CONTEXT-ONLY` — section has no primary agent (cross-cutting, procedural) but
+                     is included as context in the listed agents
+
 ## Open questions for the operator
 - <anything the agent could not resolve unambiguously from the corpus alone>
 
 ## Status
 `DRAFT` — awaiting operator confirmation
-`CONFIRMED — <date>` — cleared for `chorus-feed` generation
+`CONFIRMED — <date>` — cleared for Phase 2 corpus pre-split and `chorus-feed` generation
 ```
+
+## Phase 2 — Corpus pre-split (multi-target extraction)
+
+> **Trigger:** runs automatically immediately after the operator sets
+> `SCOPING.md` status to `CONFIRMED`, before any `chorus-feed` invocation.
+> Can also be run standalone: `chorus-corpus-scoping <sandbox-name> --split`.
+>
+> **Prerequisite:** `SCOPING.md` must have status `CONFIRMED` and a non-empty
+> `## Agents` table. If status is `DRAFT`, stop and ask the operator to confirm first.
+>
+> **Single responsibility:** produce one corpus file per agent, each containing
+> all sections relevant to that agent (primary + context), assembled from the
+> original normalized corpus `.md` file(s) in `$SANDBOX/corpus/`. Never modifies
+> the original corpus files — only creates new derived files alongside them.
+
+### Step 1 — Build section inventory
+
+Re-read the corpus `.md` file(s) identified in `## Corpus reviewed` (SCOPING.md).
+Extract every section heading (any Markdown `#` level, or equivalent structural
+marker such as class/family/component identifiers in normative standards).
+
+For each section, record:
+- its heading text and anchor identifier (e.g. `§ADV_ARC.1`, `Table EAL-1`)
+- its page range estimate (character offset in the `.md` file — used only for
+  ordering within agent files, not for classification)
+- its full text block (heading + all content until the next same-level heading)
+
+### Step 2 — Classify sections against agents
+
+For each section S, determine its **primary agent** and **context agents** using
+the `## Agents` intent descriptions from `SCOPING.md`:
+
+**Classification algorithm:**
+
+```
+PRIMARY match (one agent only):
+  Score each agent A for section S:
+    score(A, S) = count of distinct intent keywords of A found in S's heading + first paragraph
+  Primary agent = argmax score(A, S)   if max_score > 0
+               = none                   if max_score = 0 (→ CONTEXT-ONLY or SHARED)
+
+SHARED flag:
+  A section is SHARED if it matches ≥ 3 agents with score > 0 AND no single agent
+  dominates (max_score < 2 × second_score) — typically: intro, glossary, definition
+  sections, composition/dependency tables that are referenced across all agents.
+
+CONTEXT-ONLY flag:
+  A section with max_score = 0 but whose content is referenced (by §-number) from
+  at least one agent's primary sections → CONTEXT-ONLY for those referencing agents.
+  A section with max_score = 0 and no cross-references → OUT-OF-SCOPE (not included
+  in any agent file; marked ⛔ in the corpus section assignment table).
+
+CONTEXT agents (secondary):
+  For every non-primary agent B where score(B, S) > 0, or where S is SHARED:
+    add B to S's context agents list.
+```
+
+> ⚠️ **Keyword extraction from intent:** the `Intent` column of the `## Agents`
+> table uses natural language (e.g. "Development assurance families — ADV_ARC,
+> ADV_FSP, ADV_TDS"). Extract both the free-text words AND any explicit identifiers
+> (e.g. `ADV_ARC`, `ADV_FSP`) as matching tokens — identifier matching takes
+> precedence over keyword matching (exact prefix match on section heading beats
+> keyword frequency).
+
+### Step 3 — Assemble agent corpus files
+
+For each agent A in pipeline order:
+
+1. Collect all sections where A is primary agent OR A is in context agents OR section
+   is SHARED.
+2. Sort collected sections by their original document order (preserves narrative flow
+   and cross-reference context).
+3. Write `$SANDBOX/corpus/<NNN>-<slug-A>.md` where `<NNN>` follows the existing
+   numbering (next available after the source file(s)).
+
+Each agent corpus file opens with a mandatory header block:
+
+```markdown
+# SPLIT FROM: corpus/<original-file.md>
+# AGENT: <slug-A>
+# GENERATED BY: chorus-corpus-scoping Phase 2 — <YYYY-MM-DD>
+# SECTIONS: <N_primary> PRIMARY + <N_context> CONTEXT + <N_shared> SHARED
+```
+
+Each section within the file is preceded by a one-line marker:
+
+```markdown
+<!-- SECTION: §<ref> | STATUS: PRIMARY | AGENT: <slug-A> -->
+<!-- SECTION: §<ref> | STATUS: SHARED -->
+<!-- SECTION: §<ref> | STATUS: CONTEXT | PRIMARY-AGENT: <slug-B> -->
+```
+
+These markers are read by `chorus-feed` Phase -0.5 to apply `no_auto_rules`
+on non-PRIMARY sections — never visible in the final KB artefacts.
+
+Also write `$SANDBOX/corpus/<NNN>-no-auto-rules.md` containing all OUT-OF-SCOPE
+sections (informative, procedural, unmatched) — available as reference but never
+fed to `chorus-feed`.
+
+### Step 4 — Update `## Corpus section assignment` in SCOPING.md
+
+For each section classified in Steps 1–2, append a row to the
+`## Corpus section assignment` table (replacing the placeholder row).
+
+### Step 5 — Display split summary and ask confirmation
+
+```
+[chorus-corpus-scoping — Phase 2] Corpus pre-split complete
+  Source file(s)  : corpus/<original>.md  (<N> sections found)
+  Agent files     : <N_agents> files written
+  ─────────────────────────────────────────────────────────────
+  Agent            File                        PRIMARY  CONTEXT  SHARED
+  <slug-A>         corpus/<NNN>-<slug-A>.md      <n>      <n>     <n>
+  <slug-B>         corpus/<NNN>-<slug-B>.md      <n>      <n>     <n>
+  no-auto-rules    corpus/<NNN>-no-auto-rules.md  —        —      <n>
+  ─────────────────────────────────────────────────────────────
+  Sections unmatched (⛔ out-of-scope) : <n>
+
+⚠️  Review the ## Corpus section assignment table in SCOPING.md.
+    Correct any misclassified section by editing the table directly,
+    then re-run chorus-corpus-scoping --split to regenerate agent files.
+    When satisfied, proceed with:
+    chorus-feed <sandbox-name> corpus/<NNN>-<first-agent>.md
+```
+
+> **Operator review is structural, not normative:** the operator only needs to
+> verify that each section heading landed in the right agent file — not to
+> understand the normative content of the section itself. E.g. "ADV_ARC.1 is
+> in agent-adv" is verifiable from the section title alone, with zero domain
+> knowledge of what ADV_ARC.1 requires.
+
+### Step 6 — Idempotence
+
+If agent corpus files already exist (from a previous Phase 2 run):
+- Check whether the source corpus `.md` has changed (compare file mtime or content hash).
+- If unchanged → skip re-generation and display: `[Phase 2] Agent files already up to date.`
+- If changed → delete old agent files and regenerate from scratch (never partially update).
+
+---
 
 ## Integration with `chorus-feed`
 

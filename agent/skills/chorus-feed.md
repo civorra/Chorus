@@ -127,12 +127,69 @@ publication, same version, same date).
 |---|---|
 | Corpus ≤ 2 files **and** ≤ ~50 pages (or equivalent plain-text size) | Skip — proceed directly to Phase 1 inline analysis (§1.1–1.3), no `SCOPING.md` required. |
 | Corpus > 2 files, **or** > ~50 pages, **or** operator explicitly requests it | Load `chorus-corpus-scoping.md`. If `sandboxes/<sandbox-name>/SCOPING.md` does not exist yet, generate it and **stop** — present it to the operator and wait for confirmation (status `CONFIRMED`) before proceeding to Phase 1. |
-| `SCOPING.md` exists with status `CONFIRMED` | Skip inline §1.1–1.3 analysis — use `SCOPING.md`'s agents/Frames/relationships/control-slots/BOARD decisions directly as the basis for KB org / YAML / Helpers.pm generation. |
+| `SCOPING.md` exists with status `CONFIRMED` | Skip inline §1.1–1.3 analysis — use `SCOPING.md`'s decisions directly. Then check for pre-split agent files (see below). |
 | `SCOPING.md` exists with status `DRAFT` (from a prior, unconfirmed run) | Stop — ask the operator to confirm or revise it before generating anything. |
 
 This gate settles the same structural decisions as §1.1–1.3 below, but as a
 persistent, human-reviewable artefact produced **before** any KB/YAML/
 Helpers.pm write — see `chorus-corpus-scoping.md` for the full method.
+
+#### Pre-split agent files detection (inside Phase -0.5, after CONFIRMED)
+
+After confirming `SCOPING.md` status is `CONFIRMED`, check whether Phase 2 of
+`chorus-corpus-scoping` has already produced agent corpus files:
+
+```
+agent_files = glob("$SANDBOX/corpus/???-<slug>*.md")
+              filtered to files whose header contains "# AGENT: <slug>"
+```
+
+| Situation | Action |
+|---|---|
+| **Agent files present** (at least one `corpus/NNN-<slug>.md` with `# AGENT:` header) | **Pre-split mode** — do not use the original corpus file for this run. Instead use the agent file matching the `<corpus>` argument's slug, or the first unprocessed agent file if `<corpus>` is the original. Apply `no_auto_rules` to all `CONTEXT` and `SHARED` sections (see below). Run Phase 1 on this agent file only. |
+| **Agent files absent** — `SCOPING.md` confirmed but Phase 2 not yet run | **Trigger Phase 2** — load `chorus-corpus-scoping.md` and run Phase 2 (corpus pre-split) now. Stop after Phase 2 completes and present the split summary. Do not proceed to Phase 0/1 yet — the operator must review the split before proceeding. |
+| **Agent files absent** — small corpus (Phase -0.5 threshold not crossed) | **Standard mode** — proceed with Phase 1 inline analysis on the original corpus file, as before. No change to existing behavior. |
+
+#### `no_auto_rules` enforcement for CONTEXT and SHARED sections
+
+When running in pre-split mode, each section in the agent corpus file carries a
+`<!-- SECTION: ... | STATUS: ... -->` marker (written by `chorus-corpus-scoping`
+Phase 2). Apply the following rule during Phase 1 corpus analysis:
+
+| Section STATUS marker | Behavior in Phase 1 |
+|---|---|
+| `PRIMARY` | Normal analysis — identify rules, Frames, slots, generate YAML |
+| `SHARED` | Read for context and cross-reference resolution only — **never generate a rule or Helper from this section** |
+| `CONTEXT` | Read for cross-reference resolution only — **never generate a rule or Helper from this section** |
+
+> **Why this matters:** CONTEXT and SHARED sections are included in the agent file
+> precisely so the LLM understands dependencies and thresholds that live in another
+> agent's scope — but they must not produce duplicate or misattributed rules.
+> A SHARED composition table (e.g. an EAL dependency matrix) is read by `agent-eal`
+> as PRIMARY and by `agent-adv` as SHARED — only `agent-eal`'s pass generates the
+> corresponding Helper catalog.
+
+#### Multi-agent Mode A sequencing
+
+When agent files are present, `chorus-feed` Mode A must be run **once per agent
+file**, in the pipeline order defined in `SCOPING.md ## Agents`. Each run:
+
+1. Uses `corpus/NNN-<slug-A>.md` as the corpus argument.
+2. Produces KB org / YAML / Helpers for agent A only.
+3. Updates `README.org` `* Coverage` and `* Agent status` tables.
+4. Does **not** re-run for agents already processed (idempotence: check whether
+   `agent/chorus/<slug-A>.org` already exists and its `#+CORPUS_FILE:` header
+   matches the current agent file — if so, skip).
+
+Print after each agent pass:
+```
+[chorus-feed] Agent <slug-A> — Mode A complete
+  PRIMARY sections processed : <n>
+  CONTEXT/SHARED sections skipped (no_auto_rules) : <n>
+  Rules generated : <n>
+  ⏭ Deferred : <n>   ← expected to be near 0 on a focused agent file
+  Next: chorus-feed <sandbox-name> corpus/<NNN>-<slug-B>.md
+```
 
 ### Phase 0 — Sandbox Initialization
 
