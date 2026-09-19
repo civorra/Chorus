@@ -381,8 +381,18 @@ For each agent A in pipeline order:
 
 1. Collect all sections where A is primary agent OR A is in context agents OR section
    is SHARED.
-2. Sort collected sections by their original document order (preserves narrative flow
-   and cross-reference context).
+2. Sort collected sections using the following **deterministic ordering rule**:
+   - Primary sort key: **source file number** (the `NNN` prefix of the corpus file the
+     section originates from, e.g. `001-cir-binding.md` < `002-arf-toolbox.md`).
+     This guarantees that binding/base corpus sections always precede the technical
+     reference sections they point to, which is the most useful reading order for
+     the LLM generating rules from the agent file.
+   - Secondary sort key: **position within the source file** (character offset of the
+     section heading), preserving the original document flow within each source.
+   - The `STATUS` marker (PRIMARY / CONTEXT / SHARED) does **not** affect ordering —
+     CONTEXT sections appear interspersed with PRIMARY sections in source document order,
+     not grouped at the end. This preserves cross-reference locality (a CONTEXT definition
+     section stays near the PRIMARY rule that uses it).
 3. Write `$SANDBOX/corpus/<NNN>-<slug-A>.md` where `<NNN>` follows the existing
    numbering (next available after the source file(s)).
 
