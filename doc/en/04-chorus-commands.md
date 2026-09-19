@@ -243,6 +243,68 @@ chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
 
 ---
 
+## `chorus-corpus-scoping` — Structural scoping before KB generation
+
+```
+chorus-corpus-scoping <sandbox-name> [--corpus <file(s)>] [--split] [--rescan]
+```
+
+**Single responsibility:** produce a structural scoping artefact — agents, Frames,
+inter-Frame relationships, control slots, BOARD slots, pipeline order — *before* any
+KB, YAML, or Helpers.pm is generated.
+
+Triggered **automatically** inside `chorus-feed` Mode A when the corpus exceeds ~50 pages
+or 2 files. Can also be invoked directly at any time.
+
+### Two phases
+
+**Phase 1 — Structural analysis** (triggered when `SCOPING.md` is absent)
+
+The AI agent reads the corpus and proposes:
+- The ordered agent list (slug, intent, consumed/produced slots)
+- Frame types (persistent concepts with ≥ 2 slots)
+- Inter-Frame relationships (`slot→Frame` or `_ISA` prototype pattern)
+- Control slots (`_DEFAULT`, `_NEEDED`, `_AFTER`, `_BEFORE`, `_REQUIRE`)
+- BOARD slots (pipeline-global results)
+
+The output is written to `sandboxes/<sandbox-name>/SCOPING.md` with status `DRAFT`.
+**`chorus-feed` is blocked** until the operator sets the status to `CONFIRMED`.
+
+**Phase 2 — Corpus pre-split** (triggered automatically after `CONFIRMED`)
+
+For each agent, extracts a focused file (`corpus/NNN-<slug>.md`) from the normalized
+corpus `.md`, with sections tagged:
+
+- `PRIMARY` — generates YAML rules for this agent
+- `SHARED` — cross-cutting section (threshold table, shared glossary) included as context
+- `CONTEXT` — another agent's section, included for cross-dependency resolution
+
+`chorus-feed` Mode A automatically applies `no_auto_rules` to non-PRIMARY sections.
+Result: zero structural `⏭ Deferred` caused by LLM context overload on large corpora.
+
+### Flags
+
+| Flag | Effect |
+|---|---|
+| _(none)_ | Phase 1 if absent; Phase 2 if `CONFIRMED` + no agent files |
+| `--split` | Force regeneration of agent files (Phase 2), even if they already exist |
+| `--rescan` | Force Phase 1 re-analysis — resets `SCOPING.md` to `DRAFT` and deletes agent files. Requires explicit confirmation. Use only when the corpus structure has changed fundamentally. |
+
+### Integration with `chorus-corpus-directives`
+
+For multi-source corpora (binding text + technical toolbox), run
+`chorus-corpus-directives` **before** `chorus-corpus-scoping` to settle version
+pinning, `no_auto_rules` scope, and thesaurus seed. The scoping phase uses these
+decisions to correctly classify cross-referenced sections.
+
+### Prerequisites
+
+- Corpus normalized to `.md` by `chorus-pdf`, `chorus-word`, or `chorus-excel`
+  (`# ORIGINAL:` header present)
+- `CORPUS-DIRECTIVES.md` for multi-source corpora (optional — enriches classification)
+
+---
+
 ## `chorus-feed` — Build the knowledge base
 
 ```
