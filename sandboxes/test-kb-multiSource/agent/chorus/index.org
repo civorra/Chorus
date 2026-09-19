@@ -16,7 +16,7 @@
   | Agent       | KB  | YAML | Helpers | Status        |
   |-------------+-----+------+---------+---------------|
   | agent-load  | ✅  | ✅   | ✅      | Mode A done   |
-  | agent-algo  | ⏳  | ⏳   | ⏳      | pending       |
+  | agent-algo  | ✅  | ✅   | ✅      | Mode A done   |
 
 * BOARD slots
   (none for this sandbox)
