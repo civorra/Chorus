@@ -230,9 +230,31 @@ Create `README.org`:
 
 ### Phase 1 — Corpus Analysis
 
+**1.0 Pre-annotation scan (before any analysis)**
+
+Before reading the corpus for content, scan the `.md` file(s) for
+`<!-- CHORUS:no_auto_rules — … -->` markers (inserted by `chorus-pdf`/
+`chorus-word`/`chorus-excel` Phase 2b, or manually by the operator).
+
+Build a `no_auto_rules_sections` set: every section heading immediately
+followed by such a marker. These sections are **excluded from all Phase 1
+analysis** (no agent assignment, no Frame detection, no rule generation).
+They are automatically classified:
+- `OUT-OF-SCOPE` if their content is purely procedural/informative
+  (foreword, bibliography, index).
+- `CONTEXT-ONLY` if their content contains definitions or terminology
+  (terms & definitions, abbreviations) — available for thesaurus seeding
+  and cross-reference resolution, but never generating a rule.
+
+> **Why this matters:** without this pre-scan, `chorus-feed` Phase 1
+> wastes analysis budget on sections that can never produce a codifiable
+> rule, increasing the risk that genuinely normative sections are deferred
+> due to context pressure. On a 600-page corpus, foreword + intro + terms +
+> annexes (informative) can represent 15–25% of the total content.
+
 **1.1 Identify specialties**
 
-Read the corpus in full. Group rules by coherent theme.
+Read the corpus in full (excluding `no_auto_rules_sections`). Group rules by coherent theme.
 Each group = one agent. Criteria:
 - rules concerning the same types of Frames
 - same incoming/outgoing slots
@@ -1870,10 +1892,82 @@ Display confirmation:
 > Any crash, timeout, or session end between B0 and B4.5 Step 5 leaves the file
 > in place — making the next `--enrich` invocation immediately aware of the gap.
 
-> **Convergence criterion:** the `--enrich` loop converges when the
-> `⏭ Deferred` list reaches 0. This is the only reliable signal that
-> the KB covers the full corpus — `chorus-strengthen` alone cannot
-> detect unmodelled corpus sections.
+> **Convergence criterion (legacy note):** the `--enrich` loop converges when the
+> `⏭ Deferred` list reaches 0. See the full exit criteria in the section below.
+
+## Convergence loop — KB quality cycle
+
+> **Purpose:** formal definition of the iterative loop that brings a KB from
+> first-generation to full coverage and rule quality. Applies after the initial
+> Mode A cycle (all agent files processed). Uses stability points as the only
+> valid trigger for `chorus-review-kb` — never between individual `chorus-feed` passes.
+
+### Stability points
+
+| Point | Condition | What it means |
+|---|---|---|
+| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
+| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
+
+> ⛔ `chorus-review-kb` must **never** be invoked between two agent passes of a
+> pre-split Mode A cycle — the KB is structurally incomplete until all agents
+> are processed. Running a coverage audit on a partial KB produces misleading
+> Uncovered counts (articles that will be covered by a not-yet-run agent).
+
+### Loop diagram
+
+```
+[SP1 reached — all agents done, Deferred=0, CORPUS:unresolved=0]
+        │
+        ▼
+chorus-review-kb <sandbox> --format org
+        │
+        ├── Uncovered = 0 AND Orphan = 0
+        │     ↓
+        │   chorus-check <sandbox> <projet.json>
+        │   chorus-strengthen <sandbox>
+        │   chorus-stress <sandbox>
+        │     ↓
+        │   ┌─ strengthen/stress found gaps?
+        │   │   YES → chorus-feed <sandbox> <corpus-fix> --enrich → [SP2] → loop
+        │   │   NO  → ✅ KB CONVERGED (exit criteria met — see below)
+        │   └──
+        │
+        └── Uncovered > 0 OR Orphan > 0
+              ↓
+            chorus-feed <sandbox> <corpus-fix> --enrich
+                (corpus-fix built from review-kb org report gaps)
+              ↓
+            [SP2 reached] → chorus-review-kb again → loop
+```
+
+### Exit criteria — KB converged
+
+The KB is considered **converged** when ALL of the following are true simultaneously:
+
+| Criterion | Source | Target |
+|---|---|---|
+| `⏭ Deferred` | `README.org * Coverage` | = 0 |
+| `⚠️ CORPUS: unresolved` | `README.org * Coverage` | = 0 |
+| `Uncovered` articles | `chorus-review-kb` org report | = 0 |
+| `Orphan` rules | `chorus-review-kb` org report | = 0 |
+| Rule gaps from projects | `chorus-strengthen` report | = 0 or all marked `known-limitation` |
+
+> **Partial convergence is valid:** a KB where `chorus-strengthen` gaps are all
+> marked `known-limitation` (corpus too ambiguous to encode further) is considered
+> converged — the limitation is documented, not silently ignored.
+
+### What the operator does vs. what is automatic
+
+| Step | Who runs it | Operator domain knowledge needed? |
+|---|---|---|
+| `chorus-feed` per agent | LLM | ❌ No |
+| `chorus-review-kb --format org` | LLM | ❌ No — mechanical CORPUS: cross-reference |
+| `chorus-check` | LLM | ❌ No |
+| `chorus-strengthen` | LLM | ❌ No |
+| `chorus-stress` | LLM | ❌ No |
+| Reviewing `known-limitation` candidates | Operator | ⚠️ Minimal — one decision per flagged section |
+| `chorus-review-kb --decisions` (expert mode) | Domain expert | ✅ Yes — optional, for certification |
 
 ## Mode C — Alias Harvest (`--harvest-aliases <import-report.org>`)
 
