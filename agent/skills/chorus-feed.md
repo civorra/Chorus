@@ -1278,7 +1278,14 @@ Re-read the corpus index (table of contents, section headings, article numbers)
 to build an exhaustive list of every normative section / article / table /
 diagram present in the corpus.
 
-**Step 2 — Classify each section into one of three buckets**
+**Step 2 — Classify each section**
+
+> ⚠️ **`too-ambiguous` is a last resort — never a first reflex.**
+> Before classifying any section as `too-ambiguous`, the mandatory retry protocol
+> below (Step 2b) must have been attempted and explicitly failed. Skipping the retry
+> and deferring directly is a protocol violation.
+
+**Step 2a — First-pass classification into three buckets**
 
 | Symbol | Bucket | Criterion |
 |--------|--------|-----------|
@@ -1292,6 +1299,88 @@ Deferred reasons (use one per entry):
 - `external-norm` — rule defers to an external standard (BS EN, NF EN…)
 - `procedural` — rule describes a process without a numeric threshold
 - `too-ambiguous` — section wording is insufficiently precise to codify reliably
+  *(only valid after Step 2b retry has failed — see below)*
+
+**Step 2b — Mandatory retry protocol for `too-ambiguous` candidates**
+
+Every section tentatively classified `too-ambiguous` in Step 2a **must** go through
+this retry before being written to the coverage report. The goal is to replace a
+silent gap with a best-effort rule that documents the uncertainty explicitly inside
+the KB, rather than leaving it invisible to all downstream tools.
+
+```
+For each section S classified too-ambiguous in Step 2a:
+
+  ATTEMPT 1 — Reformulation
+    Re-read S with the question: "Is there at least ONE verifiable condition
+    in this section, even if other parts remain ambiguous?"
+    — If yes → extract that condition and generate a partial rule (see below).
+    — If no  → proceed to ATTEMPT 2.
+
+  ATTEMPT 2 — Structural decomposition
+    Split S into its individual sentences / sub-clauses.
+    For each sub-clause C:
+      — Does C contain a numeric threshold, an enum, or a boolean condition? → codifiable.
+      — Does C describe a procedure, a recommendation, or a rationale?       → out-of-scope.
+    If at least one codifiable sub-clause exists → generate a partial rule from
+    the codifiable sub-clauses only; mark the un-codifiable remainder in
+    Constraints & Pitfalls.
+    If zero codifiable sub-clauses → RETRY FAILED (proceed to Step 2c).
+
+  RETRY FAILED:
+    Classify S as ⏭ Deferred / too-ambiguous in the coverage report.
+    Document in the rule catalog of the relevant agent KB org:
+      "§<N> — <title> : too-ambiguous after retry — <one sentence explaining
+      what made encoding impossible>. Retry on next corpus revision."
+    This note makes the gap visible to chorus-review-kb and chorus-strengthen.
+```
+
+**Partial rule pattern (used when retry succeeds partially):**
+
+When a section can only be partially codified, generate a rule that:
+1. Encodes the verifiable condition(s) as normal `CONDITION`/`ACTION`.
+2. Marks every uncertain slot value with `_a_confirmer: 1` on the Frame element
+   (same flag used by `chorus-import-project` for uncertain mappings).
+3. Sets `motif_*` to a string that states clearly what was confirmed vs. what
+   remains uncertain.
+
+```yaml
+# CORPUS: §<N> — <standard> — <section title>
+# STATUS: partial — uncertain values flagged _a_confirmer (retry Step 2b)
+# UNCERTAIN: <one-line description of what could not be encoded>
+REGLE:
+  NOM: R<NN>-<slug>-partial
+  TROUVER:
+    var: CHERCHER type_element EGAL <type>
+  CONDITION: <verifiable condition from codifiable sub-clauses>
+  EXCEPTION: défini $var->{<uncertain_slot>}
+  ACTION:
+    - FIXER <verdict_slot> = "KO"
+    - FIXER motif_<slug> = "<reason — confirmed part> [⚠️ uncertain: <what remains unverified>]"
+    - FIXER _a_confirmer = 1
+```
+
+> **Effect on downstream tools:**
+> - `chorus-check`: element appears in results with `_a_confirmer` flag →
+>   classified `❓ uncertain`, not counted as definitive NON_CONFORME.
+> - `chorus-review-kb`: rule carries `# STATUS: partial` → flagged for expert
+>   review in the HTML viewer.
+> - `chorus-strengthen`: partial rule shows up in gap analysis with its
+>   UNCERTAIN annotation → generates a targeted enrichment recommendation.
+> - Coverage report: section classified ✅ Integrated (partial) rather than
+>   ⏭ Deferred — it exists in the KB, even if imperfectly.
+
+**Step 2c — `too-ambiguous` coverage entry (only after Step 2b fails)**
+
+If and only if Step 2b produced zero codifiable sub-clauses, write the section
+to the ⏭ Deferred list with:
+- reason: `too-ambiguous`
+- a mandatory one-line `retry-note` field explaining what made encoding impossible
+  (this note is carried forward into every subsequent `--enrich` pass until resolved)
+
+| Section / Article | Reason | retry-note | Suggested action |
+|---|---|---|---|
+| §<N> — <title> | too-ambiguous | <why retry failed> | Obtain clarification from standard body / await revision |
 
 **Step 3 — Write the report to `README.org`**
 
@@ -1309,9 +1398,9 @@ Append the following block to `README.org`:
    | Table <N> — <title>   | Helper: <function_name>  |
 
 ** ⏭ Deferred — needs chorus-feed --enrich (<N> sections)
-   | Section / Article     | Reason          | Suggested new rule / agent       |
-   |-----------------------+-----------------+----------------------------------|
-   | §<N> — <title>        | <reason>        | <RNN-slug or new-agent>          |
+   | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent       |
+   |-----------------------+-----------------+-----------------------------------+----------------------------------|
+   | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
 
 ** ⛔ Out of scope (<N> sections)
    | Section / Article     | Reason                                  |
@@ -1529,9 +1618,21 @@ run a full Phase 6.5 scan first, then proceed.
 **Step 2 — Classify what this `--enrich` pass processed**
 
 For each section in the `⏭ Deferred` list:
+
 - **Promoted to ✅** — at least one new YAML rule or Helper was generated for it
 - **Still ⏭** — section was not covered in this pass (state updated reason if changed)
 - **Reclassified to ⛔** — on re-reading, the section is not codifiable (explain why)
+
+> ⚠️ **`too-ambiguous` retry on `--enrich`:** every section still listed as
+> `too-ambiguous` from a prior pass **must** go through the Step 2b retry protocol
+> (defined in Phase 6.5) before being left as `Still ⏭`. The `retry-note` field
+> from the previous pass is the starting point — re-read the section in light of
+> any new context brought by the current corpus enrichment (a `--enrich` pass
+> often adds cross-reference material that makes a previously ambiguous section
+> codifiable). If the retry now produces at least one codifiable sub-clause →
+> generate a partial rule (Step 2b pattern) and promote to ✅ Integrated (partial).
+> Only leave as `too-ambiguous` if the retry still yields zero codifiable clauses
+> AND the retry-note is unchanged — update the retry-note if the reason evolved.
 
 For any **new section** discovered in the corpus during this pass that was not
 in the previous coverage report → add it to the appropriate bucket.
@@ -1551,9 +1652,9 @@ Replace the `* Coverage` block with the updated version:
    | §<N> — <title>        | R<NN>-<slug>.yml         | Mode A / B<N> |
 
 ** ⏭ Deferred — needs chorus-feed --enrich (<N_remaining> sections)
-   | Section / Article     | Reason          | Suggested new rule / agent       |
-   |-----------------------+-----------------+----------------------------------|
-   | §<N> — <title>        | <reason>        | <RNN-slug or new-agent>          |
+   | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent       |
+   |-----------------------+-----------------+-----------------------------------+----------------------------------|
+   | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
 
 ** ⛔ Out of scope (<N> sections)
    | Section / Article     | Reason                                  |
