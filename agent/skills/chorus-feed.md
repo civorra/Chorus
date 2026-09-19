@@ -1456,10 +1456,8 @@ Append the following block to `README.org`:
 
 ** Next step
    #+BEGIN_EXAMPLE
-   chorus-feed <sandbox-name> <corpus> --enrich
+   <see Step 4b below — filled in dynamically based on stability point check>
    #+END_EXAMPLE
-   → Will process the <N> deferred section(s) listed above.
-   Run chorus-strengthen after each --enrich to verify convergence.
 ```
 
 **Step 4 — Display the report summary to the user**
@@ -1472,6 +1470,53 @@ user can immediately see what was covered and what remains.
 > The coverage report is the only artefact that tracks corpus → KB completeness.
 > `chorus-strengthen` detects rule gaps from project discordances only — it
 > cannot detect corpus sections that were never modelled.
+
+**Step 4b — Stability point check and next-step guidance**
+
+After displaying the coverage report, determine whether a **KB stability point**
+has been reached and fill in the `** Next step` block accordingly.
+
+**Stability point 1 — All agent files processed (pre-split mode)**
+
+Check the `* Agent status` table in `README.org`:
+- Count agents with status ✅ for KB + YAML + Helpers.
+- Compare against the total agent count in `SCOPING.md ## Agents`.
+
+| Situation | Next step guidance |
+|---|---|
+| **Some agents still unprocessed** | `chorus-feed <sandbox-name> corpus/<NNN>-<next-slug>.md` — continue with the next agent file in pipeline order. Do NOT run `chorus-review-kb` yet — KB is incomplete. |
+| **All agents processed AND ⏭ Deferred > 0** | Run deferred sections first: `chorus-feed <sandbox-name> corpus/<NNN>-<slug>.md --enrich` per agent. Still not a stability point. |
+| **All agents processed AND ⏭ Deferred = 0 AND ⚠️ CORPUS: unresolved = 0** | **Stability point 1 reached** — see convergence check below. |
+
+**Stability point 1 — Single corpus mode (no pre-split)**
+
+If no agent files exist (small corpus, pre-split not triggered):
+- Stability point 1 = end of the single Mode A pass.
+- Apply the same Deferred / CORPUS: conditions above.
+
+**Convergence check at stability point 1**
+
+```
+IF ⏭ Deferred = 0
+   AND ⚠️ CORPUS: unresolved = 0 :
+
+  → STABILITY POINT REACHED. Emit in ** Next step:
+
+  #+BEGIN_EXAMPLE
+  # KB stable — run coverage audit then test pipeline:
+  chorus-review-kb <sandbox-name> --format org
+  chorus-check <sandbox-name> <any-projet.json>
+  chorus-strengthen <sandbox-name>
+  chorus-stress <sandbox-name>
+  # Then start convergence loop (see chorus-feed § Convergence loop)
+  #+END_EXAMPLE
+
+ELSE:
+
+  → Emit in ** Next step the specific pending action (next agent file,
+    or --enrich for remaining deferred sections).
+  Do NOT mention chorus-review-kb — KB is not yet stable.
+```
 
 
 ## Mode B — Incremental Enrichment (`--enrich` required)
@@ -1722,12 +1767,7 @@ Replace the `* Coverage` block with the updated version:
 
 ** Next step
    #+BEGIN_EXAMPLE
-   # If ⏭ Deferred list is non-empty:
-   chorus-feed <sandbox-name> <corpus> --enrich   ← another pass needed
-
-   # Always after --enrich:
-   chorus-check <sandbox-name> <any-project.json>
-   chorus-strengthen <sandbox-name>
+   <see Step 4b below — filled in dynamically based on convergence check>
    #+END_EXAMPLE
 ```
 
@@ -1781,7 +1821,33 @@ If `N_remaining == 0` → display instead:
 ✅ Full corpus coverage reached — all normative sections integrated or
    explicitly classified as out of scope.
    No further --enrich pass needed.
-   Next: chorus-strengthen <sandbox-name> to verify rule quality.
+```
+
+Then apply the **Step 4b convergence check** (same logic as Phase 6.5 Step 4b):
+
+```
+IF ⏭ Deferred = 0
+   AND ⚠️ CORPUS: unresolved = 0 :
+
+  → STABILITY POINT 2 REACHED. Display:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  ✅ Stability point reached — KB ready for coverage audit │
+  └─────────────────────────────────────────────────────────┘
+  Next steps (in order):
+    1. chorus-review-kb <sandbox-name> --format org
+       → mechanical coverage audit (Uncovered / Orphan / No-CORPUS)
+       → feeds back into --enrich if Uncovered > 0
+    2. chorus-check <sandbox-name> <any-projet.json>
+    3. chorus-strengthen <sandbox-name>
+    4. chorus-stress <sandbox-name>
+  See: chorus-feed § Convergence loop — for full exit criteria.
+
+ELSE (⏭ Deferred > 0 OR ⚠️ CORPUS: unresolved > 0):
+
+  → NOT yet a stability point. Display pending items and
+    suggest the specific next --enrich pass or CORPUS: resolution needed.
+  Do NOT mention chorus-review-kb.
 ```
 
 **Step 5 — Delete WIP checkpoint file**
