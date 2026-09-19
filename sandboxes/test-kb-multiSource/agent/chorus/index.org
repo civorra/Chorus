@@ -1,0 +1,30 @@
+#+TITLE: KB index — test-kb-multiSource
+#+CORPUS_LANG: EN
+#+DATE: test
+#+STATUS: draft
+
+* Pipeline global
+  2 agents : agent-load → agent-algo
+
+* Integrated corpus
+  | Num | File                        | Source    | Agents concernés              |
+  |-----+-----------------------------+-----------+-------------------------------|
+  | 001 | corpus/001-cir-binding.md   | CIR-1.0   | agent-load (Art.5), agent-algo (Art.6) |
+  | 002 | corpus/002-arf-toolbox.md   | ARF-2.1   | agent-algo (§3.2 PRIMARY)     |
+
+* Agent status
+  | Agent       | KB  | YAML | Helpers | Status        |
+  |-------------+-----+------+---------+---------------|
+  | agent-load  | ✅  | ✅   | ✅      | Mode A done   |
+  | agent-algo  | ⏳  | ⏳   | ⏳      | pending       |
+
+* BOARD slots
+  (none for this sandbox)
+
+* Slot namespace (cross-agent)
+  | Slot       | Owner       | Read by     |
+  |------------+-------------+-------------|
+  | load_ok    | agent-load  | —           |
+  | motif_load | agent-load  | —           |
+  | algo_ok    | agent-algo  | —           |
+  | motif_algo | agent-algo  | —           |
