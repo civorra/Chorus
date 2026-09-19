@@ -901,7 +901,16 @@ across the full tree before falling back to _DEFAULT.
       **all elements unprocessed** — no error, no warning, 0 processed frames.
       This rule applies to every YAML rule in every sandbox and every `chorus-feed` run.
 - [ ] **Header present** — every generated rule starts with the structured comment header (§ Rule Documentation Standard). Language matches the corpus (English or French).
-- [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that justifies the rule. If the source is unknown → `# CORPUS: TODO — source not identified in corpus`.
+- [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that
+      justifies the rule. This line is **mandatory and must be resolved before the session ends**:
+      - ✅ `# CORPUS: §4.2 — NF DTU 31.2 — Porteur intermédiaire` — fully resolved, preferred form.
+      - ⚠️ `# CORPUS: TODO — <one sentence explaining why the source is not yet identified>` —
+        temporary placeholder only; acceptable within the same generation session if the
+        corpus reference will be resolved before the session closes. A `TODO` left at session
+        end is a **generation defect** — it is detected and reported by Phase 6.5 Step 1b
+        of `chorus-feed` and flagged as `Orphan` by `chorus-review-kb`.
+      - ⛔ Absent `CORPUS:` line — treat as a generation defect equivalent to `TODO`; add
+        the line with `TODO` immediately rather than leaving the header incomplete.
 - [ ] **Always** end `ACTION` with a truthy value (`1` or truthy expression)
 - [ ] **`filtre` in `FIND`: always use `$_`, never `$f`** — `$f` (scope variable) is only defined inside `ACTION`/`EFFET`. Using `$f->` in `filtre` causes a compilation crash (`Global symbol "$f"`).
       **Prefer `$_->get('slot')` over `$_->{slot}`** — `$_->{slot}` only sees directly-stored scalars; it misses `_DEFAULT` on prototypes and slots inherited via `_ISA`.
