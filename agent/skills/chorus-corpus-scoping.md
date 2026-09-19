@@ -295,6 +295,24 @@ the `## Agents` intent descriptions from `SCOPING.md`:
 **Classification algorithm:**
 
 ```
+STEP 0 — CORPUS-DIRECTIVES override (check before any scoring):
+  If CORPUS-DIRECTIVES.md exists in the sandbox, read the
+  "no_auto_rules justification" section. For each entry of the form:
+    "<source> <§N / section-title> : no_auto_rules — <reason>"
+  Mark that section as no_auto_rules_override = true.
+  A section with no_auto_rules_override is classified CONTEXT-ONLY
+  (or OUT-OF-SCOPE if purely informative) regardless of keyword score.
+  This override takes precedence over everything — including any keyword
+  score that would otherwise promote the section to PRIMARY.
+  In the ## Corpus section assignment table, annotate the Statut cell
+  with "⚠️ override CORPUS-DIRECTIVES" so the source of the decision
+  is traceable.
+
+  Why: CORPUS-DIRECTIVES captures editorial decisions made before Phase 2
+  runs, notably for technical-reference sources where some sections are
+  rule-generating (threshold tables) and others are not (implementation
+  guidance) — a distinction that keyword scoring alone cannot reliably make.
+
 PRIMARY match (one agent only):
   Score each agent A for section S:
     score(A, S) = count of distinct intent keywords of A found in S's heading + first paragraph
