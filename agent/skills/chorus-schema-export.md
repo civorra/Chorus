@@ -69,7 +69,7 @@ Shape (draft-07 style, adapt as needed):
   "title": "<sandbox-name> project contract",
   "type": "object",
   "properties": {
-    "projet": { "type": "string" },
+    "project": { "type": "string" },
     "elements": {
       "type": "array",
       "items": {
@@ -89,7 +89,7 @@ Shape (draft-07 style, adapt as needed):
       }
     }
   },
-  "required": ["projet", "elements"]
+  "required": ["project", "elements"]
 }
 ```
 

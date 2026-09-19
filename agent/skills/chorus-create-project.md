@@ -13,8 +13,8 @@
 >                The user runs each command in a separate short session (see Phase 6.3).
 > `--strategy <slug>`: generate exactly **one** file. Use manually, after `--batch-seq`,
 >                      or to resume a failed `--batch`.
->                      Slugs: `iso` → `projet-rules-iso.json` · `edges` → `projet-edges.json`
->                             `cross` → `projet-cross.json`  · `scale` → `projet-scale.json`
+>                      Slugs: `iso` → `project-rules-iso.json` · `edges` → `project-edges.json`
+>                             `cross` → `project-cross.json`  · `scale` → `project-scale.json`
 >
 > **Choosing between modes:**
 > | Mode | Sessions | Timeout risk | User steps |
@@ -37,7 +37,7 @@
 > ⚠️ **Sources to use — strict order:**
 > 1. `$SANDBOX/agent/chorus/index.org` → Frame types, pipeline, namespace
 > 2. `$SANDBOX/agent/chorus/<slug>.org` → mandatory slots, thresholds, helpers
-> 3. An existing `projet-*.json` file in `$SANDBOX/` → reference format
+> 3. An existing `project-*.json` file in `$SANDBOX/` → reference format
 >
 > ⛔ **Never read** `Helpers.pm`, `Feed.pm`, `Agent/*.pm`, `Expert.pm`, `run.pl`
 > to create a project. These files are derived from the org KBs — the canonical
@@ -58,7 +58,7 @@ This serves two purposes:
 
 Use this inventory to:
 - Confirm the list of `<slug>.org` files to read in 0.2
-- Detect any existing `projet-*.json` file (for Phase 0.3)
+- Detect any existing `project-*.json` file (for Phase 0.3)
 - Know which `rules/<slug>/` directories exist (for the keepalive calls in 0.2)
 
 ### 0.0-ctx — Context file check (`--strategy` only)
@@ -133,8 +133,8 @@ For each agent, apply this two-step sequence:
 
 ### 0.3 Reference format
 
-If a `projet-*.json` file exists in `$SANDBOX/`, read its first 30 lines
-to confirm the JSON format (keys `projet`, `description`, `elements`, fields `id`, `type_element`).
+If a `project-*.json` file exists in `$SANDBOX/`, read its first 30 lines
+to confirm the JSON format (keys `project`, `description`, `elements`, fields `id`, `type_element`).
 Do not read individual elements — types and slots are in the KB.
 
 ---
@@ -146,10 +146,10 @@ maximise the chance of exposing gaps in the YAML rules:
 
 | Project file | Goal | Typical content |
 |---|---|---|
-| `projet-rules-iso.json` | Test each rule in isolation | 1 OK + 1 KO per rule R01, R02 … — one rule exercised per element |
-| `projet-edges.json` | Stress boundary values | value = threshold (OK) and threshold − ε / threshold + ε (KO) for every continuous slot |
-| `projet-cross.json` | Expose inter-rule interactions | elements that trigger R01 AND R02 simultaneously; conflict cases |
-| `projet-scale.json` | Calibrate `_MAX_CYCLES` | ≥ 100 elements, all types, all classes — stress test for the termination agent. Use the formula `N_frames × N_rules_total × D × 10` where D = depth of the longest cross-rule CONDITION chain in the KB (see `chorus-engine-yaml.md § Rule Evaluation Lifecycle`). |
+| `project-rules-iso.json` | Test each rule in isolation | 1 OK + 1 KO per rule R01, R02 … — one rule exercised per element |
+| `project-edges.json` | Stress boundary values | value = threshold (OK) and threshold − ε / threshold + ε (KO) for every continuous slot |
+| `project-cross.json` | Expose inter-rule interactions | elements that trigger R01 AND R02 simultaneously; conflict cases |
+| `project-scale.json` | Calibrate `_MAX_CYCLES` | ≥ 100 elements, all types, all classes — stress test for the termination agent. Use the formula `N_frames × N_rules_total × D × 10` where D = depth of the longest cross-rule CONDITION chain in the KB (see `chorus-engine-yaml.md § Rule Evaluation Lifecycle`). |
 
 > **ID stability rule:** IDs must be stable across regenerations of the same project file.
 > Use deterministic conventions (`<TYPE>-<VARIANTE>-<NN>`) so that successive
@@ -311,7 +311,7 @@ the threshold in the correct direction.
 
 ## Phase 3 — Generate the JSON
 
-> **⚠️ Language rule — JSON user-facing values:** the technical structural keys (`"projet"`,
+> **⚠️ Language rule — JSON user-facing values:** the technical structural keys (`"project"`,
 > `"elements"`, `"id"`, `"type_element"`, `"_note_calc"`) are invariant; but all **values** that
 > carry domain meaning (`"description"` content, `"_note_calc"` annotations, any free-text string)
 > must be written in the **corpus language**.
@@ -321,7 +321,7 @@ the threshold in the correct direction.
 
 ```json
 {
-  "projet": "<nom-sans-espaces>",
+  "project": "<nom-sans-espaces>",
   "description": "<description concise — types, zones, objectif>",
   "elements": [
     {
@@ -527,10 +527,10 @@ Use this task template for each, substituting `<slug>`, `<FILE>`, and `<PREFIX>`
 
 | slug | FILE | PREFIX |
 |---|---|---|
-| `iso` | `projet-rules-iso.json` | `I-` |
-| `edges` | `projet-edges.json` | `E-` |
-| `cross` | `projet-cross.json` | `X-` |
-| `scale` | `projet-scale.json` | `S-` |
+| `iso` | `project-rules-iso.json` | `I-` |
+| `edges` | `project-edges.json` | `E-` |
+| `cross` | `project-cross.json` | `X-` |
+| `scale` | `project-scale.json` | `S-` |
 
 ```
 You are a chorus-create-project sub-agent.
@@ -580,10 +580,10 @@ YOUR TASKS:
 After all sub-agents complete, display the synthesis table:
 
 ```
-projet-rules-iso  │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
-projet-edges      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
-projet-cross      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
-projet-scale      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+project-rules-iso  │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+project-edges      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+project-cross      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+project-scale      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
 ```
 
 If a sub-agent failed → re-run with `chorus-create-project <sandbox> --strategy <slug>`
@@ -604,11 +604,11 @@ Using the KB summary and coverage table (from `.chorus-batch-ctx.md`, Phase 0+1,
    `_note_calc` annotations where useful).
 2. **Validate** — run the Phase 4 checklist:
    ```bash
-   python3 -c "import json; json.load(open('$SANDBOX/projet-<slug>.json')); print('JSON valide')"
+   python3 -c "import json; json.load(open('$SANDBOX/project-<slug>.json')); print('JSON valide')"
    ```
 3. **Execute** — if `run.pl` exists:
    ```bash
-   perl $SANDBOX/run.pl $SANDBOX/projet-<slug>.json
+   perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json
    ```
    Check: `Pipeline : SOLVED ✅`, `Unprocessed: 0`, expected verdicts match.
    If an expected KO is CONFORME → apply the Phase 5 diagnosis.
@@ -687,10 +687,10 @@ Delete .chorus-batch-ctx.md once all 4 files are generated.
 
 | Strategy | File | ID prefix | Goal | Volume |
 |---|---|---|---|---|
-| `iso` | `projet-rules-iso.json` | `I-` | 1 OK + 1 KO per rule in isolation | ≈ 2 × N_rules |
-| `edges` | `projet-edges.json` | `E-` | boundary values (threshold ±ε) | ≈ 2 × N_thresholds |
-| `cross` | `projet-cross.json` | `X-` | multi-rule interactions | 1–3 per rule pair |
-| `scale` | `projet-scale.json` | `S-` | all types × all classes/zones | ≥ 100 elements |
+| `iso` | `project-rules-iso.json` | `I-` | 1 OK + 1 KO per rule in isolation | ≈ 2 × N_rules |
+| `edges` | `project-edges.json` | `E-` | boundary values (threshold ±ε) | ≈ 2 × N_thresholds |
+| `cross` | `project-cross.json` | `X-` | multi-rule interactions | 1–3 per rule pair |
+| `scale` | `project-scale.json` | `S-` | all types × all classes/zones | ≥ 100 elements |
 
 > **ID stability rule:** IDs must be stable across regenerations of the same file.
 > Use deterministic conventions so that successive `chorus-check --all` runs
@@ -713,6 +713,6 @@ the rules to fix and the enrichment corpus to feed back to `chorus-feed --enrich
 | | `chorus-feed` | `chorus-create-project` | `chorus-check` |
 |---|---|---|---|
 | **Reads** | normative corpus | sandbox org KB | org KB + YAML |
-| **Produces** | org KB, YAML, Helpers.pm | `projet-*.json` file | Feed.pm, Agent shells, Expert.pm, run.pl |
+| **Produces** | org KB, YAML, Helpers.pm | `project-*.json` file | Feed.pm, Agent shells, Expert.pm, run.pl |
 | **Source of thresholds** | corpus | org KB (Helpers Perl section) | org KB |
 | **Never reads** | — | Helpers.pm, Feed.pm, *.pm | — |

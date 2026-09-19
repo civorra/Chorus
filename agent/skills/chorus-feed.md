@@ -674,7 +674,7 @@ that rejects projects built by `chorus-create-project` (those provide only `type
 
 > **`Slots d'entrée` for rule-only sandboxes:** in a sandbox where every non-`type_element`
 > slot is computed by rules, `Slots d'entrée` is always just `type_element`.
-> Cross-test projects (e.g. `projet-cross.json`) may pre-populate computed slots to test
+> Cross-test projects (e.g. `project-cross.json`) may pre-populate computed slots to test
 > guard interactions — `Feed.pm` accepts this because it validates only `Slots d'entrée`.
 
 > **Backward compatibility:** existing org files that still use `Slots obligatoires`

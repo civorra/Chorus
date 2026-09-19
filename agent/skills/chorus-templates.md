@@ -271,7 +271,7 @@ use <Namespace>::Feed   qw(load_projet);
 use <Namespace>::Expert;
 
 my $fichier = shift @ARGV
-    or die "Usage : perl run.pl <fichier-projet.json>\n";
+    or die "Usage : perl run.pl <fichier-project.json>\n";
 -f $fichier or die "Fichier introuvable : $fichier\n";
 
 # Feed — project data → Chorus Frames

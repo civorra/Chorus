@@ -1,10 +1,10 @@
 # Skill — chorus-complete-report
 
-> Trigger: `chorus-complete-report <sandbox-name> <projet-slug> [--source <file>]`
+> Trigger: `chorus-complete-report <sandbox-name> <project-slug> [--source <file>]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing the compliance reports to enrich
-> `<projet-slug>`: slug identifying the `explain-<slug>-NNN.md` / `synthese-<slug>-NNN.md`
+> `<project-slug>`: slug identifying the `explain-<slug>-NNN.md` / `synthese-<slug>-NNN.md`
 >                   pair to enrich (matches the naming convention of `chorus-check --explain/--summary`)
 > `--source <file>`: optional explicit override of the original source document/dataset
 >                     to cross-check against, if automatic resolution (Phase C1) fails
@@ -18,7 +18,7 @@
 > and its extensions). Patch the existing `explain-*`/`synthese-*` reports with the
 > outcome — **never** re-run the compliance pipeline, **never** change any verdict.
 >
-> Prerequisite: `chorus-check <sandbox-name> <fichier-projet> --explain --summary`
+> Prerequisite: `chorus-check <sandbox-name> <fichier-project> --explain --summary`
 > must have already produced `agent/explain-<slug>-NNN.md` (and, if `--summary` was
 > used, `agent/synthese-<slug>-NNN.md`).
 >
@@ -59,11 +59,11 @@ compliance verdicts themselves.
 
 ## Phase C0 — Locate inputs
 
-1. Read `$SANDBOX/agent/explain-<projet-slug>-NNN.md` (highest `NNN` if several exist).
-   If absent → stop: `"No explain-<projet-slug>-*.md found — run chorus-check --explain first."`
-2. If `$SANDBOX/agent/synthese-<projet-slug>-NNN.md` exists (same `NNN` or the
+1. Read `$SANDBOX/agent/explain-<project-slug>-NNN.md` (highest `NNN` if several exist).
+   If absent → stop: `"No explain-<project-slug>-*.md found — run chorus-check --explain first."`
+2. If `$SANDBOX/agent/synthese-<project-slug>-NNN.md` exists (same `NNN` or the
    highest available), load it too — it will be patched in parallel (Phase C4).
-3. Extract, from the `explain-*.md` header (`## 📚 KB & Projet` block, itself
+3. Extract, from the `explain-*.md` header (`## 📚 KB & Project` block, itself
    copied verbatim from `chorus-check.md § Phase E0`), the **Origin** line —
    this identifies the project file and, if resolvable, the original source
    document/dataset.
@@ -71,7 +71,7 @@ compliance verdicts themselves.
 
 ## Phase C1 — Extract target elements
 
-From `explain-<projet-slug>-NNN.md`, collect every element block whose title
+From `explain-<project-slug>-NNN.md`, collect every element block whose title
 line ends in `[❓ incertain]`, plus every element flagged with a
 `**❓ Élément marqué à confirmer :**` line (these may include elements otherwise
 classified 📋/🔤 — read `chorus-check.md § Phase E2` step 5 for the class
@@ -171,7 +171,7 @@ in the source entry:
    before editing it. This applies to `explain-*.md`, `synthese-*.md`, and their
    `.html`/`.pdf` counterparts if already generated.
 
-### Patch to `explain-<projet-slug>-NNN.md`
+### Patch to `explain-<project-slug>-NNN.md`
 
 For each cross-checked element, append directly below its existing
 `**❓ Élément marqué à confirmer :**` (or equivalent) line a new line:
@@ -184,7 +184,7 @@ confirmed / pipeline artefact detected / still unresolved). If 🛠️: state th
 concrete fix needed (which import step/module/mapping to correct).>
 ```
 
-### Patch to `synthese-<projet-slug>-NNN.md` (if present)
+### Patch to `synthese-<project-slug>-NNN.md` (if present)
 
 1. In the "Éléments à confirmer" table, append a short `✅`/`🛠️`/`❓` marker and
    one clause to the relevant row(s)' note.
@@ -210,7 +210,7 @@ If requested by the user (or if the cross-check involved substantial manual
 reasoning worth preserving independently of the patched reports), also write a
 standalone report:
 
-`$SANDBOX/agent/verification-<projet-slug>-NNN.md`
+`$SANDBOX/agent/verification-<project-slug>-NNN.md`
 
 containing, for each cross-checked element: the raw source excerpt consulted,
 the comparison performed, and the classification reached (same content as the
@@ -228,7 +228,7 @@ Regenerate `.html`/`.pdf` for this file too, per Phase C4's regeneration step.
 Print a short summary to the conversation (not written to any file):
 
 ```
-[chorus-complete-report] <sandbox-name> / <projet-slug>
+[chorus-complete-report] <sandbox-name> / <project-slug>
   Elements cross-checked : N
     ✅ Source limitation confirmed : n1
     🛠️ Pipeline artefact detected  : n2
