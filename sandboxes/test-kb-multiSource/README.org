@@ -1,6 +1,18 @@
 #+TITLE: Sandbox test-kb-multiSource
 #+DATE: test
-#+STATUS: draft
+#+STATUS: regression-test
+
+#+BEGIN_QUOTE
+⚠️ This is a *synthetic regression-test sandbox* for the ~feat/kb-coverage-optimization~ branch.
+It is NOT a real-world compliance sandbox. Its corpora (CIR-1.0, ARF-2.1) are fictional.
+
+Purpose: validate all 4 optimization axes (corpus pre-split, too-ambiguous retry,
+CORPUS: traceability, convergence loop + stability points) and the CHORUS:no_auto_rules
+pre-annotation convention on a minimal multi-source corpus (~2 400 tokens total for 4 test passes).
+
+Test result: all axes validated ✅. One gap fixed during test (CORPUS-DIRECTIVES override
+in Phase 2 Step 2). See branch commit history for details.
+#+END_QUOTE
 
 * Corpus
   | Num | File                        | Source  | Date |

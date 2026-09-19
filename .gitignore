@@ -18,3 +18,12 @@ sandboxes/demo_en/**/.kb-hash
 # User sandbox working areas (unversioned, may host independent git repos)
 sandboxes-*/
 
+# chorus-review-kb artefacts — local only, never commit
+sandboxes/**/kb-review-*.org
+sandboxes/**/kb-review-*.html
+sandboxes/**/kb-review-*-decisions.json
+sandboxes/**/corpus-correctif-*.txt
+sandboxes/**/.chorus-wip.md
+sandboxes/**/.kb-hash
+sandboxes/**/.last-check-results.json
+
