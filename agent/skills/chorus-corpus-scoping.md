@@ -227,6 +227,38 @@ For each section, record:
 - its page range estimate (character offset in the `.md` file — used only for
   ordering within agent files, not for classification)
 - its full text block (heading + all content until the next same-level heading)
+- its **pre-annotation** (see below) — checked before any keyword scoring
+
+#### Pre-annotation convention — `CHORUS:no_auto_rules`
+
+Any section in a corpus `.md` file may carry a pre-annotation marker placed
+on the line immediately following its heading:
+
+```markdown
+## Foreword
+<!-- CHORUS:no_auto_rules — informative, no codifiable requirement -->
+
+## Annex A (informative) — Glossary
+<!-- CHORUS:no_auto_rules — definitions only, fed to thesaurus -->
+```
+
+**Effect in Phase 2:** a section bearing this marker is **immediately and
+unconditionally** classified `OUT-OF-SCOPE` (if no agent would benefit from
+it as context) or `CONTEXT-ONLY` (if it contains definitions/glossary material
+useful for cross-reference). The keyword scoring algorithm (Step 2) is skipped
+entirely for these sections — no scoring needed, no risk of misclassification.
+
+**Who writes these markers:**
+- `chorus-pdf`, `chorus-word`, `chorus-excel` — auto-detect common doctrinal
+  patterns during extraction and insert the marker automatically (see each
+  skill's § Auto-annotation step).
+- The operator — can add markers manually to the `.md` before running
+  `chorus-corpus-scoping --split`, with zero domain knowledge required:
+  the heading text is sufficient to identify intro/foreword/annex sections.
+
+**Priority rule:** a `CHORUS:no_auto_rules` marker always wins over any
+keyword score. A section cannot be promoted to PRIMARY by the scoring
+algorithm if it carries this marker.
 
 ### Step 2 — Classify sections against agents
 

@@ -526,11 +526,22 @@ def main():
         print(f"[chorus-word]    {n_images} image(s) not extracted — "
               f"set ANTHROPIC_API_KEY to enable hybrid mode", file=sys.stderr)
 
+    # Phase 2b — CHORUS:no_auto_rules auto-annotation (same logic as chorus-pdf Phase 2b)
+    # Apply doctrinal pattern detection and insert markers. See chorus-pdf.md § Phase 2b
+    # for the full DOCTRINAL_PATTERNS list and implementation. Import and call identically.
+
 if __name__ == "__main__":
     main()
 ```
 
 > ⚠️ **Dependencies**: `pip install python-docx`
+
+> **Phase 2b — `CHORUS:no_auto_rules` auto-annotation:** after writing the `.md`,
+> apply the same doctrinal pattern detection as `chorus-pdf § Phase 2b` (foreword,
+> introduction, terms & definitions, bibliography, informative annexes, etc.) and
+> insert `<!-- CHORUS:no_auto_rules — <reason> -->` markers. Same patterns, same
+> implementation — import the helper from `chorus-pdf` or duplicate the
+> `DOCTRINAL_PATTERNS` list. Print: `[chorus-word] Phase 2b — N section(s) auto-annotated`.
 
 
 ### Script template — Hybrid mode (default when API key present)

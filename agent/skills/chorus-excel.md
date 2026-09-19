@@ -471,6 +471,9 @@ def main():
     line_count = md.count('\n') + 1
     print(f"[chorus-excel] ✅ CSV → Markdown ({line_count} lines). Written to {OUTPUT_PATH}",
           file=sys.stderr)
+    # Phase 2b — CHORUS:no_auto_rules auto-annotation
+    # CSV files rarely contain doctrinal sections — apply pattern detection anyway
+    # for consistency. See chorus-pdf.md § Phase 2b for DOCTRINAL_PATTERNS and implementation.
 
 if __name__ == "__main__":
     main()
