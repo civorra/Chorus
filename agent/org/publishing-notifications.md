@@ -1,38 +1,37 @@
-# Notifications post-publication — GitHub & CPAN
+# Post-publication notifications — GitHub & CPAN
 
-> Référence opérationnelle pour la publication de Chorus 2 (modules `Chorus::Expert`,
+> Operational reference for the publication of Chorus 2 (modules `Chorus::Expert`,
 > `Chorus::Engine`, `Chorus::Frame`).  
-> Objectif : rester informé des réactions sans être spammé.
+> Goal: stay informed of reactions without being spammed.
 
 ---
 
 ## GitHub
 
-### 1. Désactiver les notifications email par défaut
+### 1. Disable default email notifications
 
-Dans **Settings → Notifications** :
-- Désactiver *"Email"* pour les *Watching* activities
-- Garder uniquement *"Web"* (notifications dans l'interface GitHub)
+In **Settings → Notifications**:
+- Disable *"Email"* for *Watching* activities
+- Keep only *"Web"* (notifications in the GitHub interface)
 
-### 2. Ne pas "Watch" le repo en mode exhaustif
+### 2. Do not "Watch" the repo in exhaustive mode
 
-Quand le repo est publié, GitHub active automatiquement le mode *Watching*.  
-Passer en **"Participating and @mentions only"** :
-- Notif uniquement si quelqu'un mentionne `@civorra` ou répond à un fil où on est impliqué
-- Zéro spam pour chaque nouvelle issue/PR ouverte par un inconnu
+When the repo is published, GitHub automatically activates *Watching* mode.  
+Switch to **"Participating and @mentions only"**:
+- Notifications only if someone mentions `@civorra` or replies to a thread you are involved in
+- Zero spam for every new issue/PR opened by a stranger
 
-### 3. Activer les "Releases" uniquement
+### 3. Enable "Releases" only
 
-Mode *"Custom"* → cocher uniquement **Releases** — idéal pour suivre les forks
-qui taggeraient une version dérivée.
+*"Custom"* mode → check only **Releases** — ideal for tracking forks that tag a derived version.
 
-### 4. Stars — pas de notification native
+### 4. Stars — no native notification
 
-GitHub ne notifie pas nativement les nouvelles stars. Options :
+GitHub does not natively notify new stars. Options:
 
-- **[Star History](https://star-history.com)** — dashboard visuel, pas de notif
-- **[Repobeats](https://repobeats.axiom.co)** — stats d'activité en badge
-- Script `cron` qui poll l'API GitHub et envoie un résumé hebdo :
+- **[Star History](https://star-history.com)** — visual dashboard, no notifications
+- **[Repobeats](https://repobeats.axiom.co)** — activity stats as a badge
+- `cron` script that polls the GitHub API and sends a weekly summary:
 
 ```bash
 curl -s https://api.github.com/repos/<user>/chorus/stargazers | jq length
@@ -40,46 +39,46 @@ curl -s https://api.github.com/repos/<user>/chorus/stargazers | jq length
 
 ### 5. Issues / Discussions
 
-- Activer les **GitHub Discussions** plutôt que les Issues pour les retours généraux
-  — abonnement possible par catégorie
-- Répondre à une discussion = on rejoint automatiquement le fil, sans être abonné
-  à tout le reste
+- Enable **GitHub Discussions** rather than Issues for general feedback
+  — subscription possible by category
+- Replying to a discussion = you automatically join the thread, without subscribing
+  to everything else
 
-### Tableau récapitulatif GitHub
+### GitHub summary table
 
-| Action | Réglage |
+| Action | Setting |
 |---|---|
 | Watch mode | *Participating and @mentions* |
-| Email | désactivé pour *Watching* |
-| Stars | script cron hebdo ou Star History |
-| Issues/PR | abonnement manuel au cas par cas |
+| Email | disabled for *Watching* |
+| Stars | weekly cron script or Star History |
+| Issues/PR | manual subscription case by case |
 
 ---
 
 ## CPAN
 
-### 1. CPAN Testers — principale source de spam ⚠️
+### 1. CPAN Testers — main source of spam ⚠️
 
-À chaque upload, des centaines de robots testent le module sur toutes les plateformes
-et envoient les résultats par mail (volume très élevé, 95% de PASS).
+On every upload, hundreds of bots test the module on all platforms
+and send the results by email (very high volume, 95% PASS).
 
-**Solution :** configurer sur [cpantesters.org](https://cpantesters.org) pour ne
-recevoir que **FAIL** et **UNKNOWN** :
-- Compte auteur → *Author preferences* → décocher *"Send PASS reports"*
+**Solution:** configure on [cpantesters.org](https://cpantesters.org) to receive
+only **FAIL** and **UNKNOWN** reports:
+- Author account → *Author preferences* → uncheck *"Send PASS reports"*
 
 ### 2. RT (rt.cpan.org) — bugs & tickets
 
-Abonnement automatique à la queue de ses modules. Chaque ticket (nouveau + chaque
-commentaire) génère un mail.
+Automatic subscription to your modules' queue. Every ticket (new + each
+comment) generates an email.
 
-**Solutions :**
-- RT → *Preferences → Notifications* → passer en **digest quotidien** plutôt
-  qu'email par événement
-- Ou règle mail côté client : `from:rt.cpan.org AND subject:Chorus` → dossier dédié
+**Solutions:**
+- RT → *Preferences → Notifications* → switch to **daily digest** instead
+  of per-event email
+- Or a mail client rule: `from:rt.cpan.org AND subject:Chorus` → dedicated folder
 
 ### 3. MetaCPAN Favorites (≈ stars)
 
-Pas de notification native. Polling API :
+No native notification. API polling:
 
 ```bash
 # Chorus::Expert
@@ -95,26 +94,26 @@ curl -s "https://fastapi.metacpan.org/v1/favorite?q=distribution:Chorus&size=1" 
   | jq '.hits.total.value'
 ```
 
-Un cron hebdo sur les 3 distributions suffit.
+A weekly cron job covering all 3 distributions is sufficient.
 
-### 4. PAUSE — notifications d'upload
+### 4. PAUSE — upload notifications
 
-Juste des confirmations d'indexation — peu fréquent, peu bruyant. Pas besoin de filtrer.
+Just indexing confirmations — infrequent, low noise. No filtering needed.
 
-### Tableau récapitulatif CPAN
+### CPAN summary table
 
-| Source | Volume | Recommandation |
+| Source | Volume | Recommendation |
 |---|---|---|
-| CPAN Testers | ⚠️ Très élevé | Ne garder que FAIL/UNKNOWN |
-| RT tickets | Modéré | Digest quotidien ou règle mail |
-| MetaCPAN Favorites | Pas de notif | Cron API hebdo |
-| PAUSE indexation | Faible | RAS |
+| CPAN Testers | ⚠️ Very high | Keep FAIL/UNKNOWN only |
+| RT tickets | Moderate | Daily digest or mail rule |
+| MetaCPAN Favorites | No notification | Weekly API cron |
+| PAUSE indexing | Low | N/A |
 
 ---
 
-## Recommandation globale (combinaison optimale)
+## Global recommendation (optimal combination)
 
-1. **GitHub** : Watch → *Participating and @mentions*, email désactivé pour Watching
-2. **CPAN Testers** : FAIL/UNKNOWN only (décocher PASS sur cpantesters.org)
-3. **RT** : digest quotidien
-4. **Stars/Favorites** : script cron unique qui couvre GitHub + les 3 distributions MetaCPAN
+1. **GitHub**: Watch → *Participating and @mentions*, email disabled for Watching
+2. **CPAN Testers**: FAIL/UNKNOWN only (uncheck PASS on cpantesters.org)
+3. **RT**: daily digest
+4. **Stars/Favorites**: single cron script covering GitHub + all 3 MetaCPAN distributions
