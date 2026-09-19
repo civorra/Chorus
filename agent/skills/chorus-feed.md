@@ -220,9 +220,18 @@ Print after each agent pass:
   PRIMARY sections processed : <n>
   CONTEXT/SHARED sections skipped (no_auto_rules) : <n>
   Rules generated : <n>
+  Helpers created : <n> / <n> documented   ← MUST be N/N, never M/N — see Phase 3 §9
   ⏭ Deferred : <n>   ← expected to be near 0 on a focused agent file
   Next: chorus-feed <sandbox-name> corpus/<NNN>-<slug-B>.md
 ```
+
+> ⛔ **`Helpers created` must never read `M / N` with M < N.** If the KB org's
+> `* Perl Helpers` section documents a signature, Phase 5.5 for that helper
+> **must already have run** — see the mandatory rule in Phase 3 §9 below.
+> A documented-but-unwritten helper is worse than no helper: the YAML rule
+> that calls it will die at runtime with `Undefined subroutine` — but only
+> once `chorus-check` + `perl run.pl` are eventually run, far downstream of
+> this print, when the root cause is much harder to trace back.
 
 ### Phase 0 — Sandbox Initialization
 
@@ -865,6 +874,18 @@ Mandatory fill order:
 7. Slot dictionary
 8. Rule catalog
 9. **Perl Helpers** — signatures + complete business logic code
+   ⛔ **Not documentation-only.** The instant a Helper signature is written
+   in this section (even a single one, even for an agent otherwise mostly
+   rule-free — e.g. an aggregation/synthesis agent), **immediately execute
+   Phase 5.5 for it** — write `lib/<Namespace>/.../Helpers.pm` (or
+   `Helpers/Shared.pm` if shared) and validate with `perl -c` — **before**
+   moving on to step 10 or to the next agent. Never treat "the org section
+   describes the helper" as equivalent to "the helper exists" — they are
+   two different artifacts and only the second one is callable by the YAML
+   `EFFET`/`ACTION` generated in Phase 5. See the `Helpers created : N/N`
+   checkpoint in the per-agent completion print (§ Multi-agent Mode A
+   sequencing) — it exists specifically to make this gap visible immediately
+   instead of at `chorus-check`/`perl run.pl` time.
 10. Constraints & Pitfalls
 
 #### Ontology — mandatory `** Aliases` section
@@ -1289,6 +1310,28 @@ sub <helper2> {
 
 #### Helpers Checklist
 
+- [ ] ⛔ **Mechanical existence check — run before declaring any agent complete,
+      and again before handing off to `chorus-check`:**
+      ```bash
+      # 1. Every bareword function call inside EFFET/ACTION blocks (excluding
+      #    Perl builtins and $var->method() calls) must resolve to an @EXPORT_OK
+      #    entry in some lib/**/*.pm — or the call will die at runtime with
+      #    "Undefined subroutine".
+      grep -hoE "[a-z_][a-z0-9_]*\(" $SANDBOX/rules/*/*.yml \
+        | sed 's/($//' | sort -u > /tmp/called.txt
+      grep -hoE "^\s*[a-z_][a-z0-9_]*" $SANDBOX/lib/**/*.pm 2>/dev/null \
+        | grep -v '^\s*(use\|package\|our\|my\|sub\|return\|unless\|if\|for\|while)$' \
+        | sort -u > /tmp/exported.txt
+      # Manually cross-check /tmp/called.txt against @EXPORT_OK lines in each
+      # lib/**/*.pm — any name present in called.txt but absent from every
+      # @EXPORT_OK is a live bug: the YAML calls a Helper that was never written.
+      ```
+      This is the exact class of bug documented in `03-cyber-sec-ANSSI-PG-083+RGS_v-2-0_B2-REBUILD/README.org`
+      (2026-09-19): two agents' YAML called `agreger_verdicts()`, the KB org
+      documented its signature, but `lib/.../Synthese.pm` was never created —
+      undetected until an operator manually asked "does `lib/` exist?". This
+      check makes that class of bug mechanically detectable instead of relying
+      on manual review.
 - [ ] Every helper referenced in a YAML ACTION has its implementation in `Helpers.pm`
 - [ ] `@EXPORT_OK` covers all helpers in the file
 - [ ] Every helper has its `Source corpus` comment
