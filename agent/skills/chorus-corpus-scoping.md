@@ -247,9 +247,9 @@ Written at the sandbox root: `sandboxes/<sandbox-name>/SCOPING.md`.
   Each corpus section maps to one primary agent (generates rules) and zero or more
   context agents (section included for context, `no_auto_rules` for those agents).
 
-  | Section corpus | Agent primaire | Agents contexte | Statut |
-  |---|---|---|---|
-  | <§N — title> | <slug> | <slug, slug> | PRIMARY / SHARED / CONTEXT-ONLY |
+  | Section corpus | Agent primaire | Agents contexte | Statut | Justification (OUT-OF-SCOPE only) |
+  |---|---|---|---|---|
+  | <§N — title> | <slug> | <slug, slug> | PRIMARY / SHARED / CONTEXT-ONLY / HELPER-SOURCE / OUT-OF-SCOPE | <required if Statut=OUT-OF-SCOPE, else blank> |
 
   Statut values:
   - `PRIMARY`       — section generates YAML rules for the primary agent
@@ -262,6 +262,9 @@ Written at the sandbox root: `sandboxes/<sandbox-name>/SCOPING.md`.
                       threshold AND contains a quantitative/tabular artefact — must
                       be extracted into a `Helper` function (see Step 2 refinement
                       below), never silently absorbed into `OUT-OF-SCOPE`
+  - `OUT-OF-SCOPE`  — excluded from every agent file; the Justification column is
+                      mandatory (see traceability requirement below) and this row
+                      must be carried forward into `chorus-feed`'s coverage report
 
 ## Open questions for the operator
 - <anything the agent could not resolve unambiguously from the corpus alone>
@@ -471,6 +474,24 @@ CONTEXT-ONLY flag:
 CONTEXT agents (secondary):
   For every non-primary agent B where score(B, S) > 0, or where S is SHARED:
     add B to S's context agents list.
+
+> ⚠️ **Traceability requirement for OUT-OF-SCOPE (mandatory, not optional):**
+> Unlike a Deferred section in `chorus-feed` — which always carries a motif
+> and, for `too-ambiguous`, a mandatory retry-note — an OUT-OF-SCOPE exclusion
+> here happens *before* any agent ever sees the section, with no equivalent
+> retry step. A section wrongly scored 0 across every agent disappears from
+> the pipeline with no downstream trace at all, which is a worse failure mode
+> than Deferred: Deferred is at least visible in `chorus-feed`'s coverage
+> report.
+>
+> Every OUT-OF-SCOPE entry in the corpus section assignment table MUST carry
+> a one-line justification (why max_score = 0 AND no cross-reference exists —
+> e.g. "purely editorial preface, no normative content"), and MUST be passed
+> forward so `chorus-feed`'s mechanical audit (Step 1d) and coverage report
+> can list it under a `⛔ pré-exclu en amont (scoping)` bucket rather than
+> letting it vanish between the two skills. A `SCOPING.md` with unjustified
+> OUT-OF-SCOPE rows is incomplete, in the same sense that a rule without a
+> `# CORPUS:` header is incomplete for `chorus-feed`.
 
 HELPER-SOURCE conditions (full definition — evaluated by Step 0b above,
 *before* PRIMARY scoring, not after; kept here as the canonical spec Step 0b

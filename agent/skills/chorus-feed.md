@@ -1461,6 +1461,54 @@ If absent → 🧮 classify S as Helper-source pending — add to the
 > `HELPER-SOURCE` section sits unextracted must never happen again — this
 > audit is the mechanical guarantee, not a matter of operator vigilance.
 
+**Step 1d — Mechanical inventory audit (mandatory, runs after Step 1)**
+
+> **Why this matters:** Step 1's enumeration is a semantic re-read performed
+> entirely by the agent. Nothing above checks it against the corpus itself —
+> a section the re-read simply never notices does not appear as ✅, ⏭, or ⛔
+> anywhere in the coverage report. It is invisible by construction, and
+> `Deferred = 0` says nothing about it: SP1/SP2 would be declared reached
+> while a genuine gap sits outside the audit's field of view entirely.
+
+Run the deterministic cross-check before proceeding to Step 2:
+
+```
+scripts/corpus-inventory.py $SANDBOX/README.org $SANDBOX/corpus/<NNN>-<slug>.md [...]
+```
+
+This is a **count-based**, not identity-based, check — it does not attempt
+to match section titles between the corpus and `README.org` (an earlier
+version tried exactly that via heading-text regex and produced a 57%
+false-positive rate on `sandboxes/test-kb-multiSource`, see the script's
+own docstring for the full rationale). Instead, per corpus file it counts
+`<!-- SECTION: ... | STATUS: PRIMARY | ... -->` and `STATUS: HELPER-SOURCE`
+markers (already written mechanically by `chorus-corpus-scoping` Phase 2 —
+fixed format, never re-derived from document prose), and cross-checks that
+count against the number of table rows recorded under `✅ Integrated`,
+`⏭ Deferred`, and `🧮 Helper-source pending` in the matching `* Coverage`
+block of `README.org` (matched via the existing `Corpus:` line, not by
+agent tag — one block may legitimately span several corpus files).
+
+> ⚠️ **Known trade-off, not a hidden limitation:** this is an *existence*
+> check on totals, not an *identification* check. A single `PRIMARY` section
+> can legitimately generate several rules, so a genuine one-section gap can
+> be masked by slack elsewhere in the same `Coverage` block. It cannot tell
+> you *which* section is missing — only that the corpus file's total looks
+> short. Treat a `1` exit as "go re-check this agent's corpus file by hand
+> against its Coverage block", not as a precise diff.
+
+| Exit code | Meaning | Action |
+|---|---|---|
+| `0` | Every corpus file's PRIMARY/HELPER-SOURCE marker count is met or exceeded by its matching Coverage block's accounted rows | Proceed to Step 2 (or SP1/SP2 check, if run post-hoc) |
+| `1` | 🔍 **UNSCANNED** — at least one corpus file under-accounted | Manually re-check that agent's corpus file section-by-section against its `Coverage` block, classify any genuinely missing section into ✅/⏭/⛔ per Step 2, then re-run the script |
+| `2` | Usage / file error | Fix the invocation, not the corpus |
+
+Add any `🔍 UNSCANNED` result to the coverage report (Step 3) as its own
+bucket, and treat `🔍 UNSCANNED > 0` as an additional blocker on SP1/SP2 —
+comparable in severity to `⏭ Deferred > 0`, though coarser: unlike a
+Deferred entry, an under-accounted corpus file carries no motif and no
+`retry-note` until manually investigated.
+
 **Step 2 — Classify each section**
 
 > ⚠️ **`too-ambiguous` is a last resort — never a first reflex.**
@@ -1593,6 +1641,15 @@ Append the following block to `README.org`:
    |-----------------------+----------------------------+------------------------|
    | §<N> — <title>        | R<NN>-<slug>.yml           | <slug>                 |
 
+** 🔍 UNSCANNED — corpus-inventory.py cross-check (<N> corpus file(s))  ← omit section entirely if N=0
+   From Step 1d mechanical audit (count-based, see script docstring) — this
+   corpus file's PRIMARY/HELPER-SOURCE marker count exceeds the rows
+   accounted for in this Coverage block. Blocks SP1/SP2 until manually
+   re-checked (script cannot identify which section is missing).
+   | Source file            | PRIMARY+HELPER-SOURCE markers | Rows accounted |
+   |-------------------------+-------------------------------+-----------------|
+   | <NNN>-<slug>.md         | <n>                            | <n>             |
+
 ** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
    | Rule file                  | Agent   | CORPUS: line (current)   |
    |----------------------------+---------+--------------------------|
@@ -1636,7 +1693,8 @@ Check the `* Agent status` table in `README.org`:
 | **Some agents still unprocessed** | `chorus-feed <sandbox-name> corpus/<NNN>-<next-slug>.md` — continue with the next agent file in pipeline order. Do NOT run `chorus-review-kb` yet — KB is incomplete. |
 | **All agents processed AND ⏭ Deferred > 0** | Run deferred sections first: `chorus-feed <sandbox-name> corpus/<NNN>-<slug>.md --enrich` per agent. Still not a stability point. |
 | **All agents processed AND 🧮 Helper-source pending > 0** | Write the missing Helper(s) now (Phase 5.5) for the pending sections, then re-run Step 1c. Still not a stability point — a KB with an unextracted `HELPER-SOURCE` section is exactly the incomplete-coverage failure mode this mechanism exists to prevent. |
-| **All agents processed AND ⏭ Deferred = 0 AND 🧮 Helper-source pending = 0 AND ⚠️ CORPUS: unresolved = 0** | **Stability point 1 reached** — see convergence check below. |
+| **All agents processed AND 🔍 UNSCANNED > 0** | Re-run `scripts/corpus-inventory.py` (Step 1d), manually re-check the listed corpus file(s) against their `Coverage` block, classify any genuinely missing section into ✅/⏭/⛔, then re-run the script. Still not a stability point. |
+| **All agents processed AND ⏭ Deferred = 0 AND 🧮 Helper-source pending = 0 AND 🔍 UNSCANNED = 0 AND ⚠️ CORPUS: unresolved = 0** | **Stability point 1 reached** — see convergence check below. |
 
 **Stability point 1 — Single corpus mode (no pre-split)**
 
@@ -1649,6 +1707,7 @@ If no agent files exist (small corpus, pre-split not triggered):
 ```
 IF ⏭ Deferred = 0
    AND 🧮 Helper-source pending = 0
+   AND 🔍 UNSCANNED = 0
    AND ⚠️ CORPUS: unresolved = 0 :
 
   → STABILITY POINT REACHED. Emit in ** Next step:
@@ -1926,6 +1985,11 @@ Replace the `* Coverage` block with the updated version:
    |-----------------------+----------------------------+------------------------|
    | §<N> — <title>        | R<NN>-<slug>.yml           | <slug>                 |
 
+** 🔍 UNSCANNED — corpus-inventory.py cross-check (<N_unscanned_remaining> corpus file(s))  ← omit section entirely if N=0
+   | Source file            | PRIMARY+HELPER-SOURCE markers | Rows accounted |
+   |-------------------------+-------------------------------+-----------------|
+   | <NNN>-<slug>.md         | <n>                            | <n>             |
+
 ** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
    | Rule file                  | Agent   | CORPUS: line (current)   |
    |----------------------------+---------+--------------------------|
@@ -1972,6 +2036,7 @@ Replace the `* Coverage` block with the updated version:
   Promoted ✅ : <N_promoted> section(s) now integrated
   Still ⏭    : <N_remaining> section(s) still deferred
   Helper 🧮   : <N_helper_promoted> promoted / <N_helper_remaining> still pending
+  UNSCANNED 🔍 : <N_unscanned_promoted> classified / <N_unscanned_remaining> still unscanned
   Reclassified⛔: <N_reclassified> section(s) moved out of scope
 
   ── Promoted this pass ──────────────────────────────
@@ -1987,17 +2052,21 @@ Replace the `* Coverage` block with the updated version:
   §<N> — <title>  (referenced by R<NN>-<slug>.yml, agent <slug>)
   …
 
+  ── Still UNSCANNED ──────────────────────────────────
+  <NNN>-<slug>.md  (<n> markers vs <n> rows accounted)
+  …
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   <N_remaining> section(s) remain. Run another --enrich pass,
   OR verify with chorus-strengthen that existing rules are sufficient.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-If `N_remaining == 0 AND N_helper_remaining == 0` → display instead:
+If `N_remaining == 0 AND N_helper_remaining == 0 AND N_unscanned_remaining == 0` → display instead:
 ```
 ✅ Full corpus coverage reached — all normative sections integrated,
-   all Helper-source sections extracted, or explicitly classified as out
-   of scope.
+   all Helper-source sections extracted, no UNSCANNED sections remain, or
+   explicitly classified as out of scope.
    No further --enrich pass needed.
 ```
 
@@ -2006,6 +2075,7 @@ Then apply the **Step 4b convergence check** (same logic as Phase 6.5 Step 4b):
 ```
 IF ⏭ Deferred = 0
    AND 🧮 Helper-source pending = 0
+   AND 🔍 UNSCANNED = 0
    AND ⚠️ CORPUS: unresolved = 0 :
 
   → STABILITY POINT 2 REACHED. Display:
@@ -2022,11 +2092,11 @@ IF ⏭ Deferred = 0
     4. chorus-stress <sandbox-name>
   See: chorus-feed § Convergence loop — for full exit criteria.
 
-ELSE (⏭ Deferred > 0 OR 🧮 Helper-source pending > 0 OR ⚠️ CORPUS: unresolved > 0):
+ELSE (⏭ Deferred > 0 OR 🧮 Helper-source pending > 0 OR 🔍 UNSCANNED > 0 OR ⚠️ CORPUS: unresolved > 0):
 
   → NOT yet a stability point. Display pending items and
-    suggest the specific next --enrich pass, Helper extraction, or
-    CORPUS: resolution needed.
+    suggest the specific next --enrich pass, Helper extraction,
+    UNSCANNED resolution, or CORPUS: resolution needed.
   Do NOT mention chorus-review-kb.
 ```
 
@@ -2064,8 +2134,8 @@ Display confirmation:
 
 | Point | Condition | What it means |
 |---|---|---|
-| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
-| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
+| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
+| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
 
 > ⛔ `chorus-review-kb` must **never** be invoked between two agent passes of a
 > pre-split Mode A cycle — the KB is structurally incomplete until all agents
@@ -2107,6 +2177,7 @@ The KB is considered **converged** when ALL of the following are true simultaneo
 |---|---|---|
 | `⏭ Deferred` | `README.org * Coverage` | = 0 |
 | `🧮 Helper-source pending` | `README.org * Coverage` | = 0 |
+| `🔍 UNSCANNED` | `README.org * Coverage` (via `scripts/corpus-inventory.py`) | = 0 |
 | `⚠️ CORPUS: unresolved` | `README.org * Coverage` | = 0 |
 | `Uncovered` articles | `chorus-review-kb` org report | = 0 |
 | `Orphan` rules | `chorus-review-kb` org report | = 0 |
