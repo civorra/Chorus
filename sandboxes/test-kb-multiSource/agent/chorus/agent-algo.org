@@ -51,6 +51,17 @@
   | R01-algo-approved  | rules/agent-algo/R01-algo-approved.yml       | CIR-1.0 Art.6 ⇒ ARF-2.1 §3.2      |
   | R02-algo-keylength | rules/agent-algo/R02-algo-keylength.yml      | CIR-1.0 Art.6 ⇒ ARF-2.1 §3.2 T3.2-1 |
 
+* Perl Helpers
+  Module `lib/WidgetCompliance/Helpers.pm` — partagé par `agent-load` et `agent-algo`.
+  - `algo_status($algorithm)` → `'approved'|'deprecated'|undef` — source ARF-2.1 §3.2.
+  - `min_key_length($algorithm)` → integer|undef — source ARF-2.1 §3.2 Table 3.2-1.
+  - `key_crack_benchmark($algorithm)` → `{ key_length, cost, year }`|undef —
+    justification empirique uniquement, ne détermine jamais `algo_ok`. Source
+    CIR-1.0 Annex C (Table C.1), classée `HELPER-SOURCE` par
+    `chorus-corpus-scoping` Phase 2 Step 0b (exécution réelle, 2026-09-20 —
+    voir `TEST-PLAN-helper-source.md`). Appelé par `R02-algo-keylength.yml`
+    (branche NON) pour enrichir `motif_algo`.
+
 * Constraints & Pitfalls
   - §4.1 ARF (implementation guidance) intentionally excluded — no_auto_rules per
     CORPUS-DIRECTIVES. Contains no verifiable threshold. Retry confirmed 0 codifiable

@@ -190,6 +190,10 @@ during rule authoring — flag any suspect section now, before generation:
   the flattened-row-label-plus-column-tokens symptom, do not use it as a
   scoping source — verify independently via `pdftotext -layout` first, or mark
   the concept `⛔ Out of scope (pending table verification)`.
+  > Note: the same `[MATRIX TABLE ...]` markers this check inspects are also
+  > the structural signal used by the `HELPER-SOURCE` classification
+  > refinement (Step 2 below) — a table flagged here as unreliable must not
+  > be promoted to `HELPER-SOURCE` until independently verified.
 - **Grammar/identifier rules spanning multiple forms** (`chorus-feed.md`
   §1.3c): if scoping identifies a Frame whose type-identifying slot has a
   documented "well-formed identifier" shape, note whether the corpus has
@@ -248,11 +252,16 @@ Written at the sandbox root: `sandboxes/<sandbox-name>/SCOPING.md`.
   | <§N — title> | <slug> | <slug, slug> | PRIMARY / SHARED / CONTEXT-ONLY |
 
   Statut values:
-  - `PRIMARY`      — section generates YAML rules for the primary agent
-  - `SHARED`       — section included in all agents as context (e.g. intro, glossary,
-                     composition tables) — `no_auto_rules` everywhere
-  - `CONTEXT-ONLY` — section has no primary agent (cross-cutting, procedural) but
-                     is included as context in the listed agents
+  - `PRIMARY`       — section generates YAML rules for the primary agent
+  - `SHARED`        — section included in all agents as context (e.g. intro, glossary,
+                      composition tables) — `no_auto_rules` everywhere
+  - `CONTEXT-ONLY`  — section has no primary agent (cross-cutting, procedural) but
+                      is included as context in the listed agents
+  - `HELPER-SOURCE` — section has no primary agent and generates no YAML rule, but
+                      is cross-referenced by a PRIMARY section with a numeric
+                      threshold AND contains a quantitative/tabular artefact — must
+                      be extracted into a `Helper` function (see Step 2 refinement
+                      below), never silently absorbed into `OUT-OF-SCOPE`
 
 ## Open questions for the operator
 - <anything the agent could not resolve unambiguously from the corpus alone>
@@ -320,6 +329,41 @@ entirely for these sections — no scoring needed, no risk of misclassification.
 keyword score. A section cannot be promoted to PRIMARY by the scoring
 algorithm if it carries this marker.
 
+#### Pre-annotation convention — `CHORUS:helper_source`
+
+Symmetric to `CHORUS:no_auto_rules`, for the opposite case: a section that
+will never itself generate a conformity rule, but that must be extracted
+into its own corpus fragment because it backs a normative threshold already
+scoped elsewhere with quantitative/empirical data (reference tables, test
+results, benchmark records, cost tables, etc.):
+
+```markdown
+## Annex B — Empirical benchmark data
+<!-- CHORUS:helper_source — quantitative data backing §3.2's threshold, extract as Helper -->
+```
+
+**Effect in Phase 2:** a section bearing this marker is **immediately and
+unconditionally** classified `HELPER-SOURCE` (see Step 2 below) — the
+keyword scoring algorithm and the automatic `HELPER-SOURCE` detection
+heuristic are both skipped, since the operator (or an upstream extraction
+skill) has already made the call explicitly.
+
+**Who writes these markers:** same as `CHORUS:no_auto_rules` — extraction
+skills (`chorus-pdf`, `chorus-word`, `chorus-excel`) may propose it
+automatically when a section they flag as non-normative also contains a
+`[MATRIX TABLE ...]` / dense numeric artefact cross-referenced from a
+normative section; the operator can also add it manually, from the heading
+and a one-line skim — no domain knowledge required.
+
+**Priority rule:** `CHORUS:helper_source` always wins over the automatic
+Step 2 heuristic, in both directions (forces `HELPER-SOURCE` even if the
+heuristic would not have triggered, and prevents a false-positive automatic
+`HELPER-SOURCE` classification if the operator marks the section
+`CHORUS:no_auto_rules` instead). The two markers are mutually exclusive on
+a given section — `no_auto_rules` always wins if both are somehow present
+(genuinely non-exploitable content takes precedence over a speculative
+Helper).
+
 ### Step 2 — Classify sections against agents
 
 For each section S, determine its **primary agent** and **context agents** using
@@ -346,7 +390,68 @@ STEP 0 — CORPUS-DIRECTIVES override (check before any scoring):
   rule-generating (threshold tables) and others are not (implementation
   guidance) — a distinction that keyword scoring alone cannot reliably make.
 
-PRIMARY match (one agent only):
+STEP 0b — HELPER-SOURCE pre-check (evaluated BEFORE PRIMARY keyword scoring,
+right after Step 0 — this ordering is load-bearing, not cosmetic):
+  Skip if Step 0 already settled the section (no_auto_rules_override) or if
+  it carries a CHORUS:no_auto_rules / CHORUS:helper_source pre-annotation
+  (Step 1) — those markers/overrides always win outright.
+
+  Otherwise, test the two HELPER-SOURCE conditions now, defined in full below
+  — (a) cross-referenced from a PRIMARY-threshold section, (b) contains a
+  quantitative artefact (`[MATRIX TABLE]`/`[FIGURE]`/dense numeric records).
+  If BOTH hold → classify S as HELPER-SOURCE immediately and **skip PRIMARY
+  keyword scoring entirely for S**.
+
+  ⚠️ Why this must run *before* PRIMARY scoring, not after (lesson from a
+  regression-test finding, `sandboxes/test-kb-multiSource`
+  `TEST-PLAN-helper-source.md`): an annex documenting the empirical/
+  methodological basis of a threshold naturally *shares vocabulary* with the
+  PRIMARY article stating that threshold (e.g. an annex titled "Empirical
+  key-strength benchmark data" scores > 0 against an agent whose intent
+  contains "minimum key length" — pure incidental overlap, not a normative
+  rule). If PRIMARY scoring ran first, such a section would be locked in as
+  PRIMARY by keyword coincidence, and the original HELPER-SOURCE refinement
+  (gated to "no PRIMARY agent" sections only) would never get a chance to
+  reclassify it — silently reproducing a variant of the exact blind spot
+  this mechanism exists to close. Running the check first removes the race
+  entirely: a section meeting both HELPER-SOURCE conditions is claimed
+  before keyword scoring can misfire on it.
+
+STEP 0c — Deontic gate (evaluated right before PRIMARY scoring, for every
+section not already settled by Step 0/Step 0b):
+  A section is only **eligible** for a PRIMARY keyword score if it contains
+  at least one deontic/normative clause of its own — a modal expressing an
+  obligation, prohibition, or requirement (`shall`, `must`, `is required to`,
+  `shall not`; or the corpus-language equivalent per `#+CORPUS_LANG` /
+  operator-stated language, e.g. French `doit`, `devra`, `est tenu de`,
+  `ne doit pas`). Purely descriptive, explanatory, or procedural sentences
+  ("is performed using", "consists of", "provides", "documents") do not
+  count, even if they describe a process in detail.
+
+  If the section contains **zero** deontic clauses of its own:
+    force score(A, S) = 0 for every agent A, **regardless of keyword
+    overlap** — the section cannot become PRIMARY by vocabulary coincidence
+    alone. It falls through to CONTEXT-ONLY (if cross-referenced) or
+    OUT-OF-SCOPE (if not) — exactly like a genuine max_score=0 section.
+  Else: proceed to PRIMARY match below normally — deontic presence does not
+  by itself guarantee PRIMARY, it only lifts the block on keyword scoring.
+
+  ⚠️ Why this exists (lesson from a regression-test finding,
+  `sandboxes/test-kb-multiSource` `TEST-PLAN-helper-source.md`, Annex D
+  case): a purely narrative section documenting the empirical/procedural
+  basis of a threshold defined elsewhere naturally shares vocabulary with
+  the PRIMARY article it supports (e.g. a load-test methodology annex
+  scoring > 0 against an agent whose intent contains "load" and
+  "threshold" — despite containing no prescription of its own). Without
+  this gate, such sections get locked into PRIMARY by keyword coincidence,
+  triggering a spurious rule-generation attempt in `chorus-feed` Phase 3 on
+  content that has nothing to codify. This gate is intentionally
+  **structural** (presence/absence of a modal verb), not a domain-vocabulary
+  keyword list — applicable to any sector and any of the corpus's own
+  languages, symmetric in spirit to the HELPER-SOURCE conditions above.
+
+PRIMARY match (one agent only; skipped entirely for sections already
+classified HELPER-SOURCE by Step 0b, or forced to score 0 by Step 0c):
   Score each agent A for section S:
     score(A, S) = count of distinct intent keywords of A found in S's heading + first paragraph
   Primary agent = argmax score(A, S)   if max_score > 0
@@ -366,6 +471,36 @@ CONTEXT-ONLY flag:
 CONTEXT agents (secondary):
   For every non-primary agent B where score(B, S) > 0, or where S is SHARED:
     add B to S's context agents list.
+
+HELPER-SOURCE conditions (full definition — evaluated by Step 0b above,
+*before* PRIMARY scoring, not after; kept here as the canonical spec Step 0b
+refers to):
+  A section S is classified HELPER-SOURCE if BOTH conditions hold:
+    (a) Cross-referenced — S is referenced by an explicit pointer (§-number,
+        "see Annex X", "cf. Table N", a footnote marker, or equivalent) from
+        at least one section already classified PRIMARY that itself encodes
+        a numeric threshold or enumerated value (not a purely procedural
+        rule).
+    (b) Quantitative artefact — S contains at least one structured/numeric
+        artefact recognizable from markers already produced upstream by the
+        extraction skills (`chorus-pdf`, `chorus-word`, `chorus-excel`):
+        `[MATRIX TABLE ...]`, a `[FIGURE ...]` block describing a numeric
+        data series, or an equivalent dense list of dated/numbered records.
+        Prose-only content (definitions, narrative rationale) never
+        qualifies, even if cross-referenced — it stays CONTEXT-ONLY.
+
+  Both conditions are structural (cross-reference syntax + extraction-marker
+  presence) — never keyword-based on domain vocabulary ("annex", "appendix",
+  "schedule", "datasheet", …). This makes the rule applicable to any sector:
+  a clinical-trial data table in a medical guideline, a benchmark table in a
+  safety standard, a cost table in a financial regulation, etc., are all
+  detected the same way as a cryptanalysis-records table in a security
+  standard.
+
+  A section classified HELPER-SOURCE by Step 0b never enters the
+  OUT-OF-SCOPE/CONTEXT-ONLY/PRIMARY scoring at all — it is handled per
+  Step 3 below (own corpus fragment, attached to the referencing PRIMARY
+  agent(s), never folded into `no-auto-rules.md`).
 ```
 
 > ⚠️ **Keyword extraction from intent:** the `Intent` column of the `## Agents`
@@ -411,10 +546,20 @@ Each section within the file is preceded by a one-line marker:
 <!-- SECTION: §<ref> | STATUS: PRIMARY | AGENT: <slug-A> -->
 <!-- SECTION: §<ref> | STATUS: SHARED -->
 <!-- SECTION: §<ref> | STATUS: CONTEXT | PRIMARY-AGENT: <slug-B> -->
+<!-- SECTION: §<ref> | STATUS: HELPER-SOURCE | REFERENCED-BY-AGENT: <slug-B> | REFERENCED-BY-RULE: R<NN>-<slug> -->
 ```
 
 These markers are read by `chorus-feed` Phase -0.5 to apply `no_auto_rules`
-on non-PRIMARY sections — never visible in the final KB artefacts.
+on non-PRIMARY sections, and to trigger Helper extraction on `HELPER-SOURCE`
+sections — never visible in the final KB artefacts.
+
+A `HELPER-SOURCE` section is written into the corpus file of **every** agent
+whose PRIMARY rule references it (`REFERENCED-BY-AGENT`) — same placement
+logic as a `CONTEXT` section — so that the LLM authoring that agent's rules
+in `chorus-feed` Phase 3/5.5 has direct access to the data it must extract
+into a `Helper` function. It must **never** be folded into
+`corpus/<NNN>-no-auto-rules.md` — that file is reserved for genuine
+`OUT-OF-SCOPE` content (front matter, bibliography, ToC).
 
 Also write `$SANDBOX/corpus/<NNN>-no-auto-rules.md` containing all OUT-OF-SCOPE
 sections (informative, procedural, unmatched) — available as reference but never
@@ -431,13 +576,16 @@ For each section classified in Steps 1–2, append a row to the
 [chorus-corpus-scoping — Phase 2] Corpus pre-split complete
   Source file(s)  : corpus/<original>.md  (<N> sections found)
   Agent files     : <N_agents> files written
-  ─────────────────────────────────────────────────────────────
-  Agent            File                        PRIMARY  CONTEXT  SHARED
-  <slug-A>         corpus/<NNN>-<slug-A>.md      <n>      <n>     <n>
-  <slug-B>         corpus/<NNN>-<slug-B>.md      <n>      <n>     <n>
-  no-auto-rules    corpus/<NNN>-no-auto-rules.md  —        —      <n>
-  ─────────────────────────────────────────────────────────────
-  Sections unmatched (⛔ out-of-scope) : <n>
+  ─────────────────────────────────────────────────────────────────────
+  Agent            File                        PRIMARY  CONTEXT  SHARED  HELPER-SRC
+  <slug-A>         corpus/<NNN>-<slug-A>.md      <n>      <n>     <n>      <n>
+  <slug-B>         corpus/<NNN>-<slug-B>.md      <n>      <n>     <n>      <n>
+  no-auto-rules    corpus/<NNN>-no-auto-rules.md  —        —      <n>      —
+  ─────────────────────────────────────────────────────────────────────
+  Sections unmatched (⛔ out-of-scope)          : <n>
+  Sections flagged for Helper extraction (🧮)   : <n>  ← must reach 0 Helpers
+                                                          pending by chorus-feed
+                                                          Phase 6.5, see below
 
 ⚠️  Review the ## Corpus section assignment table in SCOPING.md.
     Correct any misclassified section by editing the table directly,

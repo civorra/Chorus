@@ -194,6 +194,7 @@ Phase 2). Apply the following rule during Phase 1 corpus analysis:
 | `PRIMARY` | Normal analysis — identify rules, Frames, slots, generate YAML |
 | `SHARED` | Read for context and cross-reference resolution only — **never generate a rule or Helper from this section** |
 | `CONTEXT` | Read for cross-reference resolution only — **never generate a rule or Helper from this section** |
+| `HELPER-SOURCE` | **Never generate a YAML rule from this section.** Instead, extract its quantitative/tabular content into a `Helper` function (Phase 5.5) for the agent named in `REFERENCED-BY-AGENT`, called from the `ACTION`/`EFFET` of the rule named in `REFERENCED-BY-RULE` to enrich its `motif_*`/justification — the verdict threshold itself is never derived from this Helper (see `chorus-corpus-scoping.md` § HELPER-SOURCE refinement for the classification logic). The Helper's `# Source corpus:` comment (§9 below) must reference this section, so Phase 6.5's Helper-source coverage audit can confirm it was actually extracted. |
 
 > **Why this matters:** CONTEXT and SHARED sections are included in the agent file
 > precisely so the LLM understands dependencies and thresholds that live in another
@@ -201,6 +202,14 @@ Phase 2). Apply the following rule during Phase 1 corpus analysis:
 > A SHARED composition table (e.g. an EAL dependency matrix) is read by `agent-eal`
 > as PRIMARY and by `agent-adv` as SHARED — only `agent-eal`'s pass generates the
 > corresponding Helper catalog.
+>
+> `HELPER-SOURCE` differs from `CONTEXT`/`SHARED` in one critical way: it is
+> **not** purely passive. A `HELPER-SOURCE` section carries an *implicit
+> completion obligation* — Phase 6.5's Helper-source coverage audit will flag
+> it as pending until a Helper referencing it actually exists. Silently
+> reading it "for context" without writing the Helper is a protocol
+> violation, unlike a genuine `CONTEXT` section which may legitimately never
+> produce anything beyond understanding.
 
 #### Multi-agent Mode A sequencing
 
@@ -222,6 +231,8 @@ Print after each agent pass:
   Rules generated : <n>
   Helpers created : <n> / <n> documented   ← MUST be N/N, never M/N — see Phase 3 §9
   ⏭ Deferred : <n>   ← expected to be near 0 on a focused agent file
+  🧮 Helper-source pending : <n>   ← HELPER-SOURCE sections in this agent file not
+                                     yet extracted into a Helper — see Phase 6.5 Step 1c
   Next: chorus-feed <sandbox-name> corpus/<NNN>-<slug-B>.md
 ```
 
@@ -1418,6 +1429,38 @@ report for any rule still unresolved after the resolution attempt:
 > traceable normative justification. On a large corpus, unresolved `TODO` entries
 > accumulate silently and undermine the coverage audit's reliability.
 
+**Step 1c — Helper-source coverage audit (mandatory if any `HELPER-SOURCE`
+section exists — runs in parallel with Step 1/1b)**
+
+Applies only when `chorus-corpus-scoping` Phase 2 produced at least one
+section marked `STATUS: HELPER-SOURCE` (see `chorus-corpus-scoping.md` §
+HELPER-SOURCE refinement). Skip this step entirely if none exist (small
+corpus, no pre-split, or corpus with no cross-referenced quantitative
+annex) — do not fabricate a section to audit.
+
+For each `HELPER-SOURCE` section S (identified by its
+`<!-- SECTION: §<ref> | STATUS: HELPER-SOURCE | ... -->` marker in the agent
+corpus file):
+
+```
+Search every Helpers.pm file written during this Mode A session for a
+"# Source corpus:" comment (Phase 5.5 §9 convention) whose §-reference
+matches S.
+
+If found  → ✅ classify S as covered — will appear under ✅ Integrated
+            in Step 3, tagged "(Helper)".
+If absent → 🧮 classify S as Helper-source pending — add to the
+            "🧮 Helper-source pending" list (Step 3 report template below).
+```
+
+> **Why this matters:** without this audit, a `HELPER-SOURCE` section can be
+> read into an agent's corpus file (for LLM context) and then silently never
+> extracted into an actual `Helper` — exactly the failure mode this whole
+> mechanism exists to prevent (see `chorus-corpus-scoping.md` § HELPER-SOURCE
+> refinement rationale). A coverage report claiming `0 Deferred` while a
+> `HELPER-SOURCE` section sits unextracted must never happen again — this
+> audit is the mechanical guarantee, not a matter of operator vigilance.
+
 **Step 2 — Classify each section**
 
 > ⚠️ **`too-ambiguous` is a last resort — never a first reflex.**
@@ -1542,6 +1585,14 @@ Append the following block to `README.org`:
    |-----------------------+-----------------+-----------------------------------+----------------------------------|
    | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
 
+** 🧮 Helper-source pending (<N> sections)  ← omit section entirely if N=0
+   From Step 1c audit — sections tagged HELPER-SOURCE by chorus-corpus-scoping
+   Phase 2, referenced by a PRIMARY rule with a numeric threshold, but no
+   Helper function's "# Source corpus:" comment references them yet.
+   | Section / Article     | Referenced by (rule)      | Referenced by (agent) |
+   |-----------------------+----------------------------+------------------------|
+   | §<N> — <title>        | R<NN>-<slug>.yml           | <slug>                 |
+
 ** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
    | Rule file                  | Agent   | CORPUS: line (current)   |
    |----------------------------+---------+--------------------------|
@@ -1584,7 +1635,8 @@ Check the `* Agent status` table in `README.org`:
 |---|---|
 | **Some agents still unprocessed** | `chorus-feed <sandbox-name> corpus/<NNN>-<next-slug>.md` — continue with the next agent file in pipeline order. Do NOT run `chorus-review-kb` yet — KB is incomplete. |
 | **All agents processed AND ⏭ Deferred > 0** | Run deferred sections first: `chorus-feed <sandbox-name> corpus/<NNN>-<slug>.md --enrich` per agent. Still not a stability point. |
-| **All agents processed AND ⏭ Deferred = 0 AND ⚠️ CORPUS: unresolved = 0** | **Stability point 1 reached** — see convergence check below. |
+| **All agents processed AND 🧮 Helper-source pending > 0** | Write the missing Helper(s) now (Phase 5.5) for the pending sections, then re-run Step 1c. Still not a stability point — a KB with an unextracted `HELPER-SOURCE` section is exactly the incomplete-coverage failure mode this mechanism exists to prevent. |
+| **All agents processed AND ⏭ Deferred = 0 AND 🧮 Helper-source pending = 0 AND ⚠️ CORPUS: unresolved = 0** | **Stability point 1 reached** — see convergence check below. |
 
 **Stability point 1 — Single corpus mode (no pre-split)**
 
@@ -1596,6 +1648,7 @@ If no agent files exist (small corpus, pre-split not triggered):
 
 ```
 IF ⏭ Deferred = 0
+   AND 🧮 Helper-source pending = 0
    AND ⚠️ CORPUS: unresolved = 0 :
 
   → STABILITY POINT REACHED. Emit in ** Next step:
@@ -1813,6 +1866,21 @@ For each section in the `⏭ Deferred` list:
 - **Still ⏭** — section was not covered in this pass (state updated reason if changed)
 - **Reclassified to ⛔** — on re-reading, the section is not codifiable (explain why)
 
+Independently, for each section in the `🧮 Helper-source pending` list (Phase
+6.5 Step 1c) — re-run the Step 1c audit against the Helper(s) written during
+this `--enrich` pass:
+
+- **Promoted to ✅ (Helper)** — a Helper's `# Source corpus:` comment now
+  references this section
+- **Still 🧮** — no matching Helper was written in this pass
+
+A `HELPER-SOURCE` section is never reclassified `⛔ Out of scope` by an
+`--enrich` pass — its cross-reference from a PRIMARY rule was already
+verified structurally at scoping time (`chorus-corpus-scoping` Phase 2);
+if it turns out truly unusable (e.g. table found unreliable per the
+rotated-header check), that is a scoping correction, not an enrichment
+outcome — revise `SCOPING.md` and re-run Phase 2 instead.
+
 > ⚠️ **`too-ambiguous` retry on `--enrich`:** every section still listed as
 > `too-ambiguous` from a prior pass **must** go through the Step 2b retry protocol
 > (defined in Phase 6.5) before being left as `Still ⏭`. The `retry-note` field
@@ -1852,6 +1920,11 @@ Replace the `* Coverage` block with the updated version:
    | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent       |
    |-----------------------+-----------------+-----------------------------------+----------------------------------|
    | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
+
+** 🧮 Helper-source pending (<N_helper_remaining> sections)  ← omit section entirely if N=0
+   | Section / Article     | Referenced by (rule)      | Referenced by (agent) |
+   |-----------------------+----------------------------+------------------------|
+   | §<N> — <title>        | R<NN>-<slug>.yml           | <slug>                 |
 
 ** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
    | Rule file                  | Agent   | CORPUS: line (current)   |
@@ -1898,14 +1971,20 @@ Replace the `* Coverage` block with the updated version:
   This pass   : <N_new> new rule(s) / helper(s) generated
   Promoted ✅ : <N_promoted> section(s) now integrated
   Still ⏭    : <N_remaining> section(s) still deferred
+  Helper 🧮   : <N_helper_promoted> promoted / <N_helper_remaining> still pending
   Reclassified⛔: <N_reclassified> section(s) moved out of scope
 
   ── Promoted this pass ──────────────────────────────
   §<N> — <title>  →  R<NN>-<slug>.yml  [<agent>]
+  §<N> — <title>  →  Helper <function_name>()  [<agent>]  (Helper-source)
   …
 
   ── Still deferred ──────────────────────────────────
   §<N> — <title>  (<reason>)
+  …
+
+  ── Still Helper-source pending ─────────────────────
+  §<N> — <title>  (referenced by R<NN>-<slug>.yml, agent <slug>)
   …
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1914,10 +1993,11 @@ Replace the `* Coverage` block with the updated version:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-If `N_remaining == 0` → display instead:
+If `N_remaining == 0 AND N_helper_remaining == 0` → display instead:
 ```
-✅ Full corpus coverage reached — all normative sections integrated or
-   explicitly classified as out of scope.
+✅ Full corpus coverage reached — all normative sections integrated,
+   all Helper-source sections extracted, or explicitly classified as out
+   of scope.
    No further --enrich pass needed.
 ```
 
@@ -1925,6 +2005,7 @@ Then apply the **Step 4b convergence check** (same logic as Phase 6.5 Step 4b):
 
 ```
 IF ⏭ Deferred = 0
+   AND 🧮 Helper-source pending = 0
    AND ⚠️ CORPUS: unresolved = 0 :
 
   → STABILITY POINT 2 REACHED. Display:
@@ -1941,10 +2022,11 @@ IF ⏭ Deferred = 0
     4. chorus-stress <sandbox-name>
   See: chorus-feed § Convergence loop — for full exit criteria.
 
-ELSE (⏭ Deferred > 0 OR ⚠️ CORPUS: unresolved > 0):
+ELSE (⏭ Deferred > 0 OR 🧮 Helper-source pending > 0 OR ⚠️ CORPUS: unresolved > 0):
 
   → NOT yet a stability point. Display pending items and
-    suggest the specific next --enrich pass or CORPUS: resolution needed.
+    suggest the specific next --enrich pass, Helper extraction, or
+    CORPUS: resolution needed.
   Do NOT mention chorus-review-kb.
 ```
 
@@ -1982,8 +2064,8 @@ Display confirmation:
 
 | Point | Condition | What it means |
 |---|---|---|
-| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
-| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
+| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
+| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
 
 > ⛔ `chorus-review-kb` must **never** be invoked between two agent passes of a
 > pre-split Mode A cycle — the KB is structurally incomplete until all agents
@@ -2024,6 +2106,7 @@ The KB is considered **converged** when ALL of the following are true simultaneo
 | Criterion | Source | Target |
 |---|---|---|
 | `⏭ Deferred` | `README.org * Coverage` | = 0 |
+| `🧮 Helper-source pending` | `README.org * Coverage` | = 0 |
 | `⚠️ CORPUS: unresolved` | `README.org * Coverage` | = 0 |
 | `Uncovered` articles | `chorus-review-kb` org report | = 0 |
 | `Orphan` rules | `chorus-review-kb` org report | = 0 |

@@ -18,8 +18,11 @@
 #   motif_algo : string
 #
 # HELPERS
-#   Helpers::algo_status($algorithm)     → 'approved' | 'deprecated' | undef
-#   Helpers::min_key_length($algorithm)  → integer | undef
+#   Helpers::algo_status($algorithm)          → 'approved' | 'deprecated' | undef
+#   Helpers::min_key_length($algorithm)       → integer | undef
+#   Helpers::key_crack_benchmark($algorithm)  → { key_length, cost, year } | undef
+#     — justification-only (CIR-1.0 Annex C, HELPER-SOURCE) — enriches motif_algo
+#       on the NON branch, never determines the verdict itself.
 #
 # GUARD — EXCEPTION: defined $var->{algo_ok}
 #   Pattern 1 — fires only if R01 did not set algo_ok (approved algo path).
@@ -42,8 +45,13 @@ ACTION: |
       $var->set('motif_algo', "algorithm '$algo' approved, key length ${keylen} bits "
                              .">= minimum ${min} bits (ARF-2.1 §3.2 Table 3.2-1 / CIR-1.0 Art.6)");
   } else {
+      my $bench = Helpers::key_crack_benchmark($algo);
+      my $motif = "algorithm '$algo' approved but key length ${keylen} bits "
+                 ."< minimum ${min} bits (ARF-2.1 §3.2 Table 3.2-1 / CIR-1.0 Art.6) — NON_CONFORME";
+      $motif .= " Empirical justification (CIR-1.0 Annex C, Table C.1): "
+              . "$bench->{key_length}-bit $algo estimated cost $bench->{cost} ($bench->{year})."
+          if $bench;
       $var->set('algo_ok',    'NON');
-      $var->set('motif_algo', "algorithm '$algo' approved but key length ${keylen} bits "
-                             ."< minimum ${min} bits (ARF-2.1 §3.2 Table 3.2-1 / CIR-1.0 Art.6) — NON_CONFORME");
+      $var->set('motif_algo', $motif);
   }
   1
