@@ -505,6 +505,18 @@ Use a `*_ref` field containing the `id` of the target element:
 
 Naming rule: `<relationship>_ref` → resolves to slot `<relationship>` on the Frame.
 
+> ⚠️ **This is the default convention, not a guarantee.** The authoritative
+> source is always the exact string passed to `$f->get(...)` in the generated
+> YAML rules (and the matching `Slot Dictionary` entry in the KB org) — some
+> `chorus-feed --enrich` passes generate rules that navigate
+> `$f->get('<field>_ref <target_slot>')`, keeping the `_ref` suffix as the
+> literal Frame slot name instead of stripping it. `chorus-check` Phase 2 must
+> grep the actual rules before writing `%REF_FIELDS` — see
+> `chorus-check.md § ⚠️ *_ref field naming` for the verification procedure and
+> a documented incident where assuming the stripped form caused a silent,
+> permanent `undef` on the linked slot (no load-time error — the mismatch only
+> manifests as a stuck termination condition downstream).
+
 #### Feed.pm — 2-pass + `%REF_FIELDS`
 
 > `%REF_FIELDS` and both passes go **inside `load_projet()`**, not at module level.

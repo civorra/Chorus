@@ -270,6 +270,43 @@ Create `$SANDBOX/lib/<Namespace>/Feed.pm` from template **T1** (`chorus-template
   ```
 - agent 1 targeting slot comment ← `Slots de ciblage` section KB pos 1
 
+### ⚠️ `*_ref` field naming — verify against the YAML, never assume the convention
+
+> If any KB org documents a `*_ref` slot (Pattern A, `chorus-engine-infra.md §3.1`),
+> **do not** write `Feed.pm`'s `%REF_FIELDS` from the documented "strip the `_ref`
+> suffix" convention alone. Grep the actual rules for the exact string passed to
+> `$f->get(...)`:
+> ```bash
+> grep -rn "get('.*_ref " $SANDBOX/rules/
+> ```
+> Two forms are both legitimate and **must be matched exactly**, because a
+> mismatch produces no error at load time — the linked slot is simply always
+> `undef`, silently falling back to the declarative boolean (Option A) or, if no
+> fallback exists, leaving the verdict slot permanently unset (blocking a
+> terminal-agent `EXCEPTION`/`CONDITION` chain indefinitely — see incident below):
+>
+> | Form found in YAML | `%REF_FIELDS` entry in `Feed.pm` |
+> |---|---|
+> | `$f->get('supports_ref building')` (suffix **kept** as the Frame slot name) | `supports_ref => 'supports_ref'` — do **not** strip; pass 2 must assign the resolved Frame object back to the *same* key |
+> | `$f->get('supports building')` (suffix **stripped**, canonical `chorus-engine-infra.md §3.1` convention) | `supports_ref => 'supports'` — strip, per the documented convention |
+>
+> **Never assume** the second form (stripped) just because it is the documented
+> default — a prior `chorus-feed --enrich` pass may have generated the first
+> form consistently across both the YAML and the KB org `Slot Dictionary`. When
+> both artefacts agree with each other but disagree with this convention, match
+> the artefacts (YAML + KB org), not the doc — then flag the divergence to the
+> user instead of silently "fixing" it one way or the other.
+>
+> **Incident (2026-09-21, sandbox `05-cyber-sec-ANSSI-PG-083+RGS_v-2-0_B2-KB-OPTIM-3`):**
+> `Feed.pm` written with the stripped-suffix convention (`generateur_alea_ref => 'generateur_alea'`)
+> while `R02-check-generation-locale.yml`/`R03-check-generation-centralisee.yml`
+> called `$f->get('generateur_alea_ref qualite_alea')` (suffix kept, matching
+> the KB org `Slot Dictionary`). Result: `conforme_generation` stayed `undef`
+> forever on any element carrying `generateur_alea_ref`/`algorithme_ref`, which
+> in turn blocked `R14`'s termination `CONDITION` — a silent infinite loop
+> indistinguishable, from the outside, from a `_MAX_CYCLES` sizing problem.
+> Found only by bisecting a hung `chorus_process` down to individual frame state.
+
 
 ## Phase 2.5 — Generate procedural slot coderefs (_NEEDED, _AFTER) in Feed.pm
 
