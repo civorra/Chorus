@@ -263,6 +263,12 @@ Document BOARD inter-agent keys in `index.org`.
 #!/usr/bin/env perl
 use strict;
 use warnings;
+use utf8;   # decode UTF-8 literals in this source file (❌✅⚠️█░─ + accented corpus terms)
+
+$| = 1;                       # autoflush — avoid losing buffered output if the
+                               # process is killed (timeout, background execution)
+binmode STDOUT, ':utf8';
+binmode STDERR, ':utf8';
 
 use FindBin qw($Bin);
 use lib "$Bin/lib";                 # <Namespace>::*
@@ -473,3 +479,81 @@ print "─" x 62 . "\n";
 - `@pipeline_def` ← one entry per agent: `[ label, slot_ciblage, slot_resultat_ok ]` from `index.org` pipeline table
 
 **Rule:** `run.pl` contains **no hardcoded data** — all project input comes from the JSON argument.
+
+> ⚠️ **`use utf8;` + `binmode` — mandatory, not optional.** Without these three
+> lines, any sandbox whose corpus/KB uses accented characters (French corpus is
+> the common case) combined with the Unicode report symbols above (`❌✅⚠️█░─`)
+> will silently mojibake (`Wide character in printf` warnings + garbled accents
+> in `motif_*` strings, especially any string that transited through
+> `JSON->new->utf8->decode()` in `Feed.pm` — those carry the UTF-8 flag, while
+> raw `print "❌"` literals in `run.pl` do not, unless `use utf8;` is present).
+> Found and fixed during `chorus-check` on sandbox `05-cyber-sec-ANSSI-PG-083+
+> RGS_v-2-0_B2-KB-OPTIM-3` (2026-09-21) — generalised here to prevent recurrence.
+> `$| = 1` is a separate, unrelated fix: without autoflush, output is lost if the
+> process is killed mid-run (timeout, background execution) — makes diagnosing
+> a hung/looping pipeline much harder.
+
+### T5 variant — multi-type-per-agent dispatch (Block 1/2/3/4)
+
+> **When to use:** the sandbox's agents do **not** each write a single dedicated
+> result slot (`statut_conformite`) on a Frame targeted via one `besoin_<agent>`
+> flag. Instead, one or more agents target **multiple `type_element` values**
+> on a **shared Frame class** (e.g. `mecanisme_crypto` reused by two different
+> agents with disjoint `type_element` sets, each writing the *same* slot name
+> `conforme` — see `chorus-engine-infra.md §2` Multi-Specialty Pattern) and/or
+> different agents publish their final verdict under **different slot names**
+> (`qualite_alea`, `conforme`, `statut_cle`, …) rather than a single uniform
+> `statut_conformite`.
+>
+> In this case, the base T5 Blocks 1–4 (which assume one `statut_conformite`
+> slot and one `[label, slot_ciblage, slot_resultat_ok]` triple per agent)
+> cannot be substituted directly — build two dispatch tables instead, derived
+> from `index.org`'s `Pipeline global` table and each agent's KB org `Outputs
+> (slots written)` section:
+
+```perl
+# One entry per type_element known to the pipeline (from each agent's KB org
+# "Frame catalogue" — union of all type_element values across all agents).
+my %VERDICT_SLOT = (
+    '<type_a>' => '<slot_verdict_agent_1>',   # e.g. qualite_alea
+    '<type_b>' => '<slot_verdict_agent_2>',   # e.g. conforme (shared Frame class)
+    '<type_c>' => '<slot_verdict_agent_2>',   # same slot, different type — same agent
+    '<type_d>' => '<slot_verdict_agent_N>',   # e.g. statut_cle (terminal agent)
+);
+
+sub verdict_of {
+    my ($e) = @_;
+    my $type = $e->{type_element} // '?';
+    my $slot = $VERDICT_SLOT{$type} or return '(type inconnu)';
+    return $e->{$slot} // '(unprocessed)';
+}
+```
+
+Then in the per-element loop and in **Block 1** (compliance rate), replace every
+`$e->{statut_conformite} // '(unprocessed)'` with `verdict_of($e)`.
+
+In **Block 2** (validation process by agent), replace the `[label, slot_ciblage,
+slot_resultat_ok]` triples with `[label, \@types_targeted_by_this_agent]` (the
+list of `type_element` values this agent's rules target, from its KB org
+`Targeting slots` section) and filter elements by `type_element` membership
+instead of `defined $_->{$slot_cible}`:
+
+```perl
+my @pipeline_def = (
+    [ '<Agent1>', [qw(<type_a>)] ],
+    [ '<Agent2>', [qw(<type_b> <type_c> ...)] ],   # one agent, several types
+    [ '<AgentN>', [qw(<type_d>)] ],                 # terminal agent
+);
+# ...
+my %type_ok = map { $_ => 1 } @$types;
+my @cibles  = grep { $type_ok{ $_->{type_element} // '' } } @elements;
+```
+
+⛔ **Common pitfall:** do not write `grep { $type_ok{ $e->{type_element} } }` —
+`grep`'s implicit loop variable is `$_`, not `$e`; using an outer-scope `$e`
+either crashes (`Global symbol "$e" requires explicit package name`, `use
+strict` catches it — always run `perl -c run.pl` before executing) or silently
+matches nothing if `$e` happens to be declared elsewhere in scope.
+
+**Blocks 3 and 4** need no structural change beyond substituting `verdict_of($e)`
+for `$e->{statut_conformite}` wherever the base template reads that slot directly.
