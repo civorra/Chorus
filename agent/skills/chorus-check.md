@@ -837,6 +837,7 @@ French corpus (default template):
 **Référence normative :** §<N> para <M> — <one-line summary of the requirement>
 
 **Valeurs d'entrée lues par la règle :**
+
 | Slot | Valeur dans le project |
 |---|---|
 | <slot_a> | <valeur> |
@@ -868,6 +869,7 @@ English corpus:
 **Normative reference:** §<N> para <M> — <one-line summary of the requirement>
 
 **Input values read by the rule:**
+
 | Slot | Value in the project |
 |---|---|
 | <slot_a> | <value> |
