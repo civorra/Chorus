@@ -717,6 +717,88 @@ writes `$SANDBOX/agent/extract-pdf-<slug>.py`, then executes it
 > silently flattened. Treat this checklist as part of the extraction task
 > itself, not an optional follow-up.
 
+### Phase 2b — `CHORUS:no_auto_rules` auto-annotation (mandatory post-generation step)
+
+After the `.md` file is written and the §1.4g checklist is complete, scan
+the generated `.md` for section headings that match known **doctrinal patterns**
+and insert a `<!-- CHORUS:no_auto_rules — <reason> -->` marker immediately after
+each matching heading.
+
+This marker is read by `chorus-corpus-scoping` Phase 2 Step 1 to bypass keyword
+scoring and immediately classify the section as `OUT-OF-SCOPE` or `CONTEXT-ONLY`,
+without any operator domain knowledge required.
+
+#### Doctrinal patterns to auto-detect (case-insensitive, partial match)
+
+| Pattern in heading | Inserted marker reason |
+|---|---|
+| `foreword`, `avant-propos` | `informative foreword — no codifiable requirement` |
+| `introduction` (if first section before any normative §) | `introductory section — context only` |
+| `scope`, `domaine d'application` | `scope definition — context only, no rule generated` |
+| `normative references`, `références normatives` | `external reference list — no rule generated` |
+| `terms and definitions`, `termes et définitions` | `definitions — fed to thesaurus, no rule generated` |
+| `symbols`, `abbreviated terms`, `abréviations` | `terminology — fed to thesaurus, no rule generated` |
+| `bibliography`, `bibliographie` | `informative bibliography — no codifiable requirement` |
+| `annex` / `annexe` followed by `(informative)` | `informative annex — no codifiable requirement` |
+| `index` (standalone last section) | `document index — no codifiable requirement` |
+
+> ⚠️ **Do NOT auto-annotate** sections whose heading contains `(normative)` or
+> whose heading matches a domain-specific identifier pattern (e.g. `ADV_`, `ATE_`,
+> `§3.`, article numbers) — even if they also contain introductory prose.
+> These sections must go through the normal keyword scoring in Phase 2.
+
+#### Auto-annotation implementation (added to the extraction script)
+
+After the main `parts` list is assembled and written, perform a second pass
+on the output file:
+
+```python
+import re
+
+DOCTRINAL_PATTERNS = [
+    (r'(?i)^#+\s*(foreword|avant.propos)', 'informative foreword — no codifiable requirement'),
+    (r'(?i)^#+\s*(introduction)\b(?!.*normative)', 'introductory section — context only'),
+    (r'(?i)^#+\s*(scope|domaine d.application)\b', 'scope definition — context only, no rule generated'),
+    (r'(?i)^#+\s*(normative references|références normatives)', 'external reference list — no rule generated'),
+    (r'(?i)^#+\s*(terms and definitions|termes et définitions)', 'definitions — fed to thesaurus, no rule generated'),
+    (r'(?i)^#+\s*(symbols|abbreviat|abréviat)', 'terminology — fed to thesaurus, no rule generated'),
+    (r'(?i)^#+\s*(bibliography|bibliographie)', 'informative bibliography — no codifiable requirement'),
+    (r'(?i)^#+\s*annex[e]?\b.*\(informative\)', 'informative annex — no codifiable requirement'),
+    (r'(?i)^#+\s*index\s*$', 'document index — no codifiable requirement'),
+]
+
+with open(OUTPUT_PATH, 'r', encoding='utf-8') as f:
+    content = f.read()
+
+lines = content.split('\n')
+result = []
+i = 0
+annotated = 0
+while i < len(lines):
+    line = lines[i]
+    matched = False
+    for pattern, reason in DOCTRINAL_PATTERNS:
+        if re.match(pattern, line):
+            result.append(line)
+            result.append(f'<!-- CHORUS:no_auto_rules — {reason} -->')
+            annotated += 1
+            matched = True
+            break
+    if not matched:
+        result.append(line)
+    i += 1
+
+with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
+    f.write('\n'.join(result))
+
+if annotated:
+    print(f"[chorus-pdf] Phase 2b — {annotated} section(s) auto-annotated CHORUS:no_auto_rules",
+          file=sys.stderr)
+```
+
+Print summary: `[chorus-pdf] Phase 2b — N section(s) auto-annotated as no_auto_rules`
+If N = 0: `[chorus-pdf] Phase 2b — no doctrinal sections detected (manual annotation may be needed)`
+
 ### Vision extraction prompt (used verbatim in `--auto` and `--images` scripts)
 
 ```

@@ -1,0 +1,57 @@
+##
+# RULE: R02-algo-keylength
+# AGENT: WidgetCompliance::Agent::AgentAlgo  (pos. 2 / 2)
+# CORPUS: CIR-1.0 Art.6 — Cryptographic parameters ⇒ ARF-2.1 §3.2 Table 3.2-1
+#
+# PURPOSE
+#   For approved algorithms, checks that the key length meets the minimum
+#   defined in ARF Table 3.2-1 (CIR Art.6 cross-ref):
+#     AES >= 128 bits | RSA >= 2048 bits | ECC >= 256 bits
+#   Fires only after R01 (deprecated check) — EXCEPTION guard prevents double-fire.
+#
+# INPUTS  (slots read)
+#   algorithm      : string  — algorithm identifier
+#   key_length_bits: integer — key length in bits (from project JSON)
+#
+# OUTPUTS (slots written)
+#   algo_ok    : "OUI" | "NON"
+#   motif_algo : string
+#
+# HELPERS
+#   Helpers::algo_status($algorithm)          → 'approved' | 'deprecated' | undef
+#   Helpers::min_key_length($algorithm)       → integer | undef
+#   Helpers::key_crack_benchmark($algorithm)  → { key_length, cost, year } | undef
+#     — justification-only (CIR-1.0 Annex C, HELPER-SOURCE) — enriches motif_algo
+#       on the NON branch, never determines the verdict itself.
+#
+# GUARD — EXCEPTION: defined $var->{algo_ok}
+#   Pattern 1 — fires only if R01 did not set algo_ok (approved algo path).
+##
+RULE: R02-algo-keylength
+FIND:
+  var: FIND type_element EQUAL widget
+CONDITION: |
+  defined $var->get('algorithm') &&
+  defined $var->get('key_length_bits') &&
+  (Helpers::algo_status($var->get('algorithm')) // '') eq 'approved'
+EXCEPTION: "defined $var->{algo_ok}"
+ACTION: |
+  my $algo   = $var->get('algorithm');
+  my $keylen = $var->get('key_length_bits');
+  my $min    = Helpers::min_key_length($algo);
+
+  if (defined $min && $keylen >= $min) {
+      $var->set('algo_ok',    'OUI');
+      $var->set('motif_algo', "algorithm '$algo' approved, key length ${keylen} bits "
+                             .">= minimum ${min} bits (ARF-2.1 §3.2 Table 3.2-1 / CIR-1.0 Art.6)");
+  } else {
+      my $bench = Helpers::key_crack_benchmark($algo);
+      my $motif = "algorithm '$algo' approved but key length ${keylen} bits "
+                 ."< minimum ${min} bits (ARF-2.1 §3.2 Table 3.2-1 / CIR-1.0 Art.6) — NON_CONFORME";
+      $motif .= " Empirical justification (CIR-1.0 Annex C, Table C.1): "
+              . "$bench->{key_length}-bit $algo estimated cost $bench->{cost} ($bench->{year})."
+          if $bench;
+      $var->set('algo_ok',    'NON');
+      $var->set('motif_algo', $motif);
+  }
+  1

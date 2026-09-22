@@ -127,12 +127,122 @@ publication, same version, same date).
 |---|---|
 | Corpus ≤ 2 files **and** ≤ ~50 pages (or equivalent plain-text size) | Skip — proceed directly to Phase 1 inline analysis (§1.1–1.3), no `SCOPING.md` required. |
 | Corpus > 2 files, **or** > ~50 pages, **or** operator explicitly requests it | Load `chorus-corpus-scoping.md`. If `sandboxes/<sandbox-name>/SCOPING.md` does not exist yet, generate it and **stop** — present it to the operator and wait for confirmation (status `CONFIRMED`) before proceeding to Phase 1. |
-| `SCOPING.md` exists with status `CONFIRMED` | Skip inline §1.1–1.3 analysis — use `SCOPING.md`'s agents/Frames/relationships/control-slots/BOARD decisions directly as the basis for KB org / YAML / Helpers.pm generation. |
+| `SCOPING.md` exists with status `CONFIRMED` | Skip inline §1.1–1.3 analysis — use `SCOPING.md`'s decisions directly. Then check for pre-split agent files (see below). |
 | `SCOPING.md` exists with status `DRAFT` (from a prior, unconfirmed run) | Stop — ask the operator to confirm or revise it before generating anything. |
 
 This gate settles the same structural decisions as §1.1–1.3 below, but as a
 persistent, human-reviewable artefact produced **before** any KB/YAML/
 Helpers.pm write — see `chorus-corpus-scoping.md` for the full method.
+
+#### Pre-split agent files detection (inside Phase -0.5, after CONFIRMED)
+
+After confirming `SCOPING.md` status is `CONFIRMED`, check whether Phase 2 of
+`chorus-corpus-scoping` has already produced agent corpus files:
+
+```
+agent_files = glob("$SANDBOX/corpus/???-<slug>*.md")
+              filtered to files whose header contains "# AGENT: <slug>"
+```
+
+| Situation | Action |
+|---|---|
+| **Agent files present — all agents** (every agent in `SCOPING.md ## Agents` has a `corpus/NNN-<slug>.md` file) | **Pre-split mode** — use the agent file matching the `<corpus>` argument's slug, or the next unprocessed agent file. Apply `no_auto_rules` to CONTEXT/SHARED sections. Run Phase 1 on this agent file only. |
+| **Agent files present — partial** (some agents have files, others do not) | **⚠️ Partial pre-split — recovery mode.** See rules below. |
+| **Agent files absent** — `SCOPING.md` confirmed but Phase 2 not yet run | **Trigger Phase 2** — load `chorus-corpus-scoping.md` and run Phase 2 now. Stop after Phase 2 completes and present the split summary. Do not proceed to Phase 0/1 yet. |
+| **Agent files absent** — small corpus (Phase -0.5 threshold not crossed) | **Standard mode** — Phase 1 inline on the original corpus file. No change. |
+
+#### Partial pre-split recovery (some agent files missing)
+
+**Detection:** `SCOPING.md` is `CONFIRMED` and at least one agent from the `## Agents`
+table is missing its `corpus/NNN-<slug>.md` file (no file with `# AGENT: <slug>` header).
+
+**Do NOT silently proceed** as if the pre-split is complete — missing agent files mean
+the KB would be generated on an incomplete corpus slice. Display:
+
+```
+⚠️ Partial pre-split detected in <sandbox-name>:
+  Present : corpus/<NNN>-<slug-A>.md (agent-A)
+  Missing : corpus/<NNN>-<slug-B>.md (agent-B)
+            corpus/<NNN>-<slug-C>.md (agent-C)
+
+This indicates a Phase 2 interruption (session timeout or crash).
+Options:
+  [default] Resume Phase 2 — generate missing agent files only (existing unchanged).
+            Then re-run: chorus-feed <sandbox> corpus/<NNN>-<slug-A>.md
+  --force   Proceed with current agent file as-is (⚠️ KB will be incomplete until
+            missing agents are processed). Use only if you intend to run the
+            missing agents manually in subsequent sessions.
+```
+
+Default (no `--force`): load `chorus-corpus-scoping.md`, run Phase 2 for missing agents
+only (same as the "Resume" path in `chorus-corpus-scoping` partial recovery rule), then
+stop. Do not proceed to Phase 0/1 until the operator re-runs `chorus-feed` explicitly.
+
+`--force`: bypass the warning and proceed with the current agent file. The KB will be
+incomplete until missing agents are processed — this is an explicit operator override.
+Emit a visible reminder at the end of the pass: `"⚠️ KB incomplete — N agent(s) still
+missing their pre-split corpus file. Run chorus-feed for each missing agent."`
+
+#### `no_auto_rules` enforcement for CONTEXT and SHARED sections
+
+When running in pre-split mode, each section in the agent corpus file carries a
+`<!-- SECTION: ... | STATUS: ... -->` marker (written by `chorus-corpus-scoping`
+Phase 2). Apply the following rule during Phase 1 corpus analysis:
+
+| Section STATUS marker | Behavior in Phase 1 |
+|---|---|
+| `PRIMARY` | Normal analysis — identify rules, Frames, slots, generate YAML |
+| `SHARED` | Read for context and cross-reference resolution only — **never generate a rule or Helper from this section** |
+| `CONTEXT` | Read for cross-reference resolution only — **never generate a rule or Helper from this section** |
+| `HELPER-SOURCE` | **Never generate a YAML rule from this section.** Instead, extract its quantitative/tabular content into a `Helper` function (Phase 5.5) for the agent named in `REFERENCED-BY-AGENT`, called from the `ACTION`/`EFFET` of the rule named in `REFERENCED-BY-RULE` to enrich its `motif_*`/justification — the verdict threshold itself is never derived from this Helper (see `chorus-corpus-scoping.md` § HELPER-SOURCE refinement for the classification logic). The Helper's `# Source corpus:` comment (§9 below) must reference this section, so Phase 6.5's Helper-source coverage audit can confirm it was actually extracted. |
+
+> **Why this matters:** CONTEXT and SHARED sections are included in the agent file
+> precisely so the LLM understands dependencies and thresholds that live in another
+> agent's scope — but they must not produce duplicate or misattributed rules.
+> A SHARED composition table (e.g. an EAL dependency matrix) is read by `agent-eal`
+> as PRIMARY and by `agent-adv` as SHARED — only `agent-eal`'s pass generates the
+> corresponding Helper catalog.
+>
+> `HELPER-SOURCE` differs from `CONTEXT`/`SHARED` in one critical way: it is
+> **not** purely passive. A `HELPER-SOURCE` section carries an *implicit
+> completion obligation* — Phase 6.5's Helper-source coverage audit will flag
+> it as pending until a Helper referencing it actually exists. Silently
+> reading it "for context" without writing the Helper is a protocol
+> violation, unlike a genuine `CONTEXT` section which may legitimately never
+> produce anything beyond understanding.
+
+#### Multi-agent Mode A sequencing
+
+When agent files are present, `chorus-feed` Mode A must be run **once per agent
+file**, in the pipeline order defined in `SCOPING.md ## Agents`. Each run:
+
+1. Uses `corpus/NNN-<slug-A>.md` as the corpus argument.
+2. Produces KB org / YAML / Helpers for agent A only.
+3. Updates `README.org` `* Coverage` and `* Agent status` tables.
+4. Does **not** re-run for agents already processed (idempotence: check whether
+   `agent/chorus/<slug-A>.org` already exists and its `#+CORPUS_FILE:` header
+   matches the current agent file — if so, skip).
+
+Print after each agent pass:
+```
+[chorus-feed] Agent <slug-A> — Mode A complete
+  PRIMARY sections processed : <n>
+  CONTEXT/SHARED sections skipped (no_auto_rules) : <n>
+  Rules generated : <n>
+  Helpers created : <n> / <n> documented   ← MUST be N/N, never M/N — see Phase 3 §9
+  ⏭ Deferred : <n>   ← expected to be near 0 on a focused agent file
+  🧮 Helper-source pending : <n>   ← HELPER-SOURCE sections in this agent file not
+                                     yet extracted into a Helper — see Phase 6.5 Step 1c
+  Next: chorus-feed <sandbox-name> corpus/<NNN>-<slug-B>.md
+```
+
+> ⛔ **`Helpers created` must never read `M / N` with M < N.** If the KB org's
+> `* Perl Helpers` section documents a signature, Phase 5.5 for that helper
+> **must already have run** — see the mandatory rule in Phase 3 §9 below.
+> A documented-but-unwritten helper is worse than no helper: the YAML rule
+> that calls it will die at runtime with `Undefined subroutine` — but only
+> once `chorus-check` + `perl run.pl` are eventually run, far downstream of
+> this print, when the root cause is much harder to trace back.
 
 ### Phase 0 — Sandbox Initialization
 
@@ -173,9 +283,31 @@ Create `README.org`:
 
 ### Phase 1 — Corpus Analysis
 
+**1.0 Pre-annotation scan (before any analysis)**
+
+Before reading the corpus for content, scan the `.md` file(s) for
+`<!-- CHORUS:no_auto_rules — … -->` markers (inserted by `chorus-pdf`/
+`chorus-word`/`chorus-excel` Phase 2b, or manually by the operator).
+
+Build a `no_auto_rules_sections` set: every section heading immediately
+followed by such a marker. These sections are **excluded from all Phase 1
+analysis** (no agent assignment, no Frame detection, no rule generation).
+They are automatically classified:
+- `OUT-OF-SCOPE` if their content is purely procedural/informative
+  (foreword, bibliography, index).
+- `CONTEXT-ONLY` if their content contains definitions or terminology
+  (terms & definitions, abbreviations) — available for thesaurus seeding
+  and cross-reference resolution, but never generating a rule.
+
+> **Why this matters:** without this pre-scan, `chorus-feed` Phase 1
+> wastes analysis budget on sections that can never produce a codifiable
+> rule, increasing the risk that genuinely normative sections are deferred
+> due to context pressure. On a 600-page corpus, foreword + intro + terms +
+> annexes (informative) can represent 15–25% of the total content.
+
 **1.1 Identify specialties**
 
-Read the corpus in full. Group rules by coherent theme.
+Read the corpus in full (excluding `no_auto_rules_sections`). Group rules by coherent theme.
 Each group = one agent. Criteria:
 - rules concerning the same types of Frames
 - same incoming/outgoing slots
@@ -753,6 +885,18 @@ Mandatory fill order:
 7. Slot dictionary
 8. Rule catalog
 9. **Perl Helpers** — signatures + complete business logic code
+   ⛔ **Not documentation-only.** The instant a Helper signature is written
+   in this section (even a single one, even for an agent otherwise mostly
+   rule-free — e.g. an aggregation/synthesis agent), **immediately execute
+   Phase 5.5 for it** — write `lib/<Namespace>/.../Helpers.pm` (or
+   `Helpers/Shared.pm` if shared) and validate with `perl -c` — **before**
+   moving on to step 10 or to the next agent. Never treat "the org section
+   describes the helper" as equivalent to "the helper exists" — they are
+   two different artifacts and only the second one is callable by the YAML
+   `EFFET`/`ACTION` generated in Phase 5. See the `Helpers created : N/N`
+   checkpoint in the per-agent completion print (§ Multi-agent Mode A
+   sequencing) — it exists specifically to make this gap visible immediately
+   instead of at `chorus-check`/`perl run.pl` time.
 10. Constraints & Pitfalls
 
 #### Ontology — mandatory `** Aliases` section
@@ -1177,6 +1321,28 @@ sub <helper2> {
 
 #### Helpers Checklist
 
+- [ ] ⛔ **Mechanical existence check — run before declaring any agent complete,
+      and again before handing off to `chorus-check`:**
+      ```bash
+      # 1. Every bareword function call inside EFFET/ACTION blocks (excluding
+      #    Perl builtins and $var->method() calls) must resolve to an @EXPORT_OK
+      #    entry in some lib/**/*.pm — or the call will die at runtime with
+      #    "Undefined subroutine".
+      grep -hoE "[a-z_][a-z0-9_]*\(" $SANDBOX/rules/*/*.yml \
+        | sed 's/($//' | sort -u > /tmp/called.txt
+      grep -hoE "^\s*[a-z_][a-z0-9_]*" $SANDBOX/lib/**/*.pm 2>/dev/null \
+        | grep -v '^\s*(use\|package\|our\|my\|sub\|return\|unless\|if\|for\|while)$' \
+        | sort -u > /tmp/exported.txt
+      # Manually cross-check /tmp/called.txt against @EXPORT_OK lines in each
+      # lib/**/*.pm — any name present in called.txt but absent from every
+      # @EXPORT_OK is a live bug: the YAML calls a Helper that was never written.
+      ```
+      This is the exact class of bug documented in `03-cyber-sec-ANSSI-PG-083+RGS_v-2-0_B2-REBUILD/README.org`
+      (2026-09-19): two agents' YAML called `agreger_verdicts()`, the KB org
+      documented its signature, but `lib/.../Synthese.pm` was never created —
+      undetected until an operator manually asked "does `lib/` exist?". This
+      check makes that class of bug mechanically detectable instead of relying
+      on manual review.
 - [ ] Every helper referenced in a YAML ACTION has its implementation in `Helpers.pm`
 - [ ] `@EXPORT_OK` covers all helpers in the file
 - [ ] Every helper has its `Source corpus` comment
@@ -1221,7 +1387,136 @@ Re-read the corpus index (table of contents, section headings, article numbers)
 to build an exhaustive list of every normative section / article / table /
 diagram present in the corpus.
 
-**Step 2 — Classify each section into one of three buckets**
+**Step 1b — CORPUS: header audit (mandatory, runs in parallel with Step 1)**
+
+Scan every `.yml` file generated during this Mode A session
+(`rules/<slug>/R<NN>-*.yml`) and check the `# CORPUS:` header line:
+
+| State | Classification | Action |
+|---|---|---|
+| `# CORPUS: §<N> — …` fully resolved | ✅ OK | No action |
+| `# CORPUS: TODO — …` with explanation | ⚠️ Unresolved | Add to CORPUS-TODO list below |
+| `# CORPUS:` line absent | ⛔ Missing | Add to CORPUS-TODO list, treat as defect |
+
+If the CORPUS-TODO list is non-empty, attempt to resolve each entry now by
+re-reading the corresponding corpus section and identifying the exact article:
+
+```
+For each rule R in CORPUS-TODO:
+  Re-read the rule's FIND/CONDITION/ACTION body.
+  Search the corpus .md for the section most likely to have produced this rule.
+  If a unique §-match is found → update the # CORPUS: line in R, mark ✅ resolved.
+  If ambiguous or not found    → leave as TODO, record in the coverage report (see below).
+```
+
+Append a `** ⚠️ CORPUS: unresolved (<N> rules)` sub-section to the coverage
+report for any rule still unresolved after the resolution attempt:
+
+```org
+** ⚠️ CORPUS: unresolved (<N> rules)
+   These rules were generated but their corpus traceability is incomplete.
+   chorus-review-kb will classify them as Orphan.
+   Resolve before the next chorus-check run.
+
+   | Rule file                  | Agent   | CORPUS: line (current)                  |
+   |----------------------------+---------+-----------------------------------------|
+   | rules/<slug>/R<NN>-xxx.yml | <slug>  | TODO — <explanation>                    |
+```
+
+> **Why this matters:** `chorus-review-kb` uses `# CORPUS:` fields as the sole
+> mechanical link between rules and corpus articles. A rule with `TODO` or no
+> `CORPUS:` line is classified `Orphan` — it appears in the KB but has no
+> traceable normative justification. On a large corpus, unresolved `TODO` entries
+> accumulate silently and undermine the coverage audit's reliability.
+
+**Step 1c — Helper-source coverage audit (mandatory if any `HELPER-SOURCE`
+section exists — runs in parallel with Step 1/1b)**
+
+Applies only when `chorus-corpus-scoping` Phase 2 produced at least one
+section marked `STATUS: HELPER-SOURCE` (see `chorus-corpus-scoping.md` §
+HELPER-SOURCE refinement). Skip this step entirely if none exist (small
+corpus, no pre-split, or corpus with no cross-referenced quantitative
+annex) — do not fabricate a section to audit.
+
+For each `HELPER-SOURCE` section S (identified by its
+`<!-- SECTION: §<ref> | STATUS: HELPER-SOURCE | ... -->` marker in the agent
+corpus file):
+
+```
+Search every Helpers.pm file written during this Mode A session for a
+"# Source corpus:" comment (Phase 5.5 §9 convention) whose §-reference
+matches S.
+
+If found  → ✅ classify S as covered — will appear under ✅ Integrated
+            in Step 3, tagged "(Helper)".
+If absent → 🧮 classify S as Helper-source pending — add to the
+            "🧮 Helper-source pending" list (Step 3 report template below).
+```
+
+> **Why this matters:** without this audit, a `HELPER-SOURCE` section can be
+> read into an agent's corpus file (for LLM context) and then silently never
+> extracted into an actual `Helper` — exactly the failure mode this whole
+> mechanism exists to prevent (see `chorus-corpus-scoping.md` § HELPER-SOURCE
+> refinement rationale). A coverage report claiming `0 Deferred` while a
+> `HELPER-SOURCE` section sits unextracted must never happen again — this
+> audit is the mechanical guarantee, not a matter of operator vigilance.
+
+**Step 1d — Mechanical inventory audit (mandatory, runs after Step 1)**
+
+> **Why this matters:** Step 1's enumeration is a semantic re-read performed
+> entirely by the agent. Nothing above checks it against the corpus itself —
+> a section the re-read simply never notices does not appear as ✅, ⏭, or ⛔
+> anywhere in the coverage report. It is invisible by construction, and
+> `Deferred = 0` says nothing about it: SP1/SP2 would be declared reached
+> while a genuine gap sits outside the audit's field of view entirely.
+
+Run the deterministic cross-check before proceeding to Step 2:
+
+```
+scripts/corpus-inventory.py $SANDBOX/README.org $SANDBOX/corpus/<NNN>-<slug>.md [...]
+```
+
+This is a **count-based**, not identity-based, check — it does not attempt
+to match section titles between the corpus and `README.org` (an earlier
+version tried exactly that via heading-text regex and produced a 57%
+false-positive rate on `sandboxes/test-kb-multiSource`, see the script's
+own docstring for the full rationale). Instead, per corpus file it counts
+`<!-- SECTION: ... | STATUS: PRIMARY | ... -->` and `STATUS: HELPER-SOURCE`
+markers (already written mechanically by `chorus-corpus-scoping` Phase 2 —
+fixed format, never re-derived from document prose), and cross-checks that
+count against the number of table rows recorded under `✅ Integrated`,
+`⏭ Deferred`, and `🧮 Helper-source pending` in the matching `* Coverage`
+block of `README.org` (matched via the existing `Corpus:` line, not by
+agent tag — one block may legitimately span several corpus files).
+
+> ⚠️ **Known trade-off, not a hidden limitation:** this is an *existence*
+> check on totals, not an *identification* check. A single `PRIMARY` section
+> can legitimately generate several rules, so a genuine one-section gap can
+> be masked by slack elsewhere in the same `Coverage` block. It cannot tell
+> you *which* section is missing — only that the corpus file's total looks
+> short. Treat a `1` exit as "go re-check this agent's corpus file by hand
+> against its Coverage block", not as a precise diff.
+
+| Exit code | Meaning | Action |
+|---|---|---|
+| `0` | Every corpus file's PRIMARY/HELPER-SOURCE marker count is met or exceeded by its matching Coverage block's accounted rows | Proceed to Step 2 (or SP1/SP2 check, if run post-hoc) |
+| `1` | 🔍 **UNSCANNED** — at least one corpus file under-accounted | Manually re-check that agent's corpus file section-by-section against its `Coverage` block, classify any genuinely missing section into ✅/⏭/⛔ per Step 2, then re-run the script |
+| `2` | Usage / file error | Fix the invocation, not the corpus |
+
+Add any `🔍 UNSCANNED` result to the coverage report (Step 3) as its own
+bucket, and treat `🔍 UNSCANNED > 0` as an additional blocker on SP1/SP2 —
+comparable in severity to `⏭ Deferred > 0`, though coarser: unlike a
+Deferred entry, an under-accounted corpus file carries no motif and no
+`retry-note` until manually investigated.
+
+**Step 2 — Classify each section**
+
+> ⚠️ **`too-ambiguous` is a last resort — never a first reflex.**
+> Before classifying any section as `too-ambiguous`, the mandatory retry protocol
+> below (Step 2b) must have been attempted and explicitly failed. Skipping the retry
+> and deferring directly is a protocol violation.
+
+**Step 2a — First-pass classification into three buckets**
 
 | Symbol | Bucket | Criterion |
 |--------|--------|-----------|
@@ -1235,6 +1530,88 @@ Deferred reasons (use one per entry):
 - `external-norm` — rule defers to an external standard (BS EN, NF EN…)
 - `procedural` — rule describes a process without a numeric threshold
 - `too-ambiguous` — section wording is insufficiently precise to codify reliably
+  *(only valid after Step 2b retry has failed — see below)*
+
+**Step 2b — Mandatory retry protocol for `too-ambiguous` candidates**
+
+Every section tentatively classified `too-ambiguous` in Step 2a **must** go through
+this retry before being written to the coverage report. The goal is to replace a
+silent gap with a best-effort rule that documents the uncertainty explicitly inside
+the KB, rather than leaving it invisible to all downstream tools.
+
+```
+For each section S classified too-ambiguous in Step 2a:
+
+  ATTEMPT 1 — Reformulation
+    Re-read S with the question: "Is there at least ONE verifiable condition
+    in this section, even if other parts remain ambiguous?"
+    — If yes → extract that condition and generate a partial rule (see below).
+    — If no  → proceed to ATTEMPT 2.
+
+  ATTEMPT 2 — Structural decomposition
+    Split S into its individual sentences / sub-clauses.
+    For each sub-clause C:
+      — Does C contain a numeric threshold, an enum, or a boolean condition? → codifiable.
+      — Does C describe a procedure, a recommendation, or a rationale?       → out-of-scope.
+    If at least one codifiable sub-clause exists → generate a partial rule from
+    the codifiable sub-clauses only; mark the un-codifiable remainder in
+    Constraints & Pitfalls.
+    If zero codifiable sub-clauses → RETRY FAILED (proceed to Step 2c).
+
+  RETRY FAILED:
+    Classify S as ⏭ Deferred / too-ambiguous in the coverage report.
+    Document in the rule catalog of the relevant agent KB org:
+      "§<N> — <title> : too-ambiguous after retry — <one sentence explaining
+      what made encoding impossible>. Retry on next corpus revision."
+    This note makes the gap visible to chorus-review-kb and chorus-strengthen.
+```
+
+**Partial rule pattern (used when retry succeeds partially):**
+
+When a section can only be partially codified, generate a rule that:
+1. Encodes the verifiable condition(s) as normal `CONDITION`/`ACTION`.
+2. Marks every uncertain slot value with `_a_confirmer: 1` on the Frame element
+   (same flag used by `chorus-import-project` for uncertain mappings).
+3. Sets `motif_*` to a string that states clearly what was confirmed vs. what
+   remains uncertain.
+
+```yaml
+# CORPUS: §<N> — <standard> — <section title>
+# STATUS: partial — uncertain values flagged _a_confirmer (retry Step 2b)
+# UNCERTAIN: <one-line description of what could not be encoded>
+REGLE:
+  NOM: R<NN>-<slug>-partial
+  TROUVER:
+    var: CHERCHER type_element EGAL <type>
+  CONDITION: <verifiable condition from codifiable sub-clauses>
+  EXCEPTION: défini $var->{<uncertain_slot>}
+  ACTION:
+    - FIXER <verdict_slot> = "KO"
+    - FIXER motif_<slug> = "<reason — confirmed part> [⚠️ uncertain: <what remains unverified>]"
+    - FIXER _a_confirmer = 1
+```
+
+> **Effect on downstream tools:**
+> - `chorus-check`: element appears in results with `_a_confirmer` flag →
+>   classified `❓ uncertain`, not counted as definitive NON_CONFORME.
+> - `chorus-review-kb`: rule carries `# STATUS: partial` → flagged for expert
+>   review in the HTML viewer.
+> - `chorus-strengthen`: partial rule shows up in gap analysis with its
+>   UNCERTAIN annotation → generates a targeted enrichment recommendation.
+> - Coverage report: section classified ✅ Integrated (partial) rather than
+>   ⏭ Deferred — it exists in the KB, even if imperfectly.
+
+**Step 2c — `too-ambiguous` coverage entry (only after Step 2b fails)**
+
+If and only if Step 2b produced zero codifiable sub-clauses, write the section
+to the ⏭ Deferred list with:
+- reason: `too-ambiguous`
+- a mandatory one-line `retry-note` field explaining what made encoding impossible
+  (this note is carried forward into every subsequent `--enrich` pass until resolved)
+
+| Section / Article | Reason | retry-note | Suggested action |
+|---|---|---|---|
+| §<N> — <title> | too-ambiguous | <why retry failed> | Obtain clarification from standard body / await revision |
 
 **Step 3 — Write the report to `README.org`**
 
@@ -1252,9 +1629,31 @@ Append the following block to `README.org`:
    | Table <N> — <title>   | Helper: <function_name>  |
 
 ** ⏭ Deferred — needs chorus-feed --enrich (<N> sections)
-   | Section / Article     | Reason          | Suggested new rule / agent       |
-   |-----------------------+-----------------+----------------------------------|
-   | §<N> — <title>        | <reason>        | <RNN-slug or new-agent>          |
+   | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent       |
+   |-----------------------+-----------------+-----------------------------------+----------------------------------|
+   | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
+
+** 🧮 Helper-source pending (<N> sections)  ← omit section entirely if N=0
+   From Step 1c audit — sections tagged HELPER-SOURCE by chorus-corpus-scoping
+   Phase 2, referenced by a PRIMARY rule with a numeric threshold, but no
+   Helper function's "# Source corpus:" comment references them yet.
+   | Section / Article     | Referenced by (rule)      | Referenced by (agent) |
+   |-----------------------+----------------------------+------------------------|
+   | §<N> — <title>        | R<NN>-<slug>.yml           | <slug>                 |
+
+** 🔍 UNSCANNED — corpus-inventory.py cross-check (<N> corpus file(s))  ← omit section entirely if N=0
+   From Step 1d mechanical audit (count-based, see script docstring) — this
+   corpus file's PRIMARY/HELPER-SOURCE marker count exceeds the rows
+   accounted for in this Coverage block. Blocks SP1/SP2 until manually
+   re-checked (script cannot identify which section is missing).
+   | Source file            | PRIMARY+HELPER-SOURCE markers | Rows accounted |
+   |-------------------------+-------------------------------+-----------------|
+   | <NNN>-<slug>.md         | <n>                            | <n>             |
+
+** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
+   | Rule file                  | Agent   | CORPUS: line (current)   |
+   |----------------------------+---------+--------------------------|
+   | rules/<slug>/R<NN>-xxx.yml | <slug>  | TODO — <explanation>     |
 
 ** ⛔ Out of scope (<N> sections)
    | Section / Article     | Reason                                  |
@@ -1263,10 +1662,8 @@ Append the following block to `README.org`:
 
 ** Next step
    #+BEGIN_EXAMPLE
-   chorus-feed <sandbox-name> <corpus> --enrich
+   <see Step 4b below — filled in dynamically based on stability point check>
    #+END_EXAMPLE
-   → Will process the <N> deferred section(s) listed above.
-   Run chorus-strengthen after each --enrich to verify convergence.
 ```
 
 **Step 4 — Display the report summary to the user**
@@ -1279,6 +1676,57 @@ user can immediately see what was covered and what remains.
 > The coverage report is the only artefact that tracks corpus → KB completeness.
 > `chorus-strengthen` detects rule gaps from project discordances only — it
 > cannot detect corpus sections that were never modelled.
+
+**Step 4b — Stability point check and next-step guidance**
+
+After displaying the coverage report, determine whether a **KB stability point**
+has been reached and fill in the `** Next step` block accordingly.
+
+**Stability point 1 — All agent files processed (pre-split mode)**
+
+Check the `* Agent status` table in `README.org`:
+- Count agents with status ✅ for KB + YAML + Helpers.
+- Compare against the total agent count in `SCOPING.md ## Agents`.
+
+| Situation | Next step guidance |
+|---|---|
+| **Some agents still unprocessed** | `chorus-feed <sandbox-name> corpus/<NNN>-<next-slug>.md` — continue with the next agent file in pipeline order. Do NOT run `chorus-review-kb` yet — KB is incomplete. |
+| **All agents processed AND ⏭ Deferred > 0** | Run deferred sections first: `chorus-feed <sandbox-name> corpus/<NNN>-<slug>.md --enrich` per agent. Still not a stability point. |
+| **All agents processed AND 🧮 Helper-source pending > 0** | Write the missing Helper(s) now (Phase 5.5) for the pending sections, then re-run Step 1c. Still not a stability point — a KB with an unextracted `HELPER-SOURCE` section is exactly the incomplete-coverage failure mode this mechanism exists to prevent. |
+| **All agents processed AND 🔍 UNSCANNED > 0** | Re-run `scripts/corpus-inventory.py` (Step 1d), manually re-check the listed corpus file(s) against their `Coverage` block, classify any genuinely missing section into ✅/⏭/⛔, then re-run the script. Still not a stability point. |
+| **All agents processed AND ⏭ Deferred = 0 AND 🧮 Helper-source pending = 0 AND 🔍 UNSCANNED = 0 AND ⚠️ CORPUS: unresolved = 0** | **Stability point 1 reached** — see convergence check below. |
+
+**Stability point 1 — Single corpus mode (no pre-split)**
+
+If no agent files exist (small corpus, pre-split not triggered):
+- Stability point 1 = end of the single Mode A pass.
+- Apply the same Deferred / CORPUS: conditions above.
+
+**Convergence check at stability point 1**
+
+```
+IF ⏭ Deferred = 0
+   AND 🧮 Helper-source pending = 0
+   AND 🔍 UNSCANNED = 0
+   AND ⚠️ CORPUS: unresolved = 0 :
+
+  → STABILITY POINT REACHED. Emit in ** Next step:
+
+  #+BEGIN_EXAMPLE
+  # KB stable — run coverage audit then test pipeline:
+  chorus-review-kb <sandbox-name> --format org
+  chorus-check <sandbox-name> <any-projet.json>
+  chorus-strengthen <sandbox-name>
+  chorus-stress <sandbox-name>
+  # Then start convergence loop (see chorus-feed § Convergence loop)
+  #+END_EXAMPLE
+
+ELSE:
+
+  → Emit in ** Next step the specific pending action (next agent file,
+    or --enrich for remaining deferred sections).
+  Do NOT mention chorus-review-kb — KB is not yet stable.
+```
 
 
 ## Mode B — Incremental Enrichment (`--enrich` required)
@@ -1472,12 +1920,46 @@ run a full Phase 6.5 scan first, then proceed.
 **Step 2 — Classify what this `--enrich` pass processed**
 
 For each section in the `⏭ Deferred` list:
+
 - **Promoted to ✅** — at least one new YAML rule or Helper was generated for it
 - **Still ⏭** — section was not covered in this pass (state updated reason if changed)
 - **Reclassified to ⛔** — on re-reading, the section is not codifiable (explain why)
 
+Independently, for each section in the `🧮 Helper-source pending` list (Phase
+6.5 Step 1c) — re-run the Step 1c audit against the Helper(s) written during
+this `--enrich` pass:
+
+- **Promoted to ✅ (Helper)** — a Helper's `# Source corpus:` comment now
+  references this section
+- **Still 🧮** — no matching Helper was written in this pass
+
+A `HELPER-SOURCE` section is never reclassified `⛔ Out of scope` by an
+`--enrich` pass — its cross-reference from a PRIMARY rule was already
+verified structurally at scoping time (`chorus-corpus-scoping` Phase 2);
+if it turns out truly unusable (e.g. table found unreliable per the
+rotated-header check), that is a scoping correction, not an enrichment
+outcome — revise `SCOPING.md` and re-run Phase 2 instead.
+
+> ⚠️ **`too-ambiguous` retry on `--enrich`:** every section still listed as
+> `too-ambiguous` from a prior pass **must** go through the Step 2b retry protocol
+> (defined in Phase 6.5) before being left as `Still ⏭`. The `retry-note` field
+> from the previous pass is the starting point — re-read the section in light of
+> any new context brought by the current corpus enrichment (a `--enrich` pass
+> often adds cross-reference material that makes a previously ambiguous section
+> codifiable). If the retry now produces at least one codifiable sub-clause →
+> generate a partial rule (Step 2b pattern) and promote to ✅ Integrated (partial).
+> Only leave as `too-ambiguous` if the retry still yields zero codifiable clauses
+> AND the retry-note is unchanged — update the retry-note if the reason evolved.
+
 For any **new section** discovered in the corpus during this pass that was not
 in the previous coverage report → add it to the appropriate bucket.
+
+**Step 2b — CORPUS: header audit on newly generated rules**
+
+For every `.yml` file created or modified during this `--enrich` pass, apply
+the same Step 1b audit as Phase 6.5: resolve `TODO` entries now if possible,
+update the `** ⚠️ CORPUS: unresolved` sub-section of the coverage report
+(removing resolved entries, adding newly unresolved ones).
 
 **Step 3 — Update `README.org`**
 
@@ -1494,9 +1976,24 @@ Replace the `* Coverage` block with the updated version:
    | §<N> — <title>        | R<NN>-<slug>.yml         | Mode A / B<N> |
 
 ** ⏭ Deferred — needs chorus-feed --enrich (<N_remaining> sections)
-   | Section / Article     | Reason          | Suggested new rule / agent       |
-   |-----------------------+-----------------+----------------------------------|
-   | §<N> — <title>        | <reason>        | <RNN-slug or new-agent>          |
+   | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent       |
+   |-----------------------+-----------------+-----------------------------------+----------------------------------|
+   | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>          |
+
+** 🧮 Helper-source pending (<N_helper_remaining> sections)  ← omit section entirely if N=0
+   | Section / Article     | Referenced by (rule)      | Referenced by (agent) |
+   |-----------------------+----------------------------+------------------------|
+   | §<N> — <title>        | R<NN>-<slug>.yml           | <slug>                 |
+
+** 🔍 UNSCANNED — corpus-inventory.py cross-check (<N_unscanned_remaining> corpus file(s))  ← omit section entirely if N=0
+   | Source file            | PRIMARY+HELPER-SOURCE markers | Rows accounted |
+   |-------------------------+-------------------------------+-----------------|
+   | <NNN>-<slug>.md         | <n>                            | <n>             |
+
+** ⚠️ CORPUS: unresolved (<N> rules)  ← omit section entirely if N=0
+   | Rule file                  | Agent   | CORPUS: line (current)   |
+   |----------------------------+---------+--------------------------|
+   | rules/<slug>/R<NN>-xxx.yml | <slug>  | TODO — <explanation>     |
 
 ** ⛔ Out of scope (<N> sections)
    | Section / Article     | Reason                                  |
@@ -1505,12 +2002,7 @@ Replace the `* Coverage` block with the updated version:
 
 ** Next step
    #+BEGIN_EXAMPLE
-   # If ⏭ Deferred list is non-empty:
-   chorus-feed <sandbox-name> <corpus> --enrich   ← another pass needed
-
-   # Always after --enrich:
-   chorus-check <sandbox-name> <any-project.json>
-   chorus-strengthen <sandbox-name>
+   <see Step 4b below — filled in dynamically based on convergence check>
    #+END_EXAMPLE
 ```
 
@@ -1543,14 +2035,25 @@ Replace the `* Coverage` block with the updated version:
   This pass   : <N_new> new rule(s) / helper(s) generated
   Promoted ✅ : <N_promoted> section(s) now integrated
   Still ⏭    : <N_remaining> section(s) still deferred
+  Helper 🧮   : <N_helper_promoted> promoted / <N_helper_remaining> still pending
+  UNSCANNED 🔍 : <N_unscanned_promoted> classified / <N_unscanned_remaining> still unscanned
   Reclassified⛔: <N_reclassified> section(s) moved out of scope
 
   ── Promoted this pass ──────────────────────────────
   §<N> — <title>  →  R<NN>-<slug>.yml  [<agent>]
+  §<N> — <title>  →  Helper <function_name>()  [<agent>]  (Helper-source)
   …
 
   ── Still deferred ──────────────────────────────────
   §<N> — <title>  (<reason>)
+  …
+
+  ── Still Helper-source pending ─────────────────────
+  §<N> — <title>  (referenced by R<NN>-<slug>.yml, agent <slug>)
+  …
+
+  ── Still UNSCANNED ──────────────────────────────────
+  <NNN>-<slug>.md  (<n> markers vs <n> rows accounted)
   …
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1559,12 +2062,42 @@ Replace the `* Coverage` block with the updated version:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-If `N_remaining == 0` → display instead:
+If `N_remaining == 0 AND N_helper_remaining == 0 AND N_unscanned_remaining == 0` → display instead:
 ```
-✅ Full corpus coverage reached — all normative sections integrated or
+✅ Full corpus coverage reached — all normative sections integrated,
+   all Helper-source sections extracted, no UNSCANNED sections remain, or
    explicitly classified as out of scope.
    No further --enrich pass needed.
-   Next: chorus-strengthen <sandbox-name> to verify rule quality.
+```
+
+Then apply the **Step 4b convergence check** (same logic as Phase 6.5 Step 4b):
+
+```
+IF ⏭ Deferred = 0
+   AND 🧮 Helper-source pending = 0
+   AND 🔍 UNSCANNED = 0
+   AND ⚠️ CORPUS: unresolved = 0 :
+
+  → STABILITY POINT 2 REACHED. Display:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  ✅ Stability point reached — KB ready for coverage audit │
+  └─────────────────────────────────────────────────────────┘
+  Next steps (in order):
+    1. chorus-review-kb <sandbox-name> --format org
+       → mechanical coverage audit (Uncovered / Orphan / No-CORPUS)
+       → feeds back into --enrich if Uncovered > 0
+    2. chorus-check <sandbox-name> <any-projet.json>
+    3. chorus-strengthen <sandbox-name>
+    4. chorus-stress <sandbox-name>
+  See: chorus-feed § Convergence loop — for full exit criteria.
+
+ELSE (⏭ Deferred > 0 OR 🧮 Helper-source pending > 0 OR 🔍 UNSCANNED > 0 OR ⚠️ CORPUS: unresolved > 0):
+
+  → NOT yet a stability point. Display pending items and
+    suggest the specific next --enrich pass, Helper extraction,
+    UNSCANNED resolution, or CORPUS: resolution needed.
+  Do NOT mention chorus-review-kb.
 ```
 
 **Step 5 — Delete WIP checkpoint file**
@@ -1587,10 +2120,84 @@ Display confirmation:
 > Any crash, timeout, or session end between B0 and B4.5 Step 5 leaves the file
 > in place — making the next `--enrich` invocation immediately aware of the gap.
 
-> **Convergence criterion:** the `--enrich` loop converges when the
-> `⏭ Deferred` list reaches 0. This is the only reliable signal that
-> the KB covers the full corpus — `chorus-strengthen` alone cannot
-> detect unmodelled corpus sections.
+> **Convergence criterion (legacy note):** the `--enrich` loop converges when the
+> `⏭ Deferred` list reaches 0. See the full exit criteria in the section below.
+
+## Convergence loop — KB quality cycle
+
+> **Purpose:** formal definition of the iterative loop that brings a KB from
+> first-generation to full coverage and rule quality. Applies after the initial
+> Mode A cycle (all agent files processed). Uses stability points as the only
+> valid trigger for `chorus-review-kb` — never between individual `chorus-feed` passes.
+
+### Stability points
+
+| Point | Condition | What it means |
+|---|---|---|
+| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
+| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
+
+> ⛔ `chorus-review-kb` must **never** be invoked between two agent passes of a
+> pre-split Mode A cycle — the KB is structurally incomplete until all agents
+> are processed. Running a coverage audit on a partial KB produces misleading
+> Uncovered counts (articles that will be covered by a not-yet-run agent).
+
+### Loop diagram
+
+```
+[SP1 reached — all agents done, Deferred=0, CORPUS:unresolved=0]
+        │
+        ▼
+chorus-review-kb <sandbox> --format org
+        │
+        ├── Uncovered = 0 AND Orphan = 0
+        │     ↓
+        │   chorus-check <sandbox> <projet.json>
+        │   chorus-strengthen <sandbox>
+        │   chorus-stress <sandbox>
+        │     ↓
+        │   ┌─ strengthen/stress found gaps?
+        │   │   YES → chorus-feed <sandbox> <corpus-fix> --enrich → [SP2] → loop
+        │   │   NO  → ✅ KB CONVERGED (exit criteria met — see below)
+        │   └──
+        │
+        └── Uncovered > 0 OR Orphan > 0
+              ↓
+            chorus-feed <sandbox> <corpus-fix> --enrich
+                (corpus-fix built from review-kb org report gaps)
+              ↓
+            [SP2 reached] → chorus-review-kb again → loop
+```
+
+### Exit criteria — KB converged
+
+The KB is considered **converged** when ALL of the following are true simultaneously:
+
+| Criterion | Source | Target |
+|---|---|---|
+| `⏭ Deferred` | `README.org * Coverage` | = 0 |
+| `🧮 Helper-source pending` | `README.org * Coverage` | = 0 |
+| `🔍 UNSCANNED` | `README.org * Coverage` (via `scripts/corpus-inventory.py`) | = 0 |
+| `⚠️ CORPUS: unresolved` | `README.org * Coverage` | = 0 |
+| `Uncovered` articles | `chorus-review-kb` org report | = 0 |
+| `Orphan` rules | `chorus-review-kb` org report | = 0 |
+| Rule gaps from projects | `chorus-strengthen` report | = 0 or all marked `known-limitation` |
+
+> **Partial convergence is valid:** a KB where `chorus-strengthen` gaps are all
+> marked `known-limitation` (corpus too ambiguous to encode further) is considered
+> converged — the limitation is documented, not silently ignored.
+
+### What the operator does vs. what is automatic
+
+| Step | Who runs it | Operator domain knowledge needed? |
+|---|---|---|
+| `chorus-feed` per agent | LLM | ❌ No |
+| `chorus-review-kb --format org` | LLM | ❌ No — mechanical CORPUS: cross-reference |
+| `chorus-check` | LLM | ❌ No |
+| `chorus-strengthen` | LLM | ❌ No |
+| `chorus-stress` | LLM | ❌ No |
+| Reviewing `known-limitation` candidates | Operator | ⚠️ Minimal — one decision per flagged section |
+| `chorus-review-kb --decisions` (expert mode) | Domain expert | ✅ Yes — optional, for certification |
 
 ## Mode C — Alias Harvest (`--harvest-aliases <import-report.org>`)
 

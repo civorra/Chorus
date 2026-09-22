@@ -1,0 +1,73 @@
+#+TITLE: Agent Algo — Widget cryptographic algorithm compliance
+#+CORPUS_LANG: EN
+#+CORPUS_FILE: corpus/004-agent-algo.md
+#+DATE: test
+#+STATUS: draft
+
+* Domaine
+  Cryptographic algorithm compliance per CIR-1.0 Art.6 / ARF-2.1 §3.2.
+  Checks algorithm approval status and minimum key length.
+
+* Ontologie
+
+** Frames
+   | Frame  | type_element | Description        |
+   |--------+--------------+--------------------|
+   | widget | widget       | A certified widget |
+
+** Slots d'entrée
+   | Slot            | Type    | Description                                        |
+   |-----------------+---------+----------------------------------------------------|
+   | algorithm       | string  | Algorithm identifier: AES, RSA, ECC, DES, 3DES    |
+   | key_length_bits | integer | Key length in bits                                 |
+
+** Slots calculés
+   | Slot       | Type   | Valeurs   | Description                              |
+   |------------+--------+-----------+------------------------------------------|
+   | algo_ok    | string | OUI / NON | Algorithm conformance verdict            |
+   | motif_algo | string | free      | Justification string for algo_ok         |
+
+** Aliases
+   Sources: CIR-1.0 Art.6, ARF-2.1 §3.2 (PRIMARY), §3.1 (CONTEXT)
+   | Project term         | KB slot / value          | Confidence |
+   |----------------------+--------------------------|------------|
+   | approved algorithm   | algorithm (approved)     | ✅         |
+   | whitelisted algorithm| algorithm (approved)     | ✅         |
+   | key size             | key_length_bits          | ✅         |
+   | key strength         | key_length_bits          | ✅         |
+
+* Catalogue des Frames
+  Frame: widget (extension — slots ajoutés par agent-algo)
+  | Slot            | Type    | Default | Description                          |
+  |-----------------+---------+---------+--------------------------------------|
+  | algorithm       | string  | —       | From project JSON                    |
+  | key_length_bits | integer | —       | From project JSON                    |
+  | algo_ok         | string  | —       | Set by R01-algo-approved / R02       |
+  | motif_algo      | string  | —       | Set by R01-algo-approved / R02       |
+
+* Catalogue des règles
+  | Rule               | File                                         | CORPUS                              |
+  |--------------------+----------------------------------------------+-------------------------------------|
+  | R01-algo-approved  | rules/agent-algo/R01-algo-approved.yml       | CIR-1.0 Art.6 ⇒ ARF-2.1 §3.2      |
+  | R02-algo-keylength | rules/agent-algo/R02-algo-keylength.yml      | CIR-1.0 Art.6 ⇒ ARF-2.1 §3.2 T3.2-1 |
+
+* Perl Helpers
+  Module `lib/WidgetCompliance/Helpers.pm` — partagé par `agent-load` et `agent-algo`.
+  - `algo_status($algorithm)` → `'approved'|'deprecated'|undef` — source ARF-2.1 §3.2.
+  - `min_key_length($algorithm)` → integer|undef — source ARF-2.1 §3.2 Table 3.2-1.
+  - `key_crack_benchmark($algorithm)` → `{ key_length, cost, year }`|undef —
+    justification empirique uniquement, ne détermine jamais `algo_ok`. Source
+    CIR-1.0 Annex C (Table C.1), classée `HELPER-SOURCE` par
+    `chorus-corpus-scoping` Phase 2 Step 0b (exécution réelle, 2026-09-20 —
+    voir `TEST-PLAN-helper-source.md`). Appelé par `R02-algo-keylength.yml`
+    (branche NON) pour enrichir `motif_algo`.
+
+* Constraints & Pitfalls
+  - §4.1 ARF (implementation guidance) intentionally excluded — no_auto_rules per
+    CORPUS-DIRECTIVES. Contains no verifiable threshold. Retry confirmed 0 codifiable
+    sub-clauses: "should select", "appropriate", "considering" — all prose guidance.
+  - R01 fires on deprecated algos (sets algo_ok=NON immediately).
+    R02 fires only on approved algos with insufficient key length.
+    If algorithm is unknown (not in ARF §3.2): R01 sets NON with "unknown algorithm" motif.
+  - key_length_bits absent from project JSON: R02 CONDITION fails → no verdict on key length.
+    Document in import instructions: key_length_bits is mandatory for algo_ok=OUI.

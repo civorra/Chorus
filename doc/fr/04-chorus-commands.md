@@ -248,6 +248,68 @@ chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
 
 ---
 
+## `chorus-corpus-scoping` — Cadrage structurel avant génération KB
+
+```
+chorus-corpus-scoping <sandbox-name> [--corpus <fichier(s)>] [--split] [--rescan]
+```
+
+**Responsabilité unique :** produire un artefact de cadrage structurel — agents, Frames,
+relations inter-Frames, slots de contrôle, slots BOARD, ordre pipeline — *avant* toute
+génération de KB, YAML ou Helpers.pm.
+
+Se déclenche **automatiquement** dans `chorus-feed` Mode A quand le corpus dépasse ~50 pages
+ou 2 fichiers. Peut aussi être invoqué directement, à tout moment.
+
+### Deux phases
+
+**Phase 1 — Analyse structurelle** (déclenchée si `SCOPING.md` est absent)
+
+L'agent IA lit le corpus et propose :
+- la liste ordonnée des agents (slug, intention, slots consommés/produits)
+- les types de Frame (concepts persistants avec ≥ 2 slots)
+- les relations inter-Frames (pattern `slot→Frame` ou `_ISA` prototype)
+- les slots de contrôle (`_DEFAULT`, `_NEEDED`, `_AFTER`, `_BEFORE`, `_REQUIRE`)
+- les slots BOARD (résultats globaux au pipeline)
+
+Le résultat est écrit dans `sandboxes/<sandbox-name>/SCOPING.md` avec le statut `DRAFT`.
+**`chorus-feed` est bloqué** jusqu'à ce que l'opérateur passe le statut à `CONFIRMED`.
+
+**Phase 2 — Pre-split corpus** (déclenchée automatiquement après `CONFIRMED`)
+
+Pour chaque agent, extrait depuis le corpus normalisé `.md` un fichier focalisé
+(`corpus/NNN-<slug>.md`) contenant uniquement les sections pertinentes, taguées :
+
+- `PRIMARY` — génère des règles YAML pour cet agent
+- `SHARED` — section partagée (table de seuils, glossaire transversal), incluse en contexte
+- `CONTEXT` — section d'un autre agent, incluse pour résolution de dépendances croisées
+
+`chorus-feed` Mode A applique `no_auto_rules` automatiquement sur les sections non-PRIMARY.
+Résultat : zéro risque de `⏭ Deferred` structural causé par surcharge de contexte.
+
+### Flags
+
+| Flag | Effet |
+|---|---|
+| _(aucun)_ | Phase 1 si absent, Phase 2 si `CONFIRMED` + pas de fichiers agents |
+| `--split` | Force la régénération des fichiers agents (Phase 2), même s'ils existent déjà |
+| `--rescan` | Force la ré-analyse Phase 1 — réinitialise `SCOPING.md` en `DRAFT` et supprime les fichiers agents. Nécessite une confirmation explicite. À utiliser uniquement si la structure du corpus a changé fondamentalement. |
+
+### Intégration avec `chorus-corpus-directives`
+
+Sur un corpus multi-sources (texte contraignant + toolbox technique), exécuter
+`chorus-corpus-directives` **avant** `chorus-corpus-scoping` pour régler le pinning
+de versions, le scope `no_auto_rules` et le thesaurus seed. Le scoping tire parti
+de ces décisions pour classifier correctement les sections référencées.
+
+### Pré-requis
+
+- Corpus normalisé en `.md` par `chorus-pdf`, `chorus-word` ou `chorus-excel`
+  (fichiers `# ORIGINAL:` présents)
+- `CORPUS-DIRECTIVES.md` si corpus multi-sources (optionnel, enrichit la classification)
+
+---
+
 ## `chorus-feed` — Construire la base de connaissance
 
 ```

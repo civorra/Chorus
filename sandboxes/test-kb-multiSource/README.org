@@ -1,0 +1,112 @@
+#+TITLE: Sandbox test-kb-multiSource
+#+DATE: test
+#+STATUS: regression-test
+
+#+BEGIN_QUOTE
+⚠️ This is a *synthetic regression-test sandbox* for the ~feat/kb-coverage-optimization~ branch.
+It is NOT a real-world compliance sandbox. Its corpora (CIR-1.0, ARF-2.1) are fictional.
+
+Purpose: validate all 5 optimization axes (corpus pre-split, too-ambiguous retry,
+CORPUS: traceability, convergence loop + stability points, HELPER-SOURCE
+classification) and the CHORUS:no_auto_rules / CHORUS:helper_source
+pre-annotation conventions on a minimal multi-source corpus.
+
+Test result: all axes validated ✅. Three gaps found/fixed during test:
+1. CORPUS-DIRECTIVES override in Phase 2 Step 2 (original 4-axis test).
+2. HELPER-SOURCE blind spot (Annex-style empirical content silently absorbed
+   into OUT-OF-SCOPE) — see `Engine/WRK-BUG-corpus-scoping-helper-source-blindspot.md`.
+   Fixed and **actually re-executed** (not just documented) — see
+   `TEST-PLAN-helper-source.md` for the real Phase 2 + chorus-feed trace.
+3. PRIMARY keyword-score over-match on purely informative annexes sharing
+   vocabulary with the article they document (Annex D case) — found while
+   testing fix #2. **Fixed** via `STEP 0c` (deontic gate) — see
+   `Engine/WRK-BUG-corpus-scoping-primary-keyword-overmatch.md`. Re-tested
+   for real on Annex D: confirmed `CONTEXT-ONLY` by the algorithm alone,
+   no manual override needed anymore.
+#+END_QUOTE
+
+* Corpus
+  | Num | File                        | Source  | Date |
+  |-----+-----------------------------+---------+------|
+  | 001 | corpus/001-cir-binding.md   | CIR-1.0 | test |
+  | 002 | corpus/002-arf-toolbox.md   | ARF-2.1 | test |
+
+* Identified pipeline
+  agent-load → agent-algo
+
+* Agent status
+  | Agent      | KB | YAML | Helpers | Enrichments |
+  |------------+----+------+---------+-------------|
+  | agent-load | ✅ | ✅   | ✅      | 0           |
+  | agent-algo | ✅ | ✅   | ✅      | 0           |
+
+* Coverage
+  Last updated by chorus-feed Mode A (pre-split) — agent-algo — test
+  Corpus: corpus/003-agent-load.md + corpus/004-agent-algo.md
+
+** ✅ Integrated (3 rules + 1 Helper)
+   | Section / Article              | Rules generated                  | Added in pass |
+   |--------------------------------+----------------------------------+---------------|
+   | CIR-1.0 Art.5 — Load conf.    | R01-load-conformance.yml         | Mode A pass 1 |
+   | CIR-1.0 Art.6 — Crypto params | R01-algo-approved.yml            | Mode A pass 2 |
+   | ARF-2.1 §3.2 — Algo list      | R01-algo-approved.yml            | Mode A pass 2 |
+   |                                | R02-algo-keylength.yml           | Mode A pass 2 |
+   | CIR-1.0 Annex C — benchmark data | Helper: key_crack_benchmark() (HELPER-SOURCE) | Axe 5 regression test |
+
+** ⏭ Deferred — needs chorus-feed --enrich (0 sections)
+   (none — all PRIMARY sections fully covered across both agent passes)
+
+** 🧮 Helper-source pending (0 sections)
+   Step 1c audit (real execution, 2026-09-20): `lib/WidgetCompliance/Helpers.pm`
+   line 76 carries `# Source corpus: CIR-1.0 Annex C` — matches the
+   HELPER-SOURCE section. Confirmed by direct grep, not asserted. 0 pending.
+
+** ⚠️ CORPUS: unresolved (0 rules)
+   (all CORPUS: headers resolved — R01/R02 agent-load and agent-algo)
+
+** ⛔ Out of scope (1 section)
+   | Section / Article          | Reason                                              |
+   |----------------------------+-----------------------------------------------------|
+   | ARF-2.1 §4.1 — Impl. guid. | CORPUS-DIRECTIVES no_auto_rules — prose, no threshold |
+
+** Next step
+   #+BEGIN_EXAMPLE
+   ┌─────────────────────────────────────────────────────────┐
+   │  ✅ Stability point SP1 reached — KB ready for audit    │
+   └─────────────────────────────────────────────────────────┘
+   # All agents processed — Deferred=0 — CORPUS:unresolved=0
+
+   chorus-review-kb test-kb-multiSource --format org
+   chorus-check test-kb-multiSource <any-projet.json>
+   chorus-strengthen test-kb-multiSource
+   chorus-stress test-kb-multiSource
+   #+END_EXAMPLE
+
+* Session notes
+  - _NEEDED on load_n: not implementable (physical measurement). See agent-load.org Constraints.
+  - Thesaurus seed from CORPUS-DIRECTIVES applied: performance class → perf_class,
+    certified widget → widget, grade → perf_class (aliases section in agent-load.org).
+  - §4.1 ARF: retry confirmed 0 codifiable sub-clauses — classified CONTEXT-ONLY per
+    CORPUS-DIRECTIVES override. Retry not triggered (pre-split + CORPUS-DIRECTIVES
+    handled it upstream — correct behavior, Axe 2 validated by absence).
+  - R01-algo-approved fires first (deprecated check); R02-algo-keylength fires only
+    on approved algorithms (EXCEPTION guard chains correctly).
+
+  - **Axe 5 — HELPER-SOURCE (2026-09-20, test complet)** : voir
+    `TEST-PLAN-helper-source.md` pour la trace complète.
+    - Annex C (renvoi + `[MATRIX TABLE]`) → correctement classée
+      `HELPER-SOURCE` par `STEP 0b`, Helper `key_crack_benchmark()` écrit
+      et vérifié par audit Step 1c (`grep` direct sur `# Source corpus:`).
+    - **Découverte pendant le test, non anticipée** : sans l'ordonnancement
+      `STEP 0b` (contrôle HELPER-SOURCE *avant* le scoring PRIMARY), Annex C
+      aurait été verrouillée `PRIMARY` sur `agent-algo` par recouvrement de
+      vocabulaire (`minimum`, `key`, `length`, `ARF` — score=4), empêchant
+      toute classification `HELPER-SOURCE`. Corrigé en repositionnant le
+      contrôle en amont — voir `chorus-corpus-scoping.md` § STEP 0b.
+    - **Second défaut découvert, corrigé** : Annex D (renvoi sans artefact
+      quantitatif) subissait le même risque de sur-classement PRIMARY
+      (`load`, `threshold` — score=2), non protégée par `STEP 0b`. Corrigé
+      via `STEP 0c` (filtre déontique) : une section sans clause
+      `shall`/`must` propre voit son score forcé à 0. Re-testé réellement
+      sur Annex D : `CONTEXT-ONLY` confirmé par l'algorithme seul. Voir
+      `Engine/WRK-BUG-corpus-scoping-primary-keyword-overmatch.md` (FIXED).
