@@ -217,8 +217,9 @@ Import coverage: <couverture_kb from JSON>
 Estimated coverage after corrections: <X>%
 ```
 
-Write report to: `$SANDBOX/agent/audit-import-<NNN>.md`
-Print: `[audit] Report written → agent/audit-import-<NNN>.md`
+Write report to: `$WORKSPACE/audit-import-<NNN>.md` (`$WORKSPACE` =
+`$SANDBOX/workspace/`, created if absent).
+Print: `[audit] Report written → workspace/audit-import-<NNN>.md`
 
 
 ## Phase 4 — Patch Mode (--patch)
@@ -266,12 +267,13 @@ Add a `### Patches applied` section to the report listing all changes made.
 
 | File | Description |
 |---|---|
-| `$SANDBOX/agent/audit-import-<NNN>.md` | Full audit report (always produced) |
+| `$WORKSPACE/audit-import-<NNN>.md` | Full audit report (always produced) |
 | `<project.json>` | Patched JSON (only with `--patch` after confirmation) |
 
 > **NNN** is a zero-padded 3-digit counter matching the source JSON number
 > (e.g. `project-ZAC-Ferney-001.json` → `audit-import-001.md`).
-> If the JSON filename contains no number, use the next available counter in `agent/`.
+> If the JSON filename contains no number, use the next available counter in
+> `workspace/` (`$WORKSPACE`).
 
 ## Usage examples
 

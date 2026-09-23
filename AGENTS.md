@@ -11,10 +11,21 @@
 | `$SKILLS` | `./agent/skills/` — versioned ECA skills |
 | `KB` | `./agent/org/` — Chorus Knowledge Base templates + pipeline index (versioned in git) |
 | `$SANDBOXES` | `./sandboxes/` — user sandbox working area (not committed) |
+| `$WORKSPACE` | `workspace` (default) — per-sandbox reports output folder name, resolved as `$SANDBOX/$WORKSPACE/reports/` (not committed) |
 
 > **Override:** if `$SANDBOXES` is redefined in a parent `AGENTS.md`,
 > that definition takes precedence over this default. All skills use `$SANDBOXES` as the
 > canonical sandbox root — never hardcode a parent directory path in a skill.
+
+> **`$WORKSPACE` convention:** every report produced by `chorus-check`
+> (`explain-*.md`, `synthese-*.md`), `chorus-import-project`
+> (`import-report-*.org`, `align-review-*.org`, `import-batch-*.org`) and
+> `chorus-audit-import` (`audit-import-*.md`) is written
+> to `$SANDBOX/$WORKSPACE/reports/`, created automatically if absent. This keeps
+> human-facing deliverables (reports) separate from the operational KB/YAML
+> artefacts under `$SANDBOX/agent/`. Working files that are internal
+> pipeline memory (`thesaurus.org`, `.import-inventory-*.org`,
+> `.import-alignment-*.org`, `project-import-*.json`) stay in `$SANDBOX/agent/`.
 
 > **Two distinct KB locations:**
 > `./agent/org/` (this repo) contains versioned KB **templates** and the pipeline index —

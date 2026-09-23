@@ -43,7 +43,8 @@
 > 1. `$SANDBOX/agent/chorus/index.org` → Frame types, pipeline, namespace
 > 2. `$SANDBOX/agent/chorus/<slug>.org` → sections `Ontologie`, `Dictionnaire des slots`,
 >    `Catalogue des Frames` (mandatory slots, value domains)
-> 3. `$SANDBOX/agent/import-report-*.org` existing → previous alignment decisions
+> 3. `$WORKSPACE/import-report-*.org` existing → previous alignment decisions
+>    (`$WORKSPACE` = `$SANDBOX/workspace/`, created if absent)
 >
 > ⛔ **Never read** `Helpers.pm`, `Feed.pm`, `Agent/*.pm` to infer slots.
 > ⛔ **Never invent** a value absent from the source document — report the gap.
@@ -242,8 +243,9 @@ If N > 1 sources without --batch:
 For each file `f` in `files`:
 1. Extract plain text (Phase 0B below)
 2. Run Phases 1–6 **autonomously** for this file
-3. Name the outputs: `project-import-<NNN>.json` and `import-report-<NNN>.org`
-   (increment NNN independently for each file)
+3. Name the outputs: `project-import-<NNN>.json` (in `$SANDBOX/agent/`) and
+   `import-report-<NNN>.org` (in `$WORKSPACE`, i.e. `$SANDBOX/workspace/`,
+   created if absent) — increment NNN independently for each file
 4. At the end of the batch → produce the **batch summary report** (see Phase 6-BATCH)
 
 > ⚠️ Phase 1 (KB reading) is run **once only** at the start of the batch
@@ -1239,8 +1241,9 @@ No manual creation is required.
 
 ### 1.3 Previous alignment decisions
 
-If `$SANDBOX/agent/import-report-*.org` exists, read the **latest report** as a
-secondary memory source — complementary to the thesaurus, not a substitute.
+If `$WORKSPACE/import-report-*.org` exists (`$WORKSPACE` = `$SANDBOX/workspace/`),
+read the **latest report** as a secondary memory source — complementary to the
+thesaurus, not a substitute.
 
 - Retrieve mappings not yet promoted to the thesaurus → reapply without asking
 - Retrieve pending questions not yet in thesaurus → re-raise if the same terms reappear
@@ -1598,7 +1601,8 @@ Then append the first resolved entry under the appropriate section.
 If `--align-review` was specified, **stop after Phase 3** and produce an alignment review
 file instead of proceeding to Phase 4 / JSON generation:
 
-1. **Write** `$SANDBOX/agent/align-review-<NNN>.org`:
+1. **Write** `$WORKSPACE/align-review-<NNN>.org` (`$WORKSPACE` =
+   `$SANDBOX/workspace/`, created if absent):
 
 ```org
 #+TITLE: Alignment review — <source> — <date>
@@ -1640,7 +1644,7 @@ file instead of proceeding to Phase 4 / JSON generation:
 
 2. **Display** a summary to the engineer:
 ```
-✅ Alignment review produced: $SANDBOX/agent/align-review-NNN.org
+✅ Alignment review produced: $WORKSPACE/align-review-NNN.org
    ✅ certain  : N terms
    ⚠️ likely   : N terms (to confirm)
    ❓ ambiguous: N terms (must be resolved)
@@ -1964,7 +1968,8 @@ No cross-file merging — each JSON is self-contained and can be piped independe
 > must be written in the **corpus language**.
 > → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
-Create `$SANDBOX/agent/import-report-<NNN>.org`:
+Create `$WORKSPACE/import-report-<NNN>.org` (`$WORKSPACE` = `$SANDBOX/workspace/`,
+created if absent):
 
 ```org
 #+TITLE: Import report — <source> — <date>
@@ -2116,7 +2121,8 @@ If `N_promotable == 0` → skip silently.
 
 ### Phase 6-BATCH — Summary Report (batch mode only)
 
-In addition to the individual reports, create `$SANDBOX/agent/import-batch-<NNN>.org`:
+In addition to the individual reports, create `$WORKSPACE/import-batch-<NNN>.org`
+(`$WORKSPACE` = `$SANDBOX/workspace/`, created if absent):
 
 ```org
 #+TITLE: Batch summary report — <directory or glob> — <date>

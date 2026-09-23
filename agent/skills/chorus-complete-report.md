@@ -19,8 +19,9 @@
 > outcome — **never** re-run the compliance pipeline, **never** change any verdict.
 >
 > Prerequisite: `chorus-check <sandbox-name> <fichier-project> --explain --summary`
-> must have already produced `agent/explain-<slug>-NNN.md` (and, if `--summary` was
-> used, `agent/synthese-<slug>-NNN.md`).
+> must have already produced `$WORKSPACE/reports/explain-<slug>-NNN.md` (and, if
+> `--summary` was used, `$WORKSPACE/reports/synthese-<slug>-NNN.md`) — resolved as
+> `$SANDBOX/$WORKSPACE/reports/`.
 >
 > ⚠️ **This skill is domain- and format-agnostic.** It must never hardcode assumptions
 > about a specific source format (JSON schema, PDF structure, spreadsheet layout, or
@@ -59,9 +60,10 @@ compliance verdicts themselves.
 
 ## Phase C0 — Locate inputs
 
-1. Read `$SANDBOX/agent/explain-<project-slug>-NNN.md` (highest `NNN` if several exist).
+1. Read `$WORKSPACE/reports/explain-<project-slug>-NNN.md` (resolved as
+   `$SANDBOX/$WORKSPACE/reports/`, highest `NNN` if several exist).
    If absent → stop: `"No explain-<project-slug>-*.md found — run chorus-check --explain first."`
-2. If `$SANDBOX/agent/synthese-<project-slug>-NNN.md` exists (same `NNN` or the
+2. If `$WORKSPACE/reports/synthese-<project-slug>-NNN.md` exists (same `NNN` or the
    highest available), load it too — it will be patched in parallel (Phase C4).
 3. Extract, from the `explain-*.md` header (`## 📚 KB & Project` block, itself
    copied verbatim from `chorus-check.md § Phase E0`), the **Origin** line —
@@ -233,7 +235,7 @@ Print a short summary to the conversation (not written to any file):
     ✅ Source limitation confirmed : n1
     🛠️ Pipeline artefact detected  : n2
     ❓ Still unresolved             : n3
-  Reports patched : agent/explain-<slug>-NNN.md, agent/synthese-<slug>-NNN.md
+  Reports patched : workspace/reports/explain-<slug>-NNN.md, workspace/reports/synthese-<slug>-NNN.md
   HTML/PDF regenerated : yes
   Backups : agent/.backups/*.bak-<timestamp>
 ```
