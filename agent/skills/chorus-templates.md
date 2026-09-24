@@ -275,6 +275,8 @@ use lib "$Bin/lib";                 # <Namespace>::*
 
 use <Namespace>::Feed   qw(load_projet);
 use <Namespace>::Expert;
+use JSON       ();
+use POSIX      qw(strftime);
 
 my $fichier = shift @ARGV
     or die "Usage : perl run.pl <fichier-project.json>\n";
@@ -313,13 +315,48 @@ my @slots_resultat_display = qw(
     besoin_<agent1> besoin_<agent2> besoin_conformite
 );
 
+# Optional-slot hints per type_element — used ONLY to explain *why* an element
+# is Unprocessed (no rule's CONDITION was ever satisfied). These are distinct
+# from %SLOTS_REQUIS in Feed.pm (mandatory slots — their absence already
+# causes a die() at load time, long before this point). List here the
+# *optional* slots that at least one rule's CONDITION checks for this type —
+# derived from each agent's KB org "Inputs (slots read)" table, cross-referenced
+# against %SLOTS_REQUIS to keep only the ones NOT already mandatory.
+# ⚠️ Adapt to the actual sandbox pipeline — leave empty (no hint) rather than guess.
+my %OPTIONAL_SLOT_HINTS = (
+    '<type1>' => [qw(<optional_slot_a> <optional_slot_b>)],
+    '<type2>' => [qw(<optional_slot_c>)],
+);
+
+# Fingerprint of the current KB rules state (rules/**/*.yml) — lets the report
+# trace exactly which version of the KB produced this verdict. Non-fatal if
+# `sha256sum`/`rules/` is unavailable (e.g. minimal/degraded environment).
+my $kb_fingerprint = eval {
+    my @yml = sort glob("$Bin/rules/*/*.yml");
+    return 'n/a (no rules/ found)' unless @yml;
+    require Digest::SHA;
+    my $sha = Digest::SHA->new('sha256');
+    for my $f (@yml) {
+        open my $fh, '<', $f or next;
+        $sha->addfile($fh);
+        close $fh;
+    }
+    return $sha->hexdigest;
+} // 'n/a (fingerprint failed)';
+my $run_timestamp = strftime('%Y-%m-%d %H:%M:%S', localtime);
+
 print "=" x 62 . "\n";
 print "  COMPLIANCE REPORT — <Namespace>\n";
+printf "  Run at   : %s\n", $run_timestamp;
+printf "  KB hash  : %s\n", $kb_fingerprint;
 print "=" x 62 . "\n\n";
 
 my $n_conforme     = 0;
 my $n_non_conforme = 0;
 my $n_non_traite   = 0;
+my $n_incertain    = 0;   # elements flagged _a_confirmer: 1 in the project JSON —
+                          # distinct from Unprocessed: these DID get a verdict,
+                          # but the terminology mapping behind it is uncertain.
 
 for my $e (@elements) {
     my $id   = $e->{id}   // '?';
@@ -329,8 +366,10 @@ for my $e (@elements) {
     if    ($stat eq 'CONFORME')     { $n_conforme++ }
     elsif ($stat eq 'NON_CONFORME') { $n_non_conforme++ }
     else                            { $n_non_traite++ }
+    $n_incertain++ if $e->{_a_confirmer};
 
-    my $flag = $stat eq 'CONFORME'     ? '✅'
+    my $flag = $e->{_a_confirmer}      ? '❓'
+             : $stat eq 'CONFORME'     ? '✅'
              : $stat eq 'NON_CONFORME' ? '❌'
              : '⚠️ ';
 
@@ -346,6 +385,15 @@ for my $e (@elements) {
     if (defined $e->{raison_non_conformite}) {
         printf "       %-32s : %s\n", '→ raison', $e->{raison_non_conformite};
     }
+    if ($stat eq '(unprocessed)') {
+        my $hints = $OPTIONAL_SLOT_HINTS{$type} // [];
+        my @missing = grep { !defined $e->{$_} } @$hints;
+        if (@missing) {
+            printf "       %-32s : %s\n", '→ likely missing (optional)', join(', ', @missing);
+        } elsif (@$hints) {
+            printf "       %-32s : %s\n", '→ note', 'all known optional slots present — check rule CONDITION order/dependency chain instead';
+        }
+    }
     print "\n";
 }
 
@@ -360,9 +408,56 @@ print "─" x 62 . "\n";
 printf "  Conformes      : %d / %d  (%d%%)\n", $n_conforme,     $n_total, $taux;
 printf "  Non conformes  : %d / %d\n",          $n_non_conforme, $n_total;
 printf "  Unprocessed    : %d / %d\n",           $n_non_traite,   $n_total;
+printf "  Incertain (❓) : %d / %d  (terminology mapping to confirm — see chorus-complete-report)\n", $n_incertain, $n_total;
 printf "  [%s]  %d%%\n", $barre, $taux;
 printf "  Pipeline       : %s\n", $ok ? 'SOLVED ✅' : 'FAILED/TIMEOUT ❌';
 print "─" x 62 . "\n";
+
+# ── Persist a structured JSON report (in addition to the text report above) ─
+# Enables scripted post-processing / CI integration / run-to-run diffing
+# without re-parsing the human-readable text output.
+{
+    my $reports_dir = "$Bin/reports";
+    unless (-d $reports_dir) {
+        mkdir $reports_dir or warn "Could not create $reports_dir: $!\n";
+    }
+    my $ts = strftime('%Y%m%d-%H%M%S', localtime);
+    my $out_path = "$reports_dir/run-report-$ts.json";
+
+    my @elements_json = map {
+        my $e = $_;
+        {
+            id            => $e->{id},
+            type_element  => $e->{type_element} // $e->{type},
+            verdict       => (exists &verdict_of ? verdict_of($e) : ($e->{statut_conformite} // '(unprocessed)')),
+            a_confirmer   => $e->{_a_confirmer} ? JSON::true : JSON::false,
+            (map { defined $e->{$_} ? ($_ => $e->{$_}) : () } @slots_resultat_display),
+        }
+    } @elements;
+
+    my $report = {
+        generated_at    => strftime('%Y-%m-%dT%H:%M:%S', localtime),
+        project_file    => $fichier,
+        kb_fingerprint  => $kb_fingerprint,
+        pipeline_solved => $ok ? JSON::true : JSON::false,
+        n_total         => $n_total,
+        n_conforme      => $n_conforme,
+        n_non_conforme  => $n_non_conforme,
+        n_non_traite    => $n_non_traite,
+        n_incertain     => $n_incertain,
+        taux_conformite => $taux,
+        elements        => \@elements_json,
+    };
+
+    if (open my $jfh, '>:utf8', $out_path) {
+        print $jfh JSON->new->utf8(0)->canonical->pretty->encode($report);
+        close $jfh;
+        printf "  JSON report    : %s\n", $out_path;
+        print "─" x 62 . "\n";
+    } else {
+        warn "Could not write JSON report to $out_path: $!\n";
+    }
+}
 
 # ── Block 2: Validation process — traversal by agent ──────────────────────
 # Adapt @pipeline_def to the sandbox's index.org:
@@ -451,24 +546,49 @@ print "─" x 62 . "\n";
 }
 
 # ── Block 4: Non-conformity summary ───────────────────────────────────────
+# Best-effort severity split: blocking (violates a named "Règle*"/"Rule*"
+# threshold) vs informative reserve (an unfollowed "Reco*"/"Recommendation*").
+# Heuristic only — inferred from the motif text itself (KB naming convention
+# already uses these prefixes in every ⛔/Règle* vs Reco* rule documented in
+# each agent's KB org "Rule Catalogue"). Never treat this as authoritative:
+# a motif that doesn't match either pattern is left unclassified (⚠️), not
+# silently downgraded to "informative".
 {
     my @nc;
     for my $e (@elements) {
         push @nc, $e if ($e->{statut_conformite} // '') eq 'NON_CONFORME';
     }
     if (@nc) {
-        print "\n  Non-conformity summary\n";
-        print "  " . "─" x 58 . "\n";
+        my (@blocking, @informative, @unclassified);
         for my $e (@nc) {
-            my $id   = $e->{id}   // '?';
-            my $type = $e->{type_element} // $e->{type} // '?';
-            # Adapter la cascade de motifs aux slots du sandbox
             my $raison = $e->{raison_non_conformite}
                       // $e->{motif_refus}
                       // '(reason not specified)';
-            printf "  ❌  %-18s [%s]\n      %s\n\n", $id, $type, $raison;
+            if    ($raison =~ /\b(Règle|Regle|Rule)[A-ZÀ-Ÿ]/)     { push @blocking,     $e }
+            elsif ($raison =~ /\b(Reco|Recommandation|Recommendation)[A-ZÀ-Ÿ]/) { push @informative, $e }
+            else                                                    { push @unclassified, $e }
         }
-        print "  " . "─" x 58 . "\n";
+
+        my $print_group = sub {
+            my ($label, $icon, $list) = @_;
+            return unless @$list;
+            print "\n  $label\n";
+            print "  " . "─" x 58 . "\n";
+            for my $e (@$list) {
+                my $id   = $e->{id}   // '?';
+                my $type = $e->{type_element} // $e->{type} // '?';
+                my $raison = $e->{raison_non_conformite}
+                          // $e->{motif_refus}
+                          // '(reason not specified)';
+                printf "  %s  %-18s [%s]\n      %s\n\n", $icon, $id, $type, $raison;
+            }
+            print "  " . "─" x 58 . "\n";
+        };
+
+        print "\n  Non-conformity summary\n";
+        $print_group->('Blocking (Règle* threshold violated)',      '❌', \@blocking);
+        $print_group->('Informative reserve (Reco* not followed)',  '⚠️ ', \@informative);
+        $print_group->('Unclassified (motif pattern not recognised)', '❔', \@unclassified);
     }
 }
 ```
@@ -477,6 +597,20 @@ print "─" x 62 . "\n";
 - `<Namespace>` ← from `index.org`
 - `@slots_resultat_display` ← result slots from the pipeline KB (statut_conformite, raison_non_conformite, motif_refus, besoin_*, etc.)
 - `@pipeline_def` ← one entry per agent: `[ label, slot_ciblage, slot_resultat_ok ]` from `index.org` pipeline table
+- `%OPTIONAL_SLOT_HINTS` ← per `type_element`, the list of *optional* slots read by
+  at least one rule's `CONDITION` (from each agent's KB org "Inputs (slots read)"
+  table), **minus** whatever is already in `%SLOTS_REQUIS` (`Feed.pm`) — those are
+  mandatory and their absence already causes a `die()` at load time, so they can
+  never explain an Unprocessed element. Leave the type's entry absent (not an
+  empty arrayref) if no useful hint can be derived — the template falls back to
+  silence rather than guessing.
+
+**JSON report:** written unconditionally to `$SANDBOX/reports/run-report-<timestamp>.json`
+(directory auto-created if absent) on every `perl run.pl` execution — no
+substitution needed, this block is sandbox-agnostic. Do not add it to
+`.gitignore`/commit exclusions manually; treat it like other local run
+artefacts (`agent/.kb-hash`, `agent/sessions/`) per the sandbox's own
+`.git/info/exclude` policy.
 
 **Rule:** `run.pl` contains **no hardcoded data** — all project input comes from the JSON argument.
 
@@ -531,6 +665,16 @@ sub verdict_of {
 
 Then in the per-element loop and in **Block 1** (compliance rate), replace every
 `$e->{statut_conformite} // '(unprocessed)'` with `verdict_of($e)`.
+
+> The `_a_confirmer` flag/❓ handling (added to the base template above) is
+> **orthogonal** to `verdict_of($e)` — keep it unchanged: `_a_confirmer` lives
+> on the project JSON element itself (`$e->{_a_confirmer}`), independent of
+> which `type_element`/verdict slot dispatch table resolves the verdict.
+>
+> Likewise, the `%OPTIONAL_SLOT_HINTS` "likely missing (optional)" hint (also
+> added to the base template) needs no change here — it keys off `type_element`
+> directly, same as `%VERDICT_SLOT`, so it applies unchanged once `$stat eq
+> '(unprocessed)'` is replaced with the equivalent check on `verdict_of($e)`.
 
 In **Block 2** (validation process by agent), replace the `[label, slot_ciblage,
 slot_resultat_ok]` triples with `[label, \@types_targeted_by_this_agent]` (the
