@@ -599,10 +599,32 @@ If **Discordances > 0**, list them:
 
 ```
   Discordances :
-    <id>  expected CONFORME   → got NON_CONFORME
-    <id>  expected NON_CONF   → got CONFORME
-    <id>  expected OK         → got KO
+    <id>  expected CONFORME   → got NON_CONFORME  (<rule_id>)
+    <id>  expected NON_CONF   → got CONFORME      (<rule_id> | no rule fired)
+    <id>  expected OK         → got KO            (<rule_id>)
 ```
+
+> **`<rule_id>`** — read from the element's `_rule_trace` (if present, per
+> `chorus-engine-yaml.md § Rule Documentation Standard`). Extraction method
+> (identical to `run.pl` T5's Block 4 "Non-conformity summary" — see
+> `chorus-templates.md`):
+> 1. Extract the normative identifier (`RègleXxx`/`RecoXxx`/`RuleXxx`) already
+>    present in the element's reason text (`raison_non_conformite`/`motif_refus`).
+> 2. Search `_rule_trace` for the entry whose `corpus_ref` contains that exact
+>    identifier — this is the rule that actually wrote this specific reason.
+> 3. If no reason text is available, or no identifier is found in it, or no
+>    `_rule_trace` entry matches → write `no rule fired` — do not fall back to
+>    "the last entry" or otherwise guess. A wrong attribution is worse than none.
+>
+> ⛔ **Do not use "the last non-aggregation entry in the chain"** — on a chain
+> with several specific rules (e.g. `check-archi-conformite` →
+> `check-retraitement-conformite` → `check-niveau-qualite-reco`), this would
+> point to whichever rule happened to run last, not the one that actually wrote
+> the cited reason. This exact mistake was found and fixed in `run.pl` on
+> sandbox `09b-ANSSI-PG-083_MULTI-SOURCES` (2026-09-24): `ALEA-ALGO-KO-01`'s
+> reason cited `RègleArchiGénAléa.3` (written by `check-archi-conformite`,
+> 1st in the chain) but "last entry" wrongly attributed it to
+> `check-niveau-qualite-reco` (4th, unrelated `RecoArchiGénAléa`).
 
 If **Unprocessed > 0**, list them:
 
@@ -775,13 +797,39 @@ If `TARGETS` is empty → print `[explain] No NON_CONFORME or _a_confirmer eleme
 For each element `e` in `TARGETS`:
 
 1. **Identify the agent and rule that produced the verdict.**
-   - Determine `e.type_element` → look up the owning agent via `agent/chorus/index.org`.
-   - Identify the verdict slot that is `KO` (or the `_a_confirmer` flag) on `e`.
-   - Read `agent/chorus/<slug>.org` § Rule Catalogue to find the rule(s) whose
-     `Outputs (slots written)` include that slot.
-   - Confirm by reading the matching `rules/<slug>/R*.yml` file — the rule that
-     actually wrote the `KO` value is identifiable by its `FIND.filtre` condition
-     matching `e`'s own slot values (e.g. `document_type`, `operation_kind`).
+   - **Preferred — read `e._rule_trace` directly, if present.** Sandboxes whose YAML
+     rules follow the `_rule_trace` traceability convention
+     (`chorus-engine-yaml.md § Rule Documentation Standard`) publish, on every Frame,
+     a cumulative arrayref of every rule that fired on it, in application order:
+     `[ { rule_id, corpus_ref }, ... ]`. The **last entry** is normally the
+     verdict-writing rule (aggregation/`publish-*` rules run last in most pipelines);
+     when several entries carry distinct `corpus_ref` values, list them **all** in
+     Phase E3's "Règle appliquée" field — this is precisely the case an aggregation
+     rule (generic `CORPUS: (agrégation...)`) would otherwise have hidden the
+     specific normative rule that actually computed the KO verdict (see incident
+     below). No `agent/chorus/<slug>.org` cross-reference or `rules/<slug>/R*.yml`
+     grep is needed in this case — `_rule_trace` is authoritative and already
+     resolved by the engine at runtime.
+   - **Fallback — `_rule_trace` absent** (sandbox predates the convention, or its
+     YAML rules don't yet publish it): reconstruct manually.
+     - Determine `e.type_element` → look up the owning agent via `agent/chorus/index.org`.
+     - Identify the verdict slot that is `KO` (or the `_a_confirmer` flag) on `e`.
+     - Read `agent/chorus/<slug>.org` § Rule Catalogue to find the rule(s) whose
+       `Outputs (slots written)` include that slot.
+     - Confirm by reading the matching `rules/<slug>/R*.yml` file — the rule that
+       actually wrote the `KO` value is identifiable by its `FIND.filtre` condition
+       matching `e`'s own slot values (e.g. `document_type`, `operation_kind`).
+
+   > **Incident (2026-09-24, sandbox `09b-ANSSI-PG-083_MULTI-SOURCES`):** before
+   > `_rule_trace` existed, an earlier single-scalar `_rule_id`/`_corpus_ref` design
+   > was tried — each rule overwrote the previous rule's reference on the same
+   > Frame. Aggregation rules (`publish-qualite-alea-algo`, `publish-statut-cle`, …)
+   > always run last in their pipeline, so their generic
+   > `CORPUS: (agrégation — pas de règle nommée spécifique)` header systematically
+   > overwrote and hid the specific `RègleArchiGénAléa.3`/etc. reference from the
+   > `check-*` rule that actually computed the verdict — exactly the failure mode
+   > `--explain` exists to prevent. `_rule_trace` (cumulative, never overwriting)
+   > fixes this at the source; do not reintroduce a single-scalar traceability slot.
 
 2. **Extract the exact corpus reference.**
    - From the rule's YAML header (`# CORPUS: §N — ...`) or inline comment
@@ -835,6 +883,18 @@ French corpus (default template):
 
 **Règle appliquée :** `rules/<slug>/<R0N-rule-name>.yml`  (agent `<Nom>`, position <N>)
 **Référence normative :** §<N> para <M> — <one-line summary of the requirement>
+<if e._rule_trace has more than one entry — chaîne complète de traçabilité:>
+**Chaîne de règles (`_rule_trace`) :**
+| Ordre | Règle | Référence corpus |
+|---|---|---|
+| 1 | `<rule_id_1>` | <corpus_ref_1> |
+| 2 | `<rule_id_2>` | <corpus_ref_2> |
+| ... | | |
+> La dernière règle (souvent un agrégateur `publish-*`) n'apporte parfois aucune
+> référence normative propre (`(agrégation — pas de règle nommée spécifique)`) —
+> dans ce cas, **la règle réellement responsable du verdict est une entrée
+> antérieure de la chaîne**, pas la dernière. Utiliser cette table plutôt que la
+> seule dernière entrée pour citer la référence normative exacte au lecteur.
 
 **Valeurs d'entrée lues par la règle :**
 
@@ -867,6 +927,18 @@ English corpus:
 
 **Rule applied:** `rules/<slug>/<R0N-rule-name>.yml`  (agent `<Name>`, position <N>)
 **Normative reference:** §<N> para <M> — <one-line summary of the requirement>
+<if e._rule_trace has more than one entry — full traceability chain:>
+**Rule chain (`_rule_trace`):**
+| Order | Rule | Corpus reference |
+|---|---|---|
+| 1 | `<rule_id_1>` | <corpus_ref_1> |
+| 2 | `<rule_id_2>` | <corpus_ref_2> |
+| ... | | |
+> The last entry (often a `publish-*` aggregation rule) sometimes carries no
+> normative reference of its own (`(aggregation — no dedicated rule)`) — in that
+> case, **the rule actually responsible for the verdict is an earlier entry in
+> the chain**, not the last one. Use this table rather than only the last entry
+> to quote the exact normative reference to the reader.
 
 **Input values read by the rule:**
 
@@ -1293,6 +1365,11 @@ For each file with `Disc > 0`, list the discordant elements
     E-MUR-OK-SLEND-01  expected CONFORME   → got NON_CONFORME  (R03-slenderness)
     E-POT-KO-THICK-02  expected NON_CONF   → got CONFORME      (no rule fired)
 ```
+
+> **Rule name in parentheses** — same extraction rule as § 6.1: extract the
+> normative identifier (`RègleXxx`/`RecoXxx`) from the element's reason text,
+> then search `_rule_trace` for the entry whose `corpus_ref` contains it.
+> `no rule fired` when no match is found — never guess via "last entry".
 
 For each file with `Unproc > 0`, list the unprocessed elements
 (from sub-agent `UNPROC_DETAIL`):

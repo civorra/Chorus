@@ -385,6 +385,36 @@ for my $e (@elements) {
     if (defined $e->{raison_non_conformite}) {
         printf "       %-32s : %s\n", '→ raison', $e->{raison_non_conformite};
     }
+    # Traceability — _rule_trace (if the rules that fired on this Frame
+    # published to it, per `chorus-engine-yaml.md § Rule Documentation Standard`
+    # traceability convention). Cumulative arrayref — every contributing rule
+    # PUSHES its own { rule_id, corpus_ref } entry rather than overwriting a
+    # single slot, so an aggregation rule (e.g. "publish-*" with no article of
+    # its own) never erases the specific normative rule that actually produced
+    # the verdict. Absent on sandboxes whose YAML rules predate this
+    # convention — degrades silently (no lines printed).
+    #
+    # Display strategy (hybrid — avoids drowning the useful references in
+    # repeated generic aggregation lines on pipelines with 4-8 chained rules
+    # per Frame):
+    #   1. One compact "→ chain" line — the full rule_id sequence, always shown
+    #      (useful to debug execution order even for aggregation-only steps).
+    #   2. One "→ §..." line per entry, but ONLY for entries whose corpus_ref
+    #      carries a *specific* normative reference — i.e. excluding generic
+    #      aggregation markers (matched via a language-agnostic regex on the
+    #      parenthesised suffix: "(agrégation ...)" / "(aggregation ...)").
+    #      The full trace (including aggregation entries) always remains in
+    #      the JSON report — this filtering is a text-display convenience only.
+    if (ref($e->{_rule_trace}) eq 'ARRAY' && @{ $e->{_rule_trace} }) {
+        my @trace = @{ $e->{_rule_trace} };
+        printf "       %-32s : %s\n", '→ chain',
+            join(' → ', map { $_->{rule_id} } @trace);
+        for my $step (@trace) {
+            my $ref = $step->{corpus_ref} // '';
+            next if $ref =~ /\(agr[ée]gation\b/i || $ref =~ /\(aggregation\b/i;
+            printf "       %-32s : %s  (%s)\n", '→ rule', $ref, $step->{rule_id};
+        }
+    }
     if ($stat eq '(unprocessed)') {
         my $hints = $OPTIONAL_SLOT_HINTS{$type} // [];
         my @missing = grep { !defined $e->{$_} } @$hints;
@@ -431,6 +461,22 @@ print "─" x 62 . "\n";
             type_element  => $e->{type_element} // $e->{type},
             verdict       => (exists &verdict_of ? verdict_of($e) : ($e->{statut_conformite} // '(unprocessed)')),
             a_confirmer   => $e->{_a_confirmer} ? JSON::true : JSON::false,
+            # Traceability — populated only if at least one rule that fired on
+            # this element published to _rule_trace (see chorus-engine-yaml.md
+            # § Rule Documentation Standard). Cumulative arrayref of
+            # { rule_id, corpus_ref }.
+            # ⛔ MUST be deep-copied into plain hashrefs before JSON encoding —
+            # Chorus::Frame::blessToFrame() recursively re-blesses ANY hashref
+            # stored via $f->set() into a Chorus::Frame object (see
+            # chorus-frame-advanced.md § blessToFrame), including each
+            # { rule_id, corpus_ref } entry pushed onto _rule_trace. JSON->encode
+            # dies ("encountered object ... neither allow_blessed ... enabled")
+            # on a blessed hashref unless explicitly unblessed first — never pass
+            # $e->{_rule_trace} straight through.
+            (ref($e->{_rule_trace}) eq 'ARRAY' && @{ $e->{_rule_trace} }
+                ? (_rule_trace => [ map { +{ rule_id => $_->{rule_id}, corpus_ref => $_->{corpus_ref} } }
+                                     @{ $e->{_rule_trace} } ])
+                : ()),
             (map { defined $e->{$_} ? ($_ => $e->{$_}) : () } @slots_resultat_display),
         }
     } @elements;
@@ -580,7 +626,24 @@ print "─" x 62 . "\n";
                 my $raison = $e->{raison_non_conformite}
                           // $e->{motif_refus}
                           // '(reason not specified)';
-                printf "  %s  %-18s [%s]\n      %s\n\n", $icon, $id, $type, $raison;
+                # Responsible rule — search _rule_trace for the entry whose
+                # corpus_ref cites the same normative identifier (RuleXxx/
+                # RecoXxx) already extracted from the reason text above.
+                # ⚠️ Do NOT take "the last non-aggregation entry": on a chain
+                # with several specific rules, that would point to whichever
+                # rule happened to run last in the chain, not the one that
+                # actually wrote THIS reason.
+                my $rule_suffix = '';
+                if (ref($e->{_rule_trace}) eq 'ARRAY'
+                    && (my ($ident) = $raison =~ /\b((?:Règle|Regle|Rule|Reco)[A-Za-zÀ-ÿ]*)/)) {
+                    for my $step (@{ $e->{_rule_trace} }) {
+                        next unless defined $step->{corpus_ref};
+                        next unless index($step->{corpus_ref}, $ident) >= 0;
+                        $rule_suffix = "  [$step->{rule_id}]";
+                        last;
+                    }
+                }
+                printf "  %s  %-18s [%s]%s\n      %s\n\n", $icon, $id, $type, $rule_suffix, $raison;
             }
             print "  " . "─" x 58 . "\n";
         };
@@ -604,6 +667,30 @@ print "─" x 62 . "\n";
   never explain an Unprocessed element. Leave the type's entry absent (not an
   empty arrayref) if no useful hint can be derived — the template falls back to
   silence rather than guessing.
+
+**Traceability (`_rule_trace`):** if the sandbox's YAML rules push an entry onto
+a cumulative `_rule_trace` arrayref at the top of their `ACTION` (per
+`chorus-engine-yaml.md § Rule Documentation Standard` — mechanically derived
+from each rule's `RULE:`/`REGLE:` field and `# CORPUS:` header line):
+
+```perl
+my $trace = $f->get('_rule_trace') // [];
+push @$trace, { rule_id => '<id>', corpus_ref => '<corpus>' };
+$f->set('_rule_trace', $trace);
+```
+
+`run.pl` displays one `→ rule` line per entry under each element, in
+application order, and persists the whole arrayref in the JSON report.
+⛔ **Do not use a plain scalar slot (`_rule_id`/`_corpus_ref`) for this** — when
+several rules fire on the same Frame (the common case: a `check-*` rule
+computing a specific verdict, followed by a `publish-*`/aggregation rule with
+no article of its own), a scalar `set()` silently overwrites the previous
+rule's reference with the last rule's — typically the generic aggregation
+rule, hiding the actual normative article that drove the verdict. The
+cumulative arrayref preserves the full chain. No substitution needed — the
+template reads `_rule_trace` opportunistically (`ref(...) eq 'ARRAY' && @{...}`)
+and degrades silently (nothing printed/no JSON key) on sandboxes/rules that
+don't publish it yet.
 
 **JSON report:** written unconditionally to `$SANDBOX/reports/run-report-<timestamp>.json`
 (directory auto-created if absent) on every `perl run.pl` execution — no
