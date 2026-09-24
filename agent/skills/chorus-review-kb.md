@@ -81,6 +81,8 @@ Confirm:
 - `$SANDBOX/agent/chorus/*.org` → KB files present
 - `$SANDBOX/rules/` → YAML rules present
 - `$SANDBOX/corpus/*.{txt,md}` → corpus source files accessible
+- `$SANDBOX/CORPUS-DIRECTIVES.md` → **if present**, load it now and keep it in
+  context through Phases 1–5 (see "Multi-source directives" box below).
 - Any existing `kb-review-*.{html,org}` → compute next sequence number NNN:
   ```bash
   ls $SANDBOX/kb-review-*.org 2>/dev/null | sort | tail -1
@@ -109,6 +111,16 @@ If KB or corpus absent → stop with explicit message:
 
 > **`--decisions` fast path:** if `--decisions <file>` is present → skip Phases 1–5 entirely.
 > Go directly to **Phase 4b**.
+
+> **📎 Multi-source directives (`CORPUS-DIRECTIVES.md`) — optional, additive only.**
+> When this file exists in the sandbox (produced by `chorus-corpus-directives`), it is
+> the **canonical grammar** for interpreting `CORPUS:` fields — it documents, per source,
+> the exact reference format used (e.g. `PA-079 R<n> ⇒ <agent> R<NN>`, `RFC 8452
+> §<section> ⇒ <agent> R<NN>`), the normative status of each source (binding /
+> orientation / technical-reference, ANSSI-endorsed or not), and any Refinement /
+> Extension / New domain classification already established by the operator.
+> **When absent**, every phase below falls back unchanged to its generic heuristics —
+> this file never blocks or alters the pipeline, it only sharpens it when available.
 
 ---
 
@@ -194,8 +206,26 @@ Article patterns (tried in order):
   2. Practice Points:     Practice Point N.N.N.N
   3. Table references:    Table N — <title>
   4. Named clause:        Chapter N — <title>
-  5. Fallback:            any line starting with a number followed by a title pattern
+  5. Source-prefixed ref: <Source name> [v<version>] §<section>  (e.g. "RFC 8452
+                          Abstract/§9", "ANSSI-PA-079 v1.0 §4.6") — required when
+                          multiple independently-versioned sources are integrated
+                          (cf. CORPUS-DIRECTIVES.md if present); the source name
+                          becomes part of the article key, not just a display label.
+  6. Named sections:      Abstract, Status, Scope, Definitions — accepted as valid
+                          article refs for RFC/ETSI-style documents (no §-numbering).
+  7. Document-local reco.
+     numbering:           R<n> / Recommendation <n> as numbered by the source itself
+                           (e.g. "PA-079 R14") — kept distinct from internal rule IDs
+                           R<NN> (crypto-mecanismes-sym R15, etc.); never conflate the
+                           two in the article key or in displayed tables.
+  8. Fallback:            any line starting with a number followed by a title pattern
 ```
+
+> **Disambiguation precedence:** when `CORPUS-DIRECTIVES.md` defines a cross-reference
+> format for a source (§ "Cross-reference format" in that file), use it verbatim to key
+> that source's articles. Otherwise fall back to the generic `§N@source-tag` qualification
+> rule from §2.1 above. The two mechanisms are compatible — the directives format is
+> simply a stronger, source-specific rendering of the same `@source-tag` idea.
 
 For each extracted article, record:
 ```
@@ -239,6 +269,22 @@ article_map['§1'].rules.push({
 })
 ```
 
+> **Transverse / veto rules — deduplication rule:** if the exact same
+> `parsed_article` (same key, same source) is referenced by rules in **more than
+> one agent** — a common pattern for cross-cutting gate/veto rules (e.g. a single
+> qualification requirement enforced identically as R10/R10/R14 across 3 sibling
+> agents) — do **not** count it as 3 separate covered articles. Instead:
+> 1. Push all matching `{rule_id, file, agent}` entries into the same
+>    `article_map[ref].rules` array (as already done above).
+> 2. Set `article_map[ref].transverse = true` once `rules.length > 1` **and**
+>    the rule files independently confirm the same `CORPUS:` reference (do not
+>    infer transversality from article match alone — verify the `CORPUS:` string
+>    is identical or explicitly cross-referenced in `CORPUS-DIRECTIVES.md`).
+> 3. In Phase 5's "Covered articles" table, render one row per transverse article,
+>    listing every concerned agent in the "Agents" cell — never one row per agent.
+> This keeps `covered_articles` (Phase 3.2) an accurate count of distinct
+> normative requirements, not an inflated count of rule-to-article matches.
+
 Unmatched `parsed_article` values (rule references an article not found in corpus) →
 flag as `orphan_reference`:
 ```
@@ -258,6 +304,22 @@ orphan_references:   N   (rules pointing to non-existent articles)
 missing_corpus_refs: N   (rules without CORPUS: field)
 coverage_pct:        N%  (covered / total × 100)
 ```
+
+> **Optional — classification breakdown (only if `CORPUS-DIRECTIVES.md` is present
+> and documents it):** when the directives file already classifies a source's
+> content as Refinement / Extension / New domain / CROSS-RULE transverse (as it
+> typically does for enrichment sessions), surface that classification per covered
+> article instead of a flat "covered" label:
+> ```
+> classification_breakdown:
+>   refinement:  N   (existing rule/catalogue enriched, no new rule)
+>   extension:   N   (new slot/rule added to an existing agent)
+>   new_domain:  N   (new agent created)
+>   cross_rule:  N   (transverse rule affecting multiple existing agents)
+> ```
+> If `CORPUS-DIRECTIVES.md` is absent, or does not classify a given source, omit
+> this breakdown entirely for that source/article — never infer a classification
+> that was not explicitly stated by the operator or a prior skill run.
 
 Coverage levels (default thresholds — overridable):
 ```
@@ -322,6 +384,8 @@ with no external dependencies (all CSS and JS inline).
   <button onclick="filter('uncovered')">Uncovered ⚠️</button>
   <button onclick="filter('flagged')">Flagged ❌</button>
   <button onclick="filter('validated')">Validated ✓</button>
+  <!-- Optional — only if any article carries an art-status badge -->
+  <button onclick="filter('unendorsed')">⚠️ Not endorsed by primary regulator</button>
   <input  type="text" placeholder="Search article..." oninput="search(this.value)">
 </div>
 ```
@@ -338,6 +402,13 @@ Each panel has three columns:
     <span class="art-ref">§1</span>
     <span class="art-title">Definition and Classification of CKD</span>
     <span class="art-source">KDIGO 2024 — p. S137</span>
+    <!-- Optional — only rendered when CORPUS-DIRECTIVES.md documents this source's
+         normative status. Badge color: green=binding, blue=orientation,
+         orange=technical-reference-not-endorsed (e.g. an IETF/ETSI doc not cited
+         by the primary regulator). Omit entirely if undocumented — never infer. -->
+    <span class="art-status badge-binding">binding</span>
+    <!-- or: <span class="art-status badge-orientation">orientation</span> -->
+    <!-- or: <span class="art-status badge-unendorsed">technical-reference — not ANSSI-endorsed</span> -->
     <blockquote class="excerpt">
       CKD is defined as abnormalities of kidney structure or function, present
       for more than 3 months, with implications for health…
@@ -475,10 +546,37 @@ Write `$SANDBOX/kb-review-<NNN>.org` regardless of `--format`:
   | Orphan    |     N | N%  |
   | No CORPUS |     N | N%  |
 
+  #+BEGIN_EXAMPLE
+  Only rendered when CORPUS-DIRECTIVES.md classifies sources (Refinement/
+  Extension/New domain/CROSS-RULE) — omit this sub-table entirely otherwise.
+  #+END_EXAMPLE
+** Classification breakdown (optional — from CORPUS-DIRECTIVES.md)
+   | Classification    | Count |
+   |--------------------+-------|
+   | Refinement         |     N |
+   | Extension          |     N |
+   | New domain         |     N |
+   | CROSS-RULE transverse |  N |
+
 * Covered articles (validated rules)
-  | Article ref | Title | Rules | Agents | Status |
-  |-------------+-------+-------+--------+--------|
-  | §1          | ...   | R01   | staging| ✅     |
+  | Article ref | Title | Rules | Agents | Classification | Status |
+  |-------------+-------+-------+--------+-----------------+--------|
+  | §1          | ...   | R01   | staging| (n/a or Refinement/Extension/New domain/CROSS-RULE) | ✅ |
+
+  Note: the "Classification" column is populated only when CORPUS-DIRECTIVES.md
+  documents it for the source in question; leave as "(n/a)" otherwise — never infer.
+
+  Note: when a single article/rule is referenced as a CROSS-RULE transverse
+  requirement by multiple agents (e.g. the same CORPUS: source §, propagated as a
+  veto/gate rule across 3 agents), list it **once** with all concerned agents in
+  the "Agents" cell (comma-separated), not as 3 separate covered-article rows.
+
+  Note: if CORPUS-DIRECTIVES.md flags a source's normative status as
+  technical-reference and not endorsed by the sandbox's primary regulator (e.g.
+  an IETF/ETSI document integrated as "assumed coverage extension" rather than
+  relayed doctrine), append `⚠️ not <regulator>-endorsed` after the article ref
+  in this table — this is the single most important signal for a certifying
+  reviewer to double-check before final sign-off.
 
 * Uncovered articles (gaps → candidates for chorus-feed --enrich)
   | Article ref | Title | Excerpt (100 chars) | Priority |
