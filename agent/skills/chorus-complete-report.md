@@ -138,8 +138,15 @@ in the source entry:
   under a different name/label than the KB slot)? Read the raw content —
   do not rely on any intermediate transformation.
 - If present in the source but different from what ended up in the project
-  JSON → this is a **pipeline artefact** (mistranslation, wrong default,
-  wrong mapping).
+  JSON → check **one more thing before concluding "pipeline artefact"**: is
+  the missing catalogue/alias entry backed by an actual normative reference
+  already available to the KB (a standard, RFC, ANSSI text, or any document
+  present in `$SANDBOX/corpus/` / `CORPUS-DIRECTIVES.md`) — or is the source's
+  naming merely an **implementation-library identifier** (e.g. a class/type
+  name from a specific software library, a vendor-specific construction name)
+  with **no normative text to encode**? Only the former is a genuine pipeline
+  artefact (⛔ do not assume normative backing — verify it explicitly against
+  the sandbox's actual corpus/directives before classifying).
 - If genuinely absent from the source, with no equivalent field anywhere in
   the entry → this is a **genuine source limitation** — no import fix can
   recover data that was never captured upstream.
@@ -153,11 +160,25 @@ in the source entry:
 | Classification | Meaning |
 |---|---|
 | ✅ Source limitation confirmed | The uncertain value/field is genuinely absent (or the format cannot express it) in the original source — not an import defect |
-| 🛠️ Pipeline artefact detected | The value **is** present in the source but was lost, defaulted incorrectly, or mistranslated during import — actionable fix on `chorus-import-project`/its extensions, followed by re-import |
-| ❓ Still unresolved | No matching entry found, or the source content itself is ambiguous — cannot conclude either way; leave the original uncertainty untouched and say so explicitly |
+| 🛠️ Pipeline artefact detected | The value **is** present in the source, **and** is backed by a normative reference already available to the KB (standard/RFC/ANSSI text in the corpus or reachable via `CORPUS-DIRECTIVES.md`) — but was lost, defaulted incorrectly, or mistranslated during import. Actionable fix: add/correct the catalogue or thesaurus alias, then re-import. |
+| ❓ Still unresolved | No matching entry found, the source content itself is ambiguous, **or** the value is present but names an implementation-specific construction (library class, vendor-internal term) with no normative text in scope to adjudicate conformity — cannot conclude either way; leave the original uncertainty untouched and say so explicitly. This case requires a domain-expert arbitration (or acquiring a missing reference standard), not a catalogue/thesaurus edit. |
 
 > Never force a ✅ or 🛠️ classification when the evidence is inconclusive —
 > ❓ Still unresolved is a valid and expected outcome, not a failure of this skill.
+>
+> ⚠️ **Common miscalibration to avoid:** "the source names the mechanism
+> explicitly" is **not sufficient** to classify 🛠️ Pipeline artefact. A
+> vendor/library-specific name (e.g. a class name from a crypto library) can be
+> perfectly explicit and still have **no normative reference to catalogue** —
+> in that case the correct classification is ❓ Still unresolved, never 🛠️.
+> Mislabelling this as a "pipeline artefact" is misleading: it implies the
+> thesaurus/catalogue is incomplete or buggy by omission, when in fact no
+> catalogable source exists yet — the KB's existing `⚠️ _a_confirmer` entry
+> was already the correct, honest state. Before writing 🛠️, explicitly confirm
+> that a standard/RFC/ANSSI text backing the missing entry is present in
+> `$SANDBOX/corpus/` or documented in `CORPUS-DIRECTIVES.md` — cite it. If no
+> such reference can be cited, use ❓ Still unresolved instead, and say so in
+> the patch text (see Phase C4).
 
 
 ## Phase C4 — Patch the existing reports
@@ -183,7 +204,13 @@ For each cross-checked element, append directly below its existing
 three sentences stating what was found directly in the source document, quoting
 the resolved source file, and the resulting classification (source limitation
 confirmed / pipeline artefact detected / still unresolved). If 🛠️: state the
-concrete fix needed (which import step/module/mapping to correct).>
+concrete fix needed (which import step/module/mapping to correct, and cite the
+normative reference — standard/RFC/ANSSI text — that backs the missing entry).
+If ❓ due to a library/vendor-specific name with no normative backing: say so
+explicitly (e.g. "no normative reference found for this construction — expert
+arbitration or an additional reference standard is needed before any
+catalogue/thesaurus edit"). Never phrase a ❓ Still unresolved case as if a
+simple catalogue/thesaurus addition would resolve it.>
 ```
 
 ### Patch to `synthese-<project-slug>-NNN.md` (if present)
