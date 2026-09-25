@@ -23,9 +23,41 @@
 > `chorus-audit-import` (`audit-import-*.md`) is written
 > to `$SANDBOX/$WORKSPACE/reports/`, created automatically if absent. This keeps
 > human-facing deliverables (reports) separate from the operational KB/YAML
-> artefacts under `$SANDBOX/agent/`. Working files that are internal
-> pipeline memory (`thesaurus.org`, `.import-inventory-*.org`,
-> `.import-alignment-*.org`, `project-import-*.json`) stay in `$SANDBOX/agent/`.
+> artefacts under `$SANDBOX/agent/`. Working files that are internal pipeline memory
+> (`thesaurus.org` / `thesaurus/*.org`, `.import-inventory-*.org`,
+> `.import-alignment-*.org`) stay in `$SANDBOX/agent/`. `project-import-*.json` is the
+> one exception: it stays in `$SANDBOX/agent/` only for Scope=global imports — for a
+> `$WORKSPACE/<client>/`-scoped import it is written to that same `<client>/` folder
+> instead (see `chorus-import-project.md § "Output JSON location"`), so that a
+> client's produced project JSON lives alongside its `sources/` and `reports/` rather
+> than in a shared, unscoped location.
+
+> **`$WORKSPACE/<client>/` convention (multi-client / multi-project sandboxes):**
+> on a sandbox shared across several clients or project contexts (single engine,
+> single KB — see `chorus-feed.md § Strict sandbox isolation` for why this differs
+> from a per-client sandbox), sources and reports MAY be organised per client under:
+> ```
+> $SANDBOX/$WORKSPACE/<client>/sources/    ← engineer-deposited import sources
+> $SANDBOX/$WORKSPACE/<client>/reports/    ← reports for imports run on that client
+> ```
+> `<client>` is a free-form label (client name, project family, business domain —
+> whatever `chorus-import-project`'s `--context` mechanism is scoping against).
+> This is **strictly opt-in**: a sandbox that never creates `<client>/sources/`
+> subfolders keeps the flat `$SANDBOX/$WORKSPACE/reports/` layout exactly as today —
+> no migration required, no behaviour change for single-project sandboxes.
+> Only `chorus-import-project.md` currently derives behaviour (thesaurus `Scope`)
+> from this structure — see that skill's "Thesaurus scoping by context" section for
+> the exact detection rule. No other skill infers anything from `<client>/` presence.
+>
+> **Conformance rule — `sources/` and `reports/` are the only requirement:** a
+> `$WORKSPACE/<client>/` folder is considered conformant to this convention **as soon
+> as it contains both a `sources/` and a `reports/` subfolder** — regardless of
+> whatever else it also contains. Any additional file or subfolder placed directly
+> under `<client>/` (produced project JSON, reference fixtures, working notes, ad hoc
+> scratch data, anything not fitting neatly into `sources/` or `reports/`) is
+> **accepted and out of scope for this convention** — it is neither a violation nor
+> something any skill needs to categorise, move, or reason about. Do not propose
+> reorganising such extra content unless the engineer explicitly asks for it.
 
 > **Two distinct KB locations:**
 > `./agent/org/` (this repo) contains versioned KB **templates** and the pipeline index —
@@ -138,7 +170,7 @@ status: IN_PROGRESS
 | `chorus-strengthen <sandbox-name>` | command | `./agent/skills/chorus-strengthen.md` — runs the full project suite (typical + stress), classifies discordances (rule too strict / too permissive / Feed gap), produces a structured gap report and an enrichment roadmap for `chorus-feed --enrich` | `architect` |
 | `chorus-review-kb <sandbox-name> [--agent <slug>] [--format html\|org] [--decisions <file>] [--min-coverage N]` | command | `./agent/skills/chorus-review-kb.md` — produces a corpus-coverage review: interactive HTML viewer (article → rule → Helper mapping, Validate/Flag buttons for domain expert) + machine-readable org report. Detects uncovered articles, orphan CORPUS references, rules without traceability. `--decisions <file>`: loads expert decisions exported from the HTML viewer, updates the org report, and generates `corpus-correctif-<NNN>.txt` for `chorus-feed --enrich`. Run after `chorus-feed`, before the automated test pipeline. ⚠️ `--format org` skips HTML generation (recommended for large corpora). | `architect` |
 | `chorus-showcase <sandbox-name> [--out <file.html>] [--audience business\|technical] [--agents <slug1,slug2,...>]` | command | `./agent/skills/chorus-showcase.md` — generates a self-contained, presentation-ready HTML/PDF-ready document explaining the KB architecture and agent/rule/Helper organization for external stakeholders (prospects, decision-makers). Never exposes raw corpus text, full rule sets, Helper internals, or internal bug/incident notes — only 1 representative rule + 1 representative Helper, reformulated. Read-only, does not modify the sandbox. | `architect` |
-| `chorus-import-project <sandbox-name> <source…> [--out <f.json>] [--batch]` | command | `./agent/skills/chorus-import-project.md` — aligns the terminology of a project document (PDF/Word/Excel/inline) with KB slots. **3 modes:** unit (1 file), fusion (N files → 1 JSON), batch (directory/glob → 1 JSON per file + synthesis report). ⛔ **`thesaurus.org` consolidation is NOT optional** — the skill's "Post-import — thesaurus consolidation (automatic)" phase (§ after the import report is written) MUST run every time, even when delegated to a sub-agent: any ✅ certain alignment → `agent/thesaurus.org` Aliases section; any ⚠️/`_a_confirmer` mapping → Pending section; any ⬜ exclusion → Out-of-scope section. If `agent/thesaurus.org` does not exist yet, this import must create it (per `chorus-import-project.md § 1.2b — Thesaurus initialisation`). When spawning a sub-agent for this command, explicitly restate this consolidation requirement in the task prompt and require it to confirm, in its final summary, whether `thesaurus.org` was created/updated (path + entry counts) — never assume it happened silently. (Incident: sandbox `09-cyber-sec-ANSII`, CBOM import 2026-09-16 — thesaurus not created, reconstructed manually afterwards.) | `code` |
+| `chorus-import-project <sandbox-name> <source…> [--out <f.json>] [--batch]` | command | `./agent/skills/chorus-import-project.md` — aligns the terminology of a project document (PDF/Word/Excel/inline) with KB slots. **3 modes:** unit (1 file), fusion (N files → 1 JSON), batch (directory/glob → 1 JSON per file + synthesis report). ⛔ **thesaurus consolidation is NOT optional** — the skill's "Post-import — thesaurus consolidation (automatic)" phase (§ after the import report is written) MUST run every time, even when delegated to a sub-agent: any ✅ certain alignment → the appropriate shard's Aliases section (`agent/thesaurus/global.org`, or `agent/thesaurus/<client>.org` per Scope — see `chorus-import-project.md § Thesaurus storage layout — sharded by Scope`); any ⚠️/`_a_confirmer` mapping → Pending section (always in `global.org`); any ⬜ exclusion → Out-of-scope section (always in `global.org`). If no thesaurus shard exists yet, this import must create `global.org` (+ a client shard if applicable) (per `chorus-import-project.md § 1.2b — Thesaurus initialisation`). When spawning a sub-agent for this command, explicitly restate this consolidation requirement in the task prompt and require it to confirm, in its final summary, which shard(s) were created/updated (path + entry counts) — never assume it happened silently. (Incident: sandbox `09-cyber-sec-ANSII`, CBOM import 2026-09-16 — thesaurus not created, reconstructed manually afterwards; predates the sharded layout, but the same non-optional-consolidation rule applies.) | `code` |
 | `chorus-audit-import <sandbox-name> <projet.json> [--patch] [--source <file.md>] [--kb]` | command | `./agent/skills/chorus-audit-import.md` — audits an imported project JSON against its source document(s): classifies each gap (✅ comblable · ⚠️ extraction partielle · ❌ structurellement absent · 🔄 mapping à confirmer · 🚫 frame manquante · 🔴 incohérence KB), identifies missing Frame types, and optionally patches the JSON. Insert between `chorus-import-project` and `chorus-check`. | `code` |
 | `chorus-complete-report <sandbox-name> <projet-slug> [--source <file>]` | command | `./agent/skills/chorus-complete-report.md` — cross-checks every `❓ incertain`/`_a_confirmer` element left by a prior `chorus-check --explain`/`--summary` run directly against the original source document (any format), classifies each as ✅ genuine source limitation / 🛠️ pipeline artefact / ❓ still unresolved, and patches the existing `explain-*`/`synthese-*` reports (+ HTML/PDF regeneration) — never re-runs the compliance pipeline, never changes a verdict. Run after `chorus-check --explain --summary`. | `architect` |
 | Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./agent/skills/chorus-engine-yaml.md`)* | `code` |

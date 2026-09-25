@@ -1,6 +1,6 @@
 # Skill — chorus-import-project
 
-> Trigger: `chorus-import-project <sandbox-name> <source…> [--out <fichier.json>] [--batch]`
+> Trigger: `chorus-import-project <sandbox-name> <source…> [--out <fichier.json>] [--batch] [--context <label>]`
 > Agent: `code`
 > ⚠️ Downgraded from `architect` to `code` (claude-sonnet-4-6 / medium) — extended thinking
 > (variant: large) interacts poorly with the intra-phase keepalive protocol: the model may
@@ -14,9 +14,21 @@
 >                    plain text, table pasted in the chat, or directory path**.
 >                    Document files (PDF/DOCX/XLSX/CSV/XML/HTML) are automatically converted
 >                    to plain text before semantic processing.
-> `--out`          : output JSON filename (merge mode only;
->                    default: `project-import-<NNN>.json`)
+> `--out`          : output JSON filename (merge mode only; overrides the default
+>                    location entirely — see "Output JSON location", Phase 5).
+>                    Default when absent: `project-import-<NNN>.json`, written under
+>                    `$WORKSPACE/<client>/` if this import's Scope resolves to a
+>                    non-global client, or `$SANDBOX/agent/` otherwise.
 > `--batch`        : force batch mode even if a single source is provided
+> `--context <label>` : declares the terminology scope for this import (e.g. a client
+>                    name, a project family, a business domain). Optional — manual
+>                    override only. If absent, the scope is auto-derived from the
+>                    source path (`$SANDBOX/$WORKSPACE/<client>/sources/...` → scope =
+>                    `<client>`) or defaults to `global` otherwise (same behaviour as
+>                    before this flag existed). See "Scope derivation" (Phase 1.2b)
+>                    for the full three-step cascade — this addresses multi-project/
+>                    multi-client sandboxes where the same term can legitimately mean
+>                    different things depending on context.
 >
 > ### Invocation Modes
 >
@@ -243,9 +255,13 @@ If N > 1 sources without --batch:
 For each file `f` in `files`:
 1. Extract plain text (Phase 0B below)
 2. Run Phases 1–6 **autonomously** for this file
-3. Name the outputs: `project-import-<NNN>.json` (in `$SANDBOX/agent/`) and
-   `import-report-<NNN>.org` (in `$WORKSPACE`, i.e. `$SANDBOX/workspace/`,
-   created if absent) — increment NNN independently for each file
+3. Name the outputs: `project-import-<NNN>.json` (location per "Output JSON location",
+   Phase 5 — `$SANDBOX/agent/` for Scope=global, or `$SANDBOX/workspace/<client>/` if
+   the batch's source directory matched the `<client>/sources/` convention) and
+   `import-report-<NNN>.org` (in `$WORKSPACE`, i.e. `$SANDBOX/workspace/reports/`,
+   or `$SANDBOX/workspace/<client>/reports/` if the batch's source directory matched
+   the `<client>/sources/` convention — see "Scope derivation", Phase 1.2b — created
+   if absent) — increment NNN independently for each file
 4. At the end of the batch → produce the **batch summary report** (see Phase 6-BATCH)
 
 > ⚠️ Phase 1 (KB reading) is run **once only** at the start of the batch
@@ -1083,7 +1099,11 @@ This serves two purposes:
 Use this inventory to:
 - Confirm the list of `<slug>.org` files to read in 1.2
 - Know which `rules/<slug>/` directories exist (for the keepalive calls in 1.2)
-- Detect `$SANDBOX/agent/thesaurus.org` if present (for 1.2b — highest priority source)
+- Detect the sandbox thesaurus: **new sharded layout**
+  `$SANDBOX/agent/thesaurus/global.org` (+ `$SANDBOX/agent/thesaurus/<client>.org` if
+  scoped shards exist) **or legacy monolithic** `$SANDBOX/agent/thesaurus.org` (for
+  1.2b — highest priority source; see "Thesaurus storage layout" for the detection
+  and one-way migration rule)
 - Detect any existing `import-report-*.org` files (for 1.3 — secondary memory)
 
 ### 1.1 Pipeline Index
@@ -1152,8 +1172,10 @@ section           → section_bois                —           "BxH"           
 
 ### 1.2b Sandbox thesaurus (highest priority source)
 
-If `$SANDBOX/agent/thesaurus.org` exists, **read it immediately after Phase 1.2**,
-before any import-report.
+If a sandbox thesaurus exists (sharded layout `$SANDBOX/agent/thesaurus/*.org`, or
+legacy monolithic `$SANDBOX/agent/thesaurus.org` — see "Thesaurus storage layout"
+below), **read the relevant shard(s) immediately after Phase 1.2**, before any
+import-report.
 
 The thesaurus is the **canonical project-terminology memory** for this sandbox. It is
 separated from the normative KB (`<slug>.org`) and from import reports: it stores
@@ -1161,42 +1183,137 @@ project-specific synonyms validated by the engineer across all previous imports.
 
 **Priority rule:**
 ```
-thesaurus.org (1.2b)  >  import-report-*.org (1.3)  >  KB aliases (1.2)
+thesaurus (1.2b)  >  import-report-*.org (1.3)  >  KB aliases (1.2)
 ```
 
 A mapping present in the thesaurus is applied **at ✅ confidence without asking the
 engineer again**, regardless of what the KB or previous import-reports say.
 
+#### Thesaurus storage layout — sharded by Scope
+
+The thesaurus is stored as **one `.org` file per Scope**, under
+`$SANDBOX/agent/thesaurus/`, rather than a single monolithic file:
+
+```
+$SANDBOX/agent/thesaurus/global.org           ← Scope = global (always present once
+                                                 the sandbox has at least one ✅ mapping)
+$SANDBOX/agent/thesaurus/<client-alpha>.org   ← Scope = client-alpha (created on demand,
+$SANDBOX/agent/thesaurus/<client-beta>.org      one shard per distinct non-global Scope
+                                                 ever used — see "Scope derivation")
+```
+
+**Why sharding, not a single file:** on a multi-client sandbox, a lookup for an import
+scoped to `client-alpha` only ever needs `global.org` + `client-alpha.org` — it never
+needs to read `client-beta.org`, `client-gamma.org`, etc. Reading cost per import
+becomes proportional to **one Scope's volume**, not the sandbox's total accumulated
+volume across every client ever imported. This directly addresses the read-cost
+concern in the original refactor analysis (large sandboxes, hundreds of imports).
+
+**Which shard(s) to read for a given import**, with `C` = this import's Scope
+(resolved per "Scope derivation" below):
+```
+Always read: $SANDBOX/agent/thesaurus/global.org (if present)
+If C != "global": also read $SANDBOX/agent/thesaurus/<C>.org (if present)
+Never read any other <other-client>.org shard.
+```
+If neither file exists yet → no thesaurus hit is possible, proceed to Phase 1.3/KB
+lookup as if no thesaurus existed (same as today's "thesaurus.org absent" case).
+
+**`* Pending`, `* Out-of-scope`, and `* Conflicts` tables** (see "Thesaurus format"
+below) live **only in `global.org`**, never duplicated per shard — these tables are
+not Scope-partitioned data (a `* Conflicts` row already carries its own `Scope` column
+for the rare case of a same-scope mismatch; `* Pending`/`* Out-of-scope` are inherently
+sandbox-wide bookkeeping, not per-client data worth sharding). Only the two `* Aliases`
+tables are actually split across shards.
+
+**Each shard file's own header:**
+```org
+#+TITLE: Project terminology thesaurus — sandbox <name> — shard: global|<client>
+#+UPDATED: <date>
+#+LAST_HARVEST: never          ← global.org only (see below)
+#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox, Scope=<shard>.
+               Maintained automatically by chorus-import-project. Part of a sharded
+               thesaurus — see agent/thesaurus/global.org for Pending/Out-of-scope/Conflicts.
+```
+`#+LAST_HARVEST:` is meaningful only in `global.org` — `chorus-feed --harvest-aliases`
+only ever promotes `Scope=global` rows (see `chorus-feed.md § Phase C1 — Scope guard`),
+so only `global.org` is ever purged/touched by a harvest. Client shards never carry
+this header.
+
+#### Legacy monolithic `thesaurus.org` — detection and one-way migration
+
+Sandboxes created before this sharding convention may still have a single
+`$SANDBOX/agent/thesaurus.org` file (no `thesaurus/` subfolder). Detection order:
+
+```
+1. $SANDBOX/agent/thesaurus/ directory exists → sharded layout, use it (ignore any
+   leftover $SANDBOX/agent/thesaurus.org — should not coexist; if it does, warn and
+   treat the sharded layout as authoritative, do not merge automatically)
+2. $SANDBOX/agent/thesaurus/ absent, $SANDBOX/agent/thesaurus.org exists → legacy
+   monolithic sandbox. Read it as-is for this import (fully backward compatible: all
+   Scope resolution, dedup, and conflict logic below works identically on a single
+   file — sharding is a storage optimisation, not a change to the logic).
+   Then, **once this import completes successfully** (Phase 6), perform a one-way
+   migration: split thesaurus.org into agent/thesaurus/global.org (+ one shard per
+   distinct non-global Scope found in its Aliases rows), moving `* Pending`,
+   `* Out-of-scope`, and `* Conflicts` into global.org unchanged. Delete the original
+   thesaurus.org only after all shards are written and verified (row count in shards
+   == row count in the original file). Report the migration to the engineer:
+   ```
+   📦 Legacy thesaurus.org migrated to sharded layout:
+      agent/thesaurus/global.org        (N aliases, Pending/Out-of-scope/Conflicts)
+      agent/thesaurus/client-alpha.org  (N aliases)
+      Original agent/thesaurus.org removed.
+   ```
+3. Neither exists → no thesaurus yet, proceed to "Thesaurus creation" (first import).
+```
+
+> ⚠️ Migration is **one-way and one-time** — never re-split an already-sharded
+> thesaurus, never reconstruct a monolithic file from shards. If both a `thesaurus/`
+> folder and a `thesaurus.org` file exist simultaneously (should not normally happen),
+> treat it as a corruption signal: stop, report both, and let the engineer decide
+> manually rather than guessing which is authoritative.
+
 #### Thesaurus format
 
+**`agent/thesaurus/global.org`** (always the first shard consulted; holds every
+sandbox-wide bookkeeping table):
+
 ```org
-#+TITLE: Project terminology thesaurus — sandbox <name>
+#+TITLE: Project terminology thesaurus — sandbox <name> — shard: global
 #+UPDATED: <date>
-#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox.
-               Maintained automatically by chorus-import-project.
+#+LAST_HARVEST: never
+#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox, Scope=global.
+               Maintained automatically by chorus-import-project. Part of a sharded
+               thesaurus — see agent/thesaurus/<client>.org for other Scopes.
                Do NOT edit KB org files to add project aliases — use this file instead.
+               #+LAST_HARVEST is set by `chorus-feed --harvest-aliases` (never edit manually).
 
 * Aliases — type_element
-  Project terms validated as mapping to a specific KB type_element.
-  Applied at ✅ confidence on every future import without asking again.
+  Project terms validated as mapping to a specific KB type_element, Scope=global.
+  Applied at ✅ confidence on every future import without asking again — unless the
+  KB has changed since validation (see "KB hash tracking & revalidation" below).
 
-  | Project term             | KB type_element       | Confidence   | Source import     |
-  |---|---|---|---|
-  | panneau contreventement  | panneau_osb           | ✅ confirmed | import-report-001 |
-  | poteau intérieur cloison | montant_non_porteur   | ✅ confirmed | import-report-001 |
+  | Project term             | KB type_element       | Confidence   | Source import     | KB hash @ validation | Scope   |
+  |---|---|---|---|---|---|
+  | panneau contreventement  | panneau_osb           | ✅ confirmed | import-report-001 | a1b2c3d4              | global  |
+  | poteau intérieur cloison | montant_non_porteur   | ✅ confirmed | import-report-001 | a1b2c3d4              | global  |
 
 * Aliases — slot values
-  Project value expressions validated as mapping to a specific KB slot + value.
-  Applied at ✅ confidence on every future import without asking again.
+  Project value expressions validated as mapping to a specific KB slot + value, Scope=global.
+  Applied at ✅ confidence on every future import without asking again — unless the
+  KB has changed since validation (see "KB hash tracking & revalidation" below).
 
-  | Project term  | KB slot             | KB value | Confidence   | Source import     |
-  |---|---|---|---|---|
-  | classe 2      | traitement_applique | "cl2"    | ✅ confirmed | import-report-002 |
-  | laine 032     | classe_conductivite | "032"    | ✅ confirmed | import-report-002 |
+  | Project term  | KB slot             | KB value | Confidence   | Source import     | KB hash @ validation | Scope   |
+  |---|---|---|---|---|---|---|
+  | classe 2      | traitement_applique | "cl2"    | ✅ confirmed | import-report-002 | a1b2c3d4              | global  |
+  | laine 032     | classe_conductivite | "032"    | ✅ confirmed | import-report-002 | b5e6f7a8              | global  |
 
 * Pending — to confirm on next import
   Terms provisionally mapped (⚠️) in a previous import, not yet confirmed by the engineer.
   Re-raised on next import if the same term appears — engineer decision upgrades to ✅ or rejects.
+  Sandbox-wide (not sharded — lives only in global.org, regardless of which Scope the
+  term will eventually resolve to once confirmed).
 
   | Project term   | Proposed KB mapping            | Flag              | Source import     |
   |---|---|---|---|
@@ -1205,38 +1322,257 @@ engineer again**, regardless of what the KB or previous import-reports say.
 * Out-of-scope terms (⬜)
   Terms explicitly identified as outside this sandbox's KB scope.
   Silently excluded on future imports — not re-raised to the engineer.
+  Sandbox-wide (not sharded — lives only in global.org).
 
   | Project term  | Reason                      | Recommended sandbox  | Last seen         |
   |---|---|---|---|
   | bardage zinc  | hors périmètre sandbox-structurel | sandbox-bardage | import-report-001 |
+
+* Conflicts (⚠️ CONFLICT — blocking, requires engineer arbitration)
+  A term already resolved to one mapping **at a given Scope** in a prior import,
+  re-encountered with a **different** mapping **at that same Scope** in a later import.
+  Cross-scope differences (e.g. `client-alpha` vs. `client-beta`) are **not** conflicts
+  — see "Thesaurus scoping by context" above; they are two independent, correctly
+  scoped rows, living in their respective shards. A true Conflict only arises when
+  both the term AND the Scope match but the target mapping differs (legitimate
+  homonymy within the same scope — a rarer, genuinely ambiguous case). Never
+  auto-resolved, never silently overwritten — see "Deduplication rule" below. Must be
+  arbitrated before the conflicting term is applied again.
+  Sandbox-wide (not sharded — lives only in global.org, even for a same-scope conflict
+  detected on a client shard: the Scope column already identifies which shard is
+  affected, no need to duplicate the table per shard).
+
+  | Project term | Scope   | Existing mapping                        | New mapping                              | First seen         | Conflict raised in | Status            |
+  |---|---|---|---|---|---|---|
+  | poteau        | global  | montant_porteur (import-report-012)     | montant_non_porteur (import-report-340)  | import-report-012  | import-report-340  | ⚠️ to arbitrate  |
 ```
+
+**`agent/thesaurus/client-alpha.org`** (an example client shard — only the two
+`* Aliases` tables, same columns, same Scope value repeated on every row for clarity
+even though it is implied by the filename):
+
+```org
+#+TITLE: Project terminology thesaurus — sandbox <name> — shard: client-alpha
+#+UPDATED: <date>
+#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox, Scope=client-alpha.
+               Maintained automatically by chorus-import-project. Part of a sharded
+               thesaurus — see agent/thesaurus/global.org for Pending/Out-of-scope/Conflicts.
+               Do NOT edit KB org files to add project aliases — use this file instead.
+
+* Aliases — type_element
+  Project terms validated as mapping to a specific KB type_element, Scope=client-alpha.
+
+  | Project term | KB type_element  | Confidence   | Source import     | KB hash @ validation | Scope        |
+  |---|---|---|---|---|---|
+  | poteau        | montant_porteur | ✅ confirmed | import-report-012 | c3d4e5f6              | client-alpha |
+
+* Aliases — slot values
+  Project value expressions validated as mapping to a specific KB slot + value, Scope=client-alpha.
+
+  | Project term | KB slot | KB value | Confidence | Source import | KB hash @ validation | Scope |
+  |---|---|---|---|---|---|---|
+```
+
+#### KB hash tracking & revalidation
+
+Every `* Aliases` row records the **`.kb-hash`** in effect at the moment the mapping was
+validated (`KB hash @ validation` column). This is a **read-only comparison mechanism**
+— it never triggers a `.kb-hash` write or invalidation from `chorus-import-project`
+itself (only `chorus-feed --enrich` / `--harvest-aliases` write `.kb-hash`, since only
+they modify `<slug>.org` files).
+
+**Why:** a `✅ confirmed` mapping is validated against a specific state of the KB (a
+given slot definition, a given `type_element` semantics). If the KB is later enriched
+or a `type_element`'s meaning/scope changes (`chorus-feed --enrich`), an old thesaurus
+mapping could silently keep pointing at a slot that no longer means what it meant when
+validated — applied at ✅ confidence forever, with no signal that anything changed.
+
+**Mechanism:**
+1. **At validation time** (Phase 3, "Immediate thesaurus update after each resolution"):
+   read `$SANDBOX/agent/.kb-hash` (if present) and record its first 8 hex chars in the
+   `KB hash @ validation` column of the new/updated Aliases row. If `.kb-hash` is absent
+   (KB predates hash tracking, or infra never generated for this sandbox), record `—`
+   and skip step 2 below for that row until a hash becomes available.
+2. **At lookup time** (Phase 3, "How the thesaurus is used", steps 1–2 below): before
+   applying a thesaurus hit at ✅ confidence, compare the row's `KB hash @ validation`
+   to the **current** `$SANDBOX/agent/.kb-hash`:
+   - **Identical** (or row has `—`) → apply normally, as today.
+   - **Different** → the KB changed since this mapping was validated. Do **not** apply
+     silently — downgrade the hit to `⚠️ à reconfirmer` and re-raise to the engineer:
+     ```
+     ⚠️ KB changed since validation — term "poteau" was mapped to montant_porteur
+        when the KB hash was a1b2c3d4 (import-report-012). The KB has since changed
+        (current hash: f9e8d7c6). Confirm this mapping is still correct, or update it.
+        a) Still correct — reconfirm (updates KB hash @ validation to current)
+        b) No longer correct — provide the new mapping
+     ```
+     On (a): update the row's `KB hash @ validation` to the current hash, keep
+     `✅ confirmed`, keep the original `Source import`. On (b): treat as a normal
+     ❓/⚠️ resolution (Phase 3, "Resolving Ambiguities") and write the corrected mapping.
+3. This check is a simple string comparison of two hash values already on disk — no
+   extra KB read, no extra hashing pass. Negligible cost per import.
+
+> ⚠️ **Never** infer a `.kb-hash` value or write to `.kb-hash` from within
+> `chorus-import-project` — reading it is the only allowed operation. If `.kb-hash`
+> is absent for a sandbox that clearly has a generated KB (e.g. `chorus-check` was
+> run before), treat all rows as `—` (no comparison) rather than guessing a value.
+
+#### Thesaurus scoping by context
+
+On a multi-project / multi-client sandbox (e.g. a production compliance portal
+importing hundreds of projects across different clients or domains), the **same
+project term can legitimately mean different things** depending on context (homonymy,
+not error — cf. "poteau" → `montant_porteur` for one client's convention vs.
+`montant_non_porteur` for another's). A single flat namespace per sandbox forces every
+such case through the `* Conflicts` mechanism (Phase 3 Deduplication rule) even when
+both mappings are permanently valid side by side — which is correct the first time,
+but becomes noisy if the same two clients keep re-triggering the same "conflict" on
+every import.
+
+**Every `* Aliases` row carries a `Scope` column:**
+- `global` — the mapping is considered valid across the whole sandbox, regardless of
+  which import/context it came from. This is the **default** for any import whose
+  context resolves to `global` (see "Scope derivation" below) — preserves current
+  behaviour exactly for sandboxes that never use client-scoped folders or `--context`.
+- `<context-label>` — the mapping is valid **only** within imports declared under that
+  same context label.
+
+#### Scope derivation — where does the label actually come from
+
+The Scope used for a given import (`C` in the lookup/dedup rules below) is resolved by
+this **strict, three-step cascade** — evaluated in order, first match wins:
+
+```
+1. --context <label> passed explicitly on the command line
+   → C = <label> (highest priority — manual override always wins)
+
+2. Otherwise, if every source file for this import lives under
+   $SANDBOX/$WORKSPACE/<X>/sources/  (see AGENTS.md § "$WORKSPACE/<client>/ convention")
+   → C = <X>  (the immediate folder name under $WORKSPACE, one level above `sources/`)
+   Reports for this import are then written to $SANDBOX/$WORKSPACE/<X>/reports/
+   instead of the flat $SANDBOX/$WORKSPACE/reports/.
+
+3. Otherwise (source is inline content, a single loose file, a directory that is not
+   a `<X>/sources/` folder, or sources span more than one <X>)
+   → C = "global"  (current/default behaviour, unchanged)
+```
+
+**Step 2 is intentionally strict** — it only triggers for the exact
+`$WORKSPACE/<client>/sources/` structure, never for an arbitrary directory path passed
+as `<source>`. A `Batch Mode` import on `./some-folder/` that is *not* nested under
+`$WORKSPACE/<client>/sources/` always resolves to `global` (step 3) — directory-name
+scoping is deliberately **not** inferred from arbitrary paths, only from this one
+documented convention, to keep the rule predictable and avoid accidental scoping from
+an unrelated folder name.
+
+> **Extra content under `<client>/` is irrelevant to this detection rule.** Only the
+> presence of `<client>/sources/` (and, once written, `<client>/reports/`) matters —
+> see `AGENTS.md § "$WORKSPACE/<client>/ convention" → Conformance rule`. A client
+> folder may also contain arbitrary other files/subfolders (produced project JSON,
+> reference fixtures, scratch data, etc.) — these have no effect on Scope derivation
+> and are never inspected, categorised, or flagged by this skill.
+
+**Mixed-context batch guard:** if a Batch/Merge import's source files are spread
+across *more than one* `<X>/sources/` folder in the same invocation (e.g. the engineer
+passed `--batch` over a glob spanning two clients) → **stop and report**, do not guess:
+```
+⛔ Sources span multiple client contexts (client-alpha/sources/, client-beta/sources/)
+   in a single import run — Scope cannot be derived unambiguously.
+   Run one import per client folder, or pass --context explicitly to force a single Scope.
+```
+
+**Lookup resolution order for a term T under context C** (C resolved as above):
+```
+1. Look for a row matching (T, Scope = C)              → exact context match, apply ✅
+2. If not found, look for a row matching (T, Scope = global) → global fallback, apply ✅
+3. If neither found → proceed with standard KB lookup (Phase 3 standard flow)
+```
+A scoped row (`Scope = C`) **never** answers a lookup made under a different context
+`C' ≠ C` (except the `global` fallback in step 2, which flows the other way: a
+`global` row always answers any context). This is the key difference from a flat
+namespace: two clients can validate two different mappings for "poteau" and **both
+stay permanently active**, side by side, without ever touching `* Conflicts` — as
+long as each was resolved to its own distinct Scope (via `--context` or auto-derived
+from `$WORKSPACE/<client>/sources/`).
+
+**When does this become a real Conflict (Phase 3 Deduplication rule) instead?**
+Only when the **same term at the same Scope** (both `global`, or both the identical
+context label) gets two different mappings. Cross-context collisions
+(`client-alpha` vs. `client-beta`) are **not** conflicts — they are simply two
+independent, correctly scoped rows. The Deduplication rule (Phase 3, "Immediate
+thesaurus update") must compare `(term, Scope)` as the dedup key, not `term` alone.
+
+**Promoting a scoped mapping to `global`:** if the same `(term → mapping)` pair is
+independently validated under two or more different context labels with an
+**identical** target mapping (not a conflict — same meaning recurring across
+contexts), the engineer may explicitly promote it to `Scope = global` on the next
+occurrence, merging the redundant scoped rows into one. This is never automatic —
+propose it, do not perform it silently:
+```
+💡 "classe 2" was independently validated identically under 3 different contexts
+   (client-alpha, client-beta, client-gamma) — same mapping (traitement_applique="cl2")
+   each time. Promote to Scope = global to stop tracking it per-context? (y/n)
+```
+
+**No scoping in effect at all (default sandbox usage):** if `--context` is never used
+and no import is ever run from a `$WORKSPACE/<client>/sources/` folder, every row is
+`global`, lookup step 1 never applies (no non-global scope exists), behaviour is
+byte-for-byte identical to a sandbox that never adopts scoping. This mechanism is
+purely additive.
 
 #### How the thesaurus is used in Phase 3
 
 When building the alignment table (Phase 3), **check the thesaurus first** for every
-term in the raw inventory:
+term in the raw inventory. In practice this means: for steps 1–2 (Aliases), only the
+two shards already loaded in memory (`global.org` + `<C>.org` if `C != global`, per
+"Thesaurus storage layout" above) are consulted — never a shard for a different
+client. Steps 0/3/4 (Conflicts/Out-of-scope/Pending) always look in `global.org` only,
+since those tables are never sharded.
 
 ```
-For each project term T:
-  1. Look up T in thesaurus → Aliases type_element  : hit → apply ✅, skip KB lookup
-  2. Look up T in thesaurus → Aliases slot values   : hit → apply ✅, skip KB lookup
-  3. Look up T in thesaurus → Out-of-scope          : hit → mark ⬜, skip KB lookup
-  4. Look up T in thesaurus → Pending               : hit → re-raise ⚠️ to engineer
-  5. Not in thesaurus → proceed with KB lookup (Phase 3 standard flow)
+For each project term T, with C = current import's Scope (resolved per "Scope derivation" above):
+  0. Look up T in global.org → Conflicts (Scope = C or global) : hit (unresolved) → block,
+                                                        re-raise ⚠️ CONFLICT to engineer
+  1. Look up T in <C>.org → Aliases type_element, then in global.org → Aliases type_element
+     (fallback) : hit → check KB hash (see "KB hash tracking & revalidation" above);
+       identical → apply ✅, skip KB lookup; different → downgrade to ⚠️ à reconfirmer
+  2. Look up T in <C>.org → Aliases slot values, then in global.org → Aliases slot values
+     (fallback) : hit → same KB hash check as step 1
+  3. Look up T in global.org → Out-of-scope        : hit → mark ⬜, skip KB lookup
+  4. Look up T in global.org → Pending              : hit → re-raise ⚠️ to engineer
+  5. Not in thesaurus (neither <C>.org nor global.org) → proceed with KB lookup (Phase 3 standard flow)
 ```
+(When `C = global`, steps 1–2 simply read `global.org` once — there is no separate
+`<C>.org` to consult, no behaviour change from a non-sharded lookup.)
+
+> **Scope resolution order (steps 1–2):** an exact match on the current import's
+> context `C` (its own shard) always wins over a `global` row for the same term —
+> check the `<C>.org` shard first, fall back to `global.org` only if no `C`-scoped row
+> exists there. See "Thesaurus scoping by context" above for the full rationale and
+> the promotion-to-global mechanism.
 
 > **Rule:** a thesaurus hit at step 1–3 is **final** — do not re-ask the engineer,
 > do not consult the KB, do not propose alternatives. The engineer already decided.
+> **Exception:** steps 1–2 are final only if the KB hash check passes (see above) —
+> a stale mapping following a KB change is never applied silently.
 >
 > A thesaurus hit at step 4 (Pending) re-raises the question exactly once. If the
-> engineer confirms → move the entry to Aliases and record ✅. If rejected → move to
-> Out-of-scope and record ⬜.
+> engineer confirms → move the entry to Aliases (in the shard matching the current
+> import's Scope `C`) and record ✅. If rejected → move to Out-of-scope (global.org)
+> and record ⬜.
+>
+> A thesaurus hit at step 0 (Conflicts, unresolved) **blocks** — never apply either
+> mapping automatically. Present both candidate mappings to the engineer for
+> arbitration (see "Conflict resolution" below). An unresolved conflict for a term
+> takes priority over any other thesaurus section for that same term.
 
 #### Thesaurus initialisation
 
-If `thesaurus.org` does not yet exist, it is created automatically at the end of the
-first import that produces at least one ✅ or ⚠️ alignment (Phase 6 — see below).
-No manual creation is required.
+If neither `$SANDBOX/agent/thesaurus/` nor a legacy `$SANDBOX/agent/thesaurus.org`
+exists yet, the sharded layout is created automatically at the end of the first import
+that produces at least one ✅ or ⚠️ alignment (Phase 6 — see below): `global.org` is
+always created first; a `<C>.org` shard is created only if that import's Scope `C` is
+not `global`. No manual creation is required.
 
 
 ### 1.3 Previous alignment decisions
@@ -1548,7 +1884,11 @@ For each ❓ term, present the following to the engineer:
 ### Immediate thesaurus update after each resolution
 
 **After each engineer decision** (❓ resolved or ⚠️ confirmed/rejected), write the
-result into `$SANDBOX/agent/thesaurus.org` **immediately** — do not wait for Phase 6.
+result **immediately** — do not wait for Phase 6 — into the shard matching the current
+import's Scope `C`:
+- `* Aliases` writes go to `$SANDBOX/agent/thesaurus/<C>.org` (or `global.org` if `C = global`)
+- `* Pending`, `* Out-of-scope`, `* Conflicts` writes always go to `$SANDBOX/agent/thesaurus/global.org`
+  regardless of `C` (these tables are never sharded — see "Thesaurus storage layout")
 
 This ensures the thesaurus is always up to date, even if the session is interrupted
 before Phase 6 completes.
@@ -1557,23 +1897,24 @@ before Phase 6 completes.
 
 | Engineer decision | Thesaurus action |
 |---|---|
-| ❓ resolved → ✅ (type_element chosen) | Append to `* Aliases — type_element` |
-| ❓ resolved → ✅ (slot value chosen) | Append to `* Aliases — slot values` |
-| ⚠️ confirmed → ✅ | Move from `* Pending` to appropriate `* Aliases` section |
-| ⚠️ rejected → ⬜ | Move from `* Pending` to `* Out-of-scope terms` |
-| ❓ unresolvable → ⬜ (engineer: "exclude") | Append to `* Out-of-scope terms` |
-| New ⚠️ (first time seen) | Append to `* Pending` |
+| ❓ resolved → ✅ (type_element chosen) | Append to `* Aliases — type_element` in the shard for the current import's Scope (`<C>.org`, or `global.org` if `C = global`) — **unless a row with the same `(term, Scope)` already has a different mapping (checked against that same shard) → append to `* Conflicts` in `global.org` instead (see Deduplication rule below)** |
+| ❓ resolved → ✅ (slot value chosen) | Append to `* Aliases — slot values` in the shard for the current Scope — **same conflict check as above** |
+| ⚠️ confirmed → ✅ | Move from `* Pending` (in `global.org`) to `* Aliases` in the shard for the current Scope — **same conflict check as above** |
+| ⚠️ rejected → ⬜ | Move from `* Pending` to `* Out-of-scope terms` (both in `global.org`) |
+| ❓ unresolvable → ⬜ (engineer: "exclude") | Append to `* Out-of-scope terms` (`global.org`) |
+| New ⚠️ (first time seen) | Append to `* Pending` (`global.org`) |
+| Term already in `* Conflicts` at the current Scope (unresolved), re-encountered | Do not touch any `* Aliases` shard — re-raise for arbitration (see "Conflict resolution") |
 
 #### Write format per section
 
 **Alias confirmed (type_element):**
 ```org
-| <project term> | <KB type_element> | ✅ confirmed | import-report-<NNN> |
+| <project term> | <KB type_element> | ✅ confirmed | import-report-<NNN> | <kb_hash8 or —> | <Scope: global or context-label> |
 ```
 
 **Alias confirmed (slot value):**
 ```org
-| <project term> | <KB slot> | <KB value> | ✅ confirmed | import-report-<NNN> |
+| <project term> | <KB slot> | <KB value> | ✅ confirmed | import-report-<NNN> | <kb_hash8 or —> | <Scope: global or context-label> |
 ```
 
 **New pending entry:**
@@ -1586,15 +1927,91 @@ before Phase 6 completes.
 | <project term> | <reason> | <recommended sandbox or "unknown"> | import-report-<NNN> |
 ```
 
+**Conflict (mapping mismatch at the same Scope — never a duplicate write to `* Aliases`):**
+```org
+| <project term> | <Scope: global or context-label> | <existing mapping> (<existing source import>) | <new mapping> (<new source import>) | <first seen import> | <conflict raised in import> | ⚠️ to arbitrate |
+```
+
 #### Thesaurus creation (first import)
 
-If `thesaurus.org` does not yet exist → create it using the format defined in Phase 1.2b
-(Thesaurus format), with all four section tables empty (headers only, no example rows).
-Then append the first resolved entry under the appropriate section.
+If `$SANDBOX/agent/thesaurus/` does not yet exist (and no legacy `thesaurus.org`
+either — see "Legacy monolithic thesaurus.org" above) → create
+`agent/thesaurus/global.org` using the global shard format defined above (Thesaurus
+format), with `* Aliases — type_element`, `* Aliases — slot values`, `* Pending`,
+`* Out-of-scope terms`, and `* Conflicts` all empty (headers only, no example rows).
+If the current import's Scope `C` is not `global`, also create `agent/thesaurus/<C>.org`
+using the client-shard format (only the two `* Aliases` tables). Then append the first
+resolved entry under the appropriate section/shard.
 
-> ⚠️ **Deduplication rule:** before appending any entry, check whether the project term
-> already exists in the target section. If it does, **update** the existing row
-> (confidence, source import) rather than inserting a duplicate.
+> ⚠️ **Deduplication rule:** before appending any entry, check whether the pair
+> `(project term, Scope)` already exists in the target shard's `* Aliases —
+> type_element` or `* Aliases — slot values` — where `Scope` is the current import's
+> context (resolved per "Scope derivation" above). In practice this means checking
+> only the shard(s) already loaded for this import (`<C>.org` and/or `global.org` —
+> never a shard for a different client, since a different-Scope row cannot exist in
+> a shard that was never read for this import).
+>
+> - **If a row with the same `(term, Scope)` exists and its mapping is identical** to
+>   the new one → **update** the existing row (confidence, source import) in place,
+>   in its own shard, rather than inserting a duplicate. This is the only case where
+>   a silent update is correct.
+> - **If a row with the same `(term, Scope)` exists and its mapping differs** from the
+>   new one → this is a **mapping conflict**, not a duplicate. **Never overwrite the
+>   existing row.** Instead:
+>   1. Leave the existing `Aliases` row untouched (in its shard).
+>   2. Append a new row to `* Conflicts` **in `global.org`** with both mappings, their
+>      respective source imports, the shared Scope, and status `⚠️ to arbitrate`.
+>   3. Do **not** apply either mapping automatically on this or future imports at this
+>      Scope until the conflict is arbitrated (see Phase 3 lookup step 0 and "Conflict
+>      resolution" below).
+> - **If the term exists only at a *different* Scope** (e.g. new row would go in
+>   `client-beta.org`, but an existing row for the same term lives in
+>   `client-alpha.org`, or in `global.org`) → **this is not a conflict.** Simply append
+>   the new row as an independent entry in its own shard — both stay permanently
+>   active side by side, in different files (see "Thesaurus scoping by context"). Note
+>   that under sharding, this case is even less likely to be noticed accidentally,
+>   since the two rows never even appear in the same file.
+>
+> This mirrors the existing **Id conflict handling** (multi-source import, § 1 above):
+> conflicting evidence **at the same scope** is never silently merged — it is surfaced
+> as an explicit, engineer-arbitrated conflict record. Evidence at *different* scopes
+> is not conflicting evidence at all — it is deliberately parallel, valid knowledge,
+> now additionally isolated by file boundary.
+
+#### Conflict resolution (engineer arbitration)
+
+When a term in `* Conflicts` is encountered again in a new import (or when the engineer
+explicitly revisits the thesaurus), present it for arbitration:
+
+```
+⚠️ CONFLICT — term "poteau" has two validated mappings at the same Scope (global):
+   1. montant_porteur      (validated in import-report-012)
+   2. montant_non_porteur  (validated in import-report-340)
+   This may be legitimate homonymy (same word, different meaning depending on context)
+   rather than an error. How should this import's occurrence of "poteau" be resolved?
+   a) Apply mapping 1 (montant_porteur) — this occurrence only
+   b) Apply mapping 2 (montant_non_porteur) — this occurrence only
+   c) One of the two mappings is wrong — correct it permanently (specify which)
+   d) Both are legitimate but depend on context — rescope them: assign mapping 1 to a
+      new context label (e.g. "client-x") and mapping 2 to another (e.g. "client-y").
+      Future imports must pass --context <label> to resolve "poteau" without asking
+      again; imports without --context keep hitting this conflict at global Scope
+      unless one of the two rescoped rows is also duplicated as `global`.
+```
+
+- **(a) or (b)** — this occurrence only: apply the chosen mapping to the current import's
+  element, but **leave the `* Conflicts` entry open** (status stays `⚠️ to arbitrate`) —
+  the ambiguity remains for future imports.
+- **(c)** — permanent correction: update the `* Aliases` row with the corrected mapping,
+  remove the row from `* Conflicts` (status `✅ resolved`), and record which of the two
+  prior imports is now considered to have been mis-mapped.
+- **(d)** — rescope: split the single `global`-Scope conflict into two distinct
+  `* Aliases` rows, each with its own context label as `Scope` (per "Thesaurus scoping
+  by context" above). Remove the row from `* Conflicts` (status `✅ resolved — rescoped`).
+  Going forward, only imports run without `--context` (or with a third, unrelated
+  context) would ever re-trigger ambiguity for this term — and only if a `global` row
+  is also added later for it.
+- Never resolve a `* Conflicts` entry by silently picking one side without engineer input.
 
 ### --align-review mode — stop here for human validation
 
@@ -1835,6 +2252,40 @@ Print: "[Phase 5] Sources reloaded — <N_elements> elements / <N_terms> aligned
 > files that will persist in `$SANDBOX/agent/` — not from an in-context summary that
 > could have silently compressed some detail.
 
+### Output JSON location
+
+The produced JSON (`project-import-<NNN>.json` in Single/Merge mode, or one such file
+per source in Batch mode — see below) is written to:
+
+```
+1. --out <filename> passed explicitly       → write exactly there (path as given by
+   the engineer — absolute or relative to the invocation's working directory).
+   Explicit override, highest priority, unchanged behaviour.
+
+2. Otherwise, if this import's Scope C != "global" (i.e. it was resolved from
+   $WORKSPACE/<C>/sources/ or from --context <C> — see "Scope derivation", Phase 1.2b)
+   → $SANDBOX/$WORKSPACE/<C>/project-import-<NNN>.json
+   (same <client>/ folder as this import's sources/ and reports/ — keeps everything
+   belonging to one client together, per the workspace/<client>/ conformance rule:
+   AGENTS.md § "$WORKSPACE/<client>/ convention" only requires sources/ and reports/
+   to exist — a project JSON sitting alongside them at the <client>/ root is exactly
+   the kind of "extra content" that convention explicitly tolerates)
+
+3. Otherwise (Scope = global — no client folder involved)
+   → $SANDBOX/agent/project-import-<NNN>.json  (unchanged legacy default)
+```
+
+`<NNN>` increments independently per Scope/location — a fresh `<client>/` folder starts
+its own `project-import-001.json`, it does not continue the numbering of `global`'s or
+another client's sequence.
+
+> ⚠️ This only concerns the **produced project JSON**. It does not change where any
+> other artefact is written: `import-report-<NNN>.org` / `align-review-<NNN>.org`
+> already follow their own Scope-aware rule (`$WORKSPACE/reports/` or
+> `$WORKSPACE/<C>/reports/` — see Phase 6), and thesaurus shards follow their own rule
+> (`agent/thesaurus/global.org` or `agent/thesaurus/<C>.org` — see Phase 1.2b). All
+> three now consistently key off the same Scope `C`.
+
 ### Construction de `_labels` (avant écriture du JSON)
 
 À partir de la table d'alignement rechargée (`.import-alignment-<NNN>.org`),
@@ -1955,7 +2406,10 @@ Once all ❓ items are resolved and critical gaps are filled:
 
 ### Batch Mode — one JSON per file
 
-Each file produces its own JSON named `project-import-<NNN>.json`.
+Each file produces its own JSON named `project-import-<NNN>.json`, written to the same
+location as any other mode — see "Output JSON location" above (Scope-aware: under
+`$WORKSPACE/<client>/` if the batch's sources were all under a `<client>/sources/`
+folder, per the Mixed-context batch guard already enforced for Scope derivation).
 The `_import.mode` field is `"batch"`.
 No cross-file merging — each JSON is self-contained and can be piped independently.
 
@@ -1964,12 +2418,15 @@ No cross-file merging — each JSON is self-contained and can be piped independe
 
 > **⚠️ Language rule — import report and thesaurus org files:** all section headings,
 > column labels, notes, gap descriptions, and out-of-scope explanations in
-> `import-report-<NNN>.org`, `align-review-<NNN>.org`, and `thesaurus.org`
+> `import-report-<NNN>.org`, `align-review-<NNN>.org`, and every thesaurus shard
+> (`agent/thesaurus/global.org`, `agent/thesaurus/<client>.org`, or the legacy
+> monolithic `thesaurus.org`)
 > must be written in the **corpus language**.
 > → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
-Create `$WORKSPACE/import-report-<NNN>.org` (`$WORKSPACE` = `$SANDBOX/workspace/`,
-created if absent):
+Create `$WORKSPACE/import-report-<NNN>.org` (`$WORKSPACE` = `$SANDBOX/workspace/`, or
+`$SANDBOX/workspace/<client>/reports/` if this import's Scope was resolved to a
+non-`global` client context — see "Scope derivation", Phase 1.2b — created if absent):
 
 ```org
 #+TITLE: Import report — <source> — <date>
@@ -2049,21 +2506,34 @@ document stays under the dedicated section regardless of format or mode
 ### Post-import — thesaurus consolidation (automatic)
 
 After writing the import report, perform a **thesaurus consolidation pass** to ensure
-`thesaurus.org` is fully up to date — even if Phase 3 already wrote entries incrementally,
-this pass catches any edge cases (batch mode, interrupted sessions, confirmed ⚠️ items).
+the relevant shard(s) (`agent/thesaurus/global.org` + `agent/thesaurus/<C>.org` if this
+import's Scope `C != global`) are fully up to date — even if Phase 3 already wrote
+entries incrementally, this pass catches any edge cases (batch mode, interrupted
+sessions, confirmed ⚠️ items). This pass never touches any other client's shard.
 
 #### Consolidation rules
 
 ```
-For each alignment produced in this import:
+For each alignment produced in this import (C = current import's context, `global` by default):
 
   ✅ certain (newly confirmed in this session):
-    → if NOT already in thesaurus Aliases: append to appropriate Aliases section
-    → if present in thesaurus Pending: move to Aliases, update confidence + source
+    → if a row with the same (term, Scope=C) already exists WITH THE SAME mapping:
+      update confidence + source + KB hash @ validation (see "KB hash tracking &
+      revalidation", Phase 1.2b)
+    → if a row with the same (term, Scope=C) already exists WITH A DIFFERENT mapping:
+      do NOT overwrite — append to * Conflicts (Scope=C) instead (see Deduplication
+      rule, Phase 3 § Immediate thesaurus update). The existing Aliases row stays untouched.
+    → if the term exists only at a *different* Scope (≠ C): not a conflict — append a
+      new independent (term, Scope=C) row (see "Thesaurus scoping by context")
+    → if NOT already in thesaurus Aliases at any Scope: append to appropriate Aliases
+      section with Scope=C, recording the current `.kb-hash` (or `—` if absent)
+    → if present in thesaurus Pending: move to Aliases at Scope=C, update confidence
+      + source + KB hash
 
   ⚠️ confirmed by engineer in this session:
-    → move from Pending to Aliases (type_element or slot values)
+    → move from Pending to Aliases (type_element or slot values) at Scope=C
     → record source import as current import-report-NNN
+    → same (term, Scope) conflict check as above applies
 
   ⚠️ newly seen (no prior record):
     → append to Pending (if not already present)
@@ -2076,20 +2546,24 @@ For each alignment produced in this import:
     → do NOT write to thesaurus (gaps are import-specific, not terminology mappings)
 ```
 
-**Deduplication:** before any write, verify the project term is not already present in
-the target section. Update existing rows rather than duplicating.
+**Deduplication / conflict rule:** before any write to a shard's `* Aliases`, verify
+whether `(project term, Scope)` is already present there.
+- Same mapping → update the existing row (confidence, source import) — no duplicate.
+- Different mapping → **do not overwrite** — this is a conflict, not a duplicate. Append
+  an entry to `* Conflicts` in `global.org` instead (full rule: Phase 3 § "Immediate
+  thesaurus update after each resolution" → Deduplication rule).
 
-**Update the `#+UPDATED:` header** of `thesaurus.org` with today's date after each
-consolidation pass.
+**Update the `#+UPDATED:` header** of every shard file touched during this
+consolidation pass (`global.org`, and `<C>.org` if applicable) with today's date.
 
 #### Consolidation summary (displayed to engineer)
 
 ```
-📚 Thesaurus updated — $SANDBOX/agent/thesaurus.org
-   ✅ N new aliases added   (type_element: n / slot values: n)
-   🔄 N pending → confirmed
-   ⬜ N out-of-scope added
-   📋 Thesaurus now covers M distinct project terms
+📚 Thesaurus updated — $SANDBOX/agent/thesaurus/ (Scope: <C>)
+   ✅ N new aliases added   (type_element: n / slot values: n) — shard: <C>.org or global.org
+   🔄 N pending → confirmed  (global.org)
+   ⬜ N out-of-scope added   (global.org)
+   📋 Shard <C>.org now covers M distinct project terms (global.org: M' terms)
 ```
 
 If nothing changed (all terms already in thesaurus) → display silently:
@@ -2100,24 +2574,64 @@ If nothing changed (all terms already in thesaurus) → display silently:
 ### Post-import — optional KB harvest (secondary)
 
 The thesaurus is the **primary** persistence mechanism for project terminology.
-`chorus-feed --harvest-aliases` is a **secondary, optional** step for promoting
-validated project terms into the normative KB — only useful when the same terminology
-is expected to appear in future projects across multiple sandboxes.
+`chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus/global.org` is a **secondary,
+optional** step for promoting validated project terms into the normative KB and
+purging them from the thesaurus (see `chorus-feed.md § Mode C — Alias Harvest`).
+**Only `global.org` is ever harvested** — client shards (`<client>.org`) are never
+harvest candidates, since the KB is shared across all clients and a client-scoped
+mapping must never leak into it (see `chorus-feed.md § Phase C1 — Scope guard`).
 
 ```
-N_promotable = count of ✅ thesaurus aliases not yet present in any KB <slug>.org Aliases section
+N_promotable      = count of ✅ Aliases rows in global.org not yet present in any KB <slug>.org
+N_total_aliases   = total row count across global.org's * Aliases — type_element
+                    + * Aliases — slot values (client shards excluded — they are never
+                    harvest candidates, so their size does not affect this heuristic)
+imports_since_last_harvest = number of distinct source-import references in global.org's
+                              * Aliases newer than #+LAST_HARVEST (see below)
 ```
 
-If `N_promotable > 0`, propose:
+**`#+LAST_HARVEST:` header:** `agent/thesaurus/global.org` carries a
+`#+LAST_HARVEST: <date | never>` header (alongside `#+UPDATED:`), set by
+`chorus-feed --harvest-aliases` (Phase C4) at every harvest, `never` until the first
+one. Client shards never carry this header. Use it to compute
+`imports_since_last_harvest`.
+
+**Recommendation thresholds** (heuristic — surface as a suggestion, never blocking):
+
+| Signal | Threshold | Rationale |
+|---|---|---|
+| `N_promotable` | ≥ 20 | Enough accumulated value to justify a harvest pass |
+| `N_total_aliases` (global.org only) | ≥ 100 | global.org read-in-full cost starts becoming noticeable at every import (client shards don't count — they aren't read unless their own Scope is active) |
+| `imports_since_last_harvest` | ≥ 15 | Long-running sandbox — periodic consolidation checkpoint, independent of volume |
+
+If **any** threshold is crossed, display:
 
 ```
-💡 Optional KB harvest — N thesaurus aliases could be promoted to the normative KB.
-   This is useful only if the same project terminology will appear in other sandboxes.
-   To promote: chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus.org
-   Skip if the mappings are project-specific or sandbox-specific.
+💡 KB harvest recommended — $SANDBOX/agent/thesaurus/global.org
+   ✅ Promotable now      : N_promotable aliases (not yet in KB)
+   📋 global.org size     : N_total_aliases confirmed aliases (client shards not counted)
+   🕒 Since last harvest  : imports_since_last_harvest imports (last: <#+LAST_HARVEST value>)
+   Reason(s): <list of thresholds crossed>
+
+   This is useful if the same project terminology is expected to recur in other
+   sandboxes sharing this KB, or simply to keep global.org from growing unbounded.
+   To promote: chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus/global.org
+   (harvested rows are automatically purged from global.org — see chorus-feed.md § C3.5)
+   Skip if the mappings are genuinely project-specific / sandbox-specific.
 ```
 
-If `N_promotable == 0` → skip silently.
+If no threshold is crossed → skip silently (no noise on small/young sandboxes).
+
+> ⚠️ This is a **suggestion only** — never auto-invoke `chorus-feed --harvest-aliases`
+> from within `chorus-import-project`. Harvesting is a deliberate, separate operation
+> the engineer must trigger explicitly.
+>
+> **Client shards have no harvest/growth signal of their own** — since they are never
+> harvested and only ever read when their own Scope is active, an individual client
+> shard growing large only affects imports for *that* client, never others. If a
+> single client shard becomes unusually large on its own, this is better addressed by
+> point #5 (Pending/Out-of-scope rotation — not yet implemented) than by harvesting,
+> since harvest cannot touch client-scoped rows by design.
 
 ### Phase 6-BATCH — Summary Report (batch mode only)
 
@@ -2150,7 +2664,7 @@ In addition to the individual reports, create `$WORKSPACE/import-batch-<NNN>.org
   Id conflicts        : N (merge mode only — N/A in batch)
 
 * New terms detected
-  Terms absent from thesaurus.org → newly added to thesaurus in this batch run
+  Terms absent from the thesaurus (appropriate shard) → newly added in this batch run
   | Source term | File | Alignment | Confidence | Thesaurus action |
   |---|---|---|---|---|
 
@@ -2164,11 +2678,12 @@ In addition to the individual reports, create `$WORKSPACE/import-batch-<NNN>.org
   (run the pipeline on each produced JSON)
 ```
 
-> **New terms**: if a source term received a ✅ alignment and was not already in
-> `thesaurus.org`, it has been automatically added to the thesaurus Aliases section.
+> **New terms**: if a source term received a ✅ alignment and was not already in the
+> thesaurus, it has been automatically added to the appropriate shard's Aliases
+> section (`global.org`, or the current Scope's `<client>.org`).
 > No manual action required — the thesaurus is the primary persistence mechanism.
-> Use `chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus.org` only if you want
-> to promote these mappings to the normative KB for cross-sandbox reuse.
+> Use `chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus/global.org` only if you
+> want to promote these mappings to the normative KB for cross-sandbox reuse.
 
 
 ## Phase 7 — Run the Pipeline (optional)

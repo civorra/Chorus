@@ -8,9 +8,15 @@
 >              **or** a document file requiring preprocessing (PDF, DOCX, XLSX/CSV, XML/HTML).
 >              If a document format is provided, the corresponding conversion skill is called automatically.
 > `--enrich`: activates Mode B (incremental enrichment) — absent by default
-> `--harvest-aliases <import-report.org>`: activates Mode C — reads a validated import report
->              and integrates its confirmed ✅ mappings into the KB `** Aliases` sections.
->              No `<corpus>` argument is needed in this mode.
+> `--harvest-aliases <global.org|import-report.org>`: activates Mode C — integrates
+>              confirmed ✅ mappings into the KB `** Aliases` sections. Accepts either
+>              `$SANDBOX/agent/thesaurus/global.org` (recommended — harvests all
+>              confirmed sandbox-wide aliases and **purges** them from the global shard
+>              once promoted; client shards `<client>.org` are never valid harvest
+>              sources — see Phase C1 Scope guard) or a single `import-report-NNN.org`
+>              (legacy/scoped mode — no purge). A legacy monolithic `thesaurus.org`
+>              (pre-sharding) is also accepted. No `<corpus>` argument is needed in
+>              this mode.
 >
 > **Single responsibility: enrich knowledge.**
 > This skill never generates infrastructure code (Feed, shell Agent, Expert, run.pl).
@@ -92,7 +98,7 @@ The `--enrich` flag is required to activate Mode B.
 |---|---|
 | No `--enrich` flag | **Mode A** — ignore any existing KB in the sandbox |
 | `--enrich` flag present | **Mode B** — read existing KB and enrich |
-| `--harvest-aliases <report>` present | **Mode C** — read KB + import report, integrate aliases only |
+| `--harvest-aliases <global.org\|report>` present | **Mode C** — read KB + source (global thesaurus shard or one import report), integrate aliases only, purge source if it is the global shard |
 
 > ⚠ Without `--enrich`, **never** read `agent/chorus/`, existing YAMLs, or
 > any other KB artifact from the sandbox — even if the `<sandbox-name>` directory already exists.
@@ -2204,9 +2210,27 @@ The KB is considered **converged** when ALL of the following are true simultaneo
 Used **only** when `--harvest-aliases` is present. No `<corpus>` argument is needed.
 The sandbox must exist and contain a KB (at least one `<slug>.org` file).
 
-**Purpose:** promote validated project-side terminology (from a past import) into the
-KB `** Aliases` tables permanently. Future `chorus-import-project` runs on this sandbox
-will resolve these terms at ✅ confidence without re-deriving them.
+**Purpose:** promote validated project-side terminology into the KB `** Aliases` tables
+permanently, and **purge it from the thesaurus once promoted** — so a mapping has
+exactly one authoritative source at any time (KB once harvested, thesaurus otherwise).
+Future `chorus-import-project` runs on any sandbox sharing this KB will resolve these
+terms at ✅ confidence without re-deriving them.
+
+**Two accepted sources** (the argument path decides which one applies):
+- `$SANDBOX/agent/thesaurus/global.org` — **recommended**: harvests every `✅ confirmed`
+  row currently in `* Aliases — type_element` and `* Aliases — slot values` of the
+  **global shard only** (see `chorus-import-project.md` § "Thesaurus storage layout —
+  sharded by Scope"). This is the only mode that also **purges** the source
+  (Phase C3.5) — because the global shard is the canonical, mutable memory for
+  sandbox-wide terminology. **Client shards (`agent/thesaurus/<client>.org`) are never
+  a valid harvest source** — passing one is a usage error (see Phase C1 guard below).
+  Legacy sandboxes with a monolithic `agent/thesaurus.org` (pre-sharding) are also
+  accepted as-is; see `chorus-import-project.md` § "Legacy monolithic thesaurus.org".
+- A specific `import-report-NNN.org` — legacy/scoped mode: harvests only the ✅ rows of
+  that one report. **Never purges anything** (an import report is a historical record,
+  not a mutable store) — the corresponding thesaurus entries stay in place. Prefer the
+  `global.org` source unless you specifically need to harvest a single past import
+  that predates the current thesaurus consolidation logic.
 
 ### Phase C0 — Read existing KB
 
@@ -2216,9 +2240,44 @@ des Frames, current `** Aliases` table). Build a fast-lookup map:
 alias_map : { canonical_kb_form → set(known_aliases) }
 ```
 
-### Phase C1 — Parse the import report
+### Phase C1 — Parse the harvest source
 
-Read `<import-report.org>`. Extract the **alignment table** rows where:
+**If the source is `$SANDBOX/agent/thesaurus/global.org`** (or a legacy monolithic
+`agent/thesaurus.org` predating sharding):
+Read `* Aliases — type_element` and `* Aliases — slot values`. Extract every row — in
+the sharded layout, `global.org` by construction only ever contains `Scope = global`
+rows, so no per-row Scope filtering is needed. In the legacy monolithic case, still
+filter on `Scope = global` (a pre-sharding thesaurus may carry mixed-Scope rows in a
+single file — see Scope guard below). By construction, only `✅ confirmed` mappings
+live in these sections (see `chorus-import-project.md` § Deduplication rule — a term
+with a conflicting mapping is diverted to `* Conflicts` and never reaches `* Aliases`).
+For each row, collect:
+```
+(project_term, kb_slot_or_type, kb_value, source_import, thesaurus_row_ref)
+```
+`thesaurus_row_ref` is kept to support the purge in Phase C3.5. **Never read `* Pending`,
+`* Out-of-scope`, or `* Conflicts`** — only confirmed Aliases rows are harvest candidates.
+
+> ⚠️ **Scope guard:** if the harvest source path is a client shard
+> (`agent/thesaurus/<client>.org`, i.e. any file under `agent/thesaurus/` other than
+> `global.org`) → **stop and report a usage error**, do not proceed:
+> ```
+> ⛔ Invalid harvest source: agent/thesaurus/client-alpha.org is a client-scoped shard.
+>    Only agent/thesaurus/global.org may be harvested — the normative KB is shared
+>    across every client, and a client-specific mapping must never be promoted into it
+>    (see chorus-import-project.md § "Thesaurus scoping by context").
+>    If some client-alpha.org rows should become sandbox-wide, first use the
+>    "Promoting a scoped mapping to global" mechanism (chorus-import-project.md) to
+>    move them into global.org as Scope=global rows, then harvest global.org.
+> ```
+> In the legacy monolithic case (single `thesaurus.org`, no sharding yet), rows with a
+> non-`global` `Scope` column value are simply **skipped** (not an error — the file
+> mixes scopes by construction pre-migration): report the count of skipped scoped rows
+> in the Phase C4 summary (`N_scoped_skipped`) so the engineer can decide whether any
+> of them should first be promoted to `global` before a subsequent harvest run.
+
+**If the source is a single `import-report-NNN.org`:**
+Extract the **alignment table** rows where:
 - Confidence column = `✅` (certain)
 - Decision column = confirmed (not rejected, not pending)
 
@@ -2254,17 +2313,53 @@ For each new alias, locate the correct `<slug>.org` file:
 - Insert the alias row into the `** Aliases` table of that slug's org file:
 
 ```org
-| <canonical_kb_form> | <project_term>  | harvested from import-report-NNN.org |
+| <canonical_kb_form> | <project_term>  | harvested from <source_import> |
 ```
 
 If `kb_form` maps to a `type_element` value, also add an `# alias:` comment in the
 `Catalogue des Frames` under the matching Frame:
 ```org
 *** montant_porteur
-    # alias: "poteau porteur" — harvested from import-report-003.org
+    # alias: "poteau porteur" — harvested from <source_import>
 ```
 
-If no owning slug is found for a mapping → log as unresolved and skip.
+If no owning slug is found for a mapping → log as unresolved and skip (do **not** purge
+this row from the thesaurus in Phase C3.5 — it stays as evidence pending manual review).
+
+### Phase C3.5 — Purge harvested entries from the source (global shard / legacy monolithic only)
+
+**Skip this phase entirely if the harvest source was a single `import-report-NNN.org`**
+— an import report is an immutable historical record and is never edited.
+
+For every alias successfully integrated into a KB file in Phase C3 (i.e. **excluding**
+rows logged as unresolved):
+- Remove the corresponding row from `* Aliases — type_element` or `* Aliases — slot
+  values` in the source file (`agent/thesaurus/global.org`, or the legacy monolithic
+  `agent/thesaurus.org` if sharding hasn't been adopted yet) using `thesaurus_row_ref`
+  collected in Phase C1.
+- This is the **only** point in the whole pipeline where the global shard shrinks —
+  everywhere else it is append-only or in-place-update-only.
+- Update the `#+UPDATED:` header of the source file.
+- Update the `#+LAST_HARVEST:` header of the source file to today's date — this is the
+  **only** phase in the whole pipeline allowed to write `#+LAST_HARVEST` (used by
+  `chorus-import-project.md § Post-import — optional KB harvest` to compute
+  `imports_since_last_harvest`). Client shards never carry this header and are never
+  touched here.
+
+**Rationale:** once a mapping is promoted to the normative KB, keeping a duplicate
+in the global shard serves no purpose — the thesaurus still takes priority over
+the KB (Phase 1.2b of `chorus-import-project.md`), so an un-purged duplicate would be
+permanently dead weight that never actually gets consulted, while still counting
+against the global shard's size. Purging keeps `global.org` scoped to genuinely
+not-yet-promoted sandbox-wide terminology. Client shards are entirely unaffected by
+harvest, by design (Scope guard, Phase C1) — they have their own, separate growth
+trajectory (see point #5 — Pending/Out-of-scope rotation — for a future, orthogonal
+mitigation).
+
+> ⚠️ Do **not** purge `* Pending`, `* Out-of-scope`, or `* Conflicts` rows here — Mode C
+> only ever reads and purges `* Aliases` sections (and only in the global shard).
+> Unresolved conflicts must go through the "Conflict resolution" flow in
+> `chorus-import-project.md`, never through harvest.
 
 ### Phase C4 — Harvest closing
 
@@ -2275,6 +2370,53 @@ rm -f $SANDBOX/.last-check-results.json
 ```
 
 2. Display a summary:
+
+**When source = `agent/thesaurus/global.org`** (sharded layout — the normal case):
+```
+✅ Alias harvest complete — $SANDBOX
+
+   Source          : agent/thesaurus/global.org (all confirmed Aliases)
+   ✅ rows parsed   : N_total
+   Already known   : N_known (skipped)
+   New aliases     : N_new integrated
+   Purged from global.org : N_new (promoted rows removed)
+   Unresolved (no owning slug) : N_unresolved (kept in global.org for manual review)
+
+   Modified KB files:
+     agent/chorus/<slug1>.org  (+N aliases)
+     agent/chorus/<slug2>.org  (+N aliases)
+
+   global.org now covers M distinct project terms (was M+N_new).
+   Client shards (agent/thesaurus/<client>.org) untouched — not harvest candidates.
+
+   Next chorus-import-project run on this or any other sandbox sharing this KB
+   will resolve these N terms at ✅ confidence without re-asking.
+```
+
+**When source = legacy monolithic `agent/thesaurus.org`** (pre-sharding sandbox):
+```
+✅ Alias harvest complete — $SANDBOX
+
+   Source          : agent/thesaurus.org (legacy monolithic, all confirmed Aliases, Scope=global only)
+   ✅ rows parsed   : N_total (global) — N_scoped_skipped scoped rows ignored (see below)
+   Already known   : N_known (skipped)
+   New aliases     : N_new integrated
+   Purged from thesaurus.org : N_new (promoted rows removed)
+   Unresolved (no owning slug) : N_unresolved (kept in thesaurus for manual review)
+   Scoped (not harvested) : N_scoped_skipped rows — client/context-specific, never
+                             promoted automatically (see "Scope guard", Phase C1)
+
+   Modified KB files:
+     agent/chorus/<slug1>.org  (+N aliases)
+     agent/chorus/<slug2>.org  (+N aliases)
+
+   thesaurus.org now covers M distinct project terms (was M+N_new).
+
+   Next chorus-import-project run on this or any other sandbox sharing this KB
+   will resolve these N terms at ✅ confidence without re-asking.
+```
+
+**When source = a single `import-report-NNN.org`:**
 ```
 ✅ Alias harvest complete — $SANDBOX
 
@@ -2282,6 +2424,7 @@ rm -f $SANDBOX/.last-check-results.json
    ✅ rows parsed  : N_total
    Already known  : N_known (skipped)
    New aliases    : N_new integrated
+   Thesaurus      : unchanged (import-report source — no purge)
 
    Modified KB files:
      agent/chorus/<slug1>.org  (+N aliases)
@@ -2292,7 +2435,9 @@ rm -f $SANDBOX/.last-check-results.json
 ```
 
 3. **Do not** regenerate YAML, Helpers.pm, Feed.pm, or any infrastructure file.
-   Mode C modifies only `<slug>.org` files — exclusively the `** Aliases` section.
+   Mode C modifies only `<slug>.org` files (exclusively the `** Aliases` section) and,
+   when sourced from the global shard (or a legacy monolithic `thesaurus.org`), that
+   source file itself (Phase C3.5 purge only) — never any client shard.
    The KB hash invalidation ensures `chorus-check` regenerates infrastructure on next run.
 
 | Artifact          | Convention                              | Example                           |
