@@ -275,8 +275,9 @@ use lib "$Bin/lib";                 # <Namespace>::*
 
 use <Namespace>::Feed   qw(load_projet);
 use <Namespace>::Expert;
-use JSON       ();
-use POSIX      qw(strftime);
+use JSON             ();
+use POSIX            qw(strftime);
+use File::Basename   qw(dirname);
 
 my $fichier = shift @ARGV
     or die "Usage : perl run.pl <fichier-project.json>\n";
@@ -446,8 +447,15 @@ print "─" x 62 . "\n";
 # ── Persist a structured JSON report (in addition to the text report above) ─
 # Enables scripted post-processing / CI integration / run-to-run diffing
 # without re-parsing the human-readable text output.
+#
+# Written into reports/ alongside the project file being processed (e.g.
+# workspace/<entity>/reports/), NOT at the sandbox root ($Bin) — this is the
+# layout expected by the Chorus Web app (see chorus-web/chorus.js §
+# scanFlatProject, which locates run-report-*.json via the project_file
+# field and groups it with the project's other reports under
+# workspace/<entity>/reports/).
 {
-    my $reports_dir = "$Bin/reports";
+    my $reports_dir = dirname($fichier) . "/reports";
     unless (-d $reports_dir) {
         mkdir $reports_dir or warn "Could not create $reports_dir: $!\n";
     }
