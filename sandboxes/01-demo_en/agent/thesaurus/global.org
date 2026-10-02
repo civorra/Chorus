@@ -1,0 +1,52 @@
+#+TITLE: Thesaurus — global — 01-demo_en
+#+SCOPE: global
+
+> Consolidated record of terminology alignment decisions made by
+> =chorus-import-project= across all imports in this sandbox (Scope=global —
+> no per-client sharding in use here). Seeded by import #001.
+
+* Aliases — ✅ confirmed mappings
+
+** Element types (type_element)
+   | Project-side term                           | Canonical type_element   | Confirmed by import |
+   |-----------------------------------------------+---------------------------+----------------------|
+   | bearing stud / structural stud / LBS         | load_bearing_stud         | 001                  |
+   | partition stud / NLBS / non-structural stud  | non_load_bearing_stud     | 001                  |
+   | bottom plate / sill plate                    | sole_plate                | 001                  |
+   | wall plate / head plate                      | top_plate                 | 001                  |
+   | roof rafter                                  | rafter                     | 001                  |
+   | floor joist / joist                          | joist                      | 001                  |
+   | insulation layer / insulation panel          | insulation                 | 001                  |
+   | VCL / vapour barrier / vapour check layer    | vapour_control_layer      | 001                  |
+
+** Slots
+   | Project-side term                              | Canonical slot              | Confirmed by import |
+   |---------------------------------------------------+-------------------------------+----------------------|
+   | strength grade / timber class / grade            | strength_class                | 001                  |
+   | MC% / moisture content                           | moisture_pct                   | 001                  |
+   | defl. / measured deflection / δ                  | deflection_mm                  | 001                  |
+   | clear span / L                                   | span_mm                        | 001                  |
+   | c/c / c-t-c / centre-to-centre / stud spacing    | spacing_mm                     | 001                  |
+   | storey height / floor height / clear height      | clear_height_mm                | 001                  |
+   | breadth / section width / b                      | width_mm                       | 001                  |
+   | section depth / section height / h               | depth_mm                       | 001                  |
+   | splice / end joint / longitudinal joint          | has_longitudinal_splice       | 001                  |
+   | thermal zone / climate class / zone              | climate_zone                   | 001                  |
+   | ep / e / thickness                               | thickness_mm                   | 001                  |
+   | λ / k value / conductivity                       | lambda                          | 001                  |
+   | Sd / vapour resistance / diffusion resistance    | sd_value                       | 001                  |
+   | SC / humidity class / exposure class             | service_class                  | 001                  |
+   | fire resistance / EI period / fire period / REI  | rei_period                     | 001                  |
+   | Euroclass / fire class / EN 13501 class          | reaction_class                 | 001                  |
+   | surface density / mass                           | surface_mass_kg_m2             | 001                  |
+   | board thickness / PB thickness                   | plasterboard_thickness_mm      | 001                  |
+   | multi-occupancy / collectif / shared dwelling    | collective                     | 001 (not encountered — carried over from fire.org) |
+
+* Pending (⚠️ / `_a_confirmer`)
+
+  (none from import #001 — every term resolved unambiguously against the
+  existing KB aliases in agent/chorus/{qualification,geometry,thermal,fire}.org)
+
+* Out-of-scope (⬜ exclusions)
+
+  (none)

@@ -1,0 +1,105 @@
+#+TITLE: Import report — 001 — DEMO-SITE-01B
+#+SANDBOX: 01-demo_en
+#+SOURCE: workspace/test-1/project-demo-01.md
+#+MODE: single
+#+DATE: 2026-10-01
+#+OUTPUT: agent/project-import-001.json
+
+* Summary
+
+- Source format: Markdown (.md) — used as-is, no auto-conversion needed.
+- Mode: Single (1 source → 1 JSON).
+- KB agents consulted: qualification, geometry, thermal, fire, compliance
+  (agent/chorus/{qualification,geometry,fire,thermal,compliance}.org).
+- Elements extracted: *111* (0 duplicate id, 0 conflict).
+- Project-level attribute: =collective = 0= (source states "single dwelling
+  (non-collective)" → Building Regs occupancy type, per fire.org §5.1).
+
+* Type distribution
+
+| type_element          | count |
+|------------------------+-------|
+| load_bearing_stud      |    25 |
+| non_load_bearing_stud  |    14 |
+| sole_plate             |    12 |
+| top_plate              |    12 |
+| rafter                 |    12 |
+| joist                  |    12 |
+| insulation             |    10 |
+| vapour_control_layer   |    14 |
+
+* Terminology alignment
+
+The source document (§9 "Summary Notes for Import") ships its own
+field-term → canonical-slot equivalence table, which was cross-checked
+**term for term** against the KB aliases already documented in each agent
+org file (qualification.org / geometry.org / thermal.org / fire.org
+Ontologie § Aliases) — **full agreement, no discrepancy found**.
+
+| Source term (examples)                         | Canonical KB slot / type_element | KB source           |
+|--------------------------------------------------+-----------------------------------+----------------------|
+| bearing stud / structural stud / LBS            | load_bearing_stud                 | qualification.org    |
+| partition stud / NLBS / non-structural stud      | non_load_bearing_stud             | qualification.org    |
+| bottom plate / sill plate                       | sole_plate                        | qualification.org    |
+| wall plate / head plate                         | top_plate                         | qualification.org    |
+| roof rafter                                     | rafter                            | qualification.org    |
+| floor joist / joist                             | joist                              | qualification.org    |
+| insulation layer / insulation panel             | insulation                         | qualification.org    |
+| VCL / vapour barrier / vapour check layer       | vapour_control_layer              | qualification.org    |
+| strength grade / timber class / grade           | strength_class                     | qualification.org    |
+| MC% / moisture content                          | moisture_pct                       | qualification.org    |
+| defl. / measured deflection / δ                 | deflection_mm                      | qualification.org    |
+| clear span / L                                  | span_mm                            | qualification.org    |
+| c/c / c-t-c / centre-to-centre / stud spacing   | spacing_mm                         | geometry.org          |
+| storey height / floor height / clear height     | clear_height_mm                    | geometry.org          |
+| breadth / section width / b                     | width_mm                           | geometry.org          |
+| section depth / section height / h              | depth_mm                           | geometry.org          |
+| splice / end joint / longitudinal joint         | has_longitudinal_splice            | geometry.org          |
+| thermal zone / climate class / zone             | climate_zone                       | thermal.org           |
+| ep / e / thickness                              | thickness_mm                       | thermal.org           |
+| λ / k value / conductivity                      | lambda                             | thermal.org           |
+| Sd / vapour resistance / diffusion resistance   | sd_value                           | thermal.org           |
+| SC / humidity class / exposure class            | service_class                      | thermal.org           |
+| fire resistance / EI period / fire period / REI | rei_period                         | fire.org              |
+| Euroclass / fire class / EN 13501 class         | reaction_class                     | fire.org              |
+| surface density / mass                          | surface_mass_kg_m2                 | fire.org              |
+| board thickness / PB thickness                  | plasterboard_thickness_mm          | fire.org              |
+
+No `_a_confirmer` flag was required — every field term in the source document
+maps unambiguously to an already-documented KB alias.
+
+* Gap analysis (Phase 4)
+
+No structural gap detected:
+- All mandatory incoming slots per agent (type_element + domain-specific
+  optional slots) are present wherever the source table/paragraph provides
+  the corresponding measurement.
+- Elements lacking REI/PB data (e.g. several `*-KO-C*` grade-rejection rows)
+  intentionally omit =rei_period=/=plasterboard_thickness_mm= — consistent
+  with fire.org's documented "skip silently if absent" rule; this is not a
+  gap, it reflects the source's own scope (each deficiency row isolates a
+  single non-conformity, not full fire-data).
+- =DERIVED= slots: none declared in the consulted KB org files for this
+  sandbox.
+- Inter-frame link slots (`*_ref`): none applicable — all elements are
+  independent inspection items, no frame relationships in this corpus.
+
+* Traceability note
+
+The 111 site-reference IDs and their attribute values match **exactly**
+(byte-for-byte on all canonical fields) the pre-existing
+=project-scale.json= at the sandbox root (header comment: "111 elements
+stress test for pipeline termination"). This strongly indicates
+=project-demo-01.md= is the narrative/report form of the same dataset used
+to build that stress fixture. The alignment produced here was independently
+derived from the source document's own tables and cross-verified against
+=project-scale.json= as a consistency check — full agreement confirms the
+alignment is correct, it was not copied blindly.
+
+* Output
+
+- JSON: =agent/project-import-001.json= (Scope: global — no
+  =$WORKSPACE/<client>/= convention detected for this source path).
+- Thesaurus: no new alias created (all terms already documented in the
+  per-agent KB org files) — see =agent/thesaurus/global.org= for the
+  consolidated record of this import's confirmed mappings.
