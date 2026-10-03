@@ -1,6 +1,7 @@
 # Skill — chorus-check
 
 > Trigger: `chorus-check <sandbox-name> <fichier-project> [--all] [--explain] [--summary]`
+> Trigger: `chorus-check <sandbox-name> --from-report <run-report-path> [--explain] [--summary]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing the KB and YAML rules (produced by `chorus-feed`)
@@ -16,6 +17,13 @@
 >              figures, substantive vs. mapping-anomaly breakdown, recommendation) — see
 >              § Option `--summary` below. Can be combined with `--explain` (recommended)
 >              or used standalone.
+> `--from-report <path>`: **pipeline-free mode** — skip Phases 0–6 entirely; read
+>                         element data directly from an existing run-report JSON.
+>                         `<path>` is relative to `$SANDBOX`
+>                         (e.g. `workspace/eviden/reports/run-report-20261002-172839.json`).
+>                         Must be combined with `--explain` and/or `--summary`.
+>                         `<fichier-project>` must be **omitted** in this mode.
+>                         → See `## Option --from-report` below.
 >
 > **Single responsibility: validate a project against the knowledge base.**
 > The project file is **runtime input data** — it does not influence
@@ -1562,3 +1570,72 @@ when the KB has not changed since the last `chorus-check --all`.
 > The KB and Helpers are stable and cumulative.
 > Infrastructure artefacts (Feed, Agent shell, Expert, run.pl)
 > are regenerated at each `chorus-check`.
+
+
+## Option `--from-report` — Analyse sans relance du pipeline
+
+> **Trigger webapp :** bouton "🔎 Analyse" affiché dans la modale run-report quand
+> aucun fichier `explain-*` / `synthese-*` lié par timestamp n'existe pour ce run.
+> **Usage manuel :** `chorus-check <sandbox-name> --from-report <path> --summary --explain`
+
+Ce mode permet de produire les rapports `--explain` et/ou `--summary` à partir
+d'un run-report JSON **déjà existant**, sans rejouer le pipeline (pas de `run.pl`,
+pas d'appel MCP, pas de lecture de la KB org ni des fichiers YAML).
+
+> ⛔ **Interdictions strictes en mode `--from-report` :**
+> - Ne jamais appeler `chorus_process`, `chorus_engine_create` ou `chorus_expert_create`
+> - Ne jamais exécuter `perl run.pl`
+> - Ne jamais lire `agent/chorus/*.org` ni `rules/**/*.yml` (les données sont dans le JSON)
+> - Ne jamais régénérer `Feed.pm`, `Agent/*.pm`, `Expert.pm`
+
+### Phase FR0 — Chargement du run-report
+
+1. Lire `$SANDBOX/<run-report-path>` (fichier JSON produit par un précédent `chorus-check`)
+2. Extraire `$RUN_TIMESTAMP` du nom de fichier :
+   ```
+   run-report-(\d{8}-\d{6})\.json  →  $RUN_TIMESTAMP = "YYYYMMDD-HHMMSS"
+   ```
+3. Extraire depuis le JSON :
+   - `elements[]` → tableau des éléments avec leurs verdicts, motifs, `_rule_trace`
+   - `project_file` → déduire `<project-slug>` (basename sans `.json`)
+   - `pipeline_solved` → équivalent du statut SOLVED/FAILED de Phase 6
+   - `n_total`, `n_conforme`, `n_non_conforme`, `n_incertain` → stats de Phase 6.1
+
+4. Construire le contexte équivalent à la sortie de Phase 6 :
+   ```
+   $phase6_elements  = data extracted from elements[]
+   $phase6_solved    = json.pipeline_solved
+   $phase6_stats     = { n_total, n_conforme, n_non_conforme, n_incertain }
+   $project_slug     = basename(json.project_file, ".json")
+   ```
+
+> Si `elements[]` est absent ou vide → arrêter et afficher :
+> `"[--from-report] run-report vide ou invalide — impossible de générer l'analyse."`
+
+### Phase FR1 — Exécution de --explain et/ou --summary
+
+Aller directement aux phases d'analyse en utilisant les données de Phase FR0
+**à la place** de la sortie normale de Phase 6 :
+
+- **`--explain`** → exécuter Phase E0 → E1 → E2 → E3 → E4
+  - Phase E0 : lire `$SANDBOX/agent/chorus/index.org` pour le recap KB uniquement
+    (nécessaire pour le header canonique — lecture seule, aucune génération)
+  - Phase E1 : `TARGETS` = éléments de `$phase6_elements` avec `conforme == 'NON_CONFORME'`
+    ou `a_confirmer == true`
+  - Phase E2–E3 : reconstruction depuis `_rule_trace` déjà présent dans le JSON
+    (aucune lecture de règles YAML nécessaire — les traces sont déjà résolues)
+  - Phase E4 : écrire `$WORKSPACE/explain-<project-slug>-<RUN_TIMESTAMP>.md`
+
+- **`--summary`** → exécuter Phase E0 → S1 → S2
+  - Phase S1 : calculer `n_subst`, `n_map`, `taux` depuis `$phase6_elements`
+  - Phase S2 : écrire `$WORKSPACE/synthese-<project-slug>-<RUN_TIMESTAMP>.md`
+
+> `$RUN_TIMESTAMP` extrait en Phase FR0 garantit que les fichiers produits partagent
+> le même suffixe que le `run-report-<RUN_TIMESTAMP>.json` source — le lien par
+> nom de fichier (convention MVP0) est ainsi rétabli automatiquement.
+
+Print en fin d'exécution :
+```
+[from-report] explain → workspace/.../explain-<slug>-<RUN_TIMESTAMP>.md
+[from-report] synthese → workspace/.../synthese-<slug>-<RUN_TIMESTAMP>.md
+```
