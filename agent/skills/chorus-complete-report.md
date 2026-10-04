@@ -1,14 +1,31 @@
 # Skill — chorus-complete-report
 
-> Trigger: `chorus-complete-report <sandbox-name> <project-slug> [--source <file>]`
+> Trigger: `chorus-complete-report [<sandbox-name>] [<entity>] [--slug <slug>] [--source <file>]`
 > Agent: `architect`
 >
-> `<sandbox-name>`: sandbox containing the compliance reports to enrich
-> `<project-slug>`: slug identifying the `explain-<slug>-NNN.md` / `synthese-<slug>-NNN.md`
->                   pair to enrich (matches the naming convention of `chorus-check --explain/--summary`)
-> `--source <file>`: optional explicit override of the original source document/dataset
->                     to cross-check against, if automatic resolution (Phase C1) fails
->                     or is ambiguous
+> All four arguments are **optional when already available from context**
+> (e.g. when invoked from a chorus-web ECA terminal that already knows the
+> current sandbox and entity).
+>
+> `<sandbox-name>` : sandbox containing the reports to enrich.
+>                    Default: current sandbox from context.
+>
+> `<entity>`       : entity sub-folder under `workspace/` (e.g. `test-1`, `eviden`).
+>                    Default: current entity from context.
+>
+> `--slug <slug>`  : timestamp slug of the run-report to process,
+>                    i.e. the `YYYYMMDD-HHMMSS` part of
+>                    `workspace/<entity>/reports/run-report-<slug>.json`.
+>                    Default: most recent `run-report-*.json` for the entity.
+>                    Example: `--slug 20261002-110429`
+>
+> `--source <file>`: filename of the original source document to cross-check against,
+>                    looked up in `workspace/<entity>/sources/<file>`.
+>                    **Optional** — auto-resolved from `_import.source_file` in the
+>                    project JSON (see Phase C0 step 4) when not provided explicitly.
+>                    Example: `--source cbom-01.json`
+>
+> **Full example:** `chorus-complete-report 08-ANSSI-PG-083_MULTI-SOURCES test-1 --slug 20261002-110429 --source cbom-01.json`
 >
 > **Single responsibility:** for every element left uncertain (`❓ incertain` /
 > `_a_confirmer`) by a prior `chorus-check --explain`/`--summary` run, go back to the
@@ -21,7 +38,7 @@
 > Prerequisite: `chorus-check <sandbox-name> <fichier-project> --explain --summary`
 > must have already produced `$WORKSPACE/reports/explain-<slug>-NNN.md` (and, if
 > `--summary` was used, `$WORKSPACE/reports/synthese-<slug>-NNN.md`) — resolved as
-> `$SANDBOX/$WORKSPACE/reports/`.
+> `$SANDBOX/workspace/<entity>/reports/`.
 >
 > ⚠️ **This skill is domain- and format-agnostic.** It must never hardcode assumptions
 > about a specific source format (JSON schema, PDF structure, spreadsheet layout, or
@@ -60,15 +77,48 @@ compliance verdicts themselves.
 
 ## Phase C0 — Locate inputs
 
-1. Read `$WORKSPACE/reports/explain-<project-slug>-NNN.md` (resolved as
-   `$SANDBOX/$WORKSPACE/reports/`, highest `NNN` if several exist).
-   If absent → stop: `"No explain-<project-slug>-*.md found — run chorus-check --explain first."`
-2. If `$WORKSPACE/reports/synthese-<project-slug>-NNN.md` exists (same `NNN` or the
-   highest available), load it too — it will be patched in parallel (Phase C4).
-3. Extract, from the `explain-*.md` header (`## 📚 KB & Project` block, itself
-   copied verbatim from `chorus-check.md § Phase E0`), the **Origin** line —
-   this identifies the project file and, if resolvable, the original source
-   document/dataset.
+### Step 1 — Resolve the run-report
+
+From `--slug <slug>` (or most-recent fallback):
+```
+$SANDBOX/workspace/<entity>/reports/run-report-<slug>.json
+```
+Read `project_file` from this JSON → absolute path of the project JSON
+(e.g. `.../workspace/<entity>/projet-import-cbom-004-CDX.json`).
+
+If absent → stop: `"run-report-<slug>.json not found in workspace/<entity>/reports/ — check --slug value."`
+
+### Step 2 — Locate explain / synthese reports
+
+The project-slug is `basename(project_file)` without `.json`.
+
+- `$SANDBOX/workspace/<entity>/reports/explain-<project-slug>-<slug>.md`
+  (exact timestamp match preferred; fall back to highest available NNN).
+  If absent → stop: `"No explain-<project-slug>-*.md found — run chorus-check --explain first."`
+- `$SANDBOX/workspace/<entity>/reports/synthese-<project-slug>-<slug>.md`
+  (same matching logic, optional — patch if present).
+
+### Step 3 — Extract KB & Project context
+
+From the `explain-*.md` header (`## 📚 KB & Project` block), read the **Origin**
+line — confirms the project file and original source document reference.
+
+### Step 4 — Resolve the source document
+
+**If `--source <file>` is provided explicitly:**
+Look up `$SANDBOX/workspace/<entity>/sources/<file>`. If absent → stop with a clear error.
+
+**Auto-resolution (no `--source`):**
+Read `_import.source_file` from the project JSON. Two path conventions coexist:
+
+| `_import.source_file` value | Resolution |
+|---|---|
+| `<entity>/<file>` (e.g. `eviden/cbom.cdx.json`) | `$SANDBOX/workspace/<entity>/sources/<file>` |
+| Path starting with `workspace/` or `/` | Resolve relative to `$SANDBOX` root |
+
+Try each candidate in order; use the first that exists on the filesystem.
+If no candidate resolves → stop:
+`"⛔ source document unresolved — add --source <file> (looked up in workspace/<entity>/sources/)."`
 
 
 ## Phase C1 — Extract target elements
@@ -88,21 +138,15 @@ For each target element, record:
   already states *why* the value is uncertain from the import's point of view
 
 
-## Phase C2 — Resolve the original source document
+## Phase C2 — Confirm the source document
 
-> Reuse the exact provenance-resolution logic already defined in
-> `chorus-check.md § Phase E0.b` (steps 1–5: provenance header, `# ORIGINAL:`
-> convention, fallback heuristic on basename). Do not reimplement it — call it
-> out and apply it identically here, so both skills always agree on what the
-> "original document" is for a given project.
+The source document was already resolved in Phase C0 step 4.
 
-If `--source <file>` was passed explicitly, use it instead of automatic
-resolution and note this override in the final report.
+Note in the cross-check output whether `--source` was provided explicitly or
+auto-resolved from `_import.source_file`. If auto-resolved, quote the
+`_import.source_file` value and the resolved filesystem path for traceability.
 
-If no source can be resolved (neither automatically nor via `--source`) →
-stop for the affected element(s) and report:
-`"⛔ <id>: original source document unresolved — provide --source <file> or add a '# ORIGINAL:' header to the intermediate corpus file."`
-Do not fabricate a cross-check without an identified source.
+Do not fabricate a cross-check without a confirmed source file on the filesystem.
 
 
 ## Phase C3 — Format-agnostic cross-check protocol
@@ -249,12 +293,15 @@ No HTML/PDF is generated for this file — the `.md` is the authoritative output
 Print a short summary to the conversation (not written to any file):
 
 ```
-[chorus-complete-report] <sandbox-name> / <project-slug>
+[chorus-complete-report] <sandbox-name> / <entity> / <project-slug>
+  Run-report  : workspace/<entity>/reports/run-report-<slug>.json
+  Source      : workspace/<entity>/sources/<file>  [auto | --source override]
   Elements cross-checked : N
     ✅ Source limitation confirmed : n1
     🛠️ Pipeline artefact detected  : n2
     ❓ Still unresolved             : n3
-  Reports patched : workspace/reports/explain-<slug>-NNN.md, workspace/reports/synthese-<slug>-NNN.md
+  Reports patched : workspace/<entity>/reports/explain-<project-slug>-<slug>.md
+                    workspace/<entity>/reports/synthese-<project-slug>-<slug>.md  (if present)
   Backups : agent/.backups/*.bak-<timestamp>
 ```
 
