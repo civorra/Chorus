@@ -83,10 +83,16 @@ From `--slug <slug>` (or most-recent fallback):
 ```
 $SANDBOX/workspace/<entity>/reports/run-report-<slug>.json
 ```
-Read `project_file` from this JSON → absolute path of the project JSON
-(e.g. `.../workspace/<entity>/projet-import-cbom-004-CDX.json`).
+Read `project_file` from this JSON → path of the project JSON.
 
-If absent → stop: `"run-report-<slug>.json not found in workspace/<entity>/reports/ — check --slug value."`
+> ⚠️ `project_file` is written by `run.pl` with the **container-internal path**
+> (e.g. `/chorus/sandboxes/<sb>/workspace/<entity>/<slug>.json`).
+> Remap to the real filesystem path by replacing the `/chorus/sandboxes/` prefix
+> with `$SANDBOXES/`, or simply extract `workspace/<entity>/<slug>.json` as a
+> relative path and resolve it under `$SANDBOX/`.
+
+If the run-report or `project_file` is absent → stop:
+`"run-report-<slug>.json not found in workspace/<entity>/reports/ — check --slug value."`
 
 ### Step 2 — Locate explain / synthese reports
 
