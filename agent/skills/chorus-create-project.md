@@ -120,6 +120,49 @@ For each agent, apply this two-step sequence:
 > ```
 > Do not generate a JSON that will silently produce 0 processed elements.
 
+> ⛔ **`type_element` VALUE guard — never use the Frame/concept name itself as a
+> `type_element` value.** KB org files name their domain concepts generically in
+> prose and section headings (e.g. `** sfr_component`, `** sar_element` — these
+> are **Frame/category labels for documentation purposes only**). The actual
+> `type_element` **value** every rule's `FIND.filtre` matches against is always
+> a concrete domain identifier matching the pattern documented immediately
+> below that heading (e.g. `*** type_element =~ /^FAU_/` → real values are
+> `FAU_GEN.1`, `FAU_GEN.1.1`, `FAU_ADP_EXT.1`, …never the literal string
+> `"sfr_component"` or `"sfr_element"`). Before writing any element's
+> `type_element` value, re-read the KB org's own `*** type_element =~ /.../`
+> or `*** type_element = "<value>"` line for that Frame section and use a
+> value that **actually matches that pattern/equality** — never the section
+> heading's own label.
+> ```json
+> // ⛔ WRONG — "sfr_component" is the KB's own Frame-category label, never a
+> // real type_element value; no rule's filtre ever matches this literal string
+> { "id": "E-FAU_STG.2-OK-01", "type_element": "sfr_component", "besoin_conformite": 1 }
+>
+> // ✅ CORRECT — a concrete domain identifier matching the KB's own
+> // documented pattern (*** type_element =~ /^FAU_/)
+> { "id": "E-FAU_STG.2-OK-01", "type_element": "FAU_STG.2", "besoin_conformite": 1, "dependances_declarees": "FAU_STG.1" }
+> ```
+> **Mandatory pre-write check:** for every `type_element` value about to be
+> written, confirm it independently against **at least one** rule's own
+> `FIND.filtre` regex/equality in `$SANDBOX/rules/<slug>/*.yml` — if no rule's
+> filtre would ever match the literal value you are about to write, it is
+> wrong, regardless of how plausible it looks next to the KB's own section
+> headings.
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** `project-edges.json` (106
+> elements, generated for the `edges` boundary-value coverage strategy) used
+> `type_element` values `sfr_component`, `sfr_element`, `sar_component`,
+> `sar_element`, `st` — literal Frame-category labels copied from KB org
+> section headings — for **100% of its elements**. Every one of the 21
+> agents' `FIND.filtre` regexes target real CC identifiers
+> (`^FAU_[A-Z]+\.\d+$`, `^ASE_(INT|CCL|...)\.\d+$`, etc.) and never match
+> any of these 5 literal category names — so every single element in the
+> file was invisible to every rule in the pipeline, `pipeline_solved=False`,
+> `n_conforme=0`. Not a crash, not a KB defect — a generation-time mistake
+> that silently produced a structurally unprocessable project file. Caught
+> only by comparing `project-edges.json` against the sandbox's other 3
+> strategy files (all of which correctly used real CC identifiers) and
+> noticing the systematic absence of any recognisable domain identifier.
+
 > **Enum-valued slots — rule-coverage guard (not just org-declared domain).** For any
 > slot whose value is an enum/closed set (e.g. `mode_generation`, `usage`, `classe_*`) and
 > that gates which rule fires via a `CONDITION`/`filtre` string match (`eq`, `=~ /.../`, a
@@ -571,6 +614,28 @@ Check:
       of the sandbox rules. A mismatch → SOLVED pipeline with 0 processed elements.
       If a mismatch is detected here at validation time → do not run `perl run.pl`;
       report the mismatch and correct the YAML rules or the JSON key first.
+- [ ] ⛔ **`type_element` VALUE cross-check (distinct from the name check above):** for
+      every distinct `type_element` **value** used in the file, confirm it actually
+      matches at least one rule's `FIND.filtre` regex/equality somewhere in
+      `$SANDBOX/rules/*/*.yml` — not just that the slot name is correct, but that the
+      literal value itself is one any rule would ever select. A value copied from a KB
+      org section heading (Frame/category label, e.g. `sfr_component`, `sar_element`)
+      rather than from that same section's own `*** type_element =~ /.../` pattern
+      produces a file where every element is silently invisible to the whole pipeline —
+      see `chorus-create-project.md` § "type_element VALUE guard" above for the full
+      incident writeup. Quick mechanical check:
+      ```bash
+      # Every distinct type_element value in the JSON...
+      python3 -c "import json; d=json.load(open('<fichier.json>')); print('\n'.join(sorted(set(e.get('type_element','') for e in (d if isinstance(d,list) else d.get('elements',d))))))" \
+        | while read -r val; do
+            grep -rq "$val" "$SANDBOX/rules/"*/*.yml \
+              || echo "⚠️  '$val' matches no literal substring in any rule's FIND.filtre — verify it matches a regex pattern instead, or it is likely wrong"
+          done
+      ```
+      (This substring check is a coarse first pass — regex-pattern values like `FAU_GEN.1`
+      won't literally appear in a `filtre` written as `/^FAU_/`, so treat any flagged value
+      as a prompt to manually verify against the agent's own `FIND.filtre`, not as a
+      definitive verdict.)
 - [ ] All types are present in `%SLOTS_REQUIS` of `Feed.pm`
   (or verify in the `Catalogue des Frames` of the KB — equivalent source).
   ⚠️ `%SLOTS_REQUIS` must contain **INPUT-REQUIRED slots only** — the targeting slot plus
