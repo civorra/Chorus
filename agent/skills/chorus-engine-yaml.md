@@ -1119,6 +1119,60 @@ across the full tree before falling back to _DEFAULT.
       pipeline (very slow, incomplete) — the aggregate rule's own missing-sibling
       case was the actual root cause, not agent interaction. Fixed by adding the
       bounded-wait pattern above to all 7 copies.
+- [ ] ⛔ **`fmatch(slot => '...')` inside an `EXCEPTION` MUST be filtered down to
+      the agent's own targeted Frame family before testing any domain slot —
+      an unfiltered `fmatch` call returns EVERY Frame in the project carrying
+      that slot, not just this agent's own.** This is distinct from the
+      already-documented "never use global `fmatch` in `FIND`" rule (which
+      causes an infinite loop) — `fmatch` in `EXCEPTION`/`CONDITION` is
+      structurally safe (the rule itself still only runs once per cycle per
+      scope combination), but an unfiltered scan silently makes the guard
+      permanently true: Frames of unrelated types will virtually never carry
+      this agent's own aggregate slot, so a check like "is there any Frame
+      still missing `my_agent_result`?" always finds one (any SFR element,
+      any other agent's component, …), blocking the rule forever.
+      ```yaml
+      # ⛔ WRONG — fmatch scans the WHOLE project; any unrelated Frame
+      # missing sar_component_declared (which it never has, by design)
+      # permanently blocks this agent's own phase-done publication
+      EXCEPTION: scalar(grep { !defined $_->{sar_component_declared} } Chorus::Frame::fmatch(slot => 'type_element')) > 0
+
+      # ✅ CORRECT — filter to this agent's own Frame family FIRST,
+      # exactly like the agent's own FIND filtre
+      EXCEPTION: 'scalar(grep { !defined $_->{sar_component_declared} } grep { $_->{type_element} =~ /^ACO_(COR|DEV|REL|CTT|VUL)\.\d+$/ } Chorus::Frame::fmatch(slot => "type_element")) > 0'
+      ```
+      **Incident (2026-10, sandbox `05-CC-3.1.4`):** this exact unfiltered
+      pattern, copy-pasted across all 7 SAR class agents' own
+      `mark-phase-done-and-terminate` rule, meant none of them ever published
+      their `*_phase_done` BOARD flag on any project — the downstream
+      aggregation agent (`conformance-ctrl`) never saw its own completion
+      gate satisfied, never reached a genuine `solved()`. The 11 SFR class
+      agents' equivalent rules were correctly filtered from the start —
+      comparing the two templates side by side (same agent position in the
+      pipeline, same rule intent) is what exposed the missing `grep` in the
+      SAR copies.
+- [ ] ⛔ **A rule's `FIND.attribut` must name a slot that genuinely exists on
+      the Frames it targets — verify against the actual project data model,
+      never assume from the rule's own INPUTS-header prose.** A `FIND` whose
+      `attribut:` references a slot no project Frame ever carries makes the
+      rule permanently dormant: zero candidates, `_APPLY` never runs, no
+      error, no warning — indistinguishable from "this rule simply never
+      needed to fire yet" until a downstream rule's own `CONDITION` on this
+      rule's output slot is traced back to the source.
+      **Incident (2026-10, sandbox `05-CC-3.1.4`):** `sar-eal-package`'s own
+      `eal-claim-grammar` rule targeted `attribut: eal_claim` — a slot that
+      does not exist anywhere in the sandbox's data model (the EAL claim
+      string is carried directly as the Frame's own `type_element`, e.g.
+      `"EAL4"` or `"EAL4 augmented with ALC_FLR.3"`, confirmed by every
+      *downstream* rule in the same agent correctly reading
+      `eal_claim_grammar_ok` rather than `eal_claim`). The rule never fired
+      on any project — not a crash, just permanently zero candidate Frames —
+      stalling the entire downstream chain (R03's own `CONDITION` on
+      `eal_claim_grammar_ok`, then R06's BOARD publication, then
+      `conformance-ctrl`'s own completion gate). Caught by comparing the rule
+      against its own sibling rules in the same agent (which already read the
+      *correctly*-named derived slot) and against the project's own raw JSON
+      data for that Frame type.
 - [ ] **Always** add `EXCEPTION` for idempotence — **two patterns:**
       - **Pattern 1** (`defined $var->{slot_pose}`) for classification rules — "first writer wins".
         Once any rule writes the slot, all rules with the same guard are blocked on this Frame.

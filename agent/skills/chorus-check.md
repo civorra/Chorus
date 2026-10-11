@@ -532,6 +532,107 @@ grep -rl "^TERMINAL: solved$\|^TERMINAL: failed$" $SANDBOX/rules/*/*.yml
 > sandbox catches the same bug class at generation time — it is a single grep
 > and a count comparison, effectively free to run on every `chorus-check` pass.
 
+### Step 5g — Unfiltered `fmatch` in `EXCEPTION`/`CONDITION` scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** an `EXCEPTION`/`CONDITION` that
+> calls `Chorus::Frame::fmatch(slot => 'type_element')` (or any similarly
+> broad slot) without first narrowing the result to the agent's own Frame
+> family tests a domain slot against **every** Frame in the project — Frames
+> of unrelated types will essentially never carry that slot, so the guard
+> reads as permanently true (or permanently false, depending on polarity),
+> silently blocking the rule on every cycle. No crash, no warning — the rule
+> simply never fires, and whatever it was supposed to publish (a BOARD
+> phase-done flag, most commonly) never happens.
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+# Find EXCEPTION/CONDITION lines calling fmatch() without an immediately
+# preceding `grep { $_->{type_element} =~ ... }` (or equivalent family
+# filter) between the fmatch() call and the outer grep that tests the
+# domain slot.
+grep -rnE "(EXCEPTION|CONDITION):.*fmatch\(" $SANDBOX/rules/*/*.yml \
+  | grep -v "grep[^)]*type_element"
+```
+
+- **No matches** → every `fmatch` call in a guard already filters by Frame
+  family before testing a domain slot → proceed to Phase 2.
+- **Matches found** → open each one and confirm whether the missing filter
+  is a genuine bug (the intent was clearly to scope to this agent's own
+  Frame family, matching its own `FIND.filtre`) or a deliberate
+  pipeline-wide check (rare — e.g. a true cross-agent gate reading a BOARD
+  slot instead, which does not need Frame filtering at all since BOARD is
+  not Frame-scoped). For the former, add the same family filter already used
+  by the agent's own `FIND` clause, as a `grep { $_->{type_element} =~ /.../ }`
+  immediately wrapping the `fmatch()` result before the slot-presence test.
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** all 7 SAR class agents'
+> `mark-phase-done-and-terminate` rule called `Chorus::Frame::fmatch(slot =>
+> 'type_element')` with no family filter, then tested
+> `!defined $_->{sar_component_declared}` across the result — since that slot
+> is never set on SFR Frames, FAU/FCO/etc. elements, or any other agent's own
+> components, the guard was permanently true for all 7 agents, and none of
+> them ever published their own `*_phase_done` BOARD flag. The sibling SFR
+> agents' equivalent rules were correctly filtered from the start — this
+> check exists so the next sandbox catches the same asymmetry mechanically,
+> rather than relying on a side-by-side comparison with a correctly-written
+> sibling agent to notice it.
+
+### Step 5h — `FIND.attribut` slot-existence cross-check (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** a `FIND.attribut:` naming a slot
+> that no project Frame ever carries makes the rule permanently dormant —
+> zero candidate Frames, `_APPLY` never runs, no error, no warning. This is
+> structurally identical to the canonical `type_element` vs `element_type`
+> mismatch pitfall already documented (Phase 1.2 ⛔ note) but can happen on
+> **any** targeting slot, not just `type_element` — any rule whose `FIND`
+> targets a derived/internal slot name that drifted from what upstream rules
+> or project data actually produce.
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+# Collect every FIND.attribut value used across the sandbox…
+grep -rhA1 "^FIND:" $SANDBOX/rules/*/*.yml | grep "attribut:" | sed 's/.*attribut:\s*//' | sort -u > /tmp/find_attributs.txt
+
+# …then for each one, confirm it is either:
+#  (a) 'type_element' (always valid — the canonical targeting slot), or
+#  (b) written by at least one rule's ACTION somewhere in the sandbox
+#      ($x->set('<attribut>', ...)), or
+#  (c) present as a literal key in at least one project JSON fixture
+#      (grep -l "\"<attribut>\"" $SANDBOX/*.json $SANDBOX/workspace/*/*.json)
+# A FIND.attribut satisfying none of (a)/(b)/(c) is a strong signal of a
+# dangling/renamed slot reference — investigate before proceeding.
+while read -r attr; do
+  [ "$attr" = "type_element" ] && continue
+  if ! grep -rq "set('$attr'" "$SANDBOX/rules/"*/*.yml \
+     && ! grep -rlq "\"$attr\"" "$SANDBOX/"*.json "$SANDBOX/workspace/"*/*.json 2>/dev/null; then
+    echo "⚠️  FIND.attribut '$attr' — never written by any rule, never a literal project JSON key"
+  fi
+done < /tmp/find_attributs.txt
+```
+
+- **No warnings printed** → every non-`type_element` `FIND.attribut` is
+  traceable to either a rule's own `ACTION` or a project data key → proceed
+  to Phase 2.
+- **Warnings printed** → for each flagged attribut, open the rule(s) using it
+  and confirm against the sandbox's own domain model (KB org Slot dictionary,
+  or the corpus itself) whether the name is simply not yet produced in the
+  project fixtures used for this scan (acceptable — document and move on) or
+  a genuine typo/drift from the real slot name (fix the `FIND.attribut`
+  value).
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** `sar-eal-package`'s
+> `eal-claim-grammar` rule (R01) targeted `FIND.attribut: eal_claim` — a slot
+> never written by any rule in the sandbox and never a key in any project
+> JSON fixture (the EAL claim string is carried directly as the Frame's own
+> `type_element`). R01 never fired on any project; the downstream chain
+> (R03's `CONDITION` on `eal_claim_grammar_ok`, R06's BOARD publication,
+> `conformance-ctrl`'s own completion gate) stalled indefinitely as a result.
+> This check exists so the next sandbox catches this class of dangling
+> reference mechanically, before it propagates into a whole-pipeline
+> non-convergence several agents downstream of the actual defect.
+
 ### Step 6 — Output
 
 Produce a structured slot map (used by Phase 2):
