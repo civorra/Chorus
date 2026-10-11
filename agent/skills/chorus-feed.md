@@ -1296,19 +1296,7 @@ ACTION: |
 >   1
 > ```
 >
-> **Incident (2026-10, sandbox `05-CC-3.1.4`):** exactly this pattern — a
-> "mark-phase-done-and-terminate" rule template, copy-pasted across all 19
-> non-final agents (11 SFR + 7 SAR + `sar-eal-package` + `toe-structure`) with
-> `TERMINAL: solved` on every copy — caused the pipeline to stop after
-> whichever agent happened to finish its own phase first (non-deterministic,
-> depends on project data shape), silently starving the remaining 18 agents
-> including the real final aggregator (`conformance-ctrl`). No crash, no
-> warning: `perl run.pl` printed a seemingly normal report, just with most
-> Frames at `(unprocessed)`. Fixed by removing `TERMINAL: solved` from all 19
-> rules, keeping it solely on `conformance-ctrl`'s own final-verdict rule.
-> **Mechanical check:** `grep -rc "TERMINAL: solved" rules/*/*.yml | grep -v ":0$"`
-> must return **exactly one** file in the entire sandbox — see
-> `chorus-check.md § Step 5f` for the generation-time scan.
+> **Incident:** `agent/org/incidents-log.org § cc314-10`
 
 **When to document `PREMISES`:**
 Always document if the agent is likely to use `reorder()` to
@@ -1711,14 +1699,7 @@ must contain.)
   to a later `chorus-check`/`chorus-strengthen` pass, and do not let it
   accumulate across the remaining agents of a multi-session Mode A pipeline.
 
-> **Incident (2026, sandbox `02-building-en`):** this exact gap — all 57 rules
-> across 6 Mode A sessions (one per agent, run over several days) missing
-> `_rule_trace`, and 8 of 10 deliberately-authored non-conformities missing
-> any `non_conformity_motif` — went undetected through SP1, `chorus-strengthen`,
-> and the sandbox's entire production lifetime, because no audit ran at
-> generation time (only `chorus-check.md` Step 5c existed, added *after* this
-> incident, and only checks at full-path infrastructure-generation time, not
-> per Mode A session). This Step 1e closes that gap at the source.
+> **Incident:** `agent/org/incidents-log.org § build-en-03`
 
 **Step 2 — Classify each section**
 
