@@ -1,0 +1,511 @@
+#+TITLE: Chorus Engine — TODO
+#+DATE: 2026-10-10
+
+* DONE [#A] Template staleness — `.kb-hash` ne détecte pas les évolutions de `chorus-templates.md`
+
+** Contexte
+
+Découvert en session ECA (2026-10-10) lors de l'analyse des 5 commits
+`Prevent ...` du dépôt `$ENGINE` et de leur cohérence avec les 6 bugs
+documentés dans le README du sandbox `05-CC-3.1.4`.
+
+Le commit sandbox `32b6bfe` ("Fix 2 more pipeline convergence bugs") a
+édité `run.pl` **à la main** (ajout des overrides d'environnement
+`CHORUS_MAX_CYCLES` / `CHORUS_MAX_ITER`) au lieu de porter ce correctif
+dans le template `T5` (`chorus-templates.md`, `$ENGINE`). Or `run.pl`
+est un artefact **généré**, régénéré à chaque `chorus-check` dès que
+`$SANDBOX/agent/.kb-hash` est jugé stale — cet édit manuel est donc
+volatile et disparaîtra silencieusement à la prochaine régénération
+(ex. déclenchée par une autre session lançant `chorus-check --all` en
+parallèle), sans qu'aucun commit ne l'enregistre comme une régression.
+
+** Le problème structurel sous-jacent
+
+Le mécanisme `.kb-hash` documenté dans `chorus-check.md` (section
+"hash comparison") ne couvre qu'**une seule dimension** de staleness :
+celle du contenu KB (`$SANDBOX/agent/chorus/*.org`) d'un sandbox donné.
+
+```
+sha256sum $SANDBOX/agent/chorus/*.org  vs  $SANDBOX/agent/.kb-hash
+```
+
+Il n'existe **aucune référence à une version du template T1-T5**
+(`chorus-templates.md`, côté `$ENGINE`) dans ce mécanisme. Conséquence :
+deux risques symétriques, tous deux non tracés et non signalés
+aujourd'hui.
+
+*** Risque 1 — KB stable, template modifié (dérive silencieuse)
+
+Si le contenu KB d'un sandbox n'a pas changé, `.kb-hash` reste
+identique et `chorus-check` réutilise l'infrastructure existante
+(pas de FULL PATH) — même si `chorus-templates.md` a été corrigé
+entre-temps côté `$ENGINE` (ex. un bug de génération découvert et
+fixé via un correctif de template). Le sandbox reste figé sur une
+version de template obsolète/buggée indéfiniment, sans aucun signal,
+sauf régénération forcée explicite demandée par l'utilisateur
+("regenerate"/"rebuild").
+
+*** Risque 2 — KB modifiée, template modifié entre-temps (contamination silencieuse)
+
+Si la KB d'un sandbox change (hash différent), `chorus-check`
+déclenche une régénération FULL PATH **sans avertissement** (cf.
+`chorus-check.md` : "no user prompt needed"). Le sandbox hérite alors,
+au même moment, de tout changement de template survenu depuis sa
+dernière génération — y compris des changements de comportement non
+anticipés pour ce cas d'usage précis (renommage de slot, nouveau bloc
+de validation, changement de format de rapport, etc.), sans diff ni
+changelog affiché.
+
+** Ce qui manque
+
+Un second mécanisme de fingerprint, **indépendant** de `.kb-hash`,
+pour tracer la version du template ayant produit l'infrastructure
+d'un sandbox :
+
+- `$SANDBOX/agent/.template-hash` (ou équivalent) contenant un hash
+  (ex. `sha256sum $ENGINE/agent/skills/chorus-templates.md`) ou un
+  numéro de version explicite embarqué dans le template lui-même.
+- Règle d'invalidation **distincte** de celle de `.kb-hash` :
+  - `.kb-hash` invalide → régénération déclenchée par changement KB
+    (comportement actuel, inchangé).
+  - `.template-hash` invalide → régénération déclenchée par évolution
+    du template, **même si la KB n'a pas bougé** — avec idéalement un
+    résumé du changement (changelog / diff synthétique) affiché à
+    l'utilisateur avant application, car contrairement à un changement
+    KB (dont l'auteur du sandbox est conscient), un changement de
+    template est une dépendance externe invisible depuis le sandbox.
+- Documenter cette double invalidation dans `chorus-check.md`
+  (section hash comparison) et dans `chorus-templates.md` (ajouter un
+  marqueur de version en en-tête de chaque template T1-T5).
+
+** Règle complémentaire à documenter
+
+Rappeler explicitement dans `chorus-check.md` (et dans le tableau des
+artefacts générés vs. KB) que **tout correctif touchant le
+comportement d'un artefact généré** (`Feed.pm`, `Agent/<Nom>.pm`,
+`Expert.pm`, `run.pl`) doit être porté dans le template source
+(`chorus-templates.md`, `$ENGINE`) et jamais édité à la main dans un
+sandbox — à l'instar de ce qui a été fait correctement pour les 5
+bugs KB/skill (commits `Prevent ...`) mais pas pour l'override
+`CHORUS_MAX_CYCLES`/`CHORUS_MAX_ITER` du sandbox `05-CC-3.1.4`.
+
+** Acceptance criteria
+
+- [ ] `chorus-templates.md` : chaque template (T1-T5) porte un
+      marqueur de version/hash identifiable.
+- [ ] `chorus-check.md` : nouvelle section documentant la double
+      invalidation (`.kb-hash` + `.template-hash`), avec exemple de
+      commande de calcul et de comparaison.
+- [ ] `chorus-check.md` : Phase 5.5 (écriture de `.kb-hash`) étendue
+      pour écrire aussi `.template-hash`.
+- [ ] Au déclenchement d'une régénération par `.template-hash` stale
+      seul (KB inchangée), afficher un résumé du changement de
+      template à l'utilisateur avant application (pas de "no user
+      prompt needed" dans ce cas précis).
+- [ ] Ajout d'une règle explicite interdisant l'édition manuelle d'un
+      artefact généré (`run.pl`, `Feed.pm`, `Agent/*.pm`, `Expert.pm`)
+      en dehors du cycle `chorus-check` / template source.
+
+* DONE [#B] `chorus-create-project` — archiver les régénérations `project-*.json` au lieu de les écraser
+
+** Contexte
+
+Découvert en session ECA (2026-10). Aujourd'hui, régénérer un fichier
+de couverture (`project-rules-iso.json`, `project-edges.json`,
+`project-cross.json`, `project-scale.json`) via `--strategy <slug>`,
+`--batch` ou `--batch-seq` **écrase purement et simplement** le
+fichier existant du même nom dans `$SANDBOX/`. Toute régénération
+(après un `chorus-feed --enrich`, une correction de seuil dans
+`Helpers.pm`/KB org, ou une correction de règle YAML) perd
+silencieusement le fichier précédent, rendant impossible toute
+comparaison diff-style entre deux générations successives.
+
+Cela va à l'encontre de la règle déjà documentée dans
+`chorus-create-project.md` (§ "ID stability rule") :
+
+#+begin_quote
+IDs must be stable across regenerations of the same project file...
+so that successive `chorus-check --all` runs can be compared
+diff-style.
+#+end_quote
+
+L'intention de comparabilité existe déjà dans le skill, mais rien ne
+**préserve matériellement** l'ancienne version du fichier — la
+stabilité des IDs ne sert à rien si le fichier à comparer n'existe
+plus.
+
+** Intérêt par stratégie (pas uniforme)
+
+| Stratégie | Valeur de l'historique |
+|---|---|
+| ~iso~    | Détecter les régressions par règle (un verdict OK/KO qui change pour la même règle isolée). |
+| ~edges~  | Détecter un déplacement silencieux de seuil (KB/Helpers.pm corrigés) entre deux générations. |
+| ~cross~  | Détecter la casse d'une interaction inter-règles suite à un enrichissement KB — zone la plus fragile aux effets de bord. |
+| ~scale~  | Usage différent, plus "métrologique" : suivi de tendance (nb de cycles, temps d'exécution, volume) pour recalibrer `_MAX_CYCLES` dans le temps, plutôt que diff de verdicts. |
+
+Conclusion : intérêt réel pour les 4 stratégies, mais la nature de
+l'usage diffère (régression fonctionnelle pour ~iso~/~edges~/~cross~,
+suivi de performance pour ~scale~).
+
+** Proposition (non implémentée — à valider avant toute modification du skill)
+
+*** 1. Archivage automatique avant régénération
+
+Avant d'écrire un nouveau `project-<slug>.json`, déplacer l'ancien
+fichier (s'il existe) vers :
+
+#+begin_src
+$SANDBOX/archive/<slug>/project-<slug>-<NNN>-<YYYY-MM-DD>.json
+#+end_src
+
+`<NNN>` = compteur 3 digits auto-incrémenté (même logique que le
+mécanisme `tag-rdiff` côté CMS6).
+
+*** 2. Compatibilité avec `chorus-check --all`
+
+`chorus-check --all` scanne `project-*.json` à plat dans `$SANDBOX/`.
+Le dossier `archive/` doit rester **hors de ce scope** — même
+convention que `--out <dir>` déjà documentée dans `chorus-stress.md`.
+Le nom courant (`project-rules-iso.json`, etc.) reste donc toujours
+le "dernier run" visible par `--all` ; les générations précédentes
+vivent uniquement dans `archive/<slug>/`.
+
+*** 3. Index léger par stratégie
+
+Un fichier `archive/<slug>/INDEX.md` (append-only), mis à jour à
+chaque archivage, journalisant par exemple :
+
+#+begin_src
+| NNN | date | n_rules | n_thresholds | pipeline | n_conforme | n_non_conforme | note |
+#+end_src
+
+Permet de voir l'évolution d'une stratégie sans rouvrir chaque JSON
+archivé.
+
+*** 4. Déclenchement
+
+- Automatique : nouvelle "Phase 0.4 bis — Archive before write",
+  insérée juste avant l'écriture du fichier cible, dans le Phase 6.2
+  (`--strategy`) et dans le workflow des sub-agents `--batch`.
+- Pas de nouveau flag requis — comportement par défaut, non
+  destructif (si aucun fichier existant, rien à archiver).
+- Option possible `--no-archive` pour écraser sans trace (cas rare,
+  non prioritaire).
+
+*** 5. Extension future (non prioritaire — hors scope immédiat)
+
+Une commande `chorus-create-project <sandbox> --diff <slug>` qui
+compare le dernier fichier généré au précédent archivé (verdicts par
+`id`, seuils ayant changé) — utile mais distincte du simple besoin
+"ne pas perdre les anciennes générations".
+
+** Acceptance criteria
+
+- [X] `chorus-create-project.md` : nouvelle section "Phase 0.4 bis —
+      Archive before write", déclenchée juste avant l'écriture de
+      `project-<slug>.json` dans tous les modes (`--strategy`,
+      `--batch`, `--batch-seq` via sub-agents).
+- [X] Convention de nommage des archives documentée :
+      `archive/<slug>/project-<slug>-<NNN>-<YYYY-MM-DD>.json`.
+- [X] `archive/` explicitement exclu du scope de `chorus-check --all`
+      (même règle que `chorus-stress.md § --out`).
+- [X] `archive/<slug>/INDEX.md` : format documenté + règle de mise à
+      jour append-only.
+- [X] Comportement par défaut non destructif confirmé : aucune
+      régression si `archive/` n'existe pas encore (création à la
+      volée).
+- [X] Flag `--no-archive` documenté comme option d'échappement
+      explicite (non prioritaire).
+
+* TODO [#C] Skills — externaliser les récits "Incident (...)" vers un registre centralisé
+
+** Contexte
+
+Découvert en session ECA (2026-10-10) lors de l'analyse de la
+croissance récente des skills `$ENGINE` suite à la session de debug
+sandbox `05-CC-3.1.4` (commits `a1f2dee`, `fa9860e`, `35e84aa`,
+`de03314`, `1a641d2` — ~300-400 lignes ajoutées en une session sur
+`chorus-check.md`, `chorus-engine-yaml.md`, `chorus-create-project.md`,
+`chorus-feed.md`).
+
+Taille actuelle de `agent/skills/` : 22 881 lignes / 24 fichiers.
+Les 4 plus gros fichiers (`chorus-import-project.md` 2826,
+`chorus-feed.md` 2714, `chorus-pdf.md` 2465, `chorus-check.md` 2166)
+sont aussi les skills les plus fréquemment chargés — leur poids pèse
+directement sur le contexte de chaque exécution, y compris pour des
+sandboxes qui ne rencontreront jamais les bugs documentés.
+
+** Le problème structurel sous-jacent
+
+Chaque guard/règle de prévention ajouté suite à un incident de debug
+est accompagné d'un paragraphe narratif complet
+(~`**Incident (<date>, sandbox <nom>): ...`~, 8-15 lignes) racontant :
+comment le bug a été détecté, le comportement observé, la sandbox
+concernée, la méthode de confirmation (isolation d'agent, comparaison
+de templates, etc.). Ce récit est **documentation justificative**,
+jamais invoqué comme instruction d'exécution — aucune étape de skill
+ne dit "relis le paragraphe Incident pour agir".
+
+Deux formes de redondance observées :
+
+- **Duplication inter-fichiers** : le même incident est raconté
+  intégralement dans 2 à 3 fichiers différents. Exemple : le pattern
+  "unbounded aggregate wait" (sandbox `05-CC-3.1.4`) a son récit
+  complet à la fois dans `chorus-engine-yaml.md` (~ligne 1091) et
+  dans `chorus-check.md` (~ligne 470), quasiment reformulé à
+  l'identique. Idem pour "TERMINAL: solved dupliqué" où `chorus-check.md`
+  Step 5f renvoie vers `chorus-feed.md` mais réexplique quand même
+  tout l'incident sur place au lieu de se limiter au renvoi.
+- **Mélange règle / justification historique** dans un même bloc : le
+  "⛔ MUST" (règle opérationnelle, WRONG/CORRECT) et le récit forensique
+  (pourquoi on l'a ajoutée) sont imbriqués, rendant impossible de
+  réduire l'un sans risquer de toucher l'autre lors d'une passe de
+  nettoyage rapide.
+
+Recensement actuel (`grep -c "Incident ("`) :
+`chorus-check.md` 9 · `chorus-feed.md` 7 · `chorus-engine-yaml.md` 4 ·
+`chorus-create-project.md` 5 · `chorus-engine-infra.md` 1 ·
+`chorus-strengthen.md` 1 · `chorus-showcase.md` 1 — soit ~28 récits
+narratifs inline à travers les skills.
+
+** Ce qui manque
+
+Un registre d'incidents centralisé, externe aux skills exécutables :
+
+- `agent/org/incidents-log.org` — un fichier par incident ou une
+  section par incident, avec un identifiant court et stable
+  (ex. `#05-CC-3.1.4-aggregate-wait`), contenant le récit complet
+  actuellement inline (contexte, symptôme, méthode de confirmation,
+  fix appliqué).
+- Dans chaque skill, remplacer le paragraphe narratif complet par un
+  renvoi d'une ligne : `**Incident:** voir incidents-log.org#<id>`,
+  en conservant intégralement la règle opérationnelle (⛔ MUST,
+  exemples WRONG/CORRECT, scans mécaniques `grep -rl ...`) à l'endroit
+  exact où elle est aujourd'hui.
+
+** Ce qui ne doit PAS être touché (garde-fou anti-régression)
+
+- Les checklists "⛔ MUST" et les scans mécaniques (commandes `grep`,
+  conditions de détection) : ce sont les instructions réellement
+  exécutées par l'agent — aucune coupe ici.
+- Les exemples de code WRONG/CORRECT (YAML, Perl) : utiles comme
+  pattern-matching visuel — seule leur **duplication inter-fichiers**
+  est un candidat à la factorisation (cf. point 3 ci-dessous), pas
+  leur présence en elle-même.
+- Toute référence croisée explicite déjà existante entre skills
+  (ex. `chorus-check.md` Step 5f → `chorus-feed.md`) doit être
+  préservée et généralisée, pas supprimée.
+
+** Proposition (non implémentée — à valider avant toute modification des skills)
+
+*** 1. Créer `agent/org/incidents-log.org`
+
+Un identifiant par incident, structure courte et uniforme :
+
+#+begin_src
+   * <id> — <1 ligne symptôme>
+  :PROPERTIES:
+  :sandbox: <nom-sandbox>
+  :date: <YYYY-MM-DD>
+  :skills-impactés: <liste>
+  :END:
+  <récit complet actuel, déplacé tel quel depuis le skill d'origine>
+#+end_src
+
+*** 2. Remplacer les paragraphes narratifs inline par un renvoi court
+
+Dans chaque skill concerné, remplacer :
+
+#+begin_quote
+**Incident (2026-10, sandbox `05-CC-3.1.4`):** this exact unbounded
+pattern, copy-pasted identically across 7 SAR class agents' own
+`component-declared-aggregate` rule, left 56/256 elements... [8-15 lignes]
+#+end_quote
+
+par :
+
+#+begin_quote
+**Incident:** voir `agent/org/incidents-log.org#05-CC-3.1.4-aggregate-wait`.
+#+end_quote
+
+*** 3. Dédupliquer les récits cités dans 2-3 fichiers à la fois
+
+Pour les incidents déjà racontés intégralement à plusieurs endroits
+(ex. "unbounded aggregate wait" dans `chorus-engine-yaml.md` ET
+`chorus-check.md`), ne garder le récit complet que dans le registre,
+et un renvoi dans les deux skills — pas de redondance résiduelle
+entre skills eux-mêmes.
+
+*** 4. Format court harmonisé pour toute future incident
+
+Documenter la convention (dans `incidents-log.org` lui-même, en tête
+de fichier) pour que les prochains correctifs de debug suivent
+directement le format `**Incident:** voir incidents-log.org#<id>` au
+lieu de recréer un paragraphe narratif inline — évite la régression
+de taille à la prochaine session de debug.
+
+** Acceptance criteria
+
+- [ ] `agent/org/incidents-log.org` créé, contenant l'intégralité des
+      ~28 récits actuellement inline (aucune perte d'information,
+      simple déplacement).
+- [ ] Chaque skill impacté (`chorus-check.md`, `chorus-feed.md`,
+      `chorus-engine-yaml.md`, `chorus-create-project.md`,
+      `chorus-engine-infra.md`, `chorus-strengthen.md`,
+      `chorus-showcase.md`) : paragraphes narratifs remplacés par un
+      renvoi d'une ligne, règles opérationnelles (⛔ MUST, WRONG/
+      CORRECT, scans mécaniques) strictement inchangées à l'identique.
+- [ ] Vérification diff par diff que les exemples de code et les
+      scans mécaniques ne sont ni déplacés ni modifiés — seul le
+      texte narratif est extrait.
+- [ ] Convention documentée en tête de `incidents-log.org` pour les
+      futurs incidents (format d'identifiant, structure, renvoi
+      court à utiliser dans le skill source).
+- [ ] Mesure avant/après : lignes totales de `agent/skills/` réduites
+      d'au moins 15% sans qu'aucune règle opérationnelle, exemple
+      WRONG/CORRECT ou scan mécanique n'ait été supprimé ou modifié.
+
+* DONE [#D] `Chorus::Frame::fmatch()` — cache absent, O(cycles × call-sites × frames) confirmé par profiling
+
+** Contexte
+
+Découvert en session ECA (2026-10-10), sandbox `05-CC-3.1.4`, lors du
+debug d'un `chorus-check` sur `workspace/idnomic/project-import-...json`
+perçu initialement comme une "boucle infinie" (tué manuellement après
+plusieurs minutes sans sortie). Deux sous-problèmes distincts traités
+dans la même session :
+
+1. Un crash réel (`Not a HASH reference` dans `run.pl`, corrigé —
+   stringification défensive des slots de résultat référence non-hash).
+2. Un diagnostic de performance initialement erroné (`_rule_trace`
+   poussé avant un `return 0` de retry — bug réel trouvé et corrigé sur
+   34 fichiers `.yml`, mais confirmé par profiling comme **non
+   dominant**).
+
+Le vrai goulot a été identifié a posteriori par profiling effectif
+(`Devel::NYTProf`, run très court mais complet — `CHORUS_MAX_ITER=3
+CHORUS_MAX_CYCLES=100` pour obtenir un `nytprof.out` exploitable,
+non tronqué par un `timeout` shell qui tue le process en plein milieu).
+
+Détail complet de l'investigation : voir `README.org` du sandbox
+`05-CC-3.1.4`, section "🐛 1 crash corrigé + diagnostic perf confirmé
+par profiling — `workspace/idnomic` (session 2026-10-10)".
+
+** Le problème structurel sous-jacent
+
+`Chorus::Frame::fmatch(slot => ...)` (`$ENGINE/lib/Chorus/Frame.pm`)
+ne met strictement rien en cache. Chaque appel refait un scan complet :
+
+#+begin_src perl
+sub _hasSlot {
+  my ($slot) = @_;
+  return map { $FMAP{$_} || () } keys(%{$REPOSITORY{$slot}});
+}
+
+sub _framesProvidingSlot {
+  my ($slot) = @_;
+  my @res = _hasSlot($slot);
+  my @inheriting = map { _firstInheriting($_) } @res;
+  push @res, @inheriting;
+  return _wholeTree(\@res, @inheriting);   # parcours d'héritage récursif complet
+}
+
+sub fmatch {
+  ...
+  my %filter = map { $_->{_KEY} ? ($_->{_KEY} => 'Y') : () } @{_framesProvidingSlot($firstslot)};
+  ...
+}
+#+end_src
+
+Profiling mesuré sur le sandbox `05-CC-3.1.4` (65 éléments projet,
+budget de test très restreint — 3 itérations / 100 cycles) :
+
+| Sub | Temps exclusif | Temps inclusif | Appels |
+|---|---|---|---|
+| ~Chorus::Frame::_framesProvidingSlot~ | 18.7% | 25.2% | 21933 |
+| ~Chorus::Frame::fmatch~ | 6.7% | 32.0% | 21933 (159 call-sites différents) |
+| ~Chorus::Frame::_getN~/~_value_N~/~get~ | — | ~99% | 88652-116300 |
+
+**30 fichiers de règles** dans ce seul sandbox appellent
+~fmatch(slot => 'type_element')~ directement depuis leur propre
+~ACTION~/~EXCEPTION~ — chacun refaisant ce scan O(N) à chaque cycle où
+la règle est (re)déclenchée. Avec N éléments projet, M sites d'appel
+~fmatch~, et des milliers de cycles moteur nécessaires à la
+convergence (notamment quand un projet ne couvre pas tous les
+sous-éléments attendus, déclenchant le mécanisme d'attente borné
+~_decl_wait_cycles~ sur de nombreux Frames simultanément), le coût
+cumulé explose en O(cycles × call_sites × frames).
+
+Ce mécanisme était déjà pressenti comme "coût par cycle croissant"
+dans `run.pl` (commentaire "KNOWN PERFORMANCE ISSUE", sandbox
+`05-CC-3.1.4`, sessions précédentes) et attribué par hypothèse non
+confirmée à une accumulation de `_rule_trace` — hypothèse invalidée
+par le profiling de cette session : `_rule_trace` ne représente
+qu'une fraction négligeable du temps mesuré, loin derrière les
+primitives `Chorus::Frame`.
+
+** Ce qui manque
+
+Un mécanisme de cache (même basique — invalidé à chaque `set()` sur
+le slot concerné, ou à chaque cycle moteur) pour éviter de refaire
+le scan complet `_framesProvidingSlot`/`_wholeTree` à chaque appel
+`fmatch` sur un même slot dans un même cycle. Deux niveaux possibles,
+du moins au plus invasif :
+
+*** 1. Cache au niveau moteur (`Chorus::Frame::fmatch`/`_framesProvidingSlot`)
+
+Mémoiser le résultat de `_framesProvidingSlot($slot)` pour la durée
+d'un cycle `applyrules()` (invalidation automatique au changement de
+cycle, ou sur toute mutation touchant `%REPOSITORY{$slot}`). Bénéfice
+pour tous les sandboxes utilisant ce pattern, mais modification du
+moteur partagé — nécessite des tests `t/15-Frame-fmatch.t` (et
+équivalents) renforcés avant tout déploiement, risque de régression
+sur l'écosystème `chorus-engine` entier.
+
+*** 2. Réduction côté règles (palliatif, par sandbox)
+
+Réduire le nombre d'appels `fmatch(slot => 'type_element')` par
+règle — par exemple en mémoisant son résultat une fois par cycle
+moteur au niveau BOARD plutôt que de le refaire à chaque Frame qui
+déclenche la règle. Changement plus invasif sur les fichiers de
+règles concernés (30 dans `05-CC-3.1.4` seul), à valider avec
+`chorus-strengthen` avant tout déploiement — ne résout pas le
+problème pour les futurs sandboxes utilisant le même pattern.
+
+** Règle complémentaire à documenter
+
+Documenter dans `chorus-engine-yaml.md` (ou `chorus-feed.md`) une
+recommandation explicite : éviter `fmatch(slot => 'type_element')`
+(scan global non filtré) depuis l'`ACTION`/`EXCEPTION` d'une règle
+répétée à chaque cycle quand une alternative moins coûteuse existe
+(BOARD, slot ciblé plus spécifique, ou résultat mis en cache
+Frame-local via `_NEEDED`) — en reliant explicitement cette
+recommandation à la mesure de coût ci-dessus plutôt qu'à une
+intuition de style.
+
+** Acceptance criteria
+
+- [ ] Décision prise (et documentée) entre option 1 (cache moteur,
+      bénéfice large, risque partagé) et option 2 (réduction
+      palliative par sandbox, bénéfice local, risque isolé) — ou les
+      deux en séquence (option 2 en attendant option 1).
+- [ ] Si option 1 retenue : `Chorus::Frame::fmatch`/
+      `_framesProvidingSlot` mémoïsent leur résultat par cycle (ou
+      par mutation de `%REPOSITORY{$slot}`), avec tests
+      `t/15-Frame-fmatch.t` étendus couvrant l'invalidation du cache
+      (ajout/suppression de Frame, changement de slot, héritage).
+- [ ] Si option 2 retenue (ou en parallèle) : audit des 30 fichiers
+      `rules/*/*.yml` du sandbox `05-CC-3.1.4` appelant
+      `fmatch(slot => 'type_element')`, remplacement par une
+      alternative moins coûteuse quand pertinent, validé par
+      `chorus-strengthen` (aucune régression de verdict).
+- [ ] `chorus-engine-yaml.md` : nouvelle recommandation documentée
+      (coût mesuré de `fmatch` non filtré en cycle répété), avec
+      renvoi vers cette mesure de profiling comme justification.
+- [ ] `run.pl` (template `T5`, `chorus-templates.md`) : commentaire
+      "KNOWN PERFORMANCE ISSUE" mis à jour pour refléter la cause
+      racine confirmée (déjà fait localement dans le sandbox
+      `05-CC-3.1.4`, à porter dans le template source pour que tous
+      les futurs sandboxes en bénéficient — cf. TODO [#A] sur la
+      staleness de template, même mécanisme de propagation requis).
+

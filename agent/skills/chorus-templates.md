@@ -7,11 +7,30 @@
 > **T1** → Phase 2 (`Feed.pm`) · **T2** → Phase 3 (`Agent/<Nom>.pm`) · **T3** → Phase 3 (termination `addrule`)
 > **T4** → Phase 4 (`Expert.pm`) · **T5** → Phase 5 (`run.pl`)
 
+> ⛔ **Template version tracking — `.template-hash` (see `chorus-check.md` Phase 5.5)**
+> The SHA-256 fingerprint of this file is written to `$SANDBOX/agent/.template-hash`
+> whenever `chorus-check` regenerates infrastructure. This is **distinct** from
+> `.kb-hash` (which tracks KB org content): `.template-hash` going stale signals that
+> a template was updated since the sandbox was last generated — the sandbox infrastructure
+> may embed an obsolete or buggy template regardless of KB state.
+>
+> Each template T1–T5 below carries a `# TEMPLATE: T<N> v<YYYY-MM-DD>` comment that
+> `chorus-check` copies verbatim into the generated file (`Feed.pm`, `Agent/*.pm`,
+> `Expert.pm`, `run.pl`). This makes it possible to identify which template version
+> produced a given artefact without re-running `chorus-check`.
+>
+> ⛔ **Never edit generated artefacts (`Feed.pm`, `Agent/<Nom>.pm`, `Expert.pm`,
+> `run.pl`) directly in a sandbox.** Any manual edit is silently overwritten the
+> next time `chorus-check` regenerates the infrastructure (triggered by `.kb-hash`
+> or `.template-hash` staleness). All fixes to generated artefact behaviour belong
+> in this file (template source) — never in the sandbox copy.
+
 ---
 
 ## T1 — Feed.pm
 
 ```perl
+# TEMPLATE: T1 v2026-10-11  (chorus-templates.md — do not edit this generated file)
 package <Namespace>::Feed;
 
 use strict;
@@ -91,6 +110,7 @@ sub load_projet {
 ## T2 — Agent/\<Nom\>.pm
 
 ```perl
+# TEMPLATE: T2 v2026-10-11  (chorus-templates.md — do not edit this generated file)
 package <Namespace>::Agent::<Nom>;
 
 use strict;
@@ -175,6 +195,7 @@ If `Helpers.pm` absent for this agent → omit the `use ... ::Helpers` block and
 ---
 
 ## T3 — Termination rule (pure Perl addrule)
+<!-- TEMPLATE: T3 v2026-10-11 — pure Perl addrule, not a standalone file -->
 
 Use when global termination is needed (e.g. verifying that ALL Frames have their status set).
 Add **after** `loadRules()` in the termination agent's `build()`.
@@ -215,6 +236,7 @@ $agent->addrule(
 ## T4 — Expert.pm
 
 ```perl
+# TEMPLATE: T4 v2026-10-11  (chorus-templates.md — do not edit this generated file)
 package <Namespace>::Expert;
 
 use strict;
@@ -275,6 +297,7 @@ Document BOARD inter-agent keys in `index.org`.
 
 ```perl
 #!/usr/bin/env perl
+# TEMPLATE: T5 v2026-10-11  (chorus-templates.md — do not edit this generated file)
 use strict;
 use warnings;
 use utf8;   # decode UTF-8 literals in this source file (❌✅⚠️█░─ + accented corpus terms)

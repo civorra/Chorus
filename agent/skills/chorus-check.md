@@ -114,14 +114,16 @@ Compare the current KB hash against the stored one:
 sha256sum $SANDBOX/agent/chorus/*.org > /tmp/kb-hash-current
 ```
 
-- `$SANDBOX/agent/.kb-hash` **absent** → the infrastructure predates hash tracking
-  → treat as stale → **FULL PATH** (forced regeneration)
-- `$SANDBOX/agent/.kb-hash` **present**, content **identical** to current hash
-  → **FAST PATH**: go directly to Phase 6 (single project) or Phase 6-all (`--all`).
-  Do not load `chorus-engine.md`.
-  Do not read `index.org`. Do not read agent KBs. Do not generate anything.
-- `$SANDBOX/agent/.kb-hash` **present**, content **differs** → KB was enriched
-  since last generation → **FULL PATH** (forced regeneration, no user prompt needed)
+- `$SANDBOX/agent/.kb-hash` **absent** → predates hash tracking → **FULL PATH**
+- `$SANDBOX/agent/.kb-hash` matches AND `$SANDBOX/agent/.template-hash` matches
+  → **FAST PATH**: go directly to Phase 6. Do not load `chorus-engine.md`,
+  do not read `index.org`, do not read agent KBs, do not generate anything.
+- `$SANDBOX/agent/.kb-hash` **differs** → KB enriched → **FULL PATH** (silent, no prompt)
+- `$SANDBOX/agent/.kb-hash` **matches** but `.template-hash` **absent or differs**
+  → template updated since last generation → **FULL PATH** with user notification
+  (see Phase 5.5 § Template staleness display — unlike KB changes, template changes
+  are external and must be surfaced to the user before overwriting artefacts)
+- `.kb-hash` absent → predates hash tracking → **FULL PATH** regardless of template hash
 
 > **Manual forced regeneration**: the user explicitly asks to
 > "regenerate" / "rebuild" the infrastructure → FULL PATH regardless of the hash.
@@ -1000,17 +1002,65 @@ Create `$SANDBOX/run.pl` from template **T5** (`chorus-templates.md`).
 > file used for the Phase 6 smoke test.
 
 
-## Phase 5.5 — Record KB hash *(full path only, after Phases 1–5)*
+## Phase 5.5 — Record KB hash + template hash *(full path only, after Phases 1–5)*
 
-Once all infrastructure files have been generated successfully, record the
-current KB fingerprint so that the next `chorus-check` can detect staleness:
+Once all infrastructure files have been generated successfully, record two
+fingerprints so that the next `chorus-check` can detect staleness on both dimensions:
 
 ```bash
+# 1. KB hash — tracks changes to the KB org content
 sha256sum $SANDBOX/agent/chorus/*.org > $SANDBOX/agent/.kb-hash
+
+# 2. Template hash — tracks changes to the infrastructure templates
+sha256sum "$ENGINE/agent/skills/chorus-templates.md" > $SANDBOX/agent/.template-hash
 ```
 
-This file is **never committed** (local artefact, like `sessions/`).
-It is invalidated (deleted) by `chorus-feed` at the end of each run.
+(`$ENGINE` = absolute path to the Chorus Engine repository root, e.g.
+`/home/civ/Documents/DEV/Chorus/Engine` — resolved from `AGENTS.md` at skill load time.)
+
+Both files are **never committed** (local artefacts, like `sessions/`).
+`.kb-hash` is invalidated (deleted) by `chorus-feed` at the end of each run.
+`.template-hash` is NOT invalidated by `chorus-feed` — it persists until the
+next infrastructure regeneration.
+
+### Double invalidation — behaviour rules
+
+| State | `.kb-hash` | `.template-hash` | Action |
+|---|---|---|---|
+| Both current | ✅ match | ✅ match | **FAST PATH** — skip generation entirely |
+| KB changed | ❌ differs | any | **FULL PATH** — KB enriched, regenerate silently (no user prompt) |
+| Template changed, KB stable | ✅ match | ❌ differs | **FULL PATH** — template updated; **display a summary to the user** before regenerating (unlike KB changes, a template change is an external dependency update invisible from the sandbox — the user must be aware) |
+| `.kb-hash` absent | — | — | **FULL PATH** — predates hash tracking |
+| `.template-hash` absent | ✅ match | — | **FULL PATH** — predates template tracking; regenerate once to establish baseline |
+
+> ⚠️ **Template staleness display (template-changed case only):** before regenerating,
+> print:
+> ```
+> ⚠️  Template updated since last generation
+>     Previous: <content of $SANDBOX/agent/.template-hash>
+>     Current : <new sha256 of chorus-templates.md>
+>     The sandbox infrastructure will be regenerated with the updated templates.
+>     Generated artefacts (Feed.pm, Agent/*.pm, Expert.pm, run.pl) will be overwritten.
+>     Any manual edit to those files will be lost — see chorus-templates.md for the
+>     canonical template source.
+> ```
+
+### ⛔ Never edit generated artefacts directly
+
+`Feed.pm`, `Agent/<Nom>.pm`, `Expert.pm`, and `run.pl` are **generated files**.
+Any manual edit to them is volatile: it will be **silently overwritten** on the
+next infrastructure regeneration (triggered by either `.kb-hash` or `.template-hash`
+staleness), with no warning and no diff displayed.
+
+**Rule:** every fix to generated artefact behaviour belongs in `chorus-templates.md`
+(template source, `$ENGINE`) — never in the sandbox copy. Apply the fix in the
+template, then trigger a regeneration via `chorus-check` on the affected sandbox.
+
+> **Incident:** `agent/org/incidents-log.org § cc314-template-01` *(to be added
+> when a real incident of this class is observed — the pattern is documented in
+> `TODO.org § #A` as the motivating case: `CHORUS_MAX_CYCLES`/`CHORUS_MAX_ITER`
+> override added manually to `run.pl` of sandbox `05-CC-3.1.4` instead of being
+> ported to template T5.)*
 
 
 ## Phase 5.6 — Smoke test *(full path only, mandatory before Phase 6/6-all)*
