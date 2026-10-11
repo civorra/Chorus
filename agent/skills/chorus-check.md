@@ -696,6 +696,91 @@ done
 > time, instead of requiring a hung process and manual agent-by-agent
 > isolation to diagnose.
 
+### Step 5j — Unguarded `_rule_trace` push on a non-self-terminating rule (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** a rule whose `ACTION` pushes to
+> `_rule_trace` but whose `EXCEPTION`/`CONDITION` guard is based purely on an
+> external/global state check (e.g. "has every Frame in the project reached
+> a final verdict?") — rather than on whether *this rule itself* has
+> already fired for *this Frame* — re-fires on every single engine cycle for
+> as long as that external condition remains false. This is a distinct bug
+> class from Step 5i (BOARD self-refiring): the engine-level consequence is
+> different (no hang, no wasted CPU cycles beyond the rule's own trivial
+> push — `_MAX_CYCLES` is reached exactly as fast either way) but the
+> **downstream consequence is a flooded `_rule_trace` array**: hundreds of
+> duplicate entries for the same `rule_id` on a single Frame, inflating the
+> run-report JSON file size by orders of magnitude (observed: ~8MB → ~1MB
+> after fix, on a single Frame's trace shrinking from ~195 duplicate entries
+> to 1) and rendering any UI panel that displays the rule-chain column
+> unusable ("completely polluted by empty-looking rows ending in
+> `termination → termination → ...`").
+>
+> This typically affects a pipeline's own **termination rule** (the
+> `TERMINAL: solved`/`$SELF->solved()` rule, or an earlier per-agent
+> "global convergence check" rule like `toe-structure`'s own
+> `R09-termination.yml`) — any rule whose `EXCEPTION` is a pure
+> `fmatch(...)`-based aggregate test over *other* Frames, without a
+> `unless (grep { ... } @$trace)` (or equivalent) guard on its own push.
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+# Find ACTION blocks that push unconditionally to _rule_trace (no "unless
+# (grep ..." guard immediately around the push) while their own EXCEPTION
+# contains an unguarded fmatch() aggregate check (not a BOARD flag
+# short-circuit, already covered by Step 5i; not a Pattern-1
+# "defined $x->{own_slot}" guard, which already prevents re-firing once the
+# slot is first written).
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -q "push @\$trace" "$f" || continue
+  grep -q "unless (grep" "$f" && continue   # already guarded — skip
+  exc=$(awk '/^EXCEPTION:/{flag=1} flag{print} /^ACTION:/{exit}' "$f")
+  echo "$exc" | grep -q "fmatch" || continue   # not an fmatch-based guard — skip
+  echo "$exc" | grep -q "BOARD->{" && continue   # already covered by Step 5i — skip
+  echo "⚠️  $f — unguarded _rule_trace push with an fmatch-based EXCEPTION"
+done
+```
+
+- **No warnings printed** → every `_rule_trace` push on an fmatch-guarded
+  rule is already protected against duplication → proceed to Phase 2.
+- **Warnings printed** → for each flagged rule, wrap the push in a guard
+  that checks whether this `rule_id` already appears in the Frame's own
+  `_rule_trace` before pushing again:
+  ```perl
+  my $trace = $dummy->{_rule_trace} // [];
+  unless (grep { ($_->{rule_id} // '') eq '<rule-id>' } @$trace) {
+    push @$trace, { rule_id => '<rule-id>', corpus_ref => '<corpus_ref>' };
+    $dummy->{_rule_trace} = $trace;
+  }
+  1
+  ```
+  Do this **before** generating any infrastructure file — regenerate
+  `agent/.kb-hash` afterward (the YAML content changed).
+- Re-run the scan after fixing to confirm zero remaining matches.
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** `toe-structure/R09-
+> termination.yml`'s `EXCEPTION` tested only
+> `scalar(grep { !defined $_->{conformite_globale} } fmatch(slot =>
+> 'besoin_conformite')) > 0` (pure global-convergence check) — on any
+> project where the pipeline does not fully converge within `_MAX_CYCLES`
+> (e.g. ~20 SAR components legitimately stuck waiting on absent D/C/E
+> sub-elements, a common and correct project-data gap, not an engine bug),
+> this rule's `ACTION` re-fired every cycle up to the calibrated ceiling
+> (200 in this case), each time appending a duplicate `'termination'` entry
+> to the ST Frame's own `_rule_trace`. Reported via chorus-web as the run
+> report's rule-chain UI panel being "completely polluted by empty-looking
+> rows ending in `termination → termination → ...`". Found by inspecting
+> the run-report JSON directly and counting duplicate `rule_id` entries on
+> the affected Frame (171-195 duplicates observed, scaling with however
+> many cycles were actually exhausted). Fixed by adding the
+> `unless (grep {...})` guard shown above. Confirmed fix: run-report file
+> size dropped from ~8MB to ~1MB on the same 71-element fixture; the
+> affected Frame's own `_rule_trace` now holds exactly 1 `'termination'`
+> entry as expected. This check exists so the next sandbox catches this
+> exact bug class mechanically — at `chorus-check` generation time — rather
+> than requiring a human to notice a bloated/polluted report after the
+> fact.
+
 ### Step 6 — Output
 
 Produce a structured slot map (used by Phase 2):
