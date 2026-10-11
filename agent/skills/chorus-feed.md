@@ -242,6 +242,32 @@ file**, in the pipeline order defined in `SCOPING.md ## Agents`. Each run:
 > heading grammar, not on free text. Verify after every sub-agent pass with:
 > `grep -n "^\*\* " README.org` — every returned line must start with
 > `** ✅ Integrated`, `** ⏭ Deferred`, or `** ⛔ Out of scope` and nothing else.
+>
+> ⛔ **Same delegation risk applies to cross-agent targeting slots — tell each
+> sub-agent explicitly how the slot it depends on is actually wired, never
+> leave it to infer.** When agent 1 (first in pipeline order) publishes a
+> targeting slot meant to gate agents 2-N, and agents 2-N are each generated
+> by a *separately delegated* sub-agent, no individual sub-agent has visibility
+> into how agent 1 actually wrote that slot (Frame-local vs. BOARD-global —
+> see `chorus-engine-yaml.md` § "INPUTS header convention for Frame-linked
+> slots" for the full decision rule). A sub-agent left to guess will typically
+> default to the Frame-local pattern (`CONDITION: defined $e->{slot}`), since
+> it is the more common/intuitive one for a same-Frame-type dependency — this
+> guess is silently wrong whenever the gate is pipeline-wide across different
+> Frame types, and produces a pipeline that "runs" with no error but never
+> converges (`Chorus::Expert::process()` looping until `_MAX_ITER`, see
+> `chorus-check.md` § Step 5d for the mechanical detection check, and the
+> `05-CC-3.1.4` incident writeup in `chorus-engine-yaml.md` for the full story).
+> **Concrete mitigation:** once agent 1's own delegation pass completes, read
+> its generated KB org's "Pipeline I/O"/"Targeting slots" section yourself
+> (the orchestrating top-level agent, not a sub-agent) to confirm exactly how
+> it publishes the slot, then **paste that exact mechanism verbatim** into
+> every subsequent delegation prompt for agents 2-N — e.g. *"Agent 1
+> (`toe-structure`) publishes `besoin_conformite` via `$SELF->BOARD->{besoin_conformite}
+> = 1` — your agent's own rules MUST read it as `$SELF->BOARD->{besoin_conformite}`,
+> never `$e->{besoin_conformite}` — this is a pipeline-wide BOARD gate, not a
+> per-Frame copy."* Do not merely reference the skill file by name and assume
+> the sub-agent will independently reach the same, correct conclusion.
 
 Print after each agent pass:
 ```
@@ -349,6 +375,23 @@ Result: ordered list of agents (slug + intent + pipeline position).
 > This table will be transferred to `index.org` (Phase 4).
 > `register()` order must guarantee producer agents run before consumer agents.
 > Full API + patterns: `chorus-engine-infra.md § 1.5 BOARD — Shared Publication Space`.
+>
+> ⛔ **Targeting slot across agents whose Frame types differ — classify it NOW,
+> as Frame-local or BOARD, and write that classification down.** A pipeline
+> ordering gate (e.g. "agent 1 has initialised the project, agents 2-N may now
+> run") that is set on agent 1's own Frame type but read via `$e->{slot}` by
+> agent 2-N's rules on *their own, different* Frame type will **never** be
+> true — the slot simply does not exist on those Frames. This produces no
+> error and no warning: every downstream `CONDITION` just evaluates false
+> forever, the final aggregation agent never reaches `solved()`/`failed()`,
+> and `Chorus::Expert::process()` loops silently until `_MAX_ITER` (default
+> 50,000 — potentially over an hour of wasted CPU/RAM before giving up).
+> See the worked incident and the full Frame-local-vs-BOARD decision rule in
+> `chorus-engine-yaml.md § INPUTS header convention for Frame-linked slots`.
+> **Rule of thumb:** if the Frame type that *writes* a targeting slot differs
+> from the Frame type(s) that *read* it, that slot belongs on BOARD — never
+> as a per-Frame copy unless an explicit propagation rule is authored and
+> documented for that exact purpose.
 
 **1.2 Identify domain Frames**
 
@@ -918,6 +961,40 @@ Mandatory fill order:
    sequencing) — it exists specifically to make this gap visible immediately
    instead of at `chorus-check`/`perl run.pl` time.
 10. Constraints & Pitfalls
+
+#### ⛔ Mandatory check before authoring any CONDITION/EXCEPTION on a cross-agent targeting slot (step 3/8)
+
+Before writing a `CONDITION`/`EXCEPTION` clause that reads a targeting slot
+claimed to be set by an **upstream** agent (step 3 "Targeting slots" and
+step 8 "Rule catalog" above), **verify — do not assume** — how that upstream
+agent actually publishes it:
+
+1. Open the upstream agent's own `<slug>.org` (its "Targeting slots" and
+   "Pipeline I/O" sections) or, if not yet written, its `SCOPING.md` row.
+2. Confirm whether its publishing rule's `FIND` targets the **same Frame
+   type** as the rule you are about to write, or a **different** one.
+   - Same Frame type → Frame-local is correct: `CONDITION: defined $e->{slot}`.
+   - Different Frame type → it is a BOARD-global ordering gate:
+     `CONDITION: defined $SELF->BOARD->{slot}` — reading `$e->{slot}` will
+     **always** evaluate false, with no error, no warning, nothing visible
+     until the full pipeline silently fails to converge at `chorus-check`/
+     `perl run.pl` time (see worked incident and decision rule in
+     `chorus-engine-yaml.md § INPUTS header convention for Frame-linked slots`).
+3. If the upstream agent has not been written yet (pipeline authored in
+   `SCOPING.md`-confirmed order, upstream-first), its `SCOPING.md ## Agents`
+   row's `Produces` column states the slot — **but not** whether it is
+   Frame-local or BOARD. Resolve the ambiguity explicitly with the operator
+   or by inspecting the corpus/domain intent **before** writing the
+   consuming rule, rather than guessing from the slot's name alone (a name
+   like `besoin_X` gives no reliable signal either way).
+
+**This check is especially critical when agents are authored across separate
+`chorus-feed` passes or by separately-delegated sub-agents** (large
+multi-agent sandboxes, `eca__spawn_agent`-driven pipelines) — see
+§ Multi-agent Mode A sequencing above for the matching delegation-prompt
+safeguard. No sub-agent processing agent N in isolation has full visibility
+into how agent 1's targeting slot is actually wired; it must be told
+explicitly, not left to infer.
 
 #### Ontology — mandatory `** Aliases` section
 

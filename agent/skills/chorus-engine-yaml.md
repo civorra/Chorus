@@ -203,6 +203,11 @@ domain's actual slot names.
 ##
 # INPUTS  (slots read)
 #   besoin_X           : targeting slot (your sandbox's targeting slot name)
+#                        — Frame-local (every targeted Frame carries its own
+#                          copy, written by a dedicated rule) OR BOARD-global
+#                          (pipeline-wide gate, read via $SELF->BOARD->{besoin_X},
+#                          never replicated per-Frame) — state which, explicitly,
+#                          see ⛔ note below. Never leave this ambiguous.
 #   <link_slot>        : Frame ref — <target_type> this frame is linked to
 #                        (resolved from <link_slot>_ref by Feed.pm at load time)
 #   <link_slot>.<remote_slot> : <type> — <description> (read via inter-frame link)
@@ -213,13 +218,62 @@ domain's actual slot names.
 
 > **Example** (ADA sandbox):
 > ```yaml
-> #   besoin_wall        : targeting slot
+> #   besoin_wall        : targeting slot — Frame-local (written on every
+> #                        `wall` Frame by agent-wall-init R01, one rule
+> #                        instance per targeted Frame; NOT a BOARD slot)
 > #   supports           : Frame ref — external_wall this wall buttresses
 > #                        (resolved from supports_ref by Feed.pm)
 > #   supports.height_m  : float — height of supported wall (via link)
 > #   _ISA → masonry_spec prototype
 > #     min_str_A / min_str_B / min_str_C : Table 6 thresholds (via _ISA)
 > ```
+
+> ⛔ **MANDATORY distinction — Frame-local targeting slot vs. BOARD-global ordering
+> gate. Confusing the two causes a pipeline that silently never converges.**
+>
+> A "targeting slot" referenced in an `INPUTS`/`CONDITION`/`EXCEPTION` clause is
+> **one of exactly two different things** — never assume, always verify which:
+>
+> | Kind | How it is published | How every consuming rule must read it | Typical use |
+> |---|---|---|---|
+> | **Frame-local targeting slot** | A dedicated rule's `ACTION` calls `$w->set('slot', 1)` **once per targeted Frame instance** — the rule's own `FIND` targets the *same Frame type* as every rule that later reads this slot. | `CONDITION: defined $e->{slot}` / `$e->get('slot')` — reading the Frame's own copy. | A per-element flag computed by an earlier rule on the *same* Frame (e.g. `dependency_catalog_ok` written by R04, read by R05 on the *same* component Frame). |
+> | **BOARD-global ordering gate** | A rule (anywhere in the pipeline, typically the very first agent) calls `$SELF->BOARD->{slot} = 1` **exactly once, pipeline-wide** — never replicated onto any individual Frame. | `CONDITION: defined $SELF->BOARD->{slot}` — **never** `$e->{slot}` or `$w->{slot}`, since the slot does not exist on element Frames at all. | A pipeline-wide "upstream phase N is done, phase N+1 may now target any Frame" gate shared across many *different* Frame types/agents (e.g. `besoin_conformite` set once by `toe-structure` on the `ST`/`PP`/`TOE` Frame, meant to unblock 11 *different* SFR class agents whose own Frames — `FAU_GEN.1`, `FCO_NRO.1`, etc. — never carry this slot themselves). |
+>
+> **⛔ Real incident this rule exists to prevent** (sandbox `05-CC-3.1.4`, Common
+> Criteria KB, 2026-10): `toe-structure` published `besoin_conformite` only as a
+> Frame-local slot on `ST`/`PP`/`TOE` Frames. 41 rules across the 11 downstream SFR
+> class agents (`agent-fau`, `agent-fco`, … `agent-ftp`) were authored — each by a
+> separately-delegated sub-agent, none with full pipeline visibility — with
+> `CONDITION: defined $e->{besoin_conformite}` on their *own* component/element
+> Frames (`FAU_GEN.1.1`, `FCO_NRO.1`, …), which never carry this slot. Every one of
+> these `CONDITION`s evaluated permanently false, on every cycle, forever. No
+> individual rule crashed or warned — the symptom was entirely downstream and
+> silent: the final aggregation agent (`conformance-ctrl`) never saw its own
+> gating conditions satisfied, never reached `$SELF->solved()`/`failed()`, and
+> `Chorus::Expert::process()`'s outer `do { … } until ($board->{SOLVED} or
+> $board->{FAILED})` loop ran until its default `_MAX_ITER` (50,000) — each full
+> iteration re-running all 21 agents — consuming CPU and growing memory for over
+> an hour before giving up, with zero diagnostic output pointing at the actual
+> cause. The fix: publish the gate as `$SELF->BOARD->{besoin_conformite} = 1` in
+> `toe-structure`'s own rule (**in addition to**, not instead of, the Frame-local
+> copy — kept for `ST`/`PP`/`TOE`-local traceability), and change all 41
+> downstream `CONDITION`s to read `$SELF->BOARD->{besoin_conformite}`.
+>
+> **Decision rule when authoring any `CONDITION`/`EXCEPTION` referencing a
+> cross-agent targeting slot:** before writing `defined $e->{slot}`, ask —
+> *does the rule that publishes this slot target the same Frame type as the
+> rule reading it?* If yes → Frame-local, `$e->{slot}` is correct. If the
+> publishing rule targets a **different** Frame type (e.g. `ST`/`PP`/`TOE`
+> publishing, `FAU_*` reading) → it is a pipeline-wide gate and **must** go
+> through `$SELF->BOARD->{slot}`, never a per-Frame copy — unless an explicit,
+> separate propagation rule is authored to copy the value onto every target
+> Frame type (rare, and must be documented as such in both agents' KB org).
+> **Never assume — always check the publishing agent's own Slot dictionary /
+> Frame catalog to see which mechanism it actually uses**, especially when the
+> publishing and consuming agents were authored in separate `chorus-feed`
+> passes or by separate delegated sub-agents (see `chorus-feed.md` § BOARD —
+> inter-agent coordination, and § Multi-agent Mode A sequencing, for the
+> matching authoring-time safeguard).
 
 ### Checklist — Inter-Frame YAML
 
