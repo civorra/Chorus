@@ -819,15 +819,15 @@ done
 - **Matches found** → for each flagged rule: **remove the `return 0` branch inside `!@elements`** — replace with an immediate set of the aggregate slot (see `chorus-engine-yaml.md § Bounded-wait !@elements — fixpoint trap` for the correct pattern). The `return 0` / `_decl_wait_cycles` wait is only correct for the `@pending` branch (sub-elements exist but are not yet scored); it is always wrong for `!@elements` (sub-elements will never arrive).
 - After fixing, regenerate `agent/.kb-hash` before proceeding to Phase 2.
 
-> **Incident (2026-10, sandbox `05-CC-3.1.4`):** 11 SFR parent-level `_EXT`
-> components (`FCO_NRO_EXT.2`, `FCS_CKM_EXT.1`, `FDP_CER_EXT.1`…) went from
-> `verdict=1` to `(unprocessed)` after a TERMINAL rule started firing early (EAL
-> package Frame added to project JSON). `_decl_wait_cycles=None` (not even 1)
-> confirmed R06 fired zero times despite EXCEPTION/CONDITION being logically
-> correct. Root cause: `return 0` on `!@elements` → fixpoint after cycle 1 →
-> inner loop stops → `_decl_wait_cycles` never increments → aggregate slot never
-> set. Fixed by removing the `!@elements` wait in all 11 SFR R06 files.
-> `n_conforme` recovered from 34 to 45 in the next run.
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** 11 parent-level components went
+> from `verdict=1` to `(unprocessed)` after a TERMINAL rule started firing earlier
+> (a previously-absent Frame type added to the project JSON caused the pipeline to
+> converge faster). `_decl_wait_cycles=None` (not even 1) confirmed the aggregate
+> rule fired zero times despite EXCEPTION/CONDITION being logically correct.
+> Root cause: `return 0` on `!@elements` → fixpoint after cycle 1 → inner loop
+> stops → `_decl_wait_cycles` never increments → aggregate slot never set.
+> Fixed by removing the `!@elements` wait in all affected aggregate rules.
+> Score recovered immediately in the next run.
 
 ### Step 5l — Multi-BOARD gate rule missing `CONDITION` scan (mandatory, before Phase 2)
 
@@ -864,14 +864,13 @@ done
   have CONDITION` for the correct pattern). Do this **before** generating any
   infrastructure file.
 
-> **Incident (2026-10, sandbox `05-CC-3.1.4`):** `conformance-ctrl/R01`
-> (`wait-for-pipeline-complete`) read 4 BOARD flags (`sfr_operations_phase_done`,
-> `sfr_dependencies_phase_done`, `sar_content_phase_done`, `eal_package_complete`)
-> but had no `CONDITION`. It fired in cycle 1, set `pipeline_complete_ok=0`, and
-> was blocked by Pattern 1. Downstream R02→R03→R04 never fired; pipeline ran to
-> `_MAX_CYCLES` without ever reaching `solved()`/`failed()`. Fixed by adding
-> `CONDITION:` checking all 4 BOARD flags — `pipeline_complete_ok=1` set correctly
-> on first cycle where all flags were available.
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** the final aggregation agent's
+> gate rule read 4 BOARD phase-done flags but had no `CONDITION`. It fired in
+> cycle 1, set the gate slot to `0`, and was blocked by Pattern 1. The entire
+> downstream chain (3 dependent rules) never fired; the pipeline ran to
+> `_MAX_CYCLES` without ever reaching `solved()`/`failed()`. Fixed by adding a
+> `CONDITION:` checking all 4 BOARD flags — the gate slot was then correctly set
+> to `1` on the first cycle where all flags were available.
 
 ### Step 6 — Output
 
