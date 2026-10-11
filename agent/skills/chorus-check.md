@@ -633,6 +633,69 @@ done < /tmp/find_attributs.txt
 > reference mechanically, before it propagates into a whole-pipeline
 > non-convergence several agents downstream of the actual defect.
 
+### Step 5i — BOARD-flag self-refiring rule scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** a rule whose `ACTION` publishes
+> a BOARD flag (`$SELF->BOARD->{<flag>} = ...` or `$SELF->BOARD->set('<flag>',
+> ...)`) but whose `EXCEPTION`/`CONDITION` guard tests only the *original*
+> aggregation condition (e.g. "no pending Frame remains") — never whether the
+> flag has *already* been published — degrades identically to the other
+> silent classes above: no crash, no warning, `loadRules()` sees nothing wrong
+> (the flag genuinely is written). The only symptom is that once the
+> aggregation condition becomes permanently true, the `ACTION` **re-fires on
+> every single engine cycle, forever**, burning CPU/memory until `_MAX_CYCLES`
+> (default 10000) is reached — once per such rule, which multiplies badly
+> across a multi-agent pipeline (e.g. 19 agents × 10000 wasted cycles ≈ 13+
+> minutes observed, see incident below). This is distinct from Step 5f
+> (duplicate `TERMINAL: solved`/`failed`) — these rules rarely carry the
+> literal `TERMINAL:` key at all (they are pure BOARD-publishing rules calling
+> `solved()`/`failed()` indirectly, or not at all), so Step 5f's grep does not
+> catch them.
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+# Find rules whose ACTION writes a BOARD flag but whose EXCEPTION/CONDITION
+# does not guard on that same flag already being set.
+for f in $SANDBOX/rules/*/*.yml; do
+  flag=$(grep -oP "BOARD->\{?\K\w+(?=\}?\s*=|'\s*,)" "$f" | head -1)
+  [ -z "$flag" ] && continue
+  grep -qE "EXCEPTION:.*defined \\\$SELF->BOARD->\{?$flag\}?|CONDITION:.*defined \\\$SELF->BOARD->\{?$flag\}?" "$f" \
+    || echo "⚠️  $f — publishes BOARD flag '$flag' but EXCEPTION/CONDITION never guards on it"
+done
+```
+
+- **No warnings printed** → every BOARD-publishing rule already guards against
+  re-firing once its own flag is set → proceed to Phase 2.
+- **Warnings printed** → for each flagged rule, add `defined $SELF->BOARD->{<flag>}
+  || (<original aggregation condition>)` to the `EXCEPTION` (or the inverse
+  polarity for `CONDITION`), so the rule becomes permanently inert once it has
+  published its flag once. Do this **before** generating any infrastructure
+  file — regenerate `agent/.kb-hash` afterward (the YAML content changed).
+- Re-run the scan after fixing to confirm zero remaining matches.
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** all 19 non-final agents'
+> `mark-phase-done-and-terminate` rule (one per SFR/SAR class agent, excluding
+> `conformance-ctrl`) published its own BOARD phase-done flag
+> (`sfr_operations_phase_done`, `sar_content_phase_done`, `eal_package_complete`)
+> in `ACTION`, but the `EXCEPTION` tested only "no pending Frame remains" —
+> never `defined $SELF->BOARD->{<flag>}`. Once the aggregation condition
+> became permanently true (expected, mid-pipeline), each rule's `ACTION`
+> re-fired on every remaining engine cycle up to `_MAX_CYCLES` (10000),
+> cumulatively producing a 13+ minute hang with climbing memory (~30% RSS)
+> and zero stderr output beyond the initial Feed load — indistinguishable
+> from the outside from the Step 5d/5e/5f bug classes already documented,
+> but caught by none of their scans (no `$agent->` misuse, flag *was*
+> correctly BOARD-scoped and read, aggregation wait *was* bounded, and no
+> duplicate literal `TERMINAL:` key existed). Found only by killing the
+> hung process and bisecting convergence agent-by-agent in isolation. Fix:
+> add the `defined $SELF->BOARD->{<flag>}` short-circuit to all 19
+> `EXCEPTION` blocks. Confirmed fix: full pipeline `SOLVED` in 0.28s
+> post-fix, vs. 13+ min hang before. This check exists so the next sandbox
+> catches this exact bug class mechanically, at `chorus-check` generation
+> time, instead of requiring a hung process and manual agent-by-agent
+> isolation to diagnose.
+
 ### Step 6 — Output
 
 Produce a structured slot map (used by Phase 2):
@@ -1800,6 +1863,14 @@ Print: `[summary] Synthesis written → workspace/<entity>/reports/synthese-<pro
 ```bash
 ls $SANDBOX/project-*.json
 ```
+
+> **`archive/` exclusion (automatic, by construction):** `chorus-create-project`
+> archives previous generations under `$SANDBOX/archive/<slug>/project-<slug>-<NNN>-<date>.json`
+> (see `chorus-create-project.md § Phase 0.4 bis`). This flat glob naturally excludes
+> them since they live one directory level deeper — same convention as `chorus-stress.md
+> § --out`. Do not replace this glob with a recursive discovery (`find`/`**`) without
+> re-adding an explicit `archive/` exclusion, or archived files will be double-counted
+> in `--all` synthesis reports.
 
 If no `project-*.json` file is found → stop and report:
 ```

@@ -593,6 +593,52 @@ ACTION: "1"
 - `$SELF->solved()` in ACTION — also valid: `$SELF` inside a YAML ACTION is the agent (Engine), so `$SELF->solved()` correctly sets `BOARD->{SOLVED}`. Can be combined with `TERMINAL: solved` or used alone.
 - ⛔ **Never** use a global `fmatch` in a YAML `FIND`/`CHERCHER` block for a termination rule → guaranteed infinite loop. Use `fmatch` in `EXCEPTION`/`CONDITION` only (safe — not bound).
 
+### ⛔ Pitfall — BOARD-publishing rule must guard against self-refiring
+
+> Any rule whose `ACTION` publishes a BOARD flag (`$SELF->BOARD->{<flag>} = 1`
+> or `$SELF->BOARD->set('<flag>', 1)`) — typically a "mark phase done" rule
+> aggregating many Frames, used **without** the literal `TERMINAL:` key (e.g.
+> it only marks a phase done for other agents to consume, it does not itself
+> terminate the whole pipeline) — **must** include a guard in its
+> `EXCEPTION`/`CONDITION` testing whether the flag has already been published,
+> in addition to the aggregation condition itself:
+
+```yaml
+RULE: mark-phase-done
+FIND:
+  e:
+    attribut: type_element
+EXCEPTION: |
+  defined $SELF->BOARD->{phase_done}
+  || scalar(grep { !defined $_->{status} } Chorus::Frame::fmatch(slot => 'type_element')) > 0
+ACTION: "$SELF->BOARD->{phase_done} = 1;"
+```
+
+- Without the `defined $SELF->BOARD->{phase_done} ||` short-circuit, once the
+  aggregation condition becomes permanently true (the expected, normal
+  mid-pipeline state), the `ACTION` **re-fires on every single engine cycle,
+  forever** — burning CPU/memory until `_MAX_CYCLES` (default 10000) per such
+  rule. Across a multi-agent pipeline this multiplies: N agents with this bug
+  ≈ N × up-to-10000 wasted cycles.
+- This degrades **100% silently**: no crash, no `loadRules()` warning (the
+  flag genuinely is a valid BOARD write), no stderr — the only symptom is a
+  hung/slow pipeline with climbing memory and no progression in the output.
+- Distinct from a genuine `TERMINAL: solved`/`failed` rule (which the Engine's
+  own `applyrules()` stops re-evaluating once fired) — this guard is only
+  needed for BOARD-publishing rules that are **not** the pipeline's literal
+  termination rule.
+- `chorus-check.md § Step 5i` scans for this mechanically — but the guard
+  should be authored correctly from the start by `chorus-feed`, not left to
+  be caught/retrofitted at check time.
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** 19 `mark-phase-done-and-terminate`
+> rules (one per SFR/SAR class agent) were generated without this guard —
+> each re-fired every cycle once its aggregation condition stabilized,
+> producing a cumulative 13+ minute hang on `chorus-check`'s own smoke test.
+> Fixed by adding the `defined $SELF->BOARD->{<flag>} ||` short-circuit to all
+> 19 `EXCEPTION` blocks. See `chorus-check.md § Step 5i` for the full writeup
+> and the mechanical scan now guarding against recurrence.
+
 ### Loading Order
 
 `loadRules($dir)` loads `*.yml` files in **alphabetical order** → name files `R01-`, `R02-`, etc.
