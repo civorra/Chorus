@@ -1,6 +1,6 @@
 # Skill — chorus-create-project
 
-> Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch] [--batch-seq] [--strategy iso|edges|cross|scale]`
+> Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch] [--batch-seq] [--strategy iso|edges|cross|scale] [--no-archive]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing a KB produced by `chorus-feed`
@@ -15,6 +15,9 @@
 >                      or to resume a failed `--batch`.
 >                      Slugs: `iso` → `project-rules-iso.json` · `edges` → `project-edges.json`
 >                             `cross` → `project-cross.json`  · `scale` → `project-scale.json`
+> `--no-archive`: skip the automatic archiving of the previous `project-<slug>.json`
+>                 generation before overwrite (see Phase 0.4 bis). Default behaviour
+>                 (no flag) always archives — use only for a deliberate no-trace overwrite.
 >
 > **Choosing between modes:**
 > | Mode | Sessions | Timeout risk | User steps |
@@ -218,6 +221,61 @@ For each agent, apply this two-step sequence:
 If a `project-*.json` file exists in `$SANDBOX/`, read its first 30 lines
 to confirm the JSON format (keys `project`, `description`, `elements`, fields `id`, `type_element`).
 Do not read individual elements — types and slots are in the KB.
+
+---
+
+### 0.4 bis — Archive before write
+
+> **Applies to every mode** (`--strategy`, `--batch`, `--batch-seq` via sub-agents) and
+> runs **immediately before** the target `project-<slug>.json` is written (Phase 3 / 6.1
+> Step 3 / 6.2), for every strategy slug (`iso`, `edges`, `cross`, `scale`).
+>
+> **Goal:** preserve the previous generation of a `project-<slug>.json` file so that
+> successive `chorus-check --all` runs can be compared diff-style — the "ID stability
+> rule" documented in § Coverage strategies is useless if the file it should be diffed
+> against no longer exists.
+
+**Skip condition:** if `--no-archive` is present on the trigger, skip this step entirely
+and overwrite the target file directly (explicit no-trace overwrite, non-default).
+
+**Procedure (default, no flag):**
+
+1. Check whether `$SANDBOX/project-<slug>.json` already exists.
+   - If **absent** → nothing to archive, proceed directly to generation. This is the
+     normal case on a sandbox's first generation — not an error, not a warning.
+2. If **present**:
+   a. Determine the next archive counter `<NNN>` for this slug: list
+      `$SANDBOX/archive/<slug>/project-<slug>-*.json`, take the highest existing
+      `<NNN>`, increment by 1 (3-digit, zero-padded). If `archive/<slug>/` does not
+      exist yet, create it and start at `001`.
+   b. Move the existing file to:
+      ```
+      $SANDBOX/archive/<slug>/project-<slug>-<NNN>-<YYYY-MM-DD>.json
+      ```
+      using today's date (`YYYY-MM-DD`).
+   c. Append one line to `$SANDBOX/archive/<slug>/INDEX.md` (create the file with a
+      header row if it does not exist yet):
+      ```
+      | NNN | date | n_rules | n_thresholds | pipeline | n_conforme | n_non_conforme | note |
+      |-----|------|---------|--------------|----------|------------|----------------|------|
+      | <NNN> | <YYYY-MM-DD> | <N> | <N> | <SOLVED/FAILED/not-run> | <N> | <N> | <short note> |
+      ```
+      Best-effort fields: `n_rules`/`n_thresholds` from the KB summary already read in
+      Phase 0; `pipeline`/`n_conforme`/`n_non_conforme` from the archived file's own last
+      known run report if available, otherwise `not-run`. Never block archiving on
+      missing metrics — write `?` rather than skip the line.
+3. Proceed to generate and write the new `project-<slug>.json` as usual (Phase 3 / 6.1 / 6.2).
+
+**Non-destructive guarantee:** this step never deletes a file — it only moves (archives)
+or appends (INDEX.md). A sandbox without a pre-existing `archive/` directory incurs no
+behaviour change beyond its creation on first archive.
+
+**Out of scope for `chorus-check --all`:** `$SANDBOX/archive/` must never be scanned by
+`chorus-check --all`'s flat `project-*.json` discovery (see `chorus-check.md § 6-all.1`)
+— same convention as `chorus-stress.md § --out`. Since archived files live one directory
+level deeper (`archive/<slug>/...`), a flat `ls $SANDBOX/project-*.json` naturally excludes
+them; no extra filtering logic is required, but do not weaken that discovery glob to a
+recursive one without re-adding an explicit `archive/` exclusion.
 
 ---
 
@@ -769,6 +827,12 @@ STRATEGY GOAL:
   scale → ≥ 100 elements, all types × all classes/zones (termination stress test)
 
 YOUR TASKS:
+0. **Archive before write** (unless `--no-archive` was passed to the orchestrator): if
+   <SANDBOX>/<FILE> already exists, move it to
+   <SANDBOX>/archive/<slug>/project-<slug>-<NNN>-<YYYY-MM-DD>.json (next 3-digit counter
+   for this slug) and append a line to <SANDBOX>/archive/<slug>/INDEX.md. See
+   `chorus-create-project.md § Phase 0.4 bis` for the exact procedure. Skip silently if
+   <FILE> does not exist yet.
 1. Compute element values from the threshold tables in the KB summary (never by intuition).
 2. Generate <FILE> following Phase 3 conventions:
    - id: <PREFIX><TYPE>-<VARIANTE>-<NN>  (e.g. I-MUR-KO-R03-01)
@@ -818,6 +882,10 @@ in a new session, pasting the compact KB summary as context to skip Phase 0.
 
 Using the KB summary and coverage table (from `.chorus-batch-ctx.md`, Phase 0+1, or passed by the orchestrator):
 
+0. **Archive before write** (unless `--no-archive`): if `$SANDBOX/project-<slug>.json`
+   already exists, archive it first — see Phase 0.4 bis for the exact procedure
+   (move to `archive/<slug>/project-<slug>-<NNN>-<YYYY-MM-DD>.json` + `INDEX.md` entry).
+   Skip silently if the file does not exist yet.
 1. **Generate** — compute values from threshold tables; write elements following Phase 3
    conventions (id with strategy prefix, mandatory slots, no pipeline-computed slots,
    `_note_calc` annotations where useful).
