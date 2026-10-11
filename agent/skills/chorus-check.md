@@ -483,6 +483,55 @@ grep -rlP 'split\(/,/.*elements.*\n' $SANDBOX/rules/*/*.yml 2>/dev/null \
 > `chorus-create-project`'s own smoke-test projects expose the gap one
 > component at a time.
 
+### Step 5f — Duplicate `TERMINAL: solved`/`failed` scan across agents (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** `TERMINAL: solved`/`failed` writes
+> a single pipeline-wide `BOARD->{SOLVED}`/`BOARD->{FAILED}` flag, not an
+> agent-local one. `Chorus::Expert::process()`'s outer loop stops the instant
+> this flag is set — every agent registered after the one whose rule fired
+> **never runs at all**, silently (no crash, `perl run.pl` produces a seemingly
+> normal report with most Frames `(unprocessed)`). This degrades identically
+> to the BOARD-wiring (Step 5d) and unbounded-aggregate (Step 5e) bugs above:
+> zero error surface, only visible as missing downstream results. See the full
+> pattern + fix in `chorus-feed.md` § "Multi-agent pipelines — TERMINAL: solved
+> must appear EXACTLY ONCE".
+
+Run, across the entire sandbox's rules directory, before writing any
+infrastructure file:
+
+```bash
+grep -rl "^TERMINAL: solved$\|^TERMINAL: failed$" $SANDBOX/rules/*/*.yml
+```
+
+- **Exactly one matching file, and it belongs to the pipeline's own final
+  aggregation agent** (the agent occupying the last `#+PIPELINE_POS` in
+  `index.org`, whose rule reads every upstream BOARD phase-done flag before
+  concluding) → proceed to Phase 2.
+- **Zero matches** → the pipeline has no explicit termination rule at all;
+  confirm this is intentional (e.g. termination handled via `$SELF->solved()`
+  called directly in some agent's `ACTION` instead of via the `TERMINAL:` key
+  — search for `->solved()`/`->failed()` as well) before proceeding.
+- **More than one matching file** → every file beyond the legitimate final
+  aggregator's own rule is a bug. For each one: remove the `TERMINAL: solved`/
+  `failed` line entirely (keep the rest of the rule — it almost always also
+  publishes a legitimate per-agent BOARD phase-done flag, which must remain).
+  Do this **before** generating any infrastructure file — regenerate
+  `agent/.kb-hash` afterward (the YAML content changed).
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** a "mark-phase-done-and-
+> terminate" rule template was copy-pasted across all 19 non-final agents (11
+> SFR + 7 SAR + `sar-eal-package` + `toe-structure`), each carrying its own
+> `TERMINAL: solved`. The pipeline stopped after whichever agent's own phase
+> happened to complete first (project-data-dependent, non-deterministic across
+> different test projects) — confirmed by running the full 21-agent pipeline
+> step-by-step with a debug trace (`Chorus::Expert->debug(1)`), which showed
+> `process()` returning after a single pass through the agent list, with only
+> the agents up to and including the first `TERMINAL`-firing one having run.
+> Fixed by removing `TERMINAL: solved` from all 19 rules, keeping it solely on
+> `conformance-ctrl`'s own final-verdict rule. This check exists so the next
+> sandbox catches the same bug class at generation time — it is a single grep
+> and a count comparison, effectively free to run on every `chorus-check` pass.
+
 ### Step 6 — Output
 
 Produce a structured slot map (used by Phase 2):

@@ -1244,6 +1244,72 @@ ACTION: |
 > `addrule()` (pure Perl) is a valid fallback but is invisible to MCP mode — prefer the YAML pattern above.
 > See `chorus-check.md § Phase 3` for the canonical reference.
 
+> ⛔ **Multi-agent pipelines — `TERMINAL: solved` must appear EXACTLY ONCE across
+> the entire pipeline, on the final aggregation agent's own termination rule —
+> never on any other agent's "my own phase is done" rule.** This is a distinct,
+> easy-to-miss failure mode from the multi-patient case just above: an
+> individual agent can correctly apply the two-rule split internally (Rule A
+> computation + Rule B `EXCEPTION fmatch + TERMINAL: solved`) and still break
+> the **whole pipeline** if every agent does this independently. `$SELF->solved()`
+> (whether called directly or via `TERMINAL: solved`) writes `BOARD->{SOLVED}`
+> — a single pipeline-wide flag, not an agent-local one. The very first agent
+> whose own Rule B fires sets it, and `Chorus::Expert::process()`'s outer loop
+> (`do { for my $agent (@$agents) { $agent->loop() unless $board->SOLVED or
+> $board->FAILED } } until ($board->{SOLVED} or $board->{FAILED})`) stops
+> immediately — every agent registered after the first one to call `solved()`
+> **never runs at all**, silently, with no error.
+>
+> **Rule of thumb:** an agent that publishes a BOARD phase-done flag for a
+> *downstream* agent to consume (`$SELF->BOARD->{foo_phase_done} = 1`) must
+> **never** also carry `TERMINAL: solved`/`failed` on that same rule — publish
+> the flag with a plain `ACTION: | ... ; 1` (no `TERMINAL:` key at all). Reserve
+> `TERMINAL: solved`/`failed` exclusively for the pipeline's own final
+> aggregation agent (`conformance-ctrl`, `agent-decision`, or equivalent —
+> whichever agent occupies the **last** pipeline position and whose own BOARD
+> read confirms every upstream phase-done flag is set).
+>
+> ```yaml
+> # ⛔ WRONG — every non-final agent's own "phase done" rule also terminates
+> # the whole pipeline the moment IT finishes, starving every later agent
+> RULE: mark-phase-done
+> TERMINAL: solved
+> FIND:
+>   c:
+>     attribut: type_element
+>     filtre: '$_->{type_element} =~ /^FAU_/'
+> EXCEPTION: scalar(grep { !defined $_->{result_ok} } grep { $_->{type_element} =~ /^FAU_/ } Chorus::Frame::fmatch(slot => 'type_element')) > 0
+> ACTION: |
+>   $SELF->BOARD->{fau_phase_done} = 1;
+>   1
+>
+> # ✅ CORRECT — publishes the phase-done flag, no TERMINAL here at all;
+> # only the pipeline's LAST agent's own rule carries TERMINAL: solved,
+> # gated on every upstream phase-done flag being set
+> RULE: mark-phase-done
+> FIND:
+>   c:
+>     attribut: type_element
+>     filtre: '$_->{type_element} =~ /^FAU_/'
+> EXCEPTION: scalar(grep { !defined $_->{result_ok} } grep { $_->{type_element} =~ /^FAU_/ } Chorus::Frame::fmatch(slot => 'type_element')) > 0
+> ACTION: |
+>   $SELF->BOARD->{fau_phase_done} = 1;
+>   1
+> ```
+>
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** exactly this pattern — a
+> "mark-phase-done-and-terminate" rule template, copy-pasted across all 19
+> non-final agents (11 SFR + 7 SAR + `sar-eal-package` + `toe-structure`) with
+> `TERMINAL: solved` on every copy — caused the pipeline to stop after
+> whichever agent happened to finish its own phase first (non-deterministic,
+> depends on project data shape), silently starving the remaining 18 agents
+> including the real final aggregator (`conformance-ctrl`). No crash, no
+> warning: `perl run.pl` printed a seemingly normal report, just with most
+> Frames at `(unprocessed)`. Fixed by removing `TERMINAL: solved` from all 19
+> rules, keeping it solely on `conformance-ctrl`'s own final-verdict rule.
+> **Mechanical check:** `grep -rc "TERMINAL: solved" rules/*/*.yml | grep -v ":0$"`
+> must return **exactly one** file in the entire sandbox — see
+> `chorus-check.md § Step 5f` for the generation-time scan.
+
 **When to document `PREMISES`:**
 Always document if the agent is likely to use `reorder()` to
 optimize rule order at runtime. PREMISES declare
