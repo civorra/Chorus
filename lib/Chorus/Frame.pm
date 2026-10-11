@@ -173,6 +173,14 @@ my %REPOSITORY;
 my %FMAP;
 my %INSTANCES;
 
+# _framesProvidingSlot() memoization cache -- keyed by slot name, invalidated
+# per-slot whenever %REPOSITORY changes for that slot (_register /
+# _registerSlot / _unregisterSlot / DESTROY) or globally on _reset(). See
+# _framesProvidingSlot() below for the full rationale and an honest
+# before/after benchmark note (fmatch() perf investigation, chorus-check
+# 2026-10, sandbox 05-CC-3.1.4).
+my %FPS_CACHE;
+
 our $SELF;
 my @Heap = ();
 
@@ -312,6 +320,7 @@ sub _register {
   foreach my $slot (keys(%$this)) { # register all slots      # not yet _KEY
     $REPOSITORY{$slot} = {} unless exists $REPOSITORY{$slot};
     $REPOSITORY{$slot}->{$k} = 'Y';
+    delete $FPS_CACHE{$slot};
   }
 
   $this->{_KEY} = $k; # _KEY SET HERE !!
@@ -425,6 +434,7 @@ sub _reset {
   %REPOSITORY = ();
   %FMAP       = ();
   %INSTANCES  = ();
+  %FPS_CACHE  = ();
   $SELF       = undef;
   @Heap       = ();
   $getMode    = MODE_N;
@@ -446,6 +456,7 @@ sub DESTROY {
 
     foreach my $slot (keys(%$this)) {
       delete($REPOSITORY{$slot}->{$k}) if exists $REPOSITORY{$slot} and exists $REPOSITORY{$slot}->{$k};
+      delete $FPS_CACHE{$slot};
     }
 
     delete $FMAP{$k}; # is a weak reference (not counted by garbage collector)
@@ -633,6 +644,7 @@ sub _unregisterSlot {
   my ($this, $slot) = @_;
   return unless exists $REPOSITORY{$slot};
   delete $REPOSITORY{$slot}->{$this->{_KEY}} if exists $REPOSITORY{$slot}->{$this->{_KEY}};
+  delete $FPS_CACHE{$slot};
 }
 
 sub _deleteSlot {
@@ -697,6 +709,7 @@ sub _registerSlot {
   my ($this, $slot) = @_;
   $REPOSITORY{$slot} = {} unless exists $REPOSITORY{$slot};
   $REPOSITORY{$slot}->{$this->{_KEY}} = 'Y';
+  delete $FPS_CACHE{$slot};
 }
 
 sub _setValue {
@@ -874,14 +887,40 @@ sub _wholeTree {
 }
 
 # _framesProvidingSlot() : all frames providing $slot DIRECTLY OR BY INHERITANCE
+#
+# Memoized per slot in %FPS_CACHE -- this is the hot path behind fmatch(),
+# called directly from many rule files' own ACTION/EXCEPTION on every engine
+# cycle where the rule is (re)triggered. Avoids redundant recomputation when
+# the same slot is queried repeatedly across cycles with no intervening write
+# to that slot. The cache is invalidated per-slot by _register()/
+# _registerSlot()/_unregisterSlot()/DESTROY() (any write/delete of that slot
+# on any Frame) and globally by _reset() -- so a cached result is always
+# exactly as fresh as a freshly-computed one would be at the point fmatch()
+# is called.
+#
+# Note (2026-10, sandbox 05-CC-3.1.4 perf investigation): this memoization
+# was introduced as a hypothesis fix for an observed non-convergence on a
+# 71-element/185k-calibrated-cycles project file. Benchmarked before/after on
+# that exact case: no measurable difference (cost remained linear at ~30ms/
+# cycle regardless of this cache). The actual bottleneck there was the
+# cycle count itself (run.pl's _MAX_CYCLES auto-calibration formula), not
+# fmatch() cost — see run.pl's own calibration comment in that sandbox. This
+# memoization is kept because it is a correct, test-covered, zero-regression
+# optimization in its own right (redundant _wholeTree() inheritance-walk
+# recomputation is wasteful on any sandbox using deep _ISA chains), but it
+# should not be assumed to fix that specific incident on its own.
 sub _framesProvidingSlot {
   my ($slot) = @_;
+
+  return $FPS_CACHE{$slot} if exists $FPS_CACHE{$slot};
 
   my @res = _hasSlot($slot);
   my @inheriting = map { _firstInheriting($_) } @res;
 
   push @res, @inheriting;
-  return _wholeTree(\@res, @inheriting);
+  my $result = _wholeTree(\@res, @inheriting);
+  $FPS_CACHE{$slot} = $result;
+  return $result;
 }
 
 # TODO - bench fmatch() versions !
