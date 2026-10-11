@@ -211,6 +211,43 @@ If the blueprint is empty after scanning all slug.org files, skip Phase 1.5.
 
 ### Step 1.5-2 — Plan target elements
 
+> ⛔ **Distinguish Pattern A targets (structural, freely inventable) from
+> Pattern B targets (`_ISA` prototype catalog, NEVER freely inventable).**
+> `chorus-engine-infra.md §3.3`'s decision table distinguishes two kinds of
+> `*_ref` link: Pattern A (`slot → Frame`, e.g. `wall_ref`, `pier_ref` — the
+> target is an ordinary element you invent yourself, with its own
+> `type_element` and plausible slots) and Pattern B (`_ISA` prototype,
+> e.g. `masonry_unit_ref`, `ground_type_ref` — the target must match an
+> EXISTING entry already produced by a `_build_*_catalog()`-equivalent
+> Perl Helper in the sandbox's `lib/<Namespace>/Agent/<Slug>/Helpers.pm`,
+> built from a normative table transcribed in the KB org's `* Perl Helpers`
+> section).
+>
+> For a Pattern B target: **never invent a synthetic id and a plausible
+> set of discriminator values** (e.g. `standard_family`, `condition`,
+> `group`) independently — the catalog Helper (read its source, or read
+> the KB org's `* Perl Helpers` entry documenting it) defines the EXACT
+> set of valid discriminator-value combinations and the EXACT normative
+> number attached to each. A `masonry_unit`/`ground_type`-style target
+> element you write must reproduce one of those exact combinations,
+> including the catalog's own internal vocabulary for `standard_family`
+> (e.g. `'clay'`, not `'BS EN 771-1'` — check the Helper's actual keys,
+> do not assume the corpus's own standard-number form is accepted as-is).
+>
+> **Incident (2025, sandbox `02-building-en`):** `project-rules-iso.json`
+> and `project-cross.json` referenced `masonry_unit_ref` ids that matched
+> no element in the same file — `Feed.pm` left the ref unresolved
+> (`undef`), silently preventing the dependent rule from ever firing. The
+> JSON elements that WERE eventually added used `standard_family: "BS EN
+> 771-1"` (the corpus's own standard-number vocabulary) while the actual
+> catalog Helper indexed entries by `'clay'` — a second mismatch, only
+> caught because the consuming rule was later rewritten to do a genuine
+> value-vs-threshold comparison instead of a label-vs-label one. Read the
+> Helper's source (or its KB org documentation) for the literal
+> discriminator values it uses — never infer them from the corpus's own
+> prose vocabulary.
+
+
 For each unique `target_type` in the blueprint that is **not already in the coverage
 table**, add it now.  Minimum plan:
 

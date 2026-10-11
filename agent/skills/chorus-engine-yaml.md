@@ -332,8 +332,12 @@ domain's actual slot names.
 >   within the inner loop (the slot will be written by another rule in the same agent on a
 >   later inner cycle).
 > - A slot written by **another agent** is available only after the outer loop hands control
->   back to this agent. It must be read from `$agent->BOARD` in ACTION — **not** via
+>   back to this agent. It must be read from `$SELF->BOARD` in ACTION — **not** via
 >   CONDITION, which operates inside the inner loop where the other agent has not yet run.
+>   ⛔ **Never `$agent->BOARD` inside a YAML ACTION** — `$agent` is out of scope in the
+>   Engine's `eval` and crashes with `Global symbol "$agent" requires explicit package name`.
+>   `$agent` is only valid inside a pure-Perl `addrule()` closure (`Agent/<Nom>.pm`), never
+>   inside a `.yml` rule's `ACTION`/`EFFET`/`EXCEPTION` block.
 >
 > Full two-level loop diagram: `chorus-engine-infra.md § Two-level inference loop`.
 
@@ -901,6 +905,61 @@ across the full tree before falling back to _DEFAULT.
       **all elements unprocessed** — no error, no warning, 0 processed frames.
       This rule applies to every YAML rule in every sandbox and every `chorus-feed` run.
 - [ ] **Header present** — every generated rule starts with the structured comment header (§ Rule Documentation Standard). Language matches the corpus (English or French).
+- [ ] ⛔ **Every rule MUST push `_rule_trace` at the top of its `ACTION`/`EFFET`, before
+      any other `set()` — this is mandatory, not an opt-in convention.**
+      ```yaml
+      ACTION: |
+        my $trace = $f->get('_rule_trace') // [];
+        push @$trace, { rule_id => '<rule-id-from-RULE:-field>', corpus_ref => '<short CORPUS: summary>' };
+        $f->set('_rule_trace', $trace);
+        # ... rest of the rule's business logic ...
+      ```
+      `rule_id` = the exact value of the rule's own `RULE:`/`REGLE:` field (already
+      lowercase in every generated rule). `corpus_ref` = a short summary derived from
+      the rule's own `# CORPUS:` header line (not the full sentence).
+      **Observed incident (sandbox `02-building-en`, 2026):** all 57 rules across 6
+      agents were generated without this block — `run.pl`'s JSON report and
+      `chorus-check --explain`'s "rule chain" column were silently empty for every
+      element, for the entire lifetime of the sandbox (SP1 reached, `chorus-strengthen`
+      run, dozens of fixes applied — nobody noticed `_rule_trace` was simply never
+      written, because the degradation is 100% silent: no error, no warning, no JSON
+      key, nothing printed). Retrofitting it required editing all 57 `.yml` files
+      after the fact. Treat this checklist item exactly like "Header present" or
+      "CORPUS line traceable" above — resolve it at generation time, never leave it
+      for a later audit to catch.
+- [ ] ⛔ **Every rule that can resolve a verdict slot (`*_ok`/`*_conforme`/`statut_conformite`,
+      etc.) to a FAILING value MUST also write an explicit `non_conformity_motif`
+      (English corpus) / `motif_non_conformite` (French corpus) in the same branch —
+      mandatory, not optional.**
+      ```yaml
+      ACTION: |
+        # ... compute $required, $as_built ...
+        if ($as_built < $required) {
+          $f->set('result_ok', 'NO');
+          $f->set('non_conformity_motif', "value ${as_built}<unit> is below the required minimum of ${required}<unit> (§<N>)")
+              unless $f->get('non_conformity_motif');   # first writer wins — never overwrite
+                                                          # a motif already set by another rule
+                                                          # that fired earlier on this Frame
+          return 1;
+        }
+        $f->set('result_ok', 'YES');
+        1
+      ```
+      The guard `unless $f->get('non_conformity_motif')` is mandatory whenever more than
+      one rule can write a failing verdict on the same Frame (common pattern — see
+      `_rule_trace` entries accumulating across several rules on one element).
+      If a rule has several distinct failure branches (different thresholds/causes),
+      each branch must write its OWN specific motif — never a single generic motif that
+      would hide which condition actually failed.
+      **Observed incident (same sandbox, same session):** 8 of the 10 non-conformity
+      rules in the coverage test only wrote a binary `*_ok = 'NO'` verdict, with zero
+      explanation text — `chorus-check --explain` and the web report view had nothing
+      to show beyond a bare `verdict=NO`, even though `_rule_trace` (once retrofitted)
+      proved the engine DID know exactly which rule/article caused the failure. A
+      `run.pl`-level fallback (deriving a generic motif from the last `_rule_trace`
+      entry — see `chorus-templates.md` T5) is a safety net, not a substitute for this
+      checklist item: a rule-authored motif can state the actual numeric values
+      involved, which a generic fallback never can.
 - [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that
       justifies the rule. This line is **mandatory and must be resolved before the session ends**:
       - ✅ `# CORPUS: §4.2 — NF DTU 31.2 — Porteur intermédiaire` — fully resolved, preferred form.

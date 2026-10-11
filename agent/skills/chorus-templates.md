@@ -381,7 +381,25 @@ for my $e (@elements) {
     for my $slot (@res) {
         next if $slot eq 'raison_non_conformite';
         my $label_suffix = exists $labels->{$slot} ? "  ← «$labels->{$slot}»" : "";
-        printf "       %-32s : %s%s\n", $slot, $e->{$slot}, $label_suffix;
+        # ⛔ A result slot can hold a reference, not just a scalar — e.g. a
+        # Helper-returned arrayref (applicable_codes), a hashref (pier_dimensions,
+        # cladding_fixing_spec-style structured data), or a blessed Chorus::Frame
+        # (a *_ref slot resolved to its target, or any hashref auto-promoted by
+        # Chorus::Frame::blessToFrame once passed through $f->set()). Printing it
+        # raw with %s either stringifies to an unhelpful "HASH(0x...)"/"ARRAY(0x...)"
+        # or, for a blessed Frame, still "works" as a %s but hides the data the
+        # reader actually wants. Always stringify explicitly — never assume scalar.
+        my $val = $e->{$slot};
+        if (ref($val) eq 'ARRAY') {
+            $val = join(',', @$val);
+        } elsif (ref($val) eq 'HASH') {
+            $val = join(',', map { "$_=" . ($val->{$_} // '') } sort grep { !/^_/ } keys %$val);
+        } elsif (ref($val)) {
+            # Blessed Chorus::Frame (e.g. resolved *_ref, or an auto-promoted
+            # hashref) — Frame slots are read via get(), not hash-key access.
+            $val = join(',', map { "$_=" . ($val->get($_) // '') } grep { !/^_/ } keys %$val);
+        }
+        printf "       %-32s : %s%s\n", $slot, $val, $label_suffix;
     }
     if (defined $e->{raison_non_conformite}) {
         printf "       %-32s : %s\n", '→ raison', $e->{raison_non_conformite};
@@ -464,10 +482,29 @@ print "─" x 62 . "\n";
 
     my @elements_json = map {
         my $e = $_;
+        # ⛔ A result slot (incl. verdict_of($e)'s return value) can be a
+        # reference — arrayref (e.g. applicable_codes), hashref, or a blessed
+        # Chorus::Frame (any hashref auto-promoted by Chorus::Frame::
+        # blessToFrame once passed through $f->set() — this includes a
+        # resolved *_ref slot). JSON->encode dies on any blessed hashref
+        # unless explicitly unblessed first ("encountered object ... neither
+        # allow_blessed ... enabled") — stringify defensively before encoding,
+        # for BOTH the dedicated `verdict` key below AND every slot pulled in
+        # by the trailing @slots_resultat_display map (a type_element whose
+        # verdict slot is itself a list/struct, not just pier_dimensions-style
+        # ad hoc hashrefs, would otherwise crash the whole --all batch run).
+        my $stringify_ref = sub {
+            my ($v) = @_;
+            return $v unless ref $v;
+            return join(',', @$v)                                         if ref($v) eq 'ARRAY';
+            return join(',', map { "$_=" . ($v->{$_} // '') } sort grep { !/^_/ } keys %$v) if ref($v) eq 'HASH';
+            # Blessed Chorus::Frame — read via get(), not hash-key access.
+            return join(',', map { "$_=" . ($v->get($_) // '') } grep { !/^_/ } keys %$v);
+        };
         {
             id            => $e->{id},
             type_element  => $e->{type_element} // $e->{type},
-            verdict       => (exists &verdict_of ? verdict_of($e) : ($e->{statut_conformite} // '(unprocessed)')),
+            verdict       => $stringify_ref->(exists &verdict_of ? verdict_of($e) : ($e->{statut_conformite} // '(unprocessed)')),
             a_confirmer   => $e->{_a_confirmer} ? JSON::true : JSON::false,
             # Traceability — populated only if at least one rule that fired on
             # this element published to _rule_trace (see chorus-engine-yaml.md
@@ -485,7 +522,7 @@ print "─" x 62 . "\n";
                 ? (_rule_trace => [ map { +{ rule_id => $_->{rule_id}, corpus_ref => $_->{corpus_ref} } }
                                      @{ $e->{_rule_trace} } ])
                 : ()),
-            (map { defined $e->{$_} ? ($_ => $e->{$_}) : () } @slots_resultat_display),
+            (map { defined $e->{$_} ? ($_ => $stringify_ref->($e->{$_})) : () } @slots_resultat_display),
         }
     } @elements;
 
@@ -695,10 +732,62 @@ computing a specific verdict, followed by a `publish-*`/aggregation rule with
 no article of its own), a scalar `set()` silently overwrites the previous
 rule's reference with the last rule's — typically the generic aggregation
 rule, hiding the actual normative article that drove the verdict. The
-cumulative arrayref preserves the full chain. No substitution needed — the
-template reads `_rule_trace` opportunistically (`ref(...) eq 'ARRAY' && @{...}`)
-and degrades silently (nothing printed/no JSON key) on sandboxes/rules that
-don't publish it yet.
+cumulative arrayref preserves the full chain. The template reads `_rule_trace`
+opportunistically (`ref(...) eq 'ARRAY' && @{...}`) for backward compatibility
+with sandboxes generated before this convention existed, but **for any rule
+generated from this point forward, pushing to `_rule_trace` is mandatory** —
+see `chorus-engine-yaml.md` checklist. A silent-degradation fallback at the
+template level is a safety net for legacy sandboxes, not a license to skip the
+convention in newly generated rules.
+
+**Non-conformity motif fallback (`generic_motif_from_trace`):** a rule's
+`ACTION` is expected to write an explicit `non_conformity_motif` whenever it
+resolves a verdict slot to a failing value (mandatory per
+`chorus-engine-yaml.md` checklist). As a safety net for rules that still omit
+it (legacy sandboxes, or a rule generated before this checklist item existed),
+`run.pl`'s T5 template includes a mechanical fallback, derived from the last
+`_rule_trace` entry rather than left as a bare `verdict=$v`:
+
+```perl
+sub generic_motif_from_trace {
+    my ($e, $v) = @_;
+    if (ref($e->{_rule_trace}) eq 'ARRAY' && @{ $e->{_rule_trace} }) {
+        my $last = $e->{_rule_trace}[-1];
+        my $rule_id    = $last->{rule_id}    // '?';
+        my $corpus_ref = $last->{corpus_ref} // '?';
+        return "verdict=$v — last rule applied: $rule_id ($corpus_ref)";
+    }
+    return "verdict=$v";
+}
+```
+
+Used both in Block 4 (console "Non-conformity summary") and in the JSON
+report's `@elements_json` map, in place of the old bare `"verdict=$v"`
+fallback:
+
+```perl
+my $motif = $e->{non_conformity_motif} // generic_motif_from_trace($e, $v);
+```
+
+```perl
+# In @elements_json, alongside the _rule_trace block above:
+(!defined($e->{non_conformity_motif})
+    && $v ne '(unprocessed)'
+    && !is_ok_verdict($e->{type_element}, $v)
+    ? (non_conformity_motif => generic_motif_from_trace($e, $v))
+    : ()),
+```
+
+This fallback is strictly inferior to a rule-authored motif (it cannot state
+the actual numeric values that caused the failure — only the rule_id/article
+that last touched the element) — it exists purely so that no non-conformity
+is ever left with nothing more informative than a bare `verdict=NO`.
+**Observed incident (sandbox `02-building-en`, 2026):** 8 of 10 non-conformity
+rules in a 222-element coverage test published only a binary verdict with no
+motif text at all — `chorus-check --explain` could report nothing more than
+"Reason: none recorded" for 80% of the non-conformities, even though
+`_rule_trace` (once retrofitted) proved the engine knew exactly which rule and
+article was responsible.
 
 **JSON report:** written unconditionally to `$SANDBOX/reports/run-report-<timestamp>.json`
 (directory auto-created if absent) on every `perl run.pl` execution — no

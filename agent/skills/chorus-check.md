@@ -131,7 +131,7 @@ Load:
 > ⚠️ Do not read agent KBs (`<slug>.org`) or YAML files at this stage.
 > They are only needed during generation (infrastructure absent).
 
-Then execute Phases 0, 1–5, 6, 7 in order.
+Then execute Phases 0, 1–5, 5.6, 6, 7 in order.
 
 
 ## Phase 0 — KB prerequisite check *(full path only)*
@@ -255,6 +255,113 @@ For each known type_element T:
 > provides immediate feedback before Phase 1.5 is ever invoked.
 >
 > Phase 1.5 does **not** need to perform this check.
+
+### Step 5b — `$agent` misuse scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** `$agent` is a valid identifier in a
+> pure-Perl `addrule()` closure (`Agent/<Nom>.pm`) but is **always out of scope**
+> inside a `.yml` rule's `ACTION`/`EFFET`/`EXCEPTION` block (those are `eval`'d
+> inside `Chorus::Engine` — only `$SELF` is bound there). This mistake does **not**
+> surface as an immediate, obvious crash at `loadRules()` time — the die/crash only
+> fires the first time the offending ACTION actually executes (e.g. a BOARD-publishing
+> terminal rule reached late in a run), which can be deep into a `--batch`/`--all`
+> smoke test on an unrelated project file. Treat it with the same mechanical rigor
+> as the `*_ref` field-naming check (§ above), not as something a sub-agent might
+> happen to notice while reading code.
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+grep -rn '\$agent->' $SANDBOX/rules/
+```
+
+- **No matches** → proceed to Phase 2.
+- **Matches found** → every one of them is a bug in the YAML KB (not a template/
+  infrastructure issue) — fix each occurrence in place, replacing `$agent->` with
+  `$SELF->` (identical semantics: `$SELF->BOARD` and `$agent->BOARD` are the same
+  Frame instance inside a rule's own ACTION). Do this **before** generating any
+  `.pm`/`run.pl` file — a smoke test run against a KB still carrying this bug will
+  either crash on the first BOARD-publishing rule reached, or silently skip the
+  BOARD write (depending on where in the ACTION body the crash occurs relative to
+  prior statements), producing a confusing downstream symptom (e.g. an empty
+  `applicable_codes_set` read by a later agent) instead of a clear error at the
+  source.
+- After fixing, re-run the grep to confirm zero remaining matches, then regenerate
+  `agent/.kb-hash` (the YAML content changed) before proceeding to Phase 2.
+
+> **Incident (2025, sandbox `02-building-en`):** a `chorus-feed` generation pass
+> produced 4 rules across 3 different agents using `$agent->BOARD->set(...)` in
+> their ACTION (all BOARD-publishing "terminal" rules — the exact pattern most
+> likely to copy-paste `$agent->BOARD` from `chorus-engine-infra.md`'s own Perl-level
+> documentation examples, which correctly use `$agent` for the *pure-Perl addrule()*
+> context but are easy to misapply to a YAML ACTION by analogy). Found only during
+> a `chorus-check` infrastructure smoke test, well after `chorus-feed` had already
+> reported success — confirming this check belongs in `chorus-check` (pre-flight,
+> mechanical, zero domain knowledge needed), not left to incidental discovery.
+
+### Step 5c — `_rule_trace` / `non_conformity_motif` coverage scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** both mechanisms degrade **100%
+> silently** by design (no error, no warning, no JSON key, nothing printed —
+> see `chorus-templates.md` § Traceability) — the exact property that makes
+> `$agent->` misuse (Step 5b) dangerous also applies here, except there isn't
+> even a crash to eventually surface the problem. A KB can reach SP1, pass
+> `chorus-strengthen`, and run cleanly for the sandbox's entire lifetime
+> without anyone noticing these fields are simply never written.
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+# Rules that can write a failing verdict (grep for the "NO"/"NON" literal commonly
+# used in a result slot) but never push to _rule_trace:
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -qE "rule_trace" "$f" || echo "MISSING _rule_trace: $f"
+done
+
+# Rules whose ACTION sets a result slot to a failing value but never writes a
+# non_conformity_motif / motif_non_conformite in the same file:
+for f in $SANDBOX/rules/*/*.yml; do
+  if grep -qE "set\('[a-z_]+_ok', 'NO'\)|set\(\"[a-z_]+_ok\", \"NO\"\)|'NON'" "$f"; then
+    grep -qE "non_conformity_motif|motif_non_conformite" "$f" || echo "MISSING motif: $f"
+  fi
+done
+```
+
+(Adapt the grep patterns to the sandbox's actual verdict-slot naming convention —
+`_ok`/`YES`/`NO` for an English corpus, `_conforme`/`OUI`/`NON` for a French one.
+The exact regex matters less than the principle: **every rule file that can
+produce a failing verdict must also appear in both scans' "no match" case.**)
+
+- **No matches (all rules covered)** → proceed to Phase 2.
+- **Matches found** → for each flagged file:
+  - Missing `_rule_trace`: add the mandatory push block at the top of `ACTION`
+    (see `chorus-engine-yaml.md` checklist for the exact snippet).
+  - Missing `non_conformity_motif`: add an explicit, rule-authored motif in each
+    failing branch (one motif per distinct failure cause — never a single generic
+    motif covering several branches), guarded by `unless $f->get('non_conformity_motif')`.
+  - Fix in place, do **not** defer to a later `chorus-strengthen`/`chorus-review-kb`
+    pass — those tools check KB *correctness*, not *traceability completeness*,
+    and will not catch this.
+- After fixing, re-run both scans to confirm zero remaining matches, then
+  regenerate `agent/.kb-hash` before proceeding to Phase 2.
+- **Also verify `run.pl`'s own JSON-report block** (not just the `.yml` rules)
+  actually reads `_rule_trace` back off the element and includes a
+  `generic_motif_from_trace()` fallback (see `chorus-templates.md` T5) — a KB
+  that correctly pushes `_rule_trace` is still silently useless downstream if
+  the hand-written/previously-generated `run.pl` never reads it back into the
+  JSON report.
+
+> **Incident (2026, sandbox `02-building-en`):** all 57 rules across 6 agents
+> were generated without any `_rule_trace` push, and 8 of 10 deliberately-authored
+> non-conformities in a 222-element coverage test carried no `non_conformity_motif`
+> at all — both gaps were invisible through the sandbox's entire SP1→
+> `chorus-strengthen`→production lifecycle (no crash, no `--explain` error, just
+> an empty "rule chain" column and a bare `verdict=NO` where a human-readable
+> explanation should have been). Discovered only when an operator manually
+> inspected a web report view and asked why two specific columns were empty.
+> Retrofitting required editing all 57 `.yml` files plus `run.pl`'s JSON-report
+> block after the fact — this step exists so the gap is caught at generation
+> time instead, at near-zero cost compared to a after-the-fact retrofit.
 
 ### Step 6 — Output
 
@@ -503,6 +610,22 @@ Create `$SANDBOX/run.pl` from template **T5** (`chorus-templates.md`).
 
 **Rule:** `run.pl` contains **no hardcoded data** — all project input comes from the JSON argument.
 
+> ⚠️ **Reference-valued result slots — do not assume every slot is a scalar.**
+> Any slot in `@slots_resultat_display` (or returned by a custom `verdict_of()`
+> in the multi-type dispatch variant) may hold an **arrayref** (e.g. a Helper
+> returning a list of standard codes), a **hashref**, or a **blessed
+> `Chorus::Frame`** (a resolved `*_ref` slot, or any hashref auto-promoted by
+> `Chorus::Frame::blessToFrame` once passed through `$f->set()` — see
+> `chorus-frame-advanced.md § blessToFrame`). T5 already stringifies these
+> defensively (text display loop **and** the JSON report block) — if you hand-edit
+> either block instead of copying T5 verbatim, preserve that stringification;
+> printing/encoding a reference raw either produces an unreadable `HASH(0x...)`
+> in the text report or an outright `JSON->encode` crash
+> (`"encountered object ... neither allow_blessed ... enabled"`) deep into a
+> `--batch`/`--all` run — on whichever project file happens to be the first to
+> populate that particular slot with a non-scalar value, which may not be the
+> file used for the Phase 6 smoke test.
+
 
 ## Phase 5.5 — Record KB hash *(full path only, after Phases 1–5)*
 
@@ -515,6 +638,56 @@ sha256sum $SANDBOX/agent/chorus/*.org > $SANDBOX/agent/.kb-hash
 
 This file is **never committed** (local artefact, like `sessions/`).
 It is invalidated (deleted) by `chorus-feed` at the end of each run.
+
+
+## Phase 5.6 — Smoke test *(full path only, mandatory before Phase 6/6-all)*
+
+> **Purpose:** catch infrastructure-generation bugs (crashes, encoding errors,
+> malformed JSON report) on a single, controlled run — before they surface
+> confusingly deep into a multi-file `--all` batch, on whichever project file
+> happens to be first to exercise the buggy code path. A sub-agent spawned for
+> `--all` Phase 6-all.2 reports `STATUS: FAILED` the same way for "genuine KB
+> non-conformity" and "run.pl crashed with a Perl error" — the structured
+> synthesis table cannot tell these apart. Smoke-testing once, here, with full
+> error visibility, avoids misdiagnosing an infrastructure bug as a KB/project
+> convergence problem three phases later.
+
+**Select one project file** already present in `$SANDBOX/` (any `project-*.json`,
+or the single `<fichier-project>` being checked if not in `--all` mode). Prefer
+one with **varied element types** (not a single-type minimal fixture) if several
+are available — a file exercising only one `type_element` may never populate the
+reference-valued slot (arrayref/hashref/blessed Frame) that triggers the
+"Reference-valued result slots" pitfall documented in Phase 5.
+
+Run:
+
+```bash
+perl $SANDBOX/run.pl $SANDBOX/<selected-project-file>.json 2>&1 | tail -100
+```
+
+Check:
+- [ ] No Perl crash (`Can't locate object method`, `Not a HASH/ARRAY reference`,
+      `Global symbol "$agent"`, `encountered object ... neither allow_blessed`, etc.)
+- [ ] Output reaches the final `Pipeline : SOLVED ✅` or `FAILED/TIMEOUT ❌` line
+      (a crash mid-report means the run never gets this far — distinct from a
+      legitimate `FAILED/TIMEOUT` verdict, which DOES reach this line)
+- [ ] The JSON report file was written without error (`JSON report    : <path>`
+      line present in the output — its absence alongside a `warn` immediately
+      above it means `JSON->encode` died or the file could not be opened)
+
+**If the smoke test crashes:**
+1. Diagnose the failure class first — this determines where the fix belongs:
+   | Symptom | Likely cause | Fix location |
+   |---|---|---|
+   | `Global symbol "$agent" requires explicit package name` in a `.yml`-sourced eval | `$agent->` used instead of `$SELF->` inside a rule's ACTION/EFFET/EXCEPTION | the `.yml` rule file itself — see Step 5b above (should have been caught already; a crash here means Step 5b was skipped or a new rule was added after it ran — re-run the grep) |
+   | `Not a HASH/ARRAY reference` / `encountered object ... neither allow_blessed` | a result slot holds a reference (arrayref/hashref/blessed Frame) and `run.pl`'s display or JSON-report block printed/encoded it raw | `run.pl` itself — apply the defensive stringification documented in Phase 5's "Reference-valued result slots" note (already built into T5 — re-check you copied it verbatim rather than simplifying it away) |
+   | `Can't locate object method "X" via package "Chorus::Frame"` | a `*_ref` field resolved to a plain string instead of a Frame object (naming mismatch between `%REF_FIELDS` and the YAML's actual `get('..._ref ...')` calls) | `Feed.pm` — re-verify the `*_ref` form per Phase 2's mandatory grep check |
+   | `Undefined subroutine &Chorus::Engine::<helper>` | typeglob injection missing or ordered after `loadRules()` | the agent's `Agent/<Nom>.pm` — see Phase 3 |
+2. Fix at the identified location, re-run the smoke test, repeat until clean.
+3. If the fix touched any `.yml` rule file (KB content) → regenerate
+   `agent/.kb-hash` (Phase 5.5) before proceeding — the KB fingerprint changed.
+
+**Do not proceed to Phase 6 / Phase 6-all until the smoke test runs cleanly.**
 
 
 ## Phase 6 — Execution and report
@@ -1338,6 +1511,14 @@ Print: `[summary] Synthesis written → workspace/<entity>/reports/synthese-<pro
 
 > This phase is used **instead of Phase 6** when `--all` is present.
 > Infrastructure detection (Step 0) is shared — the hash check runs once.
+> ⚠️ **Phase 5.6 (smoke test) is NOT optional in `--all` mode** — on the FULL
+> PATH (infrastructure just (re)generated), run it on one project file BEFORE
+> spawning the 6-all.2 sub-agents. A crash inside `run.pl` and a genuine
+> NON_CONFORME/discordance verdict both surface as sub-agent noise otherwise —
+> smoke-testing once, here, with full error visibility, prevents 4+ sub-agents
+> from independently hitting (and separately, confusingly, reporting) the same
+> infrastructure bug. Skip Phase 5.6 only on the FAST PATH (hash unchanged —
+> infrastructure already smoke-tested in a prior run).
 >
 > **Orchestrator mode:** the current agent discovers project files and spawns
 > one sub-agent per project file via `eca__spawn_agent`. Each sub-agent has its
@@ -1572,6 +1753,11 @@ when the KB has not changed since the last `chorus-check --all`.
 - [ ] BOARD: custom slots reset between `process()` calls if Expert instance is reused
 - [ ] BOARD: YAML ACTION uses `$SELF->BOARD` — never `$agent->BOARD`
 - [ ] BOARD: no `CONDITION` guard on a slot written by another agent — use `register()` order + ACTION fallback
+- [ ] Every `.yml` rule pushes `_rule_trace` at the top of its `ACTION`/`EFFET` (Step 5c)
+- [ ] Every rule that can write a failing verdict also writes an explicit, rule-authored
+      `non_conformity_motif`/`motif_non_conformite` in the same branch (Step 5c)
+- [ ] `run.pl`'s JSON-report block reads `_rule_trace` back and includes the
+      `generic_motif_from_trace()` fallback (Step 5c / `chorus-templates.md` T5)
 - [ ] **`return 0` vs `return 1` — convergence mechanism:** every ACTION must return `1` only when
       it has written at least one slot. Returning `1` unconditionally signals "productive step" to the
       engine, which schedules a new cycle — causing an infinite loop if no slot is actually written.

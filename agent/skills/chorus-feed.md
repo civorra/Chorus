@@ -1515,6 +1515,54 @@ comparable in severity to `⏭ Deferred > 0`, though coarser: unlike a
 Deferred entry, an under-accounted corpus file carries no motif and no
 `retry-note` until manually investigated.
 
+**Step 1e — `_rule_trace` / `non_conformity_motif` coverage audit (mandatory,
+runs at the end of every Mode A session — same "audit at generation time, not
+downstream" principle as Step 1b/1c/1d above)**
+
+> ⚠️ **Why this cannot wait for `chorus-check`:** `chorus-check.md` Step 5c
+> performs the same scan, but only runs once, later, at full-path
+> infrastructure-generation time — potentially days and several `chorus-feed`
+> sessions after the rules that omit the convention were written (the exact
+> sequence that produced the incident below). Auditing here, at the end of
+> **this** Mode A session, catches the gap while the rules just generated are
+> still in context, instead of silently accumulating across 6 agents/57 rules
+> before anyone notices.
+
+Scan every `.yml` file generated **during this Mode A session** (not the whole
+sandbox — a prior session's rules were already audited when they were written):
+
+```bash
+for f in <list of .yml files written/modified this session>; do
+  grep -q "rule_trace" "$f" || echo "MISSING _rule_trace: $f"
+done
+for f in <same list>; do
+  if grep -qE "_ok', 'NO'|_ok\", \"NO\"|'NON_CONFORME'|\"NON_CONFORME\"" "$f"; then
+    grep -qE "non_conformity_motif|motif_non_conformite|set\('motif'|set\(\"motif\"" "$f" \
+      || echo "MISSING motif: $f"
+  fi
+done
+```
+
+(Adapt the verdict-literal patterns to the corpus's actual convention —
+`_ok`/`YES`/`NO` for an English corpus, `_conforme`/`OUI`/`NON` for a French
+one — see `chorus-engine-yaml.md` checklist for the exact snippet each rule
+must contain.)
+
+- **No matches** → proceed to Step 2.
+- **Matches found** → fix each flagged rule in place, **before** proceeding to
+  Step 2 or declaring this session's agent `done` in `README.org` — do not defer
+  to a later `chorus-check`/`chorus-strengthen` pass, and do not let it
+  accumulate across the remaining agents of a multi-session Mode A pipeline.
+
+> **Incident (2026, sandbox `02-building-en`):** this exact gap — all 57 rules
+> across 6 Mode A sessions (one per agent, run over several days) missing
+> `_rule_trace`, and 8 of 10 deliberately-authored non-conformities missing
+> any `non_conformity_motif` — went undetected through SP1, `chorus-strengthen`,
+> and the sandbox's entire production lifetime, because no audit ran at
+> generation time (only `chorus-check.md` Step 5c existed, added *after* this
+> incident, and only checks at full-path infrastructure-generation time, not
+> per Mode A session). This Step 1e closes that gap at the source.
+
 **Step 2 — Classify each section**
 
 > ⚠️ **`too-ambiguous` is a last resort — never a first reflex.**
@@ -1700,7 +1748,8 @@ Check the `* Agent status` table in `README.org`:
 | **All agents processed AND ⏭ Deferred > 0** | Run deferred sections first: `chorus-feed <sandbox-name> corpus/<NNN>-<slug>.md --enrich` per agent. Still not a stability point. |
 | **All agents processed AND 🧮 Helper-source pending > 0** | Write the missing Helper(s) now (Phase 5.5) for the pending sections, then re-run Step 1c. Still not a stability point — a KB with an unextracted `HELPER-SOURCE` section is exactly the incomplete-coverage failure mode this mechanism exists to prevent. |
 | **All agents processed AND 🔍 UNSCANNED > 0** | Re-run `scripts/corpus-inventory.py` (Step 1d), manually re-check the listed corpus file(s) against their `Coverage` block, classify any genuinely missing section into ✅/⏭/⛔, then re-run the script. Still not a stability point. |
-| **All agents processed AND ⏭ Deferred = 0 AND 🧮 Helper-source pending = 0 AND 🔍 UNSCANNED = 0 AND ⚠️ CORPUS: unresolved = 0** | **Stability point 1 reached** — see convergence check below. |
+| **All agents processed AND Step 1e flagged any `MISSING _rule_trace`/`MISSING motif`** | Fix each flagged rule in place (per Step 1e above), then re-run the Step 1e scan. Still not a stability point — same incomplete-coverage failure mode as Helper-source pending, just for traceability instead of normative content. |
+| **All agents processed AND ⏭ Deferred = 0 AND 🧮 Helper-source pending = 0 AND 🔍 UNSCANNED = 0 AND ⚠️ CORPUS: unresolved = 0 AND Step 1e clean** | **Stability point 1 reached** — see convergence check below. |
 
 **Stability point 1 — Single corpus mode (no pre-split)**
 
