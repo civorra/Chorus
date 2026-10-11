@@ -132,6 +132,8 @@ Load:
 > They are only needed during generation (infrastructure absent).
 
 Then execute Phases 0, 1–5, 5.6, 6, 7 in order.
+(Phase 5 includes Steps 5b–5l; Steps 5k and 5l are new — mandatory for pipelines
+with bounded-wait aggregate rules and/or multi-BOARD gate rules.)
 
 
 ## Phase 0 — KB prerequisite check *(full path only)*
@@ -780,6 +782,96 @@ done
 > exact bug class mechanically — at `chorus-check` generation time — rather
 > than requiring a human to notice a bloated/polluted report after the
 > fact.
+
+### Step 5k — `return 0` on `!@elements` in bounded-wait aggregate scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** an aggregate rule that applies a
+> bounded wait (`_decl_wait_cycles / MAX_WAIT_CYCLES`) to the "no sub-elements
+> found" case will **never complete** in a pipeline that includes a TERMINAL rule
+> (one that calls `solved()` or `failed()` early). The engine's inner loop stops
+> at fixpoint — as soon as every rule returns 0 in a cycle. `return 0` on
+> `!@elements` IS the only action in that cycle → fixpoint declared after 1 cycle
+> → `_decl_wait_cycles` never reaches `MAX_WAIT_CYCLES` → aggregate slot never
+> set → element permanently `(unprocessed)`. Invisible in long-running sessions
+> (`pipeline_solved=false`, engine runs all `_MAX_CYCLES` cycles); surfaces only
+> when a TERMINAL shortcut fires. Distinct from Step 5e (unbounded aggregate wait
+> forever) — here the wait IS bounded, but `return 0` makes bounding ineffective.
+
+Run, for every agent's rules directory:
+
+```bash
+# Find aggregate rules that apply a bounded-wait (MAX_WAIT_CYCLES / _decl_wait_cycles)
+# AND use return 0 in the !@elements branch (no sub-elements found at all).
+# Signature: the pattern "if (!@elements)" followed by a return 0 somewhere
+# inside that block — distinct from the @pending branch which correctly uses return 0.
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -q "MAX_WAIT_CYCLES\|_decl_wait_cycles" "$f" || continue
+  # Look for the !@elements return 0 pattern (as opposed to @pending return 0)
+  perl -0777 -ne '
+    if (/if\s*\(!\@elements\).*?return\s+0/s) {
+      print "⚠️  FIXPOINT TRAP (!@elements + return 0): '"$f"'\n"
+    }
+  ' "$f"
+done
+```
+
+- **No matches** → bounded-wait aggregate rules do not trap fixpoint on empty sub-element lists → proceed.
+- **Matches found** → for each flagged rule: **remove the `return 0` branch inside `!@elements`** — replace with an immediate set of the aggregate slot (see `chorus-engine-yaml.md § Bounded-wait !@elements — fixpoint trap` for the correct pattern). The `return 0` / `_decl_wait_cycles` wait is only correct for the `@pending` branch (sub-elements exist but are not yet scored); it is always wrong for `!@elements` (sub-elements will never arrive).
+- After fixing, regenerate `agent/.kb-hash` before proceeding to Phase 2.
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** 11 SFR parent-level `_EXT`
+> components (`FCO_NRO_EXT.2`, `FCS_CKM_EXT.1`, `FDP_CER_EXT.1`…) went from
+> `verdict=1` to `(unprocessed)` after a TERMINAL rule started firing early (EAL
+> package Frame added to project JSON). `_decl_wait_cycles=None` (not even 1)
+> confirmed R06 fired zero times despite EXCEPTION/CONDITION being logically
+> correct. Root cause: `return 0` on `!@elements` → fixpoint after cycle 1 →
+> inner loop stops → `_decl_wait_cycles` never increments → aggregate slot never
+> set. Fixed by removing the `!@elements` wait in all 11 SFR R06 files.
+> `n_conforme` recovered from 34 to 45 in the next run.
+
+### Step 5l — Multi-BOARD gate rule missing `CONDITION` scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** a rule that reads N BOARD flags to
+> compute a downstream gate slot (e.g. `pipeline_complete_ok`) but has **no
+> `CONDITION`** fires on the **first engine cycle** — before any upstream agent
+> has published those flags. It evaluates all flags as `undef`, sets the gate
+> slot to `0`/`false`, and is **permanently blocked** by Pattern 1
+> (`EXCEPTION: defined $w->{gate_slot}`). Downstream rules gating on
+> `gate_slot=1` (e.g. via `FIND: { attribut: gate_slot, filtre: 'defined... &&
+> ...' }` or `CONDITION: $w->get('gate_slot')`) never fire. The entire
+> downstream chain is silently dead for the pipeline lifetime — no error,
+> no warning, just missing results.
+
+Run, for every agent's rules directory:
+
+```bash
+# Find rules whose ACTION reads multiple BOARD flags (BOARD->{X} && BOARD->{Y})
+# but whose YAML block has no CONDITION: line at all.
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -qE "BOARD->\{[a-z_]+\}" "$f" || continue   # rule reads a BOARD flag
+  # Count distinct BOARD reads in ACTION
+  board_count=$(grep -oE "BOARD->\{[a-z_]+\}" "$f" | sort -u | wc -l)
+  [ "$board_count" -lt 2 ] && continue   # single BOARD read — not a multi-flag gate
+  # Check for CONDITION: line in the same YAML block
+  grep -q "^CONDITION:" "$f" || echo "⚠️  $f — reads $board_count BOARD flags but has no CONDITION gate"
+done
+```
+
+- **No matches** → all multi-BOARD-flag readers have a `CONDITION` → proceed.
+- **Matches found** → for each flagged rule: add a `CONDITION:` clause checking
+  `defined $SELF->BOARD->{flagA} && defined $SELF->BOARD->{flagB} ...` for each
+  flag the ACTION reads (see `chorus-engine-yaml.md § Multi-BOARD gate rule must
+  have CONDITION` for the correct pattern). Do this **before** generating any
+  infrastructure file.
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** `conformance-ctrl/R01`
+> (`wait-for-pipeline-complete`) read 4 BOARD flags (`sfr_operations_phase_done`,
+> `sfr_dependencies_phase_done`, `sar_content_phase_done`, `eal_package_complete`)
+> but had no `CONDITION`. It fired in cycle 1, set `pipeline_complete_ok=0`, and
+> was blocked by Pattern 1. Downstream R02→R03→R04 never fired; pipeline ran to
+> `_MAX_CYCLES` without ever reaching `solved()`/`failed()`. Fixed by adding
+> `CONDITION:` checking all 4 BOARD flags — `pipeline_complete_ok=1` set correctly
+> on first cycle where all flags were available.
 
 ### Step 6 — Output
 

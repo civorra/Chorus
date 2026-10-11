@@ -1165,6 +1165,121 @@ across the full tree before falling back to _DEFAULT.
       pipeline (very slow, incomplete) — the aggregate rule's own missing-sibling
       case was the actual root cause, not agent interaction. Fixed by adding the
       bounded-wait pattern above to all 7 copies.
+- [ ] ⛔ **Bounded-wait `!@elements` branch — `return 0` causes immediate
+      fixpoint when sub-elements will NEVER appear in this project.** The
+      pattern above correctly uses `return 0` when `@pending && waited <
+      MAX_WAIT_CYCLES` (sub-elements exist but are still unscored — genuinely
+      transient). But many aggregate rules ALSO apply the same bounded-wait to
+      the `!@elements` case (no sub-elements at all). This is a distinct and
+      more dangerous failure mode:
+      - The engine's inner loop stops after the **first** cycle where every
+        rule returns 0 or is EXCEPTION-blocked (fixpoint). With `return 0` as
+        the **only** action in a cycle, fixpoint is declared immediately after
+        cycle 1 — `_decl_wait_cycles` is incremented to 1, the engine stops,
+        and `_decl_wait_cycles` never reaches `MAX_WAIT_CYCLES`. The aggregate
+        slot is NEVER set.
+      - This is invisible in long-running sessions where `pipeline_solved=false`
+        (engine always runs `_MAX_CYCLES` cycles, giving the rule many chances
+        to accumulate). It only surfaces when a TERMINAL rule fires early
+        (pipeline converges quickly), cutting the inner loop before the bounded
+        wait completes.
+
+      ```yaml
+      # ⛔ WRONG — return 0 on !@elements causes fixpoint, _decl_wait_cycles
+      # never reaches MAX_WAIT_CYCLES, aggregate slot never set
+      ACTION: |
+        my @elements = grep { ... } Chorus::Frame::fmatch(slot => 'type_element');
+        use constant MAX_WAIT_CYCLES => 5;
+        my $waited = ($c->get('_decl_wait_cycles') // 0) + 1;
+        if (!@elements) {
+          if ($waited < MAX_WAIT_CYCLES) {
+            $c->set('_decl_wait_cycles', $waited);
+            return 0;   # ⛔ fixpoint after first cycle — never accumulates
+          }
+          $c->set('component_declared', 1);
+          return 1;
+        }
+        ...
+
+      # ✅ CORRECT — set immediately when no sub-elements exist; only use
+      # bounded wait for the case where sub-elements exist but aren't scored
+      ACTION: |
+        my @elements = grep { ... } Chorus::Frame::fmatch(slot => 'type_element');
+        use constant MAX_WAIT_CYCLES => 5;
+        my $waited = ($c->get('_decl_wait_cycles') // 0) + 1;
+        if (!@elements) {
+          # No sub-elements exist for this component — set immediately.
+          # DO NOT apply a bounded-wait here: if sub-elements never appear in
+          # the project (e.g. parent-level _EXT components), return 0 would
+          # cause premature fixpoint (engine stops after 1 non-productive cycle).
+          my $trace = $c->get('_rule_trace') // [];
+          push @$trace, { rule_id => 'component-declared-aggregate', corpus_ref => '...' };
+          $c->set('_rule_trace', $trace);
+          $c->set('component_declared', 1);
+          return 1;
+        }
+        my $pending = grep { !defined $_->{child_ok} } @elements;
+        if ($pending && $waited < MAX_WAIT_CYCLES) {
+          $c->set('_decl_wait_cycles', $waited);
+          return 0;   # ✅ safe: sub-elements DO exist, wait is genuinely transient
+        }
+        ...
+      ```
+      **Rule of thumb:** `return 0` on `!@elements` is only safe when the engine
+      is guaranteed to run many more cycles regardless (e.g. `pipeline_solved`
+      will never fire, or `_MAX_CYCLES` is large and the pipeline never has a
+      TERMINAL shortcut). As soon as any pipeline path includes a TERMINAL rule
+      that may fire early, `return 0` on `!@elements` silently prevents scoring.
+      **Use `return 1` + immediate set whenever sub-elements cannot be expected
+      to arrive later.**
+
+      **Incident (2026-10, sandbox `05-CC-3.1.4`):** 11 SFR `_EXT` parent-level
+      components (e.g. `FCO_NRO_EXT.2`, `FCS_CKM_EXT.1`, `FDP_CER_EXT.1`)
+      went `(unprocessed)` after a TERMINAL rule started firing earlier (EAL
+      package Frame added to project). `_decl_wait_cycles=None` confirmed R06
+      fired zero times despite all other logic being correct. Fixed by removing
+      the wait on `!@elements` entirely in all 11 SFR aggregate rules.
+- [ ] ⛔ **A pipeline-completion gate rule reading multiple BOARD flags MUST
+      declare those flags in its `CONDITION`, not just in its `ACTION`.** A
+      common pattern: rule R fires when "all N upstream BOARD flags are
+      defined", then sets a downstream aggregation slot. If R has no
+      `CONDITION` (or only `EXCEPTION: defined $w->{result_slot}`), it fires
+      on the **first engine cycle** — before any upstream agent has published
+      its flags. It evaluates all flags as `undef`, sets `result_slot=0`,
+      and is **permanently blocked** by Pattern 1 (`EXCEPTION: defined →
+      true`). None of the N upstream flags ever unblocks it.
+      ```yaml
+      # ⛔ WRONG — fires cycle 1, evaluates all flags as undef → result=0 → blocked
+      RULE: wait-for-all-phases-done
+      FIND:
+        w: { attribut: besoin_conformite }
+      EXCEPTION: defined $w->{pipeline_complete_ok}
+      ACTION: |
+        my $ok = ( defined $SELF->BOARD->{phase_a_done}
+                && defined $SELF->BOARD->{phase_b_done} ) ? 1 : 0;
+        $w->set('pipeline_complete_ok', $ok);
+        1
+
+      # ✅ CORRECT — CONDITION gates the rule until all BOARD flags are available
+      RULE: wait-for-all-phases-done
+      FIND:
+        w: { attribut: besoin_conformite }
+      EXCEPTION: defined $w->{pipeline_complete_ok}
+      CONDITION: >
+        defined $SELF->BOARD->{phase_a_done} &&
+        defined $SELF->BOARD->{phase_b_done}
+      ACTION: |
+        $w->set('pipeline_complete_ok', 1);   # CONDITION already guarantees both are defined
+        1
+      ```
+      **Incident (2026-10, sandbox `05-CC-3.1.4`):** `conformance-ctrl/R01`
+      (`wait-for-pipeline-complete`) had no `CONDITION` — it fired in cycle 1,
+      set `pipeline_complete_ok=0` (4 BOARD flags absent), and was blocked by
+      Pattern 1 forever. Downstream R02→R03→R04 (which all gate on
+      `pipeline_complete_ok=1`) never fired; `pipeline_solved=false` for the
+      entire pipeline lifetime. Fixed by adding a `CONDITION` checking the 4
+      BOARD flags — R01 then fires only once all are defined, guaranteeing
+      `pipeline_complete_ok=1`.
 - [ ] ⛔ **`fmatch(slot => '...')` inside an `EXCEPTION` MUST be filtered down to
       the agent's own targeted Frame family before testing any domain slot —
       an unfiltered `fmatch` call returns EVERY Frame in the project carrying
