@@ -344,6 +344,71 @@ the threshold in the correct direction.
 > rejected by a universal rule even if it was designed to test a completely different criterion.
 > Annotate the verification in `_note_calc` with the agent name and rule reference.
 
+> ⚠️ **Lifecycle/aggregation rules — multi-slot `CONDITION`, pipeline-blocking if never satisfied.**
+> Some rules (typically the last rule of an agent, aggregating a verdict across several
+> prior phases) have a `CONDITION` requiring **several `conforme_*`/status slots to be
+> simultaneously defined** before writing the slot a termination rule (`TERMINAL: solved`,
+> cf. `chorus-engine-yaml.md § TERMINAL`) is waiting for. Example pattern:
+> ```yaml
+> CONDITION: |
+>   defined $f->{conforme_phase_a} && defined $f->{conforme_phase_b}
+>   && defined $f->{conforme_phase_c} ...
+> ACTION: |
+>   ...
+>   $f->set('statut_global', ...);   # ← a later TERMINAL rule's EXCEPTION waits for this
+> ```
+> **Why this matters for `--strategy iso`/`cross`:** these strategies deliberately populate
+> only the slot(s) relevant to the ONE rule/interaction under test — by design, for maximum
+> isolation (see Step 1.5-3). But if the element's type is also subject to a multi-slot
+> aggregation rule like the one above, the aggregation `CONDITION` will **never** be
+> satisfied (only 1 of N required `conforme_*` slots is ever set), so the aggregating
+> slot (`statut_cle`/`statut_global`/...) is **never written** — and if a separate
+> termination rule's `EXCEPTION` is waiting specifically for that slot to be defined on
+> every Frame of this type (not just on the one currently tested), **the pipeline never
+> reaches `TERMINAL: solved` and loops until `_MAX_CYCLES`/timeout** (CPU-bound infinite
+> loop, no crash, no error message — the only visible symptom is a `run.pl` process that
+> never returns). This is NOT a KB bug and NOT something `--strategy iso`/`cross` can
+> avoid by construction — it must be compensated for explicitly at generation time.
+>
+> **Incident (2026-10, sandbox `08-ANSSI-PG-083_MULTI-SOURCES`):** `project-rules-iso.json`
+> and `project-cross.json` each populated only 1 of 6 mandatory `conforme_*` slots on
+> every `cle_cryptographique` element (by design, for rule isolation) — the aggregation
+> rule `R14-publish-statut-cle.yml` never wrote `statut_cle` for any of them, and the
+> separate termination rule `R15-terminate-pipeline.yml` (`EXCEPTION`: any
+> `cle_cryptographique` Frame still missing `statut_cle`) never became false. `run.pl`
+> looped silently, consuming CPU indefinitely, until killed manually from outside the
+> pipeline (no self-reported failure).
+>
+> **Detection procedure (apply during Phase 0.2, per agent):**
+> 1. For each `<slug>.org` read, identify the agent's terminal/aggregation rule(s) by
+>    reading its `.yml` files in `$SANDBOX/rules/<slug>/` — look for a `CONDITION` that
+>    references **more than one** `conforme_*`/phase-status slot via `&&`.
+> 2. If found, note: (a) the full list of required slots, (b) the slot it writes once
+>    satisfied, (c) whether any OTHER rule (same agent or a later one) has an
+>    `EXCEPTION`/`FIND` depending on that written slot being defined for **every** Frame
+>    of the relevant type (not just the one bound by its own `FIND`) — this is the
+>    actual pipeline-blocking risk, not the aggregation rule itself.
+> 3. Record this in the coverage table as a per-type annotation:
+>    `⚠️ <type> requires full-lifecycle aggregation (<slug> R<NN>) — see Phase 2 note below.`
+>
+> **Generation procedure (apply in Phase 2/3, for `--strategy iso`/`cross`/`scale` only —
+> `--strategy edges` rarely touches full-type elements this way, but verify if in doubt):**
+> For every element of a type flagged above, **in addition to** the slot(s) relevant to
+> the rule/interaction under test, pre-fill **all other slots required by the aggregation
+> rule's `CONDITION`** with a neutral `CONFORME` (or equivalent passing) value — so the
+> aggregation rule's `CONDITION` is satisfied and the aggregating slot gets written
+> regardless of which single rule is actually under test. Annotate in `_note_calc`:
+> `"_note_calc": "<slot_a>/<slot_b>/... pre-filled CONFORME (not under test) to satisfy
+> <aggregation-rule-name> CONDITION and avoid termination-rule deadlock — see
+> chorus-create-project.md § Lifecycle/aggregation rules"`.
+> This does **not** compromise isolation of the rule actually under test: the targeted
+> slot(s) still carry the OK/KO value being exercised, only the *other* mandatory slots
+> of the same aggregation are padded to a passing value.
+>
+> **If regenerating an existing project file after this rule was added to the skill:**
+> check every element of a flagged type for the missing pre-fill — a prior-generation
+> file created before this detection procedure existed is likely to still be broken.
+
 ---
 
 ## Phase 3 — Generate the JSON
@@ -487,6 +552,11 @@ Check:
   the full pipeline hold valid values. A `moisture_content: 0` or a missing fire slot
   silently breaks a conforming element even when its primary rule is unrelated.
   These checks span agent boundaries — enumerate universal rules from every agent KB.
+- [ ] ⚠️ **Lifecycle/aggregation types flagged in Phase 0.2 (iso/cross/scale only):** for
+  every element whose type was flagged as requiring full-lifecycle aggregation, confirm
+  all non-tested mandatory slots of that aggregation are pre-filled with a passing value
+  (see Phase 2 note above) — otherwise the aggregating slot is never written and a
+  downstream termination rule may loop indefinitely instead of failing cleanly.
 
 ---
 
@@ -495,6 +565,14 @@ Check:
 ```bash
 perl $SANDBOX/run.pl $SANDBOX/<fichier.json>
 ```
+
+> ⚠️ **Timeout guard — do not run unattended beyond a reasonable budget.** If `run.pl`
+> produces no output beyond the initial `Feed: N element(s) loaded` line for more than
+> ~30–60s of wall-clock time, suspect a non-terminating pipeline (see "Lifecycle/aggregation
+> rules" note above) rather than a merely slow run — a correctly terminating pipeline on a
+> project-generation-sized file (tens to a few hundred elements) normally completes in a
+> few seconds. Run with a hard timeout (e.g. `timeout 60 perl $SANDBOX/run.pl ...`) and, on
+> timeout, re-check the flagged types from Phase 0.2 before assuming an engine bug.
 
 Check:
 - [ ] No Feed crash (unknown type, missing slot)
