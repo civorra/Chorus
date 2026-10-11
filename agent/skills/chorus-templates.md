@@ -119,13 +119,18 @@ sub build {
 
     $agent = Chorus::Engine->new(
         _IDENT      => '<Nom>',
-        _MAX_CYCLES => $opts{max_cycles} // 10_000,  # infinite loop safeguard
-                                                      # increase for long pipelines
-                                                      # heuristic: N_frames × N_rules × N_agents × D × 10
-                                                      # D = depth of the longest cross-rule dependency chain
-                                                      # (rules where CONDITION tests a slot written by another
-                                                      # rule — each such chain step requires one extra cycle)
-                                                      # D = 1 if no cross-rule dependencies
+        _MAX_CYCLES => $opts{max_cycles} // 200,  # infinite loop safeguard
+                                                   # — fallback only; max_cycles is normally
+                                                   # always passed explicitly by run.pl (T5)
+                                                   # ⛔ do NOT recalibrate this proportionally to
+                                                   # N_frames/N_rules — see T5's own max_cycles
+                                                   # comment (chorus-check 2026-10 perf incident):
+                                                   # cycle count needed to converge scales with
+                                                   # bounded-wait retry depth, not element/rule
+                                                   # count. 200 is a flat, empirically-verified
+                                                   # default — re-bisect per-sandbox only if a
+                                                   # specific KB uses a MAX_WAIT_CYCLES deeper
+                                                   # than the typical 5, or longer CONDITION chains.
         # _LOCK_UNTIL_STABLE => 'Y',   # optional: skip this agent if a previous
                                        # agent already succeeded in the current
                                        # iteration (optimization)
@@ -230,7 +235,16 @@ sub run {
 
     my $xprt = Chorus::Expert->new();
     # ⚠️ Bug connu : new() ignore ses arguments — forcer _MAX_ITER par affectation directe
-    $xprt->{_MAX_ITER} = $opts{max_iter} // 50_000;
+    #
+    # ⛔ Re-calibrated 2026-10 (sandbox 05-CC-3.1.4 perf incident): the
+    # Engine::Expert default of 50_000 is a worst-case safeguard, not a
+    # realistic per-project budget — combined with a generous max_cycles,
+    # it can make a structurally non-converging project take an
+    # excessive wall-clock time to actually report FAILED/TIMEOUT. A
+    # converging pipeline normally stabilizes in well under 100 outer
+    # iterations even for large projects; see run.pl's own max_iter
+    # default below (T5) for the corresponding, empirically-verified value.
+    $xprt->{_MAX_ITER} = $opts{max_iter} // 200;
     $xprt->register($a1, $a2);   # ordre = pipeline (#+PIPELINE_POS)
 
     # BOARD — shared state between all agents
@@ -287,23 +301,41 @@ my $fichier = shift @ARGV
 my @elements = load_projet($fichier);
 printf "Feed: %d element(s) loaded\n\n", scalar @elements;
 
-# Calibrate _MAX_CYCLES to the actual project volume and rule chain depth.
-# Formula: N_frames × N_rules_total × D × 10
-#   N_rules_total : total rules across all agents (estimate 50 if unknown)
-#   D             : depth of the longest cross-rule dependency chain within one agent
-#                   (count CONDITION: defined $p->{slot_from_Rxx} chains — each level = +1)
-#                   D = 1 if no cross-rule slot dependencies
-# Minimum: 10_000 (engine default safeguard — always override in production)
-my $n_rules = 50;   # ← adjust to the actual rule count for this sandbox
-my $D       = 1;    # ← adjust to the longest CONDITION chain depth in the KB
-my $max_cycles = scalar(@elements) * $n_rules * $D * 10;
-$max_cycles = 10_000 if $max_cycles < 10_000;  # safety minimum
+# Calibrate _MAX_CYCLES — a flat, bounded ceiling, NOT proportional to
+# project volume.
+#
+# ⛔ Re-calibrated 2026-10 (sandbox 05-CC-3.1.4 perf incident): an earlier
+# version of this template used a per-element-proportional formula
+# (N_frames × N_rules_total × D × 10, floor 10_000). This looks principled
+# but is the WRONG SHAPE: empirically, the number of engine cycles actually
+# needed to converge does NOT scale with element count × rule count — it
+# scales with the bounded-wait retry depth used by any "aggregate — give up
+# after N cycles if expected children never appear" rule pattern (see
+# chorus-engine-yaml.md § Aggregate rule waiting on an "expected children"
+# list — MAX_WAIT_CYCLES, typically 5) × the number of components that can
+# be simultaneously stuck waiting, which is small and BOUNDED regardless of
+# total element count. A project with hundreds of elements but no
+# bounded-wait components converges in well under a second under any
+# calibration; a project with a few dozen components stuck waiting on
+# absent child Frames can take 10,000s of needlessly-calibrated cycles to
+# report what is, in the end, a correct and legitimate non-convergence
+# verdict (FAILED/TIMEOUT) several minutes later than necessary.
+#
+# Use a flat ceiling instead. 200 was empirically bisected as sufficient on
+# a real-world sandbox's worst bounded-wait case (max_cycles=200 converged
+# in ~25s; max_cycles=300 already failed to converge within 30s on that
+# same case) — re-verify empirically for your own sandbox if its rules use
+# a different MAX_WAIT_CYCLES value or deeper cross-rule dependency chains,
+# but do NOT default back to a per-element-proportional formula.
+my $max_cycles = $ENV{CHORUS_MAX_CYCLES} // 200;
+my $max_iter   = $ENV{CHORUS_MAX_ITER}   // 200;
 
 # Pipeline
 my ($ok) = <Namespace>::Expert->run(
     base_dir   => $Bin,
     input      => { elements => \@elements },
     max_cycles => $max_cycles,
+    max_iter   => $max_iter,
 );
 
 # Result slots to display (set by agents)

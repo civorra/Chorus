@@ -170,15 +170,19 @@ The engine operates on **two nested loops** that must not be confused:
 > loop if the slot is written by Agent B — because Agent B has not yet run in this outer
 > iteration. Cross-agent data must transit via **BOARD** slots, read in ACTION (not CONDITION).
 
-**Why `N_agents` appears in the `_MAX_CYCLES` formula:**
+**Why the old `N_agents`-based `_MAX_CYCLES` formula was retired:**
 
-`_MAX_CYCLES = N_frames × N_rules_total × N_agents × D × 10`
-
-Each outer iteration runs all agents. If the Expert needs K outer iterations to converge
-(e.g. because Agent B's output unlocks new rules in Agent A on the next round), the total
-number of inner cycles is multiplied by N_agents × K. The `N_agents` factor approximates
-this overhead assuming K ≈ 1 (single outer pass). If the pipeline requires multiple outer
-rounds, increase the margin accordingly.
+⛔ **Superseded (chorus-check 2026-10 perf incident)** — this sandbox previously documented
+`_MAX_CYCLES = N_frames × N_rules_total × N_agents × D × 10`, reasoning that each outer
+iteration runs all agents and multiplying by `N_agents × K` (K = outer iterations to
+converge) bounds the total. Empirically this is the wrong shape: cycles needed to converge
+scale with bounded-wait retry depth (`MAX_WAIT_CYCLES`, typically 5 — see
+`chorus-engine-yaml.md` § Aggregate rule waiting on an "expected children" list) × the
+number of simultaneously-waiting components, which is small and bounded regardless of
+`N_frames`/`N_rules_total`/`N_agents`. Use a flat ceiling instead (`chorus-check.md`'s own
+`_MAX_CYCLES`/`_MAX_ITER` checklist entries: default `200`, re-bisect per-sandbox only if a
+specific KB uses deeper wait cycles or longer cross-rule chains) — never reintroduce an
+element/rule/agent-count-proportional formula.
 
 > ⚠️ **Known bug: `Chorus::Expert->new()` ignores its arguments.**
 > Always force `_MAX_ITER` via direct assignment after `new()`:

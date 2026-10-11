@@ -50,8 +50,12 @@
 > that require multiple engine cycles per Frame to converge. If the sandbox `run.pl` was calibrated
 > without a chain-depth factor (D = 1), stress-cascade tests may hit `_MAX_CYCLES` prematurely and
 > produce false `FAILED` results or `(unprocessed)` elements.
-> Before running stress-cascade files, verify that `_MAX_CYCLES` in `run.pl` uses the formula
-> `N_frames × N_rules_total × D × 10` where D accounts for the longest `_AFTER` propagation chain.
+> ⛔ **Do not use the retired `N_frames × N_rules_total × D × 10` formula** (chorus-check 2026-10
+> perf incident — empirically the wrong shape, see `chorus-check.md`'s own `_MAX_CYCLES` checklist
+> entry). If `_AFTER` propagation chains in this sandbox are deep enough to need more than the flat
+> default of `200`, bisect empirically for the actual chain depth rather than reintroducing a
+> volume-proportional formula — verify `_MAX_CYCLES` in `run.pl` converges on a representative
+> stress-cascade file before trusting its FAILED/`(unprocessed)` verdicts.
 > See `chorus-engine-yaml.md § Rule Evaluation Lifecycle` and `chorus-templates.md T5`.
 
 > ⚠️ **Sources — strict order:**

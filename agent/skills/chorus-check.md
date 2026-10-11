@@ -2071,18 +2071,35 @@ when the KB has not changed since the last `chorus-check --all`.
 - [ ] `run.pl`: `Chorus::*` resolved via system install (no `use lib` pointing to Engine sourcetree)
 - [ ] `run.pl`: no hardcoded data
 - [ ] Report: no unexpected `(unprocessed)` elements
-- [ ] `_MAX_CYCLES`: value calibrated to the actual expected Frame volume **and rule chain depth**.
-      Heuristic: `N_frames × N_rules_total × N_agents × D × 10 < _MAX_CYCLES`
-      where **D** = depth of the longest intra-agent rule dependency chain
-      (if R03 reads a slot written by R02, which reads a slot written by R01 → D = 3).
-      A chain of depth D requires at least D cycles for a single Frame to converge.
-      Estimate D by counting the longest `CONDITION: defined $p->{slot_from_Rxx}` chain in the KB.
-      If no cross-rule dependencies → D = 1 (the formula reduces to the previous heuristic).
-      ⚠️ **Dependency direction is independent of rule numbering:** a chain where R01 reads
-      a slot written by R03 (which reads one written by R05) also gives D = 3 and requires
-      the same number of cycles. Rule numbers reflect load order only.
-      In `run.pl`: compute from `scalar(@elements)` and pass via `Expert->run(max_cycles => ...)`.
-      Never leave the default value (`10_000`) for a production pipeline.
+- [ ] `_MAX_CYCLES`: a **flat, bounded ceiling** — NOT proportional to Frame volume or rule
+      count. ⛔ **Do not use** the older `N_frames × N_rules_total × N_agents × D × 10` heuristic
+      — empirically (chorus-check 2026-10 perf incident, sandbox `05-CC-3.1.4`), this formula is
+      the wrong shape: cycles needed to converge scale with **bounded-wait retry depth**
+      (`MAX_WAIT_CYCLES`, typically 5, used by any "aggregate — give up after N cycles if
+      expected children never appear" rule — see `chorus-engine-yaml.md` § Aggregate rule
+      waiting on an "expected children" list) × the number of components that can be
+      simultaneously stuck waiting — small and bounded regardless of total element count —
+      **not** with element/rule volume. A project with hundreds of elements but no
+      bounded-wait components converges in under a second under any calibration; a project
+      with a few dozen components stuck waiting on absent child Frames can take tens of
+      thousands of needlessly-calibrated cycles to report a correct, legitimate
+      `FAILED/TIMEOUT` verdict several minutes later than necessary.
+      **Use a flat default of `200`** (empirically bisected: `max_cycles=200` converges on a
+      real-world worst-case bounded-wait fixture in ~25s; `max_cycles=300` already exceeded
+      30s on the same fixture) — re-bisect per-sandbox only if its KB uses a deeper
+      `MAX_WAIT_CYCLES` or longer cross-rule `CONDITION` chains than the typical case.
+      In `run.pl`: `my $max_cycles = $ENV{CHORUS_MAX_CYCLES} // 200;` (T5), passed via
+      `Expert->run(max_cycles => ...)`. Never leave an element-count-proportional formula —
+      it produces a budget that looks "safe" but is actually orders of magnitude larger
+      than needed, with no correctness benefit and a severe wall-clock cost on any project
+      exercising bounded-wait rules.
+- [ ] `_MAX_ITER`: same flat-ceiling principle — default `200` (not `50_000`/`2_000`), passed
+      via `Expert->run(max_iter => ...)` and forced via `$xprt->{_MAX_ITER}` per the known
+      `new()`-ignores-arguments bug (see template T4). A converging pipeline normally
+      stabilizes in well under 100 outer iterations even for large projects — empirically
+      verified `iter=20` already reaches the final, stable verdict on the same worst-case
+      fixture above; `200` keeps a comfortable 10x margin without multiplying worst-case
+      runtime unnecessarily.
 - [ ] Termination agent: use **YAML EXCEPTION pattern** (see Phase 3 template) — MCP-compatible, no infinite loop.
       `addrule()` fallback: `solved()` on `$agent` (closure), never `$SELF`; invisible to MCP mode.
       ⛔ **Never use a global `fmatch` in a YAML `FIND`/`CHERCHER` block** → guaranteed infinite loop.
