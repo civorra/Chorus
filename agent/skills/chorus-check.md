@@ -698,15 +698,7 @@ done
 - **Matches found** → for each flagged rule: **remove the `return 0` branch inside `!@elements`** — replace with an immediate set of the aggregate slot (see `chorus-engine-yaml.md § Bounded-wait !@elements — fixpoint trap` for the correct pattern). The `return 0` / `_decl_wait_cycles` wait is only correct for the `@pending` branch (sub-elements exist but are not yet scored); it is always wrong for `!@elements` (sub-elements will never arrive).
 - After fixing, regenerate `agent/.kb-hash` before proceeding to Phase 2.
 
-> **Incident (2026-10, sandbox `05-CC-3.1.4`):** 11 parent-level components went
-> from `verdict=1` to `(unprocessed)` after a TERMINAL rule started firing earlier
-> (a previously-absent Frame type added to the project JSON caused the pipeline to
-> converge faster). `_decl_wait_cycles=None` (not even 1) confirmed the aggregate
-> rule fired zero times despite EXCEPTION/CONDITION being logically correct.
-> Root cause: `return 0` on `!@elements` → fixpoint after cycle 1 → inner loop
-> stops → `_decl_wait_cycles` never increments → aggregate slot never set.
-> Fixed by removing the `!@elements` wait in all affected aggregate rules.
-> Score recovered immediately in the next run.
+> **Incident:** `agent/org/incidents-log.org § cc314-08`
 
 ### Step 5l — Multi-BOARD gate rule missing `CONDITION` scan (mandatory, before Phase 2)
 
@@ -1442,16 +1434,7 @@ For each element `e` in `TARGETS`:
        actually wrote the `KO` value is identifiable by its `FIND.filtre` condition
        matching `e`'s own slot values (e.g. `document_type`, `operation_kind`).
 
-   > **Incident (2026-09-24, sandbox `09b-ANSSI-PG-083_MULTI-SOURCES`):** before
-   > `_rule_trace` existed, an earlier single-scalar `_rule_id`/`_corpus_ref` design
-   > was tried — each rule overwrote the previous rule's reference on the same
-   > Frame. Aggregation rules (`publish-qualite-alea-algo`, `publish-statut-cle`, …)
-   > always run last in their pipeline, so their generic
-   > `CORPUS: (agrégation — pas de règle nommée spécifique)` header systematically
-   > overwrote and hid the specific `RègleArchiGénAléa.3`/etc. reference from the
-   > `check-*` rule that actually computed the verdict — exactly the failure mode
-   > `--explain` exists to prevent. `_rule_trace` (cumulative, never overwriting)
-   > fixes this at the source; do not reintroduce a single-scalar traceability slot.
+   > **Incident:** `agent/org/incidents-log.org § anssi-09b-01`
 
 2. **Extract the exact corpus reference.**
    - From the rule's YAML header (`# CORPUS: §N — ...`) or inline comment

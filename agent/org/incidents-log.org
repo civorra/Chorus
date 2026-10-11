@@ -283,6 +283,24 @@ Pour ajouter un incident : créer une section ~* <id> — <1-ligne symptôme>~, 
 > must return **exactly one** file in the entire sandbox — see
 > `chorus-check.md § Step 5f` for the generation-time scan.
 
+* anssi-09b-01 — Single-scalar _rule_id overwrote by aggregation rules, verdict attribution lost (chorus-check Phase E)
+:PROPERTIES:
+:sandbox:  09b-ANSSI-PG-083_MULTI-SOURCES
+:date:     2026-09-24
+:skills:   chorus-check.md § Phase E (--explain _rule_trace usage)
+:END:
+
+   > **Incident (2026-09-24, sandbox `09b-ANSSI-PG-083_MULTI-SOURCES`):** before
+   > `_rule_trace` existed, an earlier single-scalar `_rule_id`/`_corpus_ref` design
+   > was tried — each rule overwrote the previous rule's reference on the same
+   > Frame. Aggregation rules (`publish-qualite-alea-algo`, `publish-statut-cle`, …)
+   > always run last in their pipeline, so their generic
+   > `CORPUS: (agrégation — pas de règle nommée spécifique)` header systematically
+   > overwrote and hid the specific `RègleArchiGénAléa.3`/etc. reference from the
+   > `check-*` rule that actually computed the verdict — exactly the failure mode
+   > `--explain` exists to prevent. `_rule_trace` (cumulative, never overwriting)
+   > fixes this at the source; do not reintroduce a single-scalar traceability slot.
+
 * anssi-01 — Feed.pm *_ref suffix mismatch with YAML rules, silent infinite loop (chorus-check Step 6)
 :PROPERTIES:
 :sandbox:  05-cyber-sec-ANSSI-PG-083+RGS_v-2-0_B2-KB-OPTIM-3
