@@ -33,6 +33,40 @@
 > Prerequisite: `chorus-feed <sandbox-name>` must have been run beforehand
 > (KB org + YAML present in the sandbox).
 
+> ⚠️ **`$WORKSPACE` / `$ENTITY` — mandatory convention, read before Step 0.**
+> Every chorus-web–managed sandbox stores projects and reports per-entity:
+> `$SANDBOX/workspace/<entity>/<projId>.json` (project input) and
+> `$SANDBOX/workspace/<entity>/reports/` (run-report JSON **and** any
+> `--explain`/`--summary` file — all three share the same directory, never
+> the bare `workspace/` root). `<entity>` is the first path segment of
+> `<fichier-project>` under `workspace/` — derive it **once**, at the very
+> start of the run, from the resolved path of the project file actually
+> being processed:
+> ```
+> $ENTITY    = <fichier-project> with "$SANDBOX/workspace/" stripped from the
+>              front and everything from the next "/" onward stripped from
+>              the back (e.g. "workspace/eviden/foo.json" → $ENTITY = "eviden")
+> $WORKSPACE = $SANDBOX/workspace/$ENTITY/reports/
+> ```
+> In `--all` mode (Phase 6-all — batch run over `$SANDBOX/project-*.json`,
+> synthetic/stress test projects at the sandbox root, not per-entity
+> production projects), this `$ENTITY`/`$WORKSPACE` derivation does not apply
+> the same way — see Phase 6-all for that mode's own (flat, root-level)
+> conventions. The per-entity derivation above applies to the **normal**
+> single-project invocation and to `--from-report`.
+> In `--from-report` mode, derive `$ENTITY` the same way from the
+> `<run-report-path>` argument itself (e.g.
+> `workspace/eviden/reports/run-report-...json` → `$ENTITY = "eviden"`) — see
+> Phase FR0, which must set `$ENTITY`/`$WORKSPACE` alongside `$RUN_TIMESTAMP`.
+> A sandbox with no entity sub-folder at all (flat legacy layout, no
+> `workspace/<entity>/` level) falls back to `$WORKSPACE = $SANDBOX/workspace/reports/`
+> — never the bare `$SANDBOX/workspace/` root, and never `$SANDBOX/reports/`
+> (legacy root location reserved for `run-report-*.json` produced by very old
+> `run.pl` versions — never for `--explain`/`--summary` output).
+>
+> Every subsequent mention of `$WORKSPACE` in this document means exactly
+> this per-entity `reports/` directory — not the bare `workspace/` root.
+
 
 ## 🔌 Preliminary — MCP mode detection
 
@@ -498,7 +532,9 @@ It is invalidated (deleted) by `chorus-feed` at the end of each run.
 $RUN_TIMESTAMP = strftime('%Y%m%d-%H%M%S', localtime)   # before chorus_process
 ```
 Use `$RUN_TIMESTAMP` when writing the run-report JSON:
-`$WORKSPACE/reports/run-report-<RUN_TIMESTAMP>.json`
+`$WORKSPACE/run-report-<RUN_TIMESTAMP>.json` (`$WORKSPACE` already ends in
+`reports/` — see the `$WORKSPACE`/`$ENTITY` note at the top of this document;
+do not append an extra `reports/` segment here).
 
 **Fallback mode (6B):** `run.pl` generates its own timestamp internally and prints:
 ```
@@ -533,7 +569,7 @@ chorus_engine_loadrules (h1, "$SANDBOX/rules/<slug1>/")
 chorus_engine_loadrules (h2, "$SANDBOX/rules/<slug2>/")
 chorus_expert_create (engine_handles: [h1, h2])  →  hX
 chorus_feed_load (namespace: "<Namespace>",
-                  json_path:  "$SANDBOX/project.json",
+                  json_path:  "<resolved path of fichier-project>",
                   lib_paths:  ["$SANDBOX/lib", "$ENGINE/lib"])
 chorus_board_set (hX, { INPUT: <project_data> })   ← if agents read BOARD->INPUT
 chorus_process   (hX)                               →  "solved" | "failed"
@@ -590,10 +626,15 @@ If `chorus_process` returns `failed`:
 
 ### 6B — Fallback mode (`$MCP_AVAILABLE = false`)
 
-Run the pipeline via the generated `run.pl`:
+Run the pipeline via the generated `run.pl`, passing the **actual resolved
+path** of `<fichier-project>` — not a hardcoded `$SANDBOX/project.json`
+(that literal path is only ever correct for the inline-data fallback of
+§ 1.1; the normal case is the real `$SANDBOX/workspace/<entity>/<projId>.json`
+path the user/caller provided, run.pl's own `dirname($fichier)/reports/`
+write location depends on it being correct):
 
 ```bash
-perl $SANDBOX/run.pl $SANDBOX/project.json
+perl $SANDBOX/run.pl <resolved path of fichier-project>
 ```
 
 Capture the output. If Perl errors occur:
@@ -1060,17 +1101,22 @@ evaluable element(s) (<X>%) — <N> terminology-mapping anomaly/ies detected
 separately, not counted as product defects.
 ```
 
-Write to: `$WORKSPACE/explain-<project-slug>-<RUN_TIMESTAMP>.md` (`$WORKSPACE` =
-`$SANDBOX/workspace/`, created if absent).
+Write to: `$WORKSPACE/explain-<project-slug>-<RUN_TIMESTAMP>.md` (`$WORKSPACE`
+as defined at the top of this document — `$SANDBOX/workspace/<entity>/reports/`,
+created if absent).
 (`<project-slug>` derived from the project filename; `<RUN_TIMESTAMP>` = the
 timestamp captured in Phase 6.0 — ensures 1:1 traceability with the
 corresponding `run-report-<RUN_TIMESTAMP>.json` produced during the same invocation.
 A UI panel can therefore group the three files by timestamp without any external index.)
 
-For `--all` mode, produce a single consolidated file:
-`$WORKSPACE/explain-all-<RUN_TIMESTAMP>.md`, with per-project-file sub-sections.
+For `--all` mode (Phase 6-all, flat `$SANDBOX/project-*.json` layout — see
+the `$WORKSPACE`/`$ENTITY` note at the top of this document for why this
+differs from the per-entity convention), produce a single consolidated file
+at the sandbox root: `$SANDBOX/explain-all-<RUN_TIMESTAMP>.md`, with
+per-project-file sub-sections.
 
-Print: `[explain] Explanation file written → workspace/explain-<project-slug>-<RUN_TIMESTAMP>.md (<N> element(s))`
+Print: `[explain] Explanation file written → workspace/<entity>/reports/explain-<project-slug>-<RUN_TIMESTAMP>.md (<N> element(s))`
+(or `$SANDBOX/explain-all-<RUN_TIMESTAMP>.md` for `--all` mode)
 
 
 ## Option `--summary` — Consultation-friendly synthesis document
@@ -1117,7 +1163,8 @@ taux_reel = round(100 * (n_conforme + n_map) / n_total)   # optimistic rate if a
 ### Phase S2 — One-page synthesis document
 
 Write `$WORKSPACE/synthese-<project-slug>-<RUN_TIMESTAMP>.md` using this exact template
-(`$WORKSPACE` = `$SANDBOX/workspace/`, created if absent).
+(`$WORKSPACE` as defined at the top of this document —
+`$SANDBOX/workspace/<entity>/reports/`, created if absent).
 
 > ⚠️ **Language:** render section headings, labels, and free text in the
 > **corpus language** (see canonical rule). French template is the default
@@ -1198,7 +1245,7 @@ strictes/permissives, ou correction directe du document project sinon.>"
 
 ---
 *Document généré automatiquement par `chorus-check --summary` — voir
-`workspace/explain-<project-slug>-<RUN_TIMESTAMP>.md` pour le détail règle-par-règle de
+`workspace/<entity>/reports/explain-<project-slug>-<RUN_TIMESTAMP>.md` pour le détail règle-par-règle de
 chaque élément.
 ```
 
@@ -1273,11 +1320,11 @@ strict/permissive, or direct correction of the project document otherwise.>"
 
 ---
 *Document automatically generated by `chorus-check --summary` — see
-`workspace/explain-<project-slug>-<RUN_TIMESTAMP>.md` for the full rule-by-rule detail of
+`workspace/<entity>/reports/explain-<project-slug>-<RUN_TIMESTAMP>.md` for the full rule-by-rule detail of
 each element.*
 ```
 
-Print: `[summary] Synthesis written → workspace/synthese-<project-slug>-<RUN_TIMESTAMP>.md`
+Print: `[summary] Synthesis written → workspace/<entity>/reports/synthese-<project-slug>-<RUN_TIMESTAMP>.md`
 
 > **Consultation ergonomics:** this file is deliberately kept under one printed
 > page. It never repeats the full YAML/corpus traceability of `--explain` —
@@ -1595,13 +1642,23 @@ pas d'appel MCP, pas de lecture de la KB org ni des fichiers YAML).
    ```
    run-report-(\d{8}-\d{6})\.json  →  $RUN_TIMESTAMP = "YYYYMMDD-HHMMSS"
    ```
-3. Extraire depuis le JSON :
+3. Extraire `$ENTITY`/`$WORKSPACE` depuis `<run-report-path>` lui-même (voir
+   la note `$WORKSPACE`/`$ENTITY` en tête de ce document — même règle de
+   dérivation qu'en mode normal, appliquée ici au chemin du run-report plutôt
+   qu'à celui du fichier projet) :
+   ```
+   workspace/<entity>/reports/run-report-....json  →  $ENTITY = "<entity>"
+   $WORKSPACE = $SANDBOX/workspace/$ENTITY/reports/
+   ```
+   ⚠️ Ne jamais écrire `explain-*.md`/`synthese-*.md` à la racine `$SANDBOX/workspace/`
+   ou `$SANDBOX/` dans ce mode non plus — mêmes garde-fous qu'en mode normal.
+4. Extraire depuis le JSON :
    - `elements[]` → tableau des éléments avec leurs verdicts, motifs, `_rule_trace`
    - `project_file` → déduire `<project-slug>` (basename sans `.json`)
    - `pipeline_solved` → équivalent du statut SOLVED/FAILED de Phase 6
    - `n_total`, `n_conforme`, `n_non_conforme`, `n_incertain` → stats de Phase 6.1
 
-4. Construire le contexte équivalent à la sortie de Phase 6 :
+5. Construire le contexte équivalent à la sortie de Phase 6 :
    ```
    $phase6_elements  = data extracted from elements[]
    $phase6_solved    = json.pipeline_solved
@@ -1621,7 +1678,19 @@ Aller directement aux phases d'analyse en utilisant les données de Phase FR0
   - Phase E0 : lire `$SANDBOX/agent/chorus/index.org` pour le recap KB uniquement
     (nécessaire pour le header canonique — lecture seule, aucune génération)
   - Phase E1 : `TARGETS` = éléments de `$phase6_elements` avec `conforme == 'NON_CONFORME'`
-    ou `a_confirmer == true`
+    **ou** `a_confirmer == true` — une **union**, pas une intersection ni un filtre
+    implicite sur le verdict. ⚠️ Un élément `a_confirmer == true` fait partie de
+    `TARGETS` **quel que soit son verdict** (`CONFORME`, `NON_CONFORME`, ou
+    `(unprocessed)`) — c'est le même piège que celui documenté en Phase E1 (mode
+    normal, voir plus haut) : un élément CONFORME avec `a_confirmer: true` doit
+    apparaître dans `explain-*.md` tout autant qu'un NON_CONFORME classique.
+    Observed incident: a `--from-report` run included all 5 `a_confirmer` elements
+    correctly in the `synthese-*.md` table (Phase S1/S2 iterates `$phase6_elements`
+    unconditionally) but **omitted all 5 from `explain-*.md`** — root cause was
+    filtering `TARGETS` down to `conforme == 'NON_CONFORME'` only, silently
+    dropping the CONFORME/`(unprocessed)` members of the union. Always compute
+    `TARGETS` as the full union **before** iterating Phase E2-E4 — never narrow it
+    to one verdict class first.
   - Phase E2–E3 : reconstruction depuis `_rule_trace` déjà présent dans le JSON
     (aucune lecture de règles YAML nécessaire — les traces sont déjà résolues)
   - Phase E4 : écrire `$WORKSPACE/explain-<project-slug>-<RUN_TIMESTAMP>.md`

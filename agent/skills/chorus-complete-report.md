@@ -143,6 +143,52 @@ For each target element, record:
 - any existing `_note` field on that element in the project JSON — it often
   already states *why* the value is uncertain from the import's point of view
 
+> ⚠️ **Zero-target guard — mandatory check before proceeding to Phase C2.**
+> If this collection yields **zero** elements (no `[❓ incertain]` title, no
+> `**❓ Élément marqué à confirmer :**` line anywhere in the explain report —
+> e.g. a synthetic/stress project where every evaluated element resolved to a
+> clear 📋/🔤 classification with no residual uncertainty), **stop here**.
+> Do not proceed to Phase C2/C3/C4's per-element cross-check — there is
+> nothing to cross-check against the source document.
+>
+> However, **do still insert a lightweight trace banner** at the very top of
+> `explain-<project-slug>-NNN.md` (immediately after its title/date/status
+> header lines, before the first `---`) — without this, the report carries no
+> record that `chorus-complete-report` ran at all, and a user re-opening the
+> same report later has no way to tell "I haven't run this yet" from "I ran
+> it and there was nothing to do" — leading them to re-run the skill
+> needlessly every time they revisit the report (this exact confusion was
+> reported by a user after `chorus-web`'s cross-check button stayed active
+> indefinitely with no visual difference between the two states). Still
+> follow the "Before any write" backup step below before touching the file.
+>
+> Insert:
+> ```markdown
+> > 🔎 **Vérification croisée** (`chorus-complete-report`, <YYYY-MM-DD>) — ℹ️ Rien à vérifier
+> >
+> > Aucun élément `❓ incertain` ni `_a_confirmer` trouvé dans ce rapport —
+> > toutes les non-conformités sont déjà classées 📋/🔤 avec certitude. Ce
+> > skill ne cross-check que les éléments incertains ; relancer
+> > `chorus-complete-report` sur ce rapport sans nouvel élément incertain ne
+> > produira pas de résultat différent.
+> ```
+> This banner uses a **distinct marker** (`ℹ️ Rien à vérifier`) from the
+> per-element classification banners of Phase C4 (`✅|🛠️|❓|🏷️|⚖️`) so that
+> tooling (e.g. `chorus-web`'s `detectCompleteReportDone()`) can tell "nothing
+> to do, by design" apart from "genuinely cross-checked N element(s)" and
+> render a different badge/state accordingly — never the same "✅ Croisé avec
+> source" badge used for an actual cross-check.
+>
+> Then print exactly:
+> ```
+> [chorus-complete-report] <sandbox-name> / <entity> / <project-slug>
+>   Run-report  : workspace/<entity>/reports/run-report-<slug>.json
+>   Elements cross-checked : 0 — no ❓ incertain / _a_confirmer element found in
+>     explain-<project-slug>-<slug>.md. Trace banner inserted (ℹ️ Rien à
+>     vérifier) — nothing else patched.
+> ```
+> Then end the skill.
+
 
 ## Phase C2 — Confirm the source document
 
@@ -205,6 +251,120 @@ in the source entry:
   entry) → note this distinctly — it explains *why* the field will never be
   populated for any element of this kind, not just this one.
 
+### Step 3.5 — Check the element's *typing*, not only its value
+
+> **Why this step exists:** a value can be perfectly correct and verbatim-present
+> in the source, while the **`type_element` assigned to it at import time** is
+> wrong — in which case the compliance pipeline evaluated the element against
+> the wrong KB rule entirely, independently of whether the value itself matches.
+> A plain text search for the already-aligned value (Steps 1-3 above) will
+> **not** catch this: the search succeeds (the term is found verbatim), masking
+> the real defect. Observed case: 15 CC components named `<FAMILY>_EXT.N` were
+> imported as plain `component_identifier` (generic catalogue grammar rule),
+> while the source document carried a dedicated "EXTENDED COMPONENTS DEFINITION"
+> section and the sandbox thesaurus already held a validated
+> `type_element: extended_component` mapping (under a different wording) — the
+> generic grammar rule rejected all 15 as malformed identifiers, a false
+> NON_CONFORME block entirely explainable by mistyping, not a real product
+> defect nor a genuine source limitation.
+
+For every target element (Phase C1), before concluding Steps 1-3 above settle
+the case, check:
+
+1. **Does the element's located entry in the source sit under a structurally
+   self-declaring section** (a heading that names a normative category
+   regardless of wording — e.g. "Extended components definition", "Composants
+   étendus", or any other standard-specific self-labelled section relevant to
+   the active KB's domain)? If so, does that category match the `type_element`
+   actually assigned to this element in the project JSON?
+2. **Does the sandbox thesaurus hold a mapping** (`agent/thesaurus/*.org`) for
+   this normative category, under **any** wording (see
+   `chorus-import-project.md § Thesaurus alias variants`) — even one that does
+   not textually match this document? If the category matches but the
+   `type_element` actually assigned differs from the thesaurus mapping's
+   target → this is a **mistyping at import**, not a value/pipeline-artefact
+   issue.
+
+If a mistyping is detected, do **not** classify this element under Steps 1-3's
+outcomes (✅/🛠️/❓ as currently defined) — use the dedicated classification
+below (🏷️ Mistyped at import) instead, regardless of what Steps 1-3 found
+about the value itself.
+
+### Step 3.6 — Check the verdict *logic* itself, not only the value/typing
+
+> **Why this step exists:** a value can be correct, verbatim-present in the
+> source, and correctly typed (`type_element` matches the normative category)
+> — and the element can **still** be wrongly marked NON_CONFORME because the
+> **rule/verdict-computation logic itself** does not correctly express the
+> standard's actual requirement for this case. Neither Steps 1-3 (value
+> fidelity) nor Step 3.5 (typing) catch this — both can report "everything
+> matches the source" while the verdict is nonetheless wrong. Observed case:
+> an EAL claim legitimately augmented beyond baseline (e.g. "EAL4 augmented
+> with ALC_FLR.3", explicitly stated in the ST §2.3 and its component table)
+> was computed as NON_CONFORME by a generic verdict function that treats
+> *any* flagged augmentation as disqualifying — while the KB's own rule
+> comments explicitly state that detecting an augmentation is not the same as
+> judging it insufficient. The cross-check had **unrestricted read access**
+> to the relevant rule file and chose not to consult it, settling for
+> "❓ Still unresolved — consult the rule directly" instead of actually doing
+> so. **This skill has no restriction (unlike `chorus-check --from-report`)
+> preventing it from reading `rules/**/*.yml` or `agent/chorus/*.org` — do not
+> conflate the two skills' rules.** If the uncertain element's slots are
+> confirmed correct and correctly typed (Steps 1-3.5 pass) and the verdict is
+> still in question, **read the specific rule file(s)** that produced the
+> slots behind this verdict (identified via `_rule_trace` if present in the
+> run-report, or by locating the rule(s) that reference this element's
+> `type_element`/slots in `rules/<agent>/*.yml`) and the corresponding KB org
+> section, to determine whether:
+
+> ⚠️ **Contamination guard — do not inherit `--from-report`'s restrictions by
+> association.** If the `explain-*.md` being patched carries a banner stating
+> it was generated in `chorus-check --from-report` mode (e.g. "Per this mode's
+> strict rules, `rules/**/*.yml` were not read"), that banner describes
+> **`chorus-check`'s own limitation for the block it produced** — it says
+> **nothing** about what `chorus-complete-report` itself may read while
+> patching that same file. Do not let that surrounding text lead you to
+> restate or extend that restriction to your own cross-check text: a phrase
+> like *"`chorus-complete-report`/`--from-report` do not permit..."* is a
+> **conflation error** — these are two independently-scoped skills, and this
+> one has already read (or must now read, see below) the rule file in this
+> very step.
+>
+> ⚠️ **Prove the read — do not paraphrase from prior conversational knowledge.**
+> If you already "know" the likely cause of a verdict-logic defect (e.g. from
+> an earlier discussion, a previous run of this skill, or general familiarity
+> with this sandbox) — **re-read the actual rule file(s) and KB org section in
+> this step anyway**, right now, before writing the patch. The patch text for
+> an ⚖️ classification (Phase C4) must quote a **verbatim excerpt** from the
+> file(s) just read (a rule comment, a YAML `ACTION`/`FIND` fragment, an org
+> section sentence) — not a paraphrase reconstructed from memory. If you
+> cannot quote a verbatim excerpt from a file read in this step, you have not
+> actually performed Step 3.6 — fall back to ❓ Still unresolved and say so
+> honestly, rather than presenting second-hand knowledge as a fresh
+> cross-check finding.
+
+1. The rule's own documentation/comments acknowledge a limitation relevant
+   here (e.g. "this rule only flags X, it does not judge sufficiency of Y" —
+   exactly the kind of self-documented scope limit that should be read, not
+   guessed at).
+2. The verdict is computed by a **downstream generic function** (e.g. a
+   catch-all `element_verdict()`-style dispatcher in `run.pl`) that combines
+   multiple slots from possibly multiple rules into a final binary verdict —
+   if so, check whether that combination logic correctly reflects the
+   standard's actual requirement (here: whether a *justified, explicitly
+   claimed* augmentation should be treated differently from an undocumented
+   one) or applies an overly blunt rule (any augmentation ⇒ NON_CONFORME,
+   regardless of justification).
+3. The source document explicitly justifies/claims the condition the verdict
+   is penalising (as in the EAL augmentation example) — if so, this is a
+   strong signal that the defect lies in the verdict-computation logic, not
+   in the data or its typing.
+
+If this investigation confirms a verdict-logic defect, classify as
+🏷️⚖️ Verdict logic defect (below) — **do not** settle for ❓ Still unresolved
+merely because the answer requires reading a rule file; reading rule files
+when relevant to the question is explicitly within this skill's scope.
+
 ### Step 4 — Classify the outcome
 
 | Classification | Meaning |
@@ -212,6 +372,8 @@ in the source entry:
 | ✅ Source limitation confirmed | The uncertain value/field is genuinely absent (or the format cannot express it) in the original source — not an import defect |
 | 🛠️ Pipeline artefact detected | The value **is** present in the source, **and** is backed by a normative reference already available to the KB (standard/RFC/ANSSI text in the corpus or reachable via `CORPUS-DIRECTIVES.md`) — but was lost, defaulted incorrectly, or mistranslated during import. Actionable fix: add/correct the catalogue or thesaurus alias, then re-import. |
 | ❓ Still unresolved | No matching entry found, the source content itself is ambiguous, **or** the value is present but names an implementation-specific construction (library class, vendor-internal term) with no normative text in scope to adjudicate conformity — cannot conclude either way; leave the original uncertainty untouched and say so explicitly. This case requires a domain-expert arbitration (or acquiring a missing reference standard), not a catalogue/thesaurus edit. |
+| 🏷️ Mistyped at import | The value is correct and present in the source **as-is** — but Step 3.5 detected that the `type_element` assigned at import time does not match the normative category the source/thesaurus actually indicates for this element. The compliance pipeline evaluated it against the wrong KB rule. Actionable fix: **retype** the affected element(s) to the correct `type_element` in the project JSON (or re-run `chorus-import-project` after confirming/extending the thesaurus mapping per `chorus-import-project.md § Thesaurus alias variants`) — do not conflate with 🛠️, which assumes the value itself was mistranscribed; here the value is fine, the classification rule applied to it is wrong. |
+| ⚖️ Verdict logic defect | The value is correct, correctly typed, and (if applicable) explicitly justified/claimed in the source — Step 3.6 investigation of the actual rule(s)/verdict-computation logic confirms the NON_CONFORME verdict stems from the rule or a downstream generic verdict function not correctly expressing the standard's requirement (e.g. treating a justified exception as a blanket violation). This is **not** an import/typing/value defect — the project JSON and its typing need no change. Actionable fix: correct the rule (`rules/<agent>/*.yml`) or the verdict-computation logic (e.g. `run.pl`'s generic dispatcher) to account for the distinguishing condition found (e.g. an explicit justification/claim), then re-run `chorus-check` to refresh the verdict. Do not classify as ❓ Still unresolved when Step 3.6's investigation was actually able to read and pinpoint the defect — ❓ remains reserved for cases where the rule file itself does not resolve the question (ambiguous rule intent, missing corpus reference, etc.). |
 
 > Never force a ✅ or 🛠️ classification when the evidence is inconclusive —
 > ❓ Still unresolved is a valid and expected outcome, not a failure of this skill.
@@ -245,31 +407,101 @@ in the source entry:
 
 ### Patch to `explain-<project-slug>-NNN.md`
 
+> **Visual distinction requirement.** Cross-check additions must be
+> **visually distinguishable at a glance** from the surrounding `chorus-check`
+> narrative text — a reader skimming the report must be able to tell, without
+> reading word-for-word, which sentences come from the original
+> `--explain` pass and which were added afterwards by this skill. Plain bold
+> text (`**... :**`) blends into the rest of the report's prose (which also
+> uses bold liberally for labels) and does **not** satisfy this requirement.
+>
+> Use a **Markdown blockquote** (`>` prefix on every line) for the cross-check
+> addition — `chorus-web`'s report viewer (`marked.js` rendering, see
+> `.mdv-content blockquote` styling) already renders blockquotes with a
+> distinct left border and background, with zero additional tooling needed.
+> This also keeps the file readable as plain text/diff in any other viewer.
+
 For each cross-checked element, append directly below its existing
-`**❓ Élément marqué à confirmer :**` (or equivalent) line a new line:
+`**❓ Élément marqué à confirmer :**` (or equivalent) line a **blank line**,
+then the following blockquote block:
 
 ```markdown
-**<✅|🛠️|❓> Vérification croisée (chorus-complete-report, <YYYY-MM-DD>) :** <one to
-three sentences stating what was found directly in the source document, quoting
-the resolved source file, and the resulting classification (source limitation
-confirmed / pipeline artefact detected / still unresolved). If 🛠️: state the
-concrete fix needed (which import step/module/mapping to correct, and cite the
-normative reference — standard/RFC/ANSSI text — that backs the missing entry).
-If ❓ due to a library/vendor-specific name with no normative backing: say so
-explicitly (e.g. "no normative reference found for this construction — expert
-arbitration or an additional reference standard is needed before any
-catalogue/thesaurus edit"). Never phrase a ❓ Still unresolved case as if a
-simple catalogue/thesaurus addition would resolve it.>
+> 🔎 **Vérification croisée** (`chorus-complete-report`, <YYYY-MM-DD>) — <✅|🛠️|❓|🏷️|⚖️> <classification label>
+>
+> <one to three sentences stating what was found directly in the source document,
+> quoting the resolved source file, and the resulting classification (source limitation
+> confirmed / pipeline artefact detected / still unresolved / mistyped at import / verdict logic defect). If 🛠️: state the
+> concrete fix needed (which import step/module/mapping to correct, and cite the
+> normative reference — standard/RFC/ANSSI text — that backs the missing entry).
+> If ❓ due to a library/vendor-specific name with no normative backing: say so
+> explicitly (e.g. "no normative reference found for this construction — expert
+> arbitration or an additional reference standard is needed before any
+> catalogue/thesaurus edit"). Never phrase a ❓ Still unresolved case as if a
+> simple catalogue/thesaurus addition would resolve it. If 🏷️: state the correct
+> `type_element` and the structural/thesaurus evidence found (self-declaring
+> section title and/or existing thesaurus mapping under a different wording —
+> see `chorus-import-project.md § Thesaurus alias variants`), and that the value
+> itself was never in question — only its typing was. If ⚖️: **quote a verbatim
+> excerpt** from the rule file/KB org section just read in Step 3.6 (not a
+> paraphrase — see Step 3.6's "prove the read" guard), state the exact logic
+> defect found (e.g. "generic verdict dispatcher treats any flagged augmentation
+> as disqualifying, regardless of explicit justification"), and state the source
+> passage that justifies/claims the condition being wrongly penalised. Never
+> write a phrase implying this skill itself is restricted from reading rule
+> files (e.g. "X do not permit...") — that restriction belongs to
+> `chorus-check --from-report` only, never to this skill.>
 ```
+
+Where `<classification label>` is one of: `Limitation source confirmée` (✅),
+`Artefact pipeline détecté` (🛠️), `Encore non résolu` (❓), `Mistyping détecté
+à l'import` (🏷️), `Défaut de logique de verdict` (⚖️) — matching the emoji
+used, so the classification is readable both from the emoji and from the
+label text (accessibility / copy-paste into plain-text contexts where emoji
+may not render).
+
+> ⚠️ Every line of the block — including the blank separator line between the
+> header line and the body sentences — must start with `>` (a bare blank line
+> inside a blockquote breaks it into two separate blockquotes in most Markdown
+> renderers, including `marked.js`). Use `>` alone (no trailing space needed)
+> for that separator line.
 
 ### Patch to `synthese-<project-slug>-NNN.md` (if present)
 
-1. In the "Éléments à confirmer" table, append a short `✅`/`🛠️`/`❓` marker and
+1. In the "Éléments à confirmer" table, append a short `✅`/`🛠️`/`❓`/`🏷️`/`⚖️` marker and
    one clause to the relevant row(s)' note.
-2. Append one short paragraph to the "Recommandation" section summarising the
-   cross-check outcome in aggregate (counts of ✅ / 🛠️ / ❓), and — if any 🛠️
-   was found — explicitly recommend a corrective re-import before treating the
-   compliance rate as final.
+2. Append a **new, separately-titled section** at the end of the file — never
+   fold the cross-check paragraph into the existing "Recommandation" section
+   (that section is produced by `chorus-check` itself and must stay a
+   self-contained unit the reader can trust as "pipeline output only";
+   mixing in text written by a different skill, days or weeks later, under
+   the same heading defeats the "visually distinguishable" requirement
+   just as much as unmarked bold text would — see the `explain-*.md` patch
+   above for the same rationale):
+
+   ```markdown
+   ---
+
+   ### 🔎 Vérification croisée (chorus-complete-report)
+
+   > **<YYYY-MM-DD>** — <N> élément(s) incertain(s) confronté(s) au document
+   > source d'origine (`<resolved source path>`, <auto-résolu depuis
+   > `_import.source_file` | --source explicite>).
+   >
+   > **Résultat :** <n1> ✅ limitation source confirmée · <n2> 🛠️ artefact
+   > pipeline détecté · <n3> ❓ encore non résolu · <n4> 🏷️ mistyping à
+   > l'import · <n5> ⚖️ défaut de logique de verdict.
+   >
+   > <one aggregate paragraph summarising the cross-check outcome — same
+   > content as before, but now entirely inside the blockquote>. <if any 🛠️
+   > was found: explicitly recommend a corrective re-import before treating
+   > the compliance rate as final>. <if any ⚖️ was found: explicitly recommend
+   > a rule/verdict-logic fix (cite the file) before treating the compliance
+   > rate as final>.
+   ```
+
+   Every line of this block (including blank separator lines between
+   paragraphs) must start with `>` — see the same Markdown-blockquote caveat
+   noted in the `explain-*.md` patch above.
 3. Never change the headline figures (`taux`, `n_conforme`, etc.) — this skill
    never re-evaluates compliance, only documents the *reliability* of the
    uncertain inputs behind it.
@@ -306,6 +538,8 @@ Print a short summary to the conversation (not written to any file):
     ✅ Source limitation confirmed : n1
     🛠️ Pipeline artefact detected  : n2
     ❓ Still unresolved             : n3
+    🏷️ Mistyped at import           : n4
+    ⚖️ Verdict logic defect         : n5
   Reports patched : workspace/<entity>/reports/explain-<project-slug>-<slug>.md
                     workspace/<entity>/reports/synthese-<project-slug>-<slug>.md  (if present)
   Backups : agent/.backups/*.bak-<timestamp>
@@ -316,4 +550,24 @@ If any 🛠️ (pipeline artefact) was detected, explicitly recommend as next st
   Next step: fix <import step/module> then re-run chorus-import-project,
   chorus-audit-import, and chorus-check --explain --summary to refresh the
   verdicts with corrected data.
+```
+
+If any 🏷️ (mistyped at import) was detected, explicitly recommend as next step:
+```
+  Next step: retype element(s) <id list> to type_element=<correct value> in
+  the project JSON (or extend the sandbox thesaurus with this document's
+  wording — see chorus-import-project.md § Thesaurus alias variants — then
+  re-run chorus-import-project so the correct typing is applied automatically
+  on next import), then re-run chorus-check --explain --summary to refresh
+  the verdicts against the correct KB rule.
+```
+
+If any ⚖️ (verdict logic defect) was detected, explicitly recommend as next step:
+```
+  Next step: fix <rule file(s) / verdict-computation logic, e.g. run.pl's
+  element_verdict()-style dispatcher> to correctly account for <the
+  distinguishing condition found — e.g. an explicit justification/claim in
+  the source>, then re-run chorus-check --explain --summary to refresh the
+  verdict. This is a rule/engine defect, not a data or typing issue — no
+  re-import is needed.
 ```

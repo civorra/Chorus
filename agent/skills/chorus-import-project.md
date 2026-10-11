@@ -1189,6 +1189,88 @@ thesaurus (1.2b)  >  import-report-*.org (1.3)  >  KB aliases (1.2)
 A mapping present in the thesaurus is applied **at ✅ confidence without asking the
 engineer again**, regardless of what the KB or previous import-reports say.
 
+#### Structural section detection — independent of thesaurus lexical matching
+
+> **Why this matters:** the thesaurus matches on the **literal label/wording** found
+> in a previous import (e.g. a French term validated against one document). A later
+> document expressing the **same normative concept** in a different wording (a
+> different language, a different house style, an abbreviation/suffix convention)
+> will **not** trigger that thesaurus entry, even though the underlying KB mapping
+> (`type_element`) should be identical. Observed case: a sandbox thesaurus held
+> `brique fonctionnelle spécifique → extended_component` (validated on a French
+> "Dossier de conformité" document); a later English Security Target for the *same
+> KB/sandbard* expressed the identical CC concept via an explicit
+> "EXTENDED COMPONENTS DEFINITION" section and an `_EXT` identifier suffix
+> (e.g. `FCS_CKM_EXT.1`) — the thesaurus entry never matched, all `_EXT` components
+> were imported as plain `component_identifier`, and were later evaluated against
+> the wrong KB rule (generic catalogue grammar instead of the dedicated
+> extended-component rule), producing a block of false NON_CONFORME verdicts.
+
+Before relying solely on thesaurus/KB-alias lexical lookup (Phase 1.2/1.2b) for a
+category of elements, **scan the source document for structurally self-declaring
+section titles** — sections whose heading itself names a normative category
+regardless of the document's language or house style (e.g. "Extended components
+definition" / "Composants étendus" / "EXTENDED COMPONENTS DEFINITION", or any
+other standard-specific self-labelled section relevant to the active KB's domain).
+
+When such a section is found:
+1. **Pre-tag** every identifier/element listed under that section as a candidate
+   for the `type_element` the KB associates with that category (consult the KB
+   org's `Dictionnaire des slots`/Frame catalogue to confirm the exact
+   `type_element` name — do not guess).
+2. Only **then** consult the thesaurus/KB aliases (Phase 1.2/1.2b) — to confirm,
+   refine, or override this structural pre-tag, never to be the sole detection
+   mechanism for this category.
+3. If a thesaurus entry for this concept already exists **under a different
+   wording** than anything found in the current document, record this explicitly
+   in the import report (new subsection, see below) rather than silently
+   proceeding — this is a signal worth surfacing even when the structural
+   pre-tag already resolved the element correctly, because it reveals a thesaurus
+   coverage gap that will resurface on the *next* sandbox with yet another wording.
+
+#### Thesaurus alias variants — accept multiple wordings per mapping
+
+Extend each `* Aliases` row to optionally carry **several equivalent wordings**
+for the same KB mapping, instead of a single fixed label — separated by `;`:
+
+```
+| Project term (variants)                                                        | KB type_element      |
+|------------------------------------------------------------------------------------+-------------------------|
+| brique fonctionnelle spécifique ; brique d'assurance spécifique ; Extended component ; Extended class ; Extended family | extended_component |
+```
+
+Lookup (Phase 1.2b step "How the thesaurus is used") must match **any** of the
+`;`-separated variants against the document's terminology, not only the first/
+original one. When a new import validates an additional wording for an
+**already-mapped** `type_element`, **append** the new wording to the existing
+row's variant list (do not create a duplicate row) — this is how the thesaurus
+accumulates cross-language/cross-style coverage for the same concept over time.
+
+#### Import report — cross-check against existing thesaurus mappings
+
+When Phase 1 structural detection (above) identifies a category of elements
+that a thesaurus mapping already covers under a different wording, add a
+dedicated subsection to the import report:
+
+```org
+* ⚠️ Thesaurus mapping — wording mismatch detected
+  | KB type_element      | Existing thesaurus wording(s)         | Wording found in this document         |
+  |-------------------------|-------------------------------------------|---------------------------------------------|
+  | extended_component     | brique fonctionnelle spécifique            | "Extended component" / "_EXT" suffix (§5)   |
+
+  Action taken: structural section detection applied the correct type_element
+  despite the wording mismatch (see Phase 1.2b-structural). The new wording has
+  been appended to the thesaurus row's variant list (see "Thesaurus alias
+  variants") so future imports using this wording match directly without
+  relying on structural detection alone.
+```
+
+This keeps the discrepancy visible to the engineer even when the import itself
+resolved the mapping correctly — it is the mechanism by which the thesaurus
+genuinely accumulates multi-wording coverage instead of silently re-deriving
+the same structural detection on every future sandbox/document using this
+wording.
+
 #### Thesaurus storage layout — sharded by Scope
 
 The thesaurus is stored as **one `.org` file per Scope**, under
