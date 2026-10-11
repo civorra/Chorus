@@ -33,6 +33,13 @@
 > Prerequisite: `chorus-feed <sandbox-name>` must have been run beforehand
 > (KB org + YAML present in the sandbox).
 
+> 📋 **`agent/org/incidents-log.org`** — incident registry for Steps 5b–5l.
+> Not loaded during normal execution (the operational rules — grep scans,
+> WRONG/CORRECT examples, fix guidance — are self-contained in each Step).
+> Read on demand when: (a) explaining to the user *why* a rule exists,
+> (b) documenting a new incident after a debug session (add entry + one-line
+> reference in the relevant Step), or (c) auditing rule-to-incident coverage.
+
 > ⚠️ **`$WORKSPACE` / `$ENTITY` — mandatory convention, read before Step 0.**
 > Every chorus-web–managed sandbox stores projects and reports per-entity:
 > `$SANDBOX/workspace/<entity>/<projId>.json` (project input) and
