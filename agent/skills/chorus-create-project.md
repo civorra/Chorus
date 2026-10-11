@@ -120,6 +120,45 @@ For each agent, apply this two-step sequence:
 > ```
 > Do not generate a JSON that will silently produce 0 processed elements.
 
+> **Enum-valued slots — rule-coverage guard (not just org-declared domain).** For any
+> slot whose value is an enum/closed set (e.g. `mode_generation`, `usage`, `classe_*`) and
+> that gates which rule fires via a `CONDITION`/`filtre` string match (`eq`, `=~ /.../`, a
+> finite set of literals) — **before using a value for this slot in a generated element**,
+> verify the value appears literally in at least one rule's `CONDITION`/`FIND`/`filtre` in
+> `$SANDBOX/rules/<slug>/*.yml` for this agent. The KB org's `Dictionnaire des slots` may
+> describe the domain in prose ("enum", a short list, or a reference to an external
+> taxonomy) without every documented/plausible value necessarily being matched by an
+> existing rule — using a semantically plausible but rule-uncovered value produces a
+> Frame that **silently never reaches its aggregating/terminal slot**, not a crash or an
+> `Unprocessed` entry (no rule's `CONDITION` is satisfied, so nothing fires for this slot
+> at all — contrast with a slot that IS checked but found non-conforming, which produces
+> a normal `NON_CONFORME` or `Unprocessed` outcome, both visible in the run report).
+>
+> **Why this is dangerous specifically in combination with a lifecycle/aggregation rule**
+> (see note below, same phase): if the ungoverned value sits on a type also subject to a
+> multi-slot aggregation rule, the missing aggregated slot keeps a downstream termination
+> rule's `EXCEPTION` permanently true — **the pipeline loops until `_MAX_CYCLES`/timeout
+> instead of failing cleanly or reporting the element as unprocessed.**
+>
+> **Incident (2026-10, sandbox `08-ANSSI-PG-083_MULTI-SOURCES`):** a `--strategy scale`
+> generation populated `mode_generation` with values like `locale_derivee`, `importee`,
+> `generee_par_tiers`, `recouvree` for several `cle_cryptographique` elements — plausible
+> English/French paraphrases of real-world key-generation scenarios, but none of them
+> matched any rule's `CONDITION` (`locale_aleatoire|locale_differentiee|echange` in R02,
+> `derivation` in R04/R05, `centralisee_aleatoire` in R03). Combined with the
+> lifecycle/aggregation pattern below, this caused the same silent infinite loop as the
+> original incident, on a seemingly unrelated enum-value mistake.
+>
+> **Verification procedure:** while reading each agent's `.yml` files (already being read
+> for the `type_element` guard above), collect every literal value compared against each
+> enum-valued slot across all `CONDITION`/`FIND`/`filtre` blocks of that agent — this is
+> the **actual** accepted domain, more authoritative than the org's prose description for
+> generation purposes. Use only these collected literal values when assigning that slot in
+> generated elements. If you want to test an "unsupported value" scenario on purpose
+> (e.g. to verify graceful degradation), use the `Unprocessed` section of Phase 4's
+> checklist and flag the element explicitly as an intentional gap-coverage case in
+> `_note_calc` — do not assume an unmatched value is harmless by default.
+
 > **Why the immediate tool call:** Opus extended thinking after reading a dense KB file
 > can be long enough to expire the IDE token. Reading the directory tree right after
 > each read resets the token TTL and produces a useful rules inventory at no extra cost.
