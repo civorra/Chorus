@@ -1055,6 +1055,70 @@ across the full tree before falling back to _DEFAULT.
         0
       ```
       > Invisible on a sandbox (6 frames), critical at real scale (300 frames × 40 rules).
+- [ ] ⛔ **Aggregate rule waiting on an "expected children" list (`elements` /
+      `composants_requis` / similar) MUST bound its wait — never `return 0`
+      forever when an expected sibling Frame simply does not exist in the
+      project.** A common aggregation pattern (1 parent Frame expects N child
+      Frame ids, computed earlier by a levelling/catalog rule) resolves each
+      expected id against the live Frame registry (`fmatch`) and defers
+      (`return 0`, retried next cycle) while any expected id has no matching
+      Frame yet. This is correct **only** for "not yet processed" — the engine
+      has no way to tell "not yet loaded" apart from "will never exist in this
+      project" (e.g. a minimal/smoke-test project that supplies only 3 of a
+      component's 13 expected sub-elements). Left unbounded, the rule
+      `return 0`s on every cycle until `_MAX_CYCLES`, each cycle re-scanning
+      the full Frame registry — costly, and the parent's own aggregate slot
+      (read by a downstream phase-done/termination rule) never gets set,
+      risking the same whole-pipeline non-convergence class described in
+      `chorus-feed.md` § "Mandatory check before authoring any CONDITION/
+      EXCEPTION on a cross-agent targeting slot".
+      ```yaml
+      # ⛔ WRONG — waits forever if an expected id never appears in the project
+      ACTION: |
+        my @expected_ids = split(/,/, $c->get('elements') // '');
+        my %by_id = map { $_->get('type_element') => $_ } Chorus::Frame::fmatch(slot => 'type_element');
+        for my $id (@expected_ids) {
+          return 0 unless $by_id{$id} && defined $by_id{$id}->get('child_ok');
+        }
+        $c->set('parent_declared', 1);
+        1
+
+      # ✅ CORRECT — bounded wait, explicit motif once the bound is hit
+      ACTION: |
+        my @expected_ids = split(/,/, $c->get('elements') // '');
+        my %by_id = map { $_->get('type_element') => $_ } Chorus::Frame::fmatch(slot => 'type_element');
+        use constant MAX_WAIT_CYCLES => 5;
+        my $waited = ($c->get('_decl_wait_cycles') // 0) + 1;
+        my (@missing, @pending);
+        for my $id (@expected_ids) {
+          my $elt = $by_id{$id};
+          if (!$elt) { push @missing, $id; next }
+          push @pending, $id unless defined $elt->get('child_ok');
+        }
+        if (@pending && $waited < MAX_WAIT_CYCLES) {
+          $c->set('_decl_wait_cycles', $waited);
+          return 0;   # at least one sibling exists but isn't scored yet — genuinely transient
+        }
+        if (@missing || @pending) {
+          $c->set('parent_declared', 0);
+          $c->set('non_conformity_motif',
+            "missing or unscored: " . join(',', @missing, @pending))
+            unless $c->get('non_conformity_motif');
+          return 1;   # stop waiting — this will never resolve on its own
+        }
+        my $all_ok = !grep { !$by_id{$_}->get('child_ok') } @expected_ids;
+        $c->set('parent_declared', $all_ok ? 1 : 0);
+        1
+      ```
+      **Incident (2026-10, sandbox `05-CC-3.1.4`):** this exact unbounded pattern,
+      copy-pasted identically across 7 SAR class agents' own
+      `component-declared-aggregate` rule, left 56/256 elements permanently
+      `(unprocessed)` against a minimal "iso" test project — not a crash, not a
+      warning, just `return 0` forever on every affected component. Confirmed by
+      testing each agent in isolation (fast, correct) vs. the full 21-agent
+      pipeline (very slow, incomplete) — the aggregate rule's own missing-sibling
+      case was the actual root cause, not agent interaction. Fixed by adding the
+      bounded-wait pattern above to all 7 copies.
 - [ ] **Always** add `EXCEPTION` for idempotence — **two patterns:**
       - **Pattern 1** (`defined $var->{slot_pose}`) for classification rules — "first writer wins".
         Once any rule writes the slot, all rules with the same guard are blocked on this Frame.

@@ -433,6 +433,56 @@ grep -rn "BOARD->{<S>}\|BOARD->set('<S>'" $SANDBOX/rules/*/*.yml   # BOARD write
 > `chorus-check` generation time, mechanically, before any `perl run.pl` is
 > ever attempted.
 
+### Step 5e — Unbounded "expected children" aggregate scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** an aggregate rule waiting on a
+> list of expected sibling Frame ids (`elements`/`composants_requis`/similar,
+> computed by an earlier levelling/catalog rule) that `return 0`s forever
+> whenever an expected id has no matching Frame degrades identically to the
+> BOARD-wiring bug above: no error, no warning, just permanent
+> `(unprocessed)` on the parent Frame — invisible until someone runs the
+> pipeline against a project that does not supply every single expected
+> child (which any minimal/smoke-test project legitimately does not). See
+> the full pattern + fix template in `chorus-engine-yaml.md` § "Aggregate
+> rule waiting on an 'expected children' list".
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+# Find ACTION blocks that resolve an expected-id list against fmatch() and
+# `return 0` without ever bounding the wait (no retry counter, no `missing`
+# bucket distinct from `pending`).
+grep -rlP 'split\(/,/.*elements.*\n' $SANDBOX/rules/*/*.yml 2>/dev/null \
+  | xargs -I{} sh -c 'grep -q "_decl_wait_cycles\|MAX_WAIT" {} || echo {}'
+```
+
+- **No matches** → proceed to Phase 2.
+- **Matches found** → each one is a candidate unbounded aggregate wait. Open it,
+  confirm it matches the pattern (splits a comma-joined expected-id slot,
+  resolves each via `fmatch`, `return 0` if any lookup misses), and apply the
+  bounded-wait fix from `chorus-engine-yaml.md` — a `_decl_wait_cycles` counter
+  per Frame, falling through to an explicit `non_conformity_motif` + a
+  non-blocking verdict after `MAX_WAIT_CYCLES` (5 is a reasonable default)
+  cycles still missing the same expected id(s). Do this **before** generating
+  any infrastructure file — regenerate `agent/.kb-hash` afterward (the YAML
+  content changed).
+
+> **Incident (2026-10, sandbox `05-CC-3.1.4`):** this exact unbounded pattern
+> was generated identically across 7 SAR class agents (copy-pasted rule
+> template, one per agent) — the parent component's own aggregate slot never
+> resolved whenever the project supplied fewer than the full expected set of
+> D/C/E sub-elements, which the sandbox's own minimal "iso" test project did
+> by design. 56/256 elements stuck at `(unprocessed)` with the full pipeline
+> otherwise converging normally (no crash, `Chorus::Expert::process()` itself
+> reached `SOLVED`/iteration limit fine — the symptom was localized to the
+> affected parent Frames, not the whole pipeline). Confirmed by isolating each
+> agent individually (fast, correct — small/complete synthetic inputs) vs. the
+> full project file (slow, 56 stuck) — the rule's own missing-sibling handling
+> was the root cause, not agent interaction. This check exists so the next
+> sandbox with this template pattern catches it mechanically, before
+> `chorus-create-project`'s own smoke-test projects expose the gap one
+> component at a time.
+
 ### Step 6 — Output
 
 Produce a structured slot map (used by Phase 2):
