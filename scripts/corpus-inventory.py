@@ -67,7 +67,7 @@ SECTION_MARKER_RE = re.compile(
 COVERAGE_BLOCK_RE = re.compile(
     r'^\* Coverage\b(.*?)(?=^\* |\Z)', re.MULTILINE | re.DOTALL
 )
-CORPUS_LINE_RE = re.compile(r'^\s*Corpus:\s*(.+)$', re.MULTILINE)
+CORPUS_LINE_RE = re.compile(r'^\s*Corpus\s*:\s*(.+)$', re.MULTILINE)
 TABLE_ROW_RE = re.compile(r'^\s*\|(?!-)(.+)\|\s*$')
 SUBSECTION_RE = re.compile(
     r'^\*\*\s*(✅ Integrated|⏭ Deferred|🧮 Helper-source pending)\b.*$'
