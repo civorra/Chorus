@@ -1,0 +1,536 @@
+#+TITLE: Chorus — Internals des composants
+#+DATE: 2026-10-12
+
+* Chorus::Frame — Représentation des connaissances
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: lib/ (distribution Chorus-Frame, dépendance)
+  :END:
+
+** Registres globaux
+
+| Registre | Clé | Valeur | Usage |
+|---|---|---|---|
+| =%FMAP= | =_KEY= (MD5) | weak ref Frame | retrouver toute Frame par clé |
+| =%REPOSITORY= | nom de slot | ={_KEY => 'Y', ...}= | quelles Frames ont ce slot (pour =fmatch=) |
+| =%INSTANCES= | =_KEY= parent | ={child_KEY => weak_ref}= | quelles Frames héritent d'une donnée |
+| =%SERIAL= | valeur =_SERIALIZE= | =_KEY= | lookup de sérialisation |
+
+Toutes les références dans =%FMAP= et =%INSTANCES= sont **affaiblies** (=weaken=) —
+les Frames sont GC'd normalement, =DESTROY= nettoie les registres.
+
+** Slots spéciaux
+
+| Slot | Rôle |
+|---|---|
+| =_KEY= | Identifiant MD5 unique, assigné à la création — **ne jamais assigner manuellement** |
+| =_PARENT_KEY= | Défini sur les sous-Frames inline pour le CoW |
+| =_ISA= | Frame unique ou arrayref de Frames — héritage |
+| =_VALUE= | Information cible principale de la Frame |
+| =_DEFAULT= | Fallback si =_VALUE= absent |
+| =_NEEDED= | Coderef de dernier recours — produit la valeur à la demande (lazy eval) |
+| =_BEFORE= | Hook avant changement de slot |
+| =_AFTER= | Hook après changement de slot (propagation avant) |
+| =_REQUIRE= | Hook de validation — retourner =-1= bloque =set()= |
+| =_NOFRAME= | Empêche la promotion automatique d'un hash en Frame |
+| =_ALTERNATIVES= | Liste de Frames alternatives pour =fselect()= |
+| =_ON_DELETE= | Hook déclenché à la destruction de la Frame |
+
+** Sémantique de _REQUIRE
+
+=_REQUIRE= est un hook de validation appelé avant =set()= :
+
+- Retourner =-1= (ou toute valeur fausse) **annule** l'écriture — =set()= retourne
+  la constante =REQUIRE_FAILED=.
+- Si =_REQUIRE= bloque, =_BEFORE= et =_AFTER= ne sont **pas** appelés.
+- =_REQUIRE= est héritable via =_ISA= comme tout autre slot.
+
+#+begin_src perl
+my $f = Chorus::Frame->new(
+    _REQUIRE => sub { $SELF->get('_VALUE') > 0 ? 1 : -1 },
+);
+my $res = $f->set('_VALUE', -5);  # => REQUIRE_FAILED, _BEFORE/_AFTER non appelés
+#+end_src
+
+** Sémantique de _ON_DELETE — cascade et $SELF
+
+- Hook déclenché sur =delete($slot)= pour ce slot, ou sur =DESTROY= de la Frame.
+- =$SELF= dans =_ON_DELETE= est **toujours** la Frame sur laquelle =delete()= est appelé,
+  même si la suppression en cascade déclenche =_ON_DELETE= d'une autre Frame.
+- Les modifications faites dans =_ON_DELETE= (ex. =set()= sur une autre Frame)
+  sont visibles immédiatement à =fmatch()= après la suppression.
+
+#+begin_src perl
+my $tracker = Chorus::Frame->new(count => { _VALUE => 0 });
+my $f = Chorus::Frame->new(
+    item       => 'x',
+    _ON_DELETE => sub {
+        $tracker->set('count', ($tracker->get('count') // 0) + 1);
+    },
+);
+$f->delete('item');
+# $tracker->get('count') == 1
+# fmatch(slot => 'count') retourne $tracker avec count=1
+#+end_src
+
+** Modes d'héritage N et Z
+
+- **Mode N (défaut)** : pour chaque clé de valuation (=_VALUE=, =_DEFAULT=, =_NEEDED=)
+  dans l'ordre, chercher dans TOUS les frames de l'arbre d'héritage avant de passer
+  à la clé suivante.
+- **Mode Z** : chercher la séquence complète =(=_VALUE=, =_DEFAULT=, =_NEEDED=)= sur chaque
+  Frame avant de descendre dans ses parents.
+
+Basculer avec =Chorus::Frame::setMode(GET => 'Z')= / =setMode('N')=.
+
+** get() path vs AUTOLOAD — sémantique de $SELF
+
+Deux façons de traverser une hiérarchie de frames — comportement de =$SELF= différent :
+
+| Forme | =$SELF= pendant la traversée |
+|---|---|
+| =get('a b c')= | Reste sur la **frame racine** tout au long |
+| =->a->b->c= (AUTOLOAD chaîné) | Se **déplace** à chaque frame intermédiaire |
+
+De plus, =_NEEDED= n'est **pas** évalué sur les frames intermédiaires lors d'un
+=get('a b c')= — seule la frame terminale peut le déclencher.
+
+#+begin_src perl
+# Soit A → B → C (via _ISA ou sous-frames)
+# get('a b c') : $SELF = A tout du long ; _NEEDED de B non évalué
+# $a->a->b->c  : $SELF = A puis B puis C ; _NEEDED de chaque step évalué
+#+end_src
+
+⚠️ Cette distinction importe quand un hook intermédiaire utilise =$SELF= pour
+identifier *sur quelle frame* il s'exécute.
+
+** Copy-on-Write (CoW)
+
+=set('a b c', $val)= crée des "shadow Frames" locales quand il traverse une Frame
+dont le =_PARENT_KEY= diffère de la Frame courante — évite la mutation de
+sous-structures partagées.
+
+Disponible explicitement via =cow()= pour dupliquer une Frame avant modification
+(utile pour simulation dans le contexte backward-chaining).
+
+** fmatch()
+
+#+begin_src perl
+fmatch(slot => 'name')             # toutes les Frames fournissant 'name'
+fmatch(slot => ['color', 'score']) # intersection multi-slots
+fmatch(slot => 'color', from => \@list)  # espace de recherche restreint
+#+end_src
+
+Implémenté via =%REPOSITORY= (fournisseurs directs) + =%INSTANCES= (héritiers) en BFS.
+**Complexité O(1)** pour la recherche directe.
+
+⚠️ Ne voit que les slots posés via =set()= — pas les assignations directes sur le hash.
+
+*** Memoïsation via =%FPS_CACHE= (depuis v2.0.x)
+
+Le résultat de =_framesProvidingSlot()= (chemin chaud de =fmatch()=) est mis en cache
+par slot dans =%FPS_CACHE= :
+
+#+begin_src perl
+return $FPS_CACHE{$slot} if exists $FPS_CACHE{$slot};
+# ... calcul ...
+$FPS_CACHE{$slot} = $result;
+#+end_src
+
+Invalidation garantie à chaque modification de ce slot :
+
+| Événement | Invalidation |
+|---|---|
+| =set()= sur un slot | =delete $FPS_CACHE{$slot}= via =_registerSlot= / =_register= |
+| =delete()= d'un slot | =delete $FPS_CACHE{$slot}= via =_unregisterSlot= |
+| =DESTROY= de la Frame | =delete $FPS_CACHE{$slot}= pour chaque slot porté |
+| =_reset()= | =%FPS_CACHE = ()= — reset global |
+
+Le cache est toujours aussi frais qu'un calcul à la demande.
+Gain en lecture répétée sur un même slot sans risque de résultat stale.
+
+* Chorus::Engine — Moteur d'inférence
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: lib/Chorus/Engine.pm
+  :END:
+
+** Structures de données par instance
+
+| Champ | Type | Rôle |
+|---|---|---|
+| ={_RULES}= | arrayref de Frames | Liste maître des règles |
+| ={_QUEUE}= | arrayref | Copie de travail consommée par =applyrules()= |
+| ={_CYCLE}= | int | Compteur de cycles (incrémenté dans =loop()=) |
+| ={_SUCCES}= | bool | Au moins une règle a tiré dans le =loop()= courant |
+| ={_SLEEPING}= | flag | Posé par =pause()=, effacé par =wakeup()= |
+| ={_CUT}= | flag | Posé par =cut()= |
+| ={_LAST}= | flag | Posé par =last()= |
+| ={_REPLAY}= | flag | Posé par =replay()= |
+| ={_REPLAY_ALL}= | flag | Posé par =replay_all()= |
+| ={_IDENT}= | string | Nom de l'agent (debug) |
+| ={_LOG}= | bool ou coderef | Active le log des tirs de règles (évalué au moment du tir) |
+| ={_MAX_CYCLES}= | int (défaut 10 000) | Garde de boucle interne |
+
+** Structure d'une Frame de règle
+
+#+begin_src perl
+{
+  _ID        => 'nom-règle',         # optionnel — déduplication
+  _SCOPE     => { var => sub {...} }, # combinateurs de scope
+  _APPLY     => sub { ... },         # action (coderef pur, pas dispatch Frame)
+  _TERMINAL  => 'solved'|'failed',   # optionnel — terminaison auto
+  _PREMISSES => { slot => 'Y' },     # métadonnée, NON utilisée par applyrules()
+  _TRACE     => 1,                   # optionnel — log chaque tir sur STDERR
+}
+#+end_src
+
+** Sémantique de _CYCLE et _SUCCES
+
+⚠️ Ces deux champs sont **réinitialisés à 0 au début de chaque appel** à =loop()= :
+#+begin_src perl
+$SELF->{_SUCCES} = 0;
+$SELF->{_CYCLE}  = 0;
+#+end_src
+=_CYCLE= représente le nombre de passes d'=applyrules()= dans le =loop()= courant,
+pas un compteur cumulatif de l'agent. Voir pitfalls.org §=_CYCLE=.
+
+** Mécanisme _LOG et _TRACE (v2.0.2)
+
+=addrule()= enveloppe chaque =_APPLY= dans une closure de logging. La présence
+de =_LOG= est vérifiée **au moment du tir** (fire-time) — on peut activer/désactiver
+=_LOG= dynamiquement après =addrule()=. =_TRACE= est capturé à l'enregistrement
+(immutable après =addrule()=).
+
+** Méthodes API publique
+
+| Méthode | Description |
+|---|---|
+| =new(%opts)= | Crée une Frame héritant de =$ENGINE= |
+| =addrule(%rule)= | Ajoute une règle (avec déduplication par =_ID=) |
+| =loadRules($dir, %opts)= | Charge tous les =*.yml= du répertoire en ordre alpha |
+| =loop()= | Boucle d'inférence jusqu'à convergence ou =_MAX_CYCLES= |
+| =applyrules()= | Un passage sur toutes les règles |
+| =cut()= | Sort des boucles de scope de la règle courante |
+| =last()= | Sort de la queue de règles de l'agent courant |
+| =replay()= | Recommence l'agent courant depuis la première règle |
+| =replay_all()= | Relance tout le pipeline depuis le premier agent |
+| =solved()= | Pose =BOARD->{SOLVED}= |
+| =failed()= | Pose =BOARD->{FAILED}= |
+| =pause()= / =wakeup()= | Désactive / réactive le moteur |
+| =reorder(\&cmp)= | Trie =_RULES= puis appelle =replay()= |
+
+** Compilation YAML → Perl
+
+=loadRules()= appelle =codeRule()= sur chaque fichier YAML puis =eval= le résultat :
+#+begin_src perl
+my $code = '$SELF->addrule(' . codeRule($SELF, readRule(file => $f)) . ');';
+eval $code;
+#+end_src
+
+=codeRule()= produit le texte Perl de la Frame de règle, en délégant à :
+- =setScope()= — compile un bloc =FIND/CHERCHER= en appel =fmatch()=
+- =setFilter()= — compile les =filtre:= en =grep { ... }= (ET implicite)
+- =setCondition()= — compile =CONDITION:= (OU implicite sur les listes)
+- =setException()= — compile =EXCEPTION:= en =return if ...=
+- =setEffect()= — compile =EFFET/ACTION:= en code =_APPLY=
+
+Ces méthodes ont des =_DEFAULT= no-op — chaque agent peut les surcharger
+pour customiser la compilation YAML.
+
+** loadRules() — Guard coherence check (v2.0.2)
+   :PROPERTIES:
+   :COMPONENT: Chorus::Engine
+   :ADDED: 2026-08-03 (deep-chorus KB audit)
+   :END:
+
+Avant de compiler chaque règle YAML, =loadRules()= appelle =_check_guard_coherence()= :
+si le slot testé dans =EXCEPTION: "defined $f->{X}"= n'est pas parmi les slots
+écrits par l'=ACTION= de la même règle, un =warn= GUARD MISMATCH est émis.
+Ne lève jamais de =die= — rétrocompatibilité garantie.
+
+#+begin_example
+[Chorus::Engine] GUARD MISMATCH in rule 'nom-règle' (R05-xxx.yml)
+  EXCEPTION tests : '$f->{slot_guard}'
+  ACTION writes   : [slot_a, slot_b]
+  Risk: if 'slot_guard' is pre-set in a project JSON, this rule is bypassed
+  and [slot_a, slot_b] will never be computed.
+  Suggested fix   : EXCEPTION: "defined $f->{slot_a}"
+#+end_example
+
+⚠️ **Implication pour =chorus-create-project= cross / edges** :
+pré-setter le slot guard d'une règle dans un projet JSON de test bypasse
+TOUS ses effets secondaires (=slot_a=, =slot_b= jamais calculés).
+→ Vérifier =chorus-check.md §Step 5= et =chorus-feed.md §Guard= pour la
+règle de sélection du slot guard.
+
+* Chorus::Expert — Orchestrateur multi-agents
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: lib/Chorus/Expert.pm
+  :END:
+
+** Structures de données
+
+| Champ | Type | Rôle |
+|---|---|---|
+| ={_agents}= | arrayref | Agents enregistrés dans l'ordre d'exécution |
+| ={_board}= | =Chorus::Frame= | BOARD partagé injecté dans chaque agent |
+| ={_MAX_ITER}= | int (défaut 10 000) | Garde de la boucle =do/until= externe |
+
+⚠️ Ces champs sont sur un **blessed hashref** ordinaire (=bless {}, $class=),
+**pas** une Frame. Contrairement à =Chorus::Engine=, =Chorus::Expert= n'hérite pas
+de =$ENGINE=.
+
+** Comportement de process() — BOARD cleanup
+
+⚠️ =process()= **supprime** =BOARD->{SOLVED}= et =BOARD->{FAILED}= avant de retourner.
+Après l'appel, ces slots valent =undef= même si le pipeline a réussi.
+Utiliser la valeur de retour de =process()= (=1= / =undef=) — voir pitfalls.org §=BOARD->{SOLVED}=.
+
+** Méthodes API publique
+
+| Méthode | Description |
+|---|---|
+| =new()= | Crée l'expert avec BOARD vide et liste agents vide. **Ignore tous ses arguments.** |
+| =register(@agents)= | Injecte BOARD et back-ref EXPERT dans chaque agent |
+| =process($input)= | Lance la boucle do/until sur les agents ; supprime SOLVED/FAILED du BOARD avant retour |
+| =debug($level)= | Active les traces STDERR internes (verbose — boucle externe de =process()=) |
+
+** Slots agent injectés par register()
+
+| Slot | Valeur | Accès depuis règle |
+|---|---|---|
+| =BOARD= | référence au BOARD partagé | =$SELF->BOARD= ou =$agent->BOARD= |
+| =EXPERT= | référence à l'instance Expert | =$SELF->EXPERT= |
+
+** _LOCK_UNTIL_STABLE — synchronisation d'agents (v2.0.x)
+
+Un agent dont ={_LOCK_UNTIL_STABLE}= est vrai est **skippé** dans toute itération
+de =process()= où au moins un agent précédent a =_SUCCES= (a tiré ≥ 1 règle).
+
+#+begin_src perl
+my $b = Chorus::Engine->new(_IDENT => 'aggregator', _LOCK_UNTIL_STABLE => 'Y');
+#+end_src
+
+Comportement dans la boucle =process()= :
+
+#+begin_src
+for my $agent (@agents):
+    if $agent._LOCK_UNTIL_STABLE:
+        last if any(@processed)._SUCCES   # ← agent skippé cette itération
+    agent.loop()
+    push @processed, $agent
+#+end_src
+
+Effet pratique : l'agent ne s'exécute que lorsque le système est "stable" —
+quand tous les agents en amont ont épuisé leurs règles dans cette itération.
+Utile pour les agents d'agrégation finale qui ne doivent pas lire des résultats
+partiels.
+
+* Chorus::Collection::List — Séquences ordonnées de Frames
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: lib/Chorus/Collection/List.pm
+  :END:
+
+#+begin_src perl
+use Chorus::Collection::List qw($LIST);
+my $seq = Chorus::Frame->new(_ISA => $LIST);
+$seq->build($f1, $f2, $f3);    # initialise _ITEMS + _CONTAINER sur chaque item
+#+end_src
+
+** Méthodes principales
+
+| Méthode | Description |
+|---|---|
+| =build(@frames)= | Construit la séquence, pose =_CONTAINER= sur chaque item |
+| =push_items(@f)= | Ajoute à droite |
+| =unshift_items(@f)= | Ajoute à gauche |
+| =first_item= / =last_item= | Premier / dernier item |
+| =length= | Nombre d'items |
+| =HAS('slot')= | Premier item ayant le slot truthy |
+| =HAS_NO('slot')= | Vrai si aucun item n'a ce slot |
+| =STARTS_WITH('slot')= / =ENDS_WITH('slot')= | Test sur les extrémités |
+| =connect_left($f1)= / =connect_right($f3)= | Chaînage bidirectionnel =prev=/=succ= |
+
+* Chorus::Collection::Filter — Pattern matching sur séquences
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: lib/Chorus/Collection/Filter.pm
+  :END:
+
+#+begin_src perl
+use Chorus::Collection::Filter qw(@_VFILTER $FILTER);
+#+end_src
+
+=@_VFILTER= est la liste des filtres actifs (virtuelle).
+=Chorus::Collection::Filter= permet de décrire des patterns structurels sur
+des séquences de Frames et de les faire matcher contre des instances de List.
+
+Utilisé principalement dans le moteur pour optimiser les scopes sur des
+séquences (=_SCOPE= filtré par pattern).
+
+* Chorus::Frame — Inheritance Modes N & Z (v2.0.2)
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SUBSECTION: Frame Valuation
+  :SOURCE: lib/Chorus/Frame.pm — _getN vs _getZ
+  :END:
+
+** Mode N (Default) — "breadth-first per valuation key"
+
+Chaque clé de valuation (_VALUE, _DEFAULT, _NEEDED) est cherchée **à travers
+toute l'arbre d'héritage** avant de passer à la clé suivante.
+
+#+begin_src
+Frame A:
+  └─ _VALUE = 'v1'
+
+Frame B (_ISA => A):
+  └─ _DEFAULT = 'v2'
+
+Frame C (_ISA => B):
+  (pas de _VALUE, _DEFAULT, _NEEDED)
+
+C.get(slot):
+  1. chercher _VALUE sur C, B, A → trouvé 'v1' ✓
+  2. return 'v1'
+#+end_src
+
+** Mode Z — "full sequence per frame"
+
+Chaque Frame teste la séquence complète (_VALUE → _DEFAULT → _NEEDED)
+avant de descendre à ses parents.
+
+#+begin_src
+Frame A:
+  └─ _VALUE = 'v1'
+
+Frame B (_ISA => A):
+  └─ _DEFAULT = 'v2'
+
+Frame C (_ISA => B):
+  (pas de _VALUE, _DEFAULT, _NEEDED)
+
+C.get(slot):  [Mode Z]
+  1. sur C: _VALUE? non. _DEFAULT? non. _NEEDED? non.
+  2. sur B: _VALUE? non. _DEFAULT? 'v2' ✓
+  3. return 'v2'  ← DIFFÉRENCE !
+#+end_src
+
+** Changer de mode
+
+#+begin_src perl
+Chorus::Frame::setMode(GET => 'N');  # Mode N (défaut)
+Chorus::Frame::setMode(GET => 'Z');  # Mode Z
+Chorus::Frame::setMode('N');         # short form
+#+end_src
+
+Le mode est un **drapeau global** — affecte toutes les Frame de l'application.
+
+* Chorus::Engine — Logging & Tracing (v2.0.2)
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SUBSECTION: Rule Execution Monitoring
+  :SOURCE: lib/Chorus/Engine.pm — addrule(), _log_fire()
+  :END:
+
+** Mécanisme _LOG (agent-level)
+
+=_LOG= est un slot sur l'engine Frame. Il est testé **au moment du tir** (fire-time).
+
+#+begin_src perl
+# Avant loop()
+$agent->set('_LOG', 1);   # log STDERR
+$agent->set('_LOG', \&custom_handler);  # callback custom
+
+# Pendant loop()
+if ($res) {  # rule fired
+    my $log = $engine->{_LOG};
+    _log_fire($engine, $rule_id, \%opts, $log) if $log;
+}
+#+end_src
+
+Avantage : on peut activer/désactiver le logging **dynamiquement** sans recompiler.
+
+** Mécanisme _TRACE (rule-level)
+
+=_TRACE= est capturé à =addrule()= (immutable après).
+
+#+begin_src perl
+$agent->addrule(
+    _ID => 'my-rule',
+    _TRACE => 1,   # log STDERR chaque fois que cette règle tire
+    ...
+);
+#+end_src
+
+Ou dans YAML :
+#+begin_src yaml
+RULE: my-rule
+TRACE: 1
+...
+#+end_src
+
+** Wrapper closure injection (addrule implementation)
+
+Lors de =addrule()=, si =_APPLY= existe, elle est enveloppée dans une closure
+qui capture =_LOG= et =_TRACE= :
+
+#+begin_src perl
+my $orig_apply = $args{_APPLY};
+my $engine = $SELF;
+my $rule_id = $args{_ID};
+my $do_trace = $args{_TRACE};
+
+$args{_APPLY} = sub {
+    my %opts = @_;
+    my $res = $orig_apply->(%opts);  # appel _APPLY original
+    if ($res) {
+        my $log = $engine->{_LOG} // ($do_trace ? 1 : undef);
+        _log_fire($engine, $rule_id, \%opts, $log) if $log;
+    }
+    return $res;
+};
+#+end_src
+
+Cette injection est **non-intrusive** : le wrapper est transparent pour =_APPLY=.
+
+** Handler custom pour intégration log4perl ou autre
+
+#+begin_src perl
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
+
+$agent->set('_LOG', sub {
+    my ($engine, $rule_id, $opts) = @_;
+    DEBUG sprintf "[cycle %s]  %s / %s  fired",
+        $engine->{_CYCLE}, $engine->{_IDENT} // '?', $rule_id;
+});
+#+end_src
+
+* Chorus::Engine::AIAgent — Pipeline IA (documentation POD)
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: lib/Chorus/Engine/AIAgent.pod
+  :END:
+
+Ce fichier est purement POD — pas de code Perl.
+Il documente le pipeline de la Phase A (corpus → KB + règles YAML).
+
+** Architecture en trois couches
+
+1. **Corpus extraction** — =chorus-pdf= / =chorus-word= / =chorus-excel=
+   → corpus texte enrichi (tableaux, figures, XREF)
+
+2. **Knowledge formalisation** (seule phase LLM) — =chorus-feed=
+   → KB org-mode (ontologie, frames, aliases) + règles YAML
+
+3. **Deterministic execution** — =chorus-check= + =perl run.pl=
+   → rapport de conformité par élément, par agent, avec référence normative
+
+** Skills associés (=$ENGINE/agent/skills/=)
+=chorus-pdf=, =chorus-word=, =chorus-excel=, =chorus-feed=, =chorus-check=,
+=chorus-create-project=, =chorus-import-project=, =chorus-strengthen=,
+=chorus-quickstart=.

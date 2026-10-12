@@ -5,6 +5,7 @@
 # ECA / session artefacts
 ^agent/sessions/
 ^agent/skills/cpan-release\.md$
+^agent/kb/
 ^\.eca/
 
 # Meta files (ECA / Claude — not part of the CPAN distribution)

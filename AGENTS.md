@@ -10,6 +10,7 @@
 | `$ENGINE` | `.` — repository root |
 | `$SKILLS` | `./agent/skills/` — versioned ECA skills |
 | `KB` | `./agent/org/` — Chorus Knowledge Base templates + pipeline index (versioned in git) |
+| `$EAKB` | `./agent/kb/` — KB ECA sur les internals `Chorus::*` (versioned in git, excluded from CPAN) |
 | `$SANDBOXES` | `./sandboxes/` — user sandbox working area (not committed) |
 | `$WORKSPACE` | `workspace` (default) — per-sandbox reports output folder name, resolved as `$SANDBOX/$WORKSPACE/reports/` (not committed) |
 
@@ -62,9 +63,10 @@
 > **Two distinct KB locations:**
 > `./agent/org/` (this repo) contains versioned KB **templates** and the pipeline index —
 > used by skills at generation time.
-> An optional external KB (`../eca/kb/` or equivalent) may exist outside the repo as an
-> unversioned ECA knowledge base (pitfalls, architecture notes, component docs).
-> Skills always reference `./agent/org/`; the external KB is tool-specific and optional.
+> `./agent/kb/` (this repo) contains the **ECA knowledge base** on `Chorus::*` internals
+> (pitfalls, architecture decisions, component docs) — versioned in git, excluded from CPAN
+> via `MANIFEST.SKIP`. **Not optional:** read before any work on `lib/Chorus/*.pm`,
+> updated in the same commit as any significant change to Perl source files.
 
 ## Project
 
@@ -122,6 +124,7 @@ status: IN_PROGRESS
 
 - `agent/skills/` — **must be committed**: versioned skills, integral to the engine
 - `agent/org/` — **must be committed**: KB templates and agent index, versioned
+- `agent/kb/` — **must be committed**: ECA KB on Chorus::* internals — update whenever `lib/Chorus/*.pm` changes significantly
 - `agent/sessions/` — **never commit**: local session summaries
 - Never run `git add agent/` as a bulk command — always use `git add agent/skills/` and `git add agent/org/` explicitly.
 - `git add -A` or `git add .` are forbidden without prior verification of staged content.
@@ -155,7 +158,7 @@ status: IN_PROGRESS
 
 | Trigger / Context | Type | Skill | Agent |
 |---|---|---|---|
-| Perl code created or modified in this repository | auto | `perl-coding.md` + `./agent/skills/chorus-engine.md` | `architect` |
+| Perl code created or modified in this repository | auto | `perl-coding.md` + `./agent/skills/chorus-engine.md` + **read `./agent/kb/components.org` + `./agent/kb/pitfalls.org` before starting; update them in the same session if internals change** | `architect` |
 | `chorus-quickstart` | command | `./agent/skills/chorus-quickstart.md` — **pipeline overview**: Path A (real project via `chorus-import-project`) vs Path B (synthetic coverage via `chorus-create-project`), step-by-step from corpus to compliance report, reinforcement loop, sandbox layout | `fast` |
 | `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch]` | command | `./agent/skills/chorus-pdf.md` — extracts PDFs → enriched corpus. **4 modes: default (auto-detect → `--hybrid` if API key present, otherwise pdfminer without API → `-text.txt`) · `--hybrid` (pdfminer + cropped vision → `-vision.md`, default when key present) · `--auto` (pdfminer + targeted LLM vision → `-vision.md`) · `--images` (LLM vision all pages → `-vision.md`).** Prerequisite for `chorus-feed` when the corpus contains PDFs. | `architect` |
 | `chorus-word <sandbox-name> <file.docx> [--out <slug>] [--batch]` | command | `./agent/skills/chorus-word.md` — extracts Word documents (.docx) → enriched corpus. **2 modes: default (auto-detect → `--hybrid` if API key present, python-docx text + Claude vision on embedded images → `-vision.md`) · text fallback (python-docx only → `-text.txt`).** Tables reconstructed as Markdown pipe (merged-cell aware). XREF pass links figure identifiers to paragraph text. Prerequisite for `chorus-feed` when the corpus contains DOCX files. | `architect` |

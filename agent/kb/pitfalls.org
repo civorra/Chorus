@@ -1,0 +1,322 @@
+#+TITLE: Chorus — Pitfalls
+#+DATE: 2026-07-24
+#+PROPERTY: CATEGORY Pitfall
+
+* PITFALL _APPLY appelé comme coderef, pas via dispatch Frame
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine
+  :SEVERITY: Critique
+  :FIXED_IN:  2.01
+  :END:
+
+Avant v2.01, =applyrules()= appelait =_APPLY= via le dispatch Frame (=$rule->_APPLY=),
+ce qui déclenchait =pushself($rule)= et faisait pointer =$SELF= sur la Frame de règle
+pendant toute l'exécution de l'ACTION.
+
+Conséquence : =$SELF->solved()=, =$SELF->cut()=, etc. dans un bloc =ACTION:= YAML
+étaient des no-ops silencieux — la règle frame n'hérite pas de ces méthodes.
+
+** Fix appliqué
+=_APPLY= est désormais appelé comme coderef pur :
+#+begin_src perl
+my $_af = $rule->{_APPLY};
+$res = $_af ? $_af->(%opt) : 0;
+#+end_src
+=$SELF= reste le moteur (engine) tout au long de l'ACTION. Les deux syntaxes
+sont maintenant équivalentes :
+#+begin_src yaml
+TERMINAL: solved          # engine-level, après le retour de _APPLY
+#+end_src
+#+begin_src yaml
+ACTION: |
+  $SELF->solved() if ...  # inline, peut être conditionnel
+#+end_src
+
+** Règle à retenir
+Ne jamais appeler =$SELF->solved()= en supposant que =$SELF= est la règle —
+=$SELF= est toujours le moteur dans un bloc ACTION.
+
+* PITFALL _PREMISSES déclaré en YAML mais ignoré par applyrules()
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine
+  :SEVERITY: Surprenant
+  :END:
+
+=PREMISSES:= / =PREMISES:= dans un fichier YAML est compilé en =_PREMISSES => {...}=
+sur la Frame de règle. Le moteur =applyrules()= **n'en fait rien**.
+
+C'est uniquement disponible comme métadonnée pour =reorder()= :
+#+begin_src perl
+$agent->reorder(sub {
+    my ($r1, $r2) = @_;
+    return -1 if $r1->{_PREMISSES}{prioritaire};
+    return  1 if $r2->{_PREMISSES}{prioritaire};
+    return  0;
+});
+#+end_src
+
+** Pertinence pour le backward-chaining
+=_PREMISSES= est la matière première naturelle d'un index inverse
+"quelles règles consomment le slot X ?". Voir =architecture.org= §Backward-chaining.
+
+* PITFALL _MAX_ITER ignoré par Chorus::Expert->new()
+  :PROPERTIES:
+  :COMPONENT: Chorus::Expert
+  :SEVERITY: Silencieux
+  :END:
+
+=Chorus::Expert->new()= ignore tous ses arguments. Passer =_MAX_ITER= au constructeur
+ne fait rien — la valeur est silencieusement jetée.
+
+** Syntaxe correcte
+#+begin_src perl
+my $xprt = Chorus::Expert->new();
+$xprt->{_MAX_ITER} = 50_000;   # toujours par assignation directe
+#+end_src
+
+La valeur par défaut est =10_000= itérations (boucle externe de =process()=),
+distincte de =_MAX_CYCLES= (boucle interne de =loop()=, défaut =10_000= cycles).
+
+** Règle heuristique
+Pour un pipeline de N frames × M règles au total :
+=_MAX_ITER= ≥ N × M × 10= (safety margin).
+
+* PITFALL CONDITION multiple : OR implicite (pas AND)
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine / DSL YAML
+  :SEVERITY: Contre-intuitif
+  :END:
+
+Quand =CONDITION:= contient une liste YAML :
+#+begin_src yaml
+CONDITION:
+  - "$f->{type} eq 'stud'"
+  - "defined $f->{section}"
+#+end_src
+
+Les conditions sont jointes par =or= (OU implicite) — la règle tire si **l'une**
+des conditions est vraie. C'est =setCondition()= qui fait le join :
+#+begin_src perl
+return join("\n      or ", map { $SELF->codeCondition($_) } @$c);
+#+end_src
+
+Pour un ET, mettre tout dans une seule string :
+#+begin_src yaml
+CONDITION: "($f->{type}//'') eq 'stud' && defined $f->{section}"
+#+end_src
+
+* PITFALL filtre: multiple : AND implicite (inverse de CONDITION)
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine / DSL YAML
+  :SEVERITY: Asymétrique
+  :END:
+
+=filtre:= dans un bloc =CHERCHER:= / =FIND:= utilise =setFilter()= qui joint les
+expressions par =and= (ET implicite) — contrairement à =CONDITION:= qui est OU.
+
+#+begin_src yaml
+FIND:
+  f:
+    attribut: needs_domain
+    filtre:
+      - "($_{type_element}//'') =~ /stud/"
+      - "defined $_{stud_spacing_mm}"
+#+end_src
+
+Ces deux filtres sont AND'd. C'est intentionnel (pré-filtrage restrictif du scope).
+
+* PITFALL fmatch() ne voit pas les slots posés après new()
+  :PROPERTIES:
+  :COMPONENT: Chorus::Frame / fmatch
+  :SEVERITY: Subtil
+  :END:
+
+=%REPOSITORY= est mis à jour par =set()= mais pas par une assignation directe
+sur le hash de la Frame :
+#+begin_src perl
+$f->{nouveau_slot} = 'valeur';   # NE met PAS à jour %REPOSITORY
+$f->set('nouveau_slot', 'val');  # ✅ met à jour %REPOSITORY
+#+end_src
+
+=fmatch(slot => 'nouveau_slot')= ne retrouvera pas =$f= si le slot a été posé
+par assignation directe.
+
+** Règle
+Toujours utiliser =$f->set(...)= pour toute modification de Frame dans les règles.
+
+* PITFALL {} passé à Chorus::Frame->new() est promu en Frame
+  :PROPERTIES:
+  :COMPONENT: Chorus::Frame
+  :SEVERITY: Silencieux / destructeur
+  :DISCOVERED: 2026-07-03 (Étape 3 backward-chaining)
+  :END:
+
+=Chorus::Frame->new(key => {})= — une valeur hashref ={}= est automatiquement
+promue en =Chorus::Frame=. Le slot stocke donc une Frame, pas un hashref pur.
+
+Conséquence : =keys %{ $frame->{key} }= inclut =_KEY= (le MD5 de la Frame),
+ce qui provoque des erreurs cryptiques comme :
+#+begin_example
+Can't use string ("rJOaU/xPgvoj2LwKKck41g") as an ARRAY ref
+#+end_example
+
+** Règle
+Ne **jamais** passer ={...}= ou ={}= comme valeur dans =Chorus::Frame->new(...)=
+si on attend un hashref pur. Utiliser une assignation directe **après** =new()= :
+
+#+begin_src perl
+my $res = Chorus::Frame->new(_RULES => [], @_);  # [] arrayref OK (pas promu)
+$res->{_RULE_PRODUCES} = {};                     # assignation directe — reste un hashref pur
+#+end_src
+
+Les **arrayrefs** (=[]=) ne sont PAS promus — seulement les hashrefs.
+
+* PITFALL Chorus::Engine est une Frame — héritage multiple possible
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine
+  :SEVERITY: Surprenant mais fonctionnel
+  :END:
+
+=Chorus::Engine->new()= crée une Frame qui hérite du prototype =$ENGINE= :
+#+begin_src perl
+sub new {
+    shift;
+    my $res = Chorus::Frame->new(_RULES => [], @_);
+    $res->_inherits($ENGINE);    # ajouté après la construction
+    return $res;
+}
+#+end_src
+
+Un moteur peut donc avoir plusieurs parents (héritage multiple), par exemple
+hériter à la fois de =$ENGINE= et d'une Frame de configuration applicative.
+Ce n'est pas un bug — c'est intentionnel dans l'architecture.
+
+* PITFALL Chorus-Engine ≠ Chorus::Engine (confusion de nommage résolue en v2)
+  :PROPERTIES:
+  :COMPONENT: Distribution CPAN
+  :SEVERITY: Informatif
+  :FIXED_IN:  2.01
+  :END:
+
+Jusqu'à v2.01, la distribution CPAN s'appelait =Chorus-Engine=, ce qui suggérait
+qu'elle ne contenait que la classe =Chorus::Engine=. En réalité elle contient
+l'ensemble de la plateforme : =Chorus::Engine=, =Chorus::Expert=, =Chorus::Frame=,
+=Chorus::Collection::*=, DSL YAML, skills agent.
+
+Renommée =Chorus= en v2.01. Les URLs MetaCPAN, RT, GitHub ont été mises à jour.
+
+* PITFALL _CYCLE et _SUCCES remis à 0 à chaque loop()
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine
+  :SEVERITY: Trompeur
+  :DISCOVERED: 2026-07-24 (deep-chorus full — source Engine.pm v2.0.2)
+  :END:
+
+=loop()= commence systématiquement par :
+#+begin_src perl
+$SELF->{_SUCCES} = 0;
+$SELF->{_CYCLE}  = 0;
+#+end_src
+
+Ce ne sont **pas** des compteurs cumulatifs sur la durée de vie de l'agent.
+=_CYCLE= vaut le nombre de passes d'=applyrules()= dans le =loop()= courant.
+Entre deux appels à =loop()=, ces valeurs sont toujours remises à zéro.
+
+Un code qui lirait =_CYCLE= après =loop()= pour connaître le total des cycles
+de l'agent obtient seulement le compteur du dernier =loop()=.
+
+** Règle
+Utiliser =_CYCLE= uniquement comme compteur de cycle intra-=loop()= (par exemple
+dans un =_APPLY= pour indiquer le cycle courant). Pour un décompte global, accumuler
+dans un slot BOARD personnalisé depuis les règles.
+
+* PITFALL BOARD->{SOLVED} et BOARD->{FAILED} effacés après process()
+  :PROPERTIES:
+  :COMPONENT: Chorus::Expert
+  :SEVERITY: Surprenant
+  :DISCOVERED: 2026-07-24 (deep-chorus full — source Expert.pm v2.0.2)
+  :END:
+
+=process()= supprime ces flags avant de retourner :
+#+begin_src perl
+($board->delete('SOLVED'), return 1) if $board->{SOLVED};
+($board->delete('FAILED'), return  ) if $board->{FAILED};
+#+end_src
+
+Après le retour de =process()=, tester =$agent->BOARD->SOLVED= retourne toujours
+=undef= même si le pipeline a réussi.
+
+** Syntaxe correcte
+#+begin_src perl
+my $ok = $xprt->process();
+if ($ok) { # pipeline solved }
+else      { # failed or timeout }
+#+end_src
+
+Ne jamais se fier à =BOARD->{SOLVED}= après =process()=. Les résultats domaine
+doivent être posés sur des slots BOARD personnalisés (=$agent->BOARD->set('result', ...)=)
+dans la règle de terminaison — ces slots ne sont pas effacés par =process()=.
+
+* PITFALL Pattern B (_ISA prototypes) : $inject_isa dans une seule passe
+  :PROPERTIES:
+  :COMPONENT: Feed.pm / Inter-Frame Relations
+  :SEVERITY: Silencieux — résultats incorrects
+  :DISCOVERED: 2026-07-23 (sandbox test-11 — feat/relations-inter-frames)
+  :END:
+
+Dans l'implémentation du Pattern B (prototypes Minsky via =_ISA=), =Feed.pm= charge
+les éléments en **deux passes** :
+- Passe 1 : éléments sans champ =*_ref= (éléments autonomes)
+- Passe 2 : éléments avec =*_ref= (résolution des liens inter-frames)
+
+Si la closure =$inject_isa= (qui appelle =fselect= et =$frame->_inherits($proto)=)
+n'est appelée qu'en passe 2, les éléments sans =*_ref= ne reçoivent jamais leur
+prototype. Conséquence : =fmatch(slot => 'threshold_slot_X')= retourne les seuils
+par défaut du moteur au lieu des seuils hérités du prototype → faux-positifs silencieux.
+
+** Règle
+Appeler =$inject_isa= dans **les deux passes**, avant la résolution des liens.
+
+#+begin_src perl
+# Passe 1 — éléments sans *_ref
+for my $id (grep { !$e->{$_}{supports_ref} } keys %$projet) {
+    my $frame = Chorus::Frame->new(...);
+    $inject_isa->($frame, $e->{$id});   # ← obligatoire ici aussi
+    ...
+}
+# Passe 2 — résolution des *_ref + _ISA sur éléments restants
+for my $id (keys %$projet) {
+    $inject_isa->($TYPED_FRAMES{$id}, $e->{$id});  # idempotent si déjà appelé
+    ...
+}
+#+end_src
+
+* PITFALL *_ref dans %SLOTS_REQUIS — rupture de rétrocompatibilité
+  :PROPERTIES:
+  :COMPONENT: Feed.pm / Inter-Frame Relations
+  :SEVERITY: Rupture silencieuse
+  :DISCOVERED: 2026-07-23 (sandbox test-11 — feat/relations-inter-frames)
+  :END:
+
+Les champs =*_ref= (ex. =supports_ref=, =building_ref=) représentent des liens
+inter-frames **optionnels** issus de dessins / BIM / spécifications ingénieur.
+Un projet JSON sans ces champs doit rester valide.
+
+Si =Feed.pm= les inclut dans =%SLOTS_REQUIS=, les projets JSON antérieurs seront
+rejetés par un =warn + next= silencieux à l'exécution.
+
+** Règle absolue
+Ne **jamais** ajouter un champ =*_ref= dans =%SLOTS_REQUIS=.
+Les règles YAML utilisant un lien inter-frames doivent systématiquement prévoir
+un fallback (Option A) ou une garde de skip (Option B) :
+
+#+begin_src yaml
+# Option A — fallback sur slot direct si lien absent
+ACTION: |
+  my $target = $w->get('link_slot');
+  my $val = $target ? $target->get('remote_slot') : $w->get('local_fallback_slot');
+  1
+
+# Option B — ignorer l'élément si lien absent
+EXCEPTION: 'not defined $w->get("link_slot")'
+#+end_src
