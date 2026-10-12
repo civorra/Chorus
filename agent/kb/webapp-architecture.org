@@ -1,0 +1,209 @@
+#+TITLE: Chorus Web — Architecture
+#+DATE: 2026-10-12
+#+PROPERTY: CATEGORY WebApp
+
+* Vue d'ensemble
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :END:
+
+| Élément | Valeur |
+|---|---|
+| Stack frontend | Vanilla JS (Version 17), CSS custom properties, pas de framework |
+| Stack backend | Node.js ≥ 20, Express 4 |
+| Bundler | Aucun (Niveau 1.5) → Vite prévu (Niveau 2) |
+| Rendu markdown | =marked.min.js= (CDN jsdelivr) |
+| Polices | Inter + JetBrains Mono (Google Fonts CDN) |
+| Démarrage serveur | =node server.js= (port =3000= par défaut) |
+
+* Layout des fichiers (post Niveau 1.5)
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :REFACTOR: 2026-10-12 — commit a5228f7
+  :END:
+
+#+begin_src
+chorus-web/
+├── chorus-web.html     942 l.  — squelette HTML pur + 2 refs externes
+├── chorus-web.css     1983 l.  — tous les styles (post-extraction)
+├── chorus-web.js      6366 l.  — toute la logique JS (45 sections)
+├── server.js           120 l.  — point d'entrée Express
+├── server/
+│   ├── helpers/
+│   │   ├── sse.js              — sseOpen() / sseSend() / sseClose()
+│   │   └── perl.js             — spawnPerl()
+│   └── routes/
+│       ├── eca.js              — GET /api/eca/health|info
+│       ├── scan.js             — GET /api/scan
+│       ├── thesaurus.js        — POST .../thesaurus/resolve
+│       ├── projects.js         — import + run + chat + run-report
+│       ├── terminal.js         — terminal spawn/respond/stop/delete
+│       └── reports.js          — GET reports/:filename + export
+└── chorus/
+    ├── index.js                — module.exports consolidé
+    ├── fs.js                   — readFileSafe(), listDirs(), fileExists()
+    ├── scanner.js              — scanSandbox(), scanAll()
+    ├── parser.js               — parseImportReportOrg(), extractOrg*()
+    ├── thesaurus.js            — scanSandboxThesaurus()
+    └── reports.js              — parseReport(), buildRunReportIndex()
+#+end_src
+
+⚠️ =chorus-web.html= contient un micro inline-style dans le =<head>=
+(ligne 1, reset critique) — intentionnel pour éviter le FOUC.
+Ne pas l'extraire dans =chorus-web.css=.
+
+* Cycle de vie de la page
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :END:
+
+Le script est chargé *mi-page* (entre les divs principales et les overlays
+settings), sans =defer=. Séquence d'exécution au chargement :
+
+#+begin_src
+1. init()                  — renderGlobalDashboard() + renderSidebar()
+2. bootServices()          — démarre le ping ECA, active les status pills
+3. loadSettingsFromStorage() — applique thème/densité depuis localStorage
+4. initFromServer()        — GET /api/scan → remplace les données PoC
+                             par les vraies données serveur ;
+                             re-render dashboard + sidebar si OK.
+                             Mode simulation silencieux si le serveur
+                             ne répond pas (console.warn uniquement).
+#+end_src
+
+* State global
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :SOURCE: chorus-web.js §STATE (l.2)
+  :END:
+
+Toutes les variables globales sont déclarées avec =let= / =const= au niveau
+module (non encapsulées) — section =// ─── STATE ───= en tête du fichier.
+
+| Variable | Type | Rôle |
+|---|---|---|
+| =db= | null / object | Réservé (non utilisé actuellement) |
+| =currentSandbox= | null / object | Sandbox actuellement sélectionné |
+| =currentEntityId= | null / string | Entity sélectionnée dans le sandbox courant |
+| =currentProject= | null / object | Projet actuellement affiché |
+| =pipelineRunning= | boolean | Guard anti-double-clic sur pipeline |
+| =SETTINGS= | object | Préférences UI persistées (theme, density, lang) |
+| =SANDBOXES= | array | Liste des sandboxes (données PoC puis données serveur) |
+| =ENTITIES= | object | Map =sbId → [entity, ...]= |
+| =PROJECTS= | object | Map =sbId → [project, ...]= |
+| =API= | string | Base URL backend (=location.origin= ou =http://localhost:3000=) |
+
+⚠️ =SANDBOXES=, =ENTITIES=, =PROJECTS= sont mutés en place par =initFromServer()=
+(=.length = 0= + =delete= par clé). Pas de réassignation — les références
+existantes restent valides.
+
+* Structure des données sandbox / entity / projet
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :SOURCE: chorus-web.js §ENTITIES (l.96)
+  :END:
+
+** Sandbox (entrée dans SANDBOXES[])
+
+#+begin_src js
+{
+  id:               'cc31r4',
+  name:             'Common Criteria 3.1 R4',
+  icon:             '🔐',
+  color:            '#3B82F6',
+  desc:             'PKI / EAL4 · ISO 15408',
+  standard:         'ISO/IEC 15408:2022',
+  projects_total:   6,
+  projects_imported: 4,
+  runs:             12,
+  last_run:         '2026-09-14',   // null si jamais lancé
+}
+#+end_src
+
+** Entity (entrée dans ENTITIES[sbId][])
+
+#+begin_src js
+{
+  id:    'acme-corp',
+  name:  'Acme Corp',
+  path:  'workspace/acme-corp/',
+}
+#+end_src
+
+** Projet (entrée dans PROJECTS[sbId][])
+
+#+begin_src js
+{
+  id:     'projet-acme-eal4',
+  name:   'Acme Corp — EAL4',
+  file:   '/abs/path/workspace/acme-corp/projet-acme-eal4.json',
+  entity: 'acme-corp',
+  status: 'imported' | 'available' | 'importing',
+  runs:   [...],          // liste des run-reports scannés
+}
+#+end_src
+
+* Pattern SSE (Server-Sent Events)
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :SOURCE: chorus-web.js §GENERIC ECA TERMINAL (l.3239)
+  :END:
+
+L'ensemble des opérations longues (terminal ECA, pipeline run, import)
+utilisent SSE via =EventSource= :
+
+#+begin_src js
+// Ouverture
+const es = new EventSource(`${API}/api/terminal/${sessionId}/stream`);
+
+// Événements reçus
+es.addEventListener('chunk',   e => append(JSON.parse(e.data).content));
+es.addEventListener('done',    e => finish());
+es.addEventListener('error',   e => handleError());
+es.onerror = () => tryReconnect();
+
+// Fermeture propre
+es.close();
+#+end_src
+
+Le backend envoie =data: <json>\n\n= pour chaque chunk, =event: done= en fin.
+Le DOM ring buffer (=// ─── DOM RING BUFFER ───=, l.3588) limite le nombre
+de nœuds affichés pour éviter les fuites mémoire sur les sessions longues.
+
+* Routing interne (navigation SPA)
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :END:
+
+Pas de router dédié — navigation par manipulation de classes =active= sur
+les divs =.page=. Trois pages principales :
+
+| ID DOM | Page | Activée par |
+|---|---|---|
+| =#page-global= | Dashboard global | =goHome()=, init |
+| =#page-sandbox= | Détail sandbox | =selectSandbox(sb)= |
+| =#page-project= | Vue projet | =selectProject(proj)= |
+
+Le breadcrumb (=#breadcrumb=) est mis à jour à chaque navigation.
+=bcGoSandbox()= revient à la vue sandbox courante.
+
+* Backend Express — structure des routes
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :SOURCE: server.js
+  :END:
+
+| Préfixe | Router | Principales routes |
+|---|---|---|
+| =/api/eca= | =server/routes/eca.js= | =GET /health=, =GET /info= |
+| =/api= | =server/routes/scan.js= | =GET /scan= → scanAll() |
+| =/api= | =server/routes/thesaurus.js= | =POST .../thesaurus/resolve= |
+| =/api= | =server/routes/projects.js= | import, run, chat, run-report |
+| =/api= | =server/routes/terminal.js= | spawn, respond, stop, delete, liste |
+| =/api= | =server/routes/reports.js= | =GET reports/:filename=, export |
+| =/= | inline server.js | servir =chorus-web.html= |
+| =/chorus-web.css= | inline server.js | servir le CSS (Niveau 1.5) |
+| =/chorus-web.js= | inline server.js | servir le JS (Niveau 1.5) |
+
+=auth.js= est un middleware appliqué avant tous les routers (vérification
+token ECA depuis le header =Authorization=).

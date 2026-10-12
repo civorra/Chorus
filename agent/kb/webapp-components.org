@@ -1,0 +1,284 @@
+#+TITLE: Chorus Web — Composants JS & CSS
+#+DATE: 2026-10-12
+#+PROPERTY: CATEGORY WebApp
+
+* Carte des 45 sections JS
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: chorus-web.js (Version 17)
+  :END:
+
+Chaque section est délimitée par =// ─── NOM ───=. La liste ci-dessous
+donne le numéro de ligne (base 1) dans =chorus-web.js= post-Niveau 1.5.
+
+| # | Section | Ligne | Groupe Vite cible |
+|---|---|---|---|
+| 1 | STATE | 2 | =state.js= |
+| 2 | ENTITIES | 96 | =state.js= |
+| 3 | INIT | 416 | =main.js= |
+| 4 | SERVER INTEGRATION MVP0 | 422 | =api.js= |
+| 5 | PROJECT PAGE | 719 | =views/project.js= |
+| 6 | RECENT PROJECTS | 1239 | =views/dashboard.js= |
+| 7 | GLOBAL DASHBOARD | 1329 | =views/dashboard.js= |
+| 8 | GO TO LAST RUN | 1384 | =views/dashboard.js= |
+| 9 | SIDEBAR | 1427 | =components/sidebar.js= |
+| 10 | GO HOME | 1441 | =main.js= |
+| 11 | SELECT SANDBOX | 1456 | =views/sandbox.js= |
+| 12 | ENTITY SELECTION | 1490 | =views/sandbox.js= |
+| 13 | PROJECTS TAB | 1501 | =views/sandbox.js= |
+| 14 | PROJECT ROW | 1709 | =views/sandbox.js= |
+| 15 | TABS | 1767 | =views/sandbox.js= |
+| 16 | TAB: TESTS | 1789 | =views/sandbox.js= |
+| 17 | RESOLVED BUGS | 1919 | =views/sandbox.js= |
+| 18 | THESAURUS RENDERER | 2103 | =views/project.js= |
+| 19 | PIPELINE | 2189 | =components/pipeline.js= |
+| 20 | INFERENCE ENGINE | 2275 | =components/pipeline.js= |
+| 21 | CONTEXTUALISED ECA TERMINAL | 3041 | =components/terminal.js= |
+| 22 | ECA SESSION TRIGGER | 3226 | =components/terminal.js= |
+| 23 | GENERIC ECA TERMINAL | 3239 | =components/terminal.js= |
+| 24 | CHORUS-CHECK TERMINAL | 3465 | =components/terminal.js= |
+| 25 | DOM RING BUFFER | 3588 | =components/terminal.js= |
+| 26 | TERMINAL HELPERS | 3976 | =components/terminal.js= |
+| 27 | MARKDOWN INLINE | 4055 | =utils/markdown.js= |
+| 28 | FOLD / UNFOLD | 4097 | =utils/markdown.js= |
+| 29 | IMPORT SESSION | 4144 | =components/import-modal.js= |
+| 30 | IMPORT | 4463 | =components/import-modal.js= |
+| 31 | MARKDOWN REPORT VIEWER | 4573 | =components/report-viewer.js= |
+| 32 | CROSS-CHECK STATUS | 4656 | =components/report-viewer.js= |
+| 33 | AGENT KB ORG VIEWER | 4777 | =components/report-viewer.js= |
+| 34 | SANDBOX CORPUS MODAL | 4833 | =components/corpus-modal.js= |
+| 35 | CORPUS MODAL | 5201 | =components/corpus-modal.js= |
+| 36 | Project name validation | 5408 | =components/import-modal.js= |
+| 37 | ECA LOGIN FLOW | 5674 | =services/auth.js= |
+| 38 | AUTH STATUS | 5819 | =services/auth.js= |
+| 39 | ECA SERVICE STATUS | 5917 | =services/eca.js= |
+| 40 | SERVICES MODAL | 6070 | =services/eca.js= |
+| 41 | Services modal — données réelles | 6079 | =services/eca.js= |
+| 42 | ECA-WEB PANEL | 6149 | =services/eca.js= |
+| 43 | PIPELINE ECA-DISPATCH LOGS | 6208 | =services/eca.js= |
+| 44 | SETTINGS | 6228 | =utils/theme.js= |
+| 45 | BOOT | 6362 | =main.js= |
+
+* Détail par groupe fonctionnel
+
+** State & Init
+   :PROPERTIES:
+   :SECTIONS: 1-4, 3, 10, 45
+   :VITE_TARGET: state.js · main.js · api.js
+   :END:
+
+| Fonction | Section | Description |
+|---|---|---|
+| =(variables globales)= | STATE | =db=, =currentSandbox=, =currentProject=, =pipelineRunning=, =SETTINGS=, =SANDBOXES=, =ENTITIES=, =PROJECTS=, =API= |
+| =init()= | INIT | =renderGlobalDashboard()= + =renderSidebar()= |
+| =initFromServer()= | SERVER INTEGRATION | =GET /api/scan= → remplace données PoC ; mode simulation silencieux si erreur |
+| =goHome()= | GO HOME | Affiche =#page-global=, reset breadcrumb |
+| =init(); bootServices(); loadSettingsFromStorage(); initFromServer()= | BOOT | Séquence de démarrage (4 appels, fin du fichier) |
+
+** Vue Dashboard
+   :PROPERTIES:
+   :SECTIONS: 6-8
+   :VITE_TARGET: views/dashboard.js
+   :DOM_IDS: #page-global, #sandbox-cards, #recent-projects-strip, #recent-count
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =renderGlobalDashboard()= | Génère les cards sandbox (=#sandbox-cards=) + stats |
+| =renderRecentProjects()= | Remplit =#recent-projects-strip= (tri chrono décroissant) |
+| =goToLastRun(proj)= | Ouvre directement la dernière exécution d'un projet |
+
+** Vue Sandbox
+   :PROPERTIES:
+   :SECTIONS: 11-17
+   :VITE_TARGET: views/sandbox.js
+   :DOM_IDS: #page-sandbox, #sb-detail-name, #tab-projects, #tab-tests, #imported-list, #importing-list, #available-list
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =selectSandbox(sb)= | Affiche =#page-sandbox=, charge entities + projets |
+| =selectEntity(entityId)= | Filtre la vue projets sur une entity |
+| =renderProjectsTab()= | Sections Importing / Imported / Available |
+| =renderProjectRow(proj)= | Génère une ligne projet (statut, KPIs, actions) |
+| =switchTab(name)= | Bascule entre onglets =projects= / =tests= |
+| =renderTestingTab()= | Affiche les fichiers =projet-rules-*.json= de la racine sandbox |
+| =renderResolvedBugs()= | Accordéon des sessions de débogage (sandbox) |
+
+** Vue Projet
+   :PROPERTIES:
+   :SECTIONS: 5, 18
+   :VITE_TARGET: views/project.js
+   :DOM_IDS: #page-project, #pv-title, #pv-kpi-*, #pv-tab-apercu, #pv-tab-imports, #pv-tab-rapports, #pv-tab-thesaurus
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =selectProject(proj)= | Affiche =#page-project=, charge KPIs et onglets |
+| =renderProjectPage()= | KPI cards + onglets Aperçu/Imports/Rapports/Thesaurus |
+| =pvReimport()= | Lance la ré-importation d'un projet existant |
+| =pvRunPipeline()= | Ouvre le pipeline modal pour ce projet |
+| =pvTerminal()= | Ouvre un terminal ECA contextualisé sur ce projet |
+| =pvSwitchTab(name)= | Bascule entre onglets projet |
+| =renderThesaurus(data)= | Affiche le thésaurus (onglet Thesaurus du projet) |
+
+** Sidebar
+   :PROPERTIES:
+   :SECTIONS: 9
+   :VITE_TARGET: components/sidebar.js
+   :DOM_IDS: #sidebar, #sidebar-list
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =renderSidebar()= | Liste des sandboxes dans =#sidebar-list=, highlight courant |
+| =bcGoSandbox()= | Retour à la vue sandbox depuis le breadcrumb |
+
+** Pipeline
+   :PROPERTIES:
+   :SECTIONS: 19-20
+   :VITE_TARGET: components/pipeline.js
+   :DOM_IDS: #pipeline-modal-overlay, #pipeline-log, #engine-panel, #pipeline-verdict, #pipeline-reports
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =selectProjectPipeline(proj)= | Ouvre le modal pipeline pour un projet |
+| =runPipeline()= | =POST /api/projects/.../run= + stream SSE → =#pipeline-log= |
+| =finishPipeline(result)= | Affiche le verdict + liste des rapports générés |
+| =closePipelineModal()= | Ferme le modal, stoppe le stream SSE |
+| =parseEngineLogLine(line)= | Parse les lignes run.pl pour =#engine-panel= (agents, cycles, stats) |
+
+** Terminal ECA
+   :PROPERTIES:
+   :SECTIONS: 21-26
+   :VITE_TARGET: components/terminal.js
+   :DOM_IDS: #level-terminal-overlay, #lvl-term-output, #lvl-term-input, #lvl-term-badge
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =openLevelTerminal(level, ctx)= | Ouvre le terminal générique (niveaux : =sandbox= / =entity= / =project= / =report=) |
+| =lvlTermAppend(html)= | Ajoute du contenu dans =#lvl-term-output= (via DOM ring buffer) |
+| =levelTerminalStop()= | Envoie =DELETE /api/terminal/:id=, affiche "Arrêté" |
+| =levelTerminalKeydown(e)= | Enter → envoie la commande ; Shift+Enter → newline |
+| =openRvTerminal()= | Terminal contextualisé sur le rapport ouvert dans la report viewer |
+| =openEcaSessionForProject()= | Terminal contextualisé sur le projet courant (post-pipeline) |
+| =(DOM ring buffer)= | Limite à N nœuds visibles dans =.eca-session-output= (anti-fuite mémoire) |
+| =minimizeLevelTerminal()= | Réduit le terminal sans fermer la session SSE |
+
+** Import
+   :PROPERTIES:
+   :SECTIONS: 29-30, 36
+   :VITE_TARGET: components/import-modal.js
+   :DOM_IDS: #modal-overlay, #import-session-overlay, #import-name, #import-source, #import-path, #import-context
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =openImportModal()= | Ouvre le modal d'import (nouveau projet) |
+| =startImport()= | Valide le formulaire, =POST /api/projects/import= |
+| =quickImport(proj)= | Import direct depuis une ligne projet (ré-import) |
+| =closeImportSession()= | Ferme le panneau de session d'import animée |
+| =validateImportName()= | Validation en temps réel du nom de projet (hint sous l'input) |
+
+** Report Viewer
+   :PROPERTIES:
+   :SECTIONS: 31-33
+   :VITE_TARGET: components/report-viewer.js
+   :DOM_IDS: #report-view-overlay, #rv-tbody, #rv-verdict-badge, #md-view-overlay, #mdv-content
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =openReportView(report)= | Ouvre la table de conformité (report-view modal) |
+| =filterReport(status)= | Filtre la table par =CONFORME= / =NON_CONFORME= / =A_CONFIRMER= |
+| =openMdView(file)= | Ouvre un rapport =.md= brut (explain / synthese / compliance) dans marked.js |
+| =exportMdReport(format)= | =POST /api/reports/export= → HTML ou PDF via scripts Python |
+| =openAgentOrgView(sbId, agent)= | Affiche le fichier =.org= d'un agent KB dans une modale légère |
+| =runCompleteReportFromModal()= | Déclenche =chorus-complete-report= depuis la report-view |
+
+** Corpus Modals
+   :PROPERTIES:
+   :SECTIONS: 34-35
+   :VITE_TARGET: components/corpus-modal.js
+   :DOM_IDS: #sb-corpus-overlay, #corpus-modal-overlay, #sbc-panel-corpus, #sbc-panel-overview, #sbc-panel-agents, #sbc-panel-frames
+   :END:
+
+| Fonction | Description |
+|---|---|
+| =openSandboxCorpus()= | Ouvre le corpus modal sandbox (4 onglets : Sources / KB / Agents / Pipeline) |
+| =closeSandboxCorpus()= | Ferme le corpus modal sandbox |
+| =switchSbcTab(name)= | Bascule entre onglets du corpus modal sandbox |
+| =openCorpusModal(proj)= | Ouvre le corpus modal projet (fichiers source d'un import) |
+| =closeCorpusModal()= | Ferme le corpus modal projet |
+
+** Auth & ECA Services
+   :PROPERTIES:
+   :SECTIONS: 37-43
+   :VITE_TARGET: services/auth.js · services/eca.js
+   :DOM_IDS: #svc-eca, #eca-status-bar, #svc-modal-eca, #sd-auth-status-grid
+   :END:
+
+| Fonction | Section | Description |
+|---|---|---|
+| =ecaLoginFlow(provider)= | ECA LOGIN FLOW | Workflow OAuth ECA (Anthropic / GitHub Copilot) via =POST /api/eca/login= |
+| =ecaLoginSubmit()= | ECA LOGIN FLOW | Valide le code d'autorisation |
+| =refreshAuthStatus()= | AUTH STATUS | =GET /api/eca/auth-status= → met à jour =#sd-auth-status-grid= |
+| =saveAuthApiKey()= | AUTH STATUS | =POST /api/eca/auth= avec la clé API manuelle |
+| =bootServices()= | ECA SERVICE STATUS | Lance le polling du statut ECA (pills + sparkline) |
+| =refreshEcaStatus()= | ECA SERVICE STATUS | =GET /api/eca/health= → met à jour les pills de statut |
+| =openServicesModal()= | SERVICES MODAL | Affiche config réelle + latence sparkline |
+| =refreshServicesModalData()= | Services modal données | =GET /api/eca/info= → modèles actifs + workspace |
+| =toggleEcaWeb()= | ECA-WEB PANEL | Collapse/expand le panel ECA dans l'import session |
+
+** Utils
+   :PROPERTIES:
+   :SECTIONS: 27-28, 44
+   :VITE_TARGET: utils/markdown.js · utils/theme.js
+   :END:
+
+| Fonction | Section | Description |
+|---|---|---|
+| =renderMarkdownInline(el, md)= | MARKDOWN INLINE | Parse un fragment markdown via =marked= et injecte dans =el= |
+| =maybeFoldResponse(el)= | FOLD / UNFOLD | Replie les réponses > seuil avec un bouton "Voir plus" |
+| =loadSettingsFromStorage()= | SETTINGS | Lit =localStorage= et applique thème + densité |
+| =applyThemeFromSettings(theme)= | SETTINGS | Applique =dark= / =light= / =system= sur =document.body= |
+| =openSettings()= / =closeSettings()= | SETTINGS | Ouvre/ferme le drawer settings (=#settings-drawer=) |
+| =switchSettingsTab(name, el)= | SETTINGS | Bascule entre sections du drawer settings |
+
+* Carte des 27 sections CSS
+  :PROPERTIES:
+  :CATEGORY: Component
+  :SOURCE: chorus-web.css
+  :END:
+
+| # | Section | Ligne | Contenu |
+|---|---|---|---|
+| 1 | TOKENS | 1 | Variables CSS custom (=--bg-base=, =--accent=, =--text-*=, etc.) |
+| 2 | DENSITY | 72 | Variantes compact / normal (=--spacing-*=, =--font-size-*=) |
+| 3 | RESET | 89 | Reset minimal, =box-sizing=, =img= |
+| 4 | APP SHELL | 106 | Grille principale =#app= / =#main= / =#topbar= / =#content= |
+| 5 | SIDEBAR | 150 | =#sidebar=, =.sidebar-section=, =.sidebar-add= |
+| 6 | CONTENT AREA | 202 | =#content= scrolling container |
+| 7 | SANDBOX DASHBOARD | 205 | =.sb-overview-grid=, =.page-header=, badges |
+| 8 | SANDBOX DETAIL | 273 | =#page-sandbox=, =.tabs=, =.tab-btn= |
+| 9 | PROJECT LIST | 292 | =.proj-grid=, =.proj-card=, =.badge= |
+| 10 | PROJECT LIST compacte | 333 | =.proj-list=, =.proj-row= (vue entity scopée) |
+| 11 | CONTEXT GROUPS | 364 | =.ctx-group=, KPI cards projet (=.pv-kpi=) |
+| 12 | SETTINGS DRAWER | 511 | =.sd-header=, =.sd-nav=, =.sd-section=, =.sd-field= |
+| 13 | BUTTONS | 625 | =.btn=, variantes (=.btn-primary=, =.btn-ghost=, =.btn-sm=) |
+| 14 | CORPUS RESOLVER | 655 | =.corpus-modal=, =.cm-header=, =.cm-body= |
+| 15 | THESAURUS | 678 | =.thesaurus-wrap=, =.th-alias=, =.th-pending= |
+| 16 | PIPELINE | 747 | =.pipeline-row=, =.step-card=, =.eca-terminal-wrap=, =.eca-body= |
+| 17 | POST-VERDICT ACTIONS | 1058 | Boutons post-verdict (explain, summary, complete) |
+| 18 | ECA INTERACTIVE TERMINAL | 1091 | =.lvl-term-panel=, =.eca-session-wrap=, =.eca-session-input-row= |
+| 19 | IMPORT MODAL | 1330 | =.modal=, =.form-group=, =.isp-*= (import session panel) |
+| 20 | EMPTY STATE | 1372 | =.empty-state= (placeholder listes vides) |
+| 21 | PROJECT VIEW PAGE | 1390 | =.pv-header=, =.pv-tabs=, =.pv-kpi-grid=, =.rv-*= (report view) |
+| 22 | RECENT PROJECTS STRIP | 1540 | =.recent-section=, =.recent-strip=, =.recent-card= |
+| 23 | SANDBOX OVERVIEW CARDS | 1605 | =.sb-card=, métriques overlay |
+| 24 | RESPONSIVE | 1647 | Media queries (breakpoints mobiles) |
+| 25 | ECA SERVICE STATUS BAR | 1661 | =.svc-pill=, =.svc-dot=, animation =pulse= |
+| 26 | REPORT VIEW MODAL | 1781 | =.rv-modal=, =.rv-table=, =.rv-filters=, =.rv-badge= |
+| 27 | MARKDOWN REPORT VIEWER | 1856 | =.mdv-modal=, =.mdv-content=, =.mdv-header=, syntax hl (=.yml-cmt=) |
