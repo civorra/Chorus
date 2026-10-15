@@ -1,5 +1,5 @@
 #+TITLE: Chorus Web — Architecture
-#+DATE: 2026-10-12
+#+DATE: 2026-10-14
 #+PROPERTY: CATEGORY WebApp
 
 * Vue d'ensemble
@@ -15,6 +15,7 @@
 | Rendu markdown | =marked.min.js= (CDN jsdelivr) |
 | Polices | Inter + JetBrains Mono (Google Fonts CDN) |
 | Démarrage serveur | =node server.js= (port =3000= par défaut) |
+| Cache statique | =no-store/no-cache= explicite sur =/=, =/chorus-web.js=, =/chorus-web.css= (commit =6ce063b=) |
 
 * Layout des fichiers (post Niveau 1.5)
   :PROPERTIES:
@@ -24,9 +25,9 @@
 
 #+begin_src
 chorus-web/
-├── chorus-web.html     942 l.  — squelette HTML pur + 2 refs externes
-├── chorus-web.css     1983 l.  — tous les styles (post-extraction)
-├── chorus-web.js      6366 l.  — toute la logique JS (45 sections)
+├── chorus-web.html     984 l.  — squelette HTML pur + 2 refs externes
+├── chorus-web.css     1996 l.  — tous les styles (post-extraction)
+├── chorus-web.js      6883 l.  — toute la logique JS (sections ECA-UI + terminal enrichies, cf. 2026-10-13/14)
 ├── server.js           120 l.  — point d'entrée Express
 ├── server/
 │   ├── helpers/
@@ -167,8 +168,27 @@ es.close();
 #+end_src
 
 Le backend envoie =data: <json>\n\n= pour chaque chunk, =event: done= en fin.
-Le DOM ring buffer (=// ─── DOM RING BUFFER ───=, l.3588) limite le nombre
+Le DOM ring buffer (=// ─── DOM RING BUFFER ───=) limite le nombre
 de nœuds affichés pour éviter les fuites mémoire sur les sessions longues.
+
+** ⚠️ Bug Jetty eca-server — contournement SSE + TCP-only health-check (2026-10-14)
+   :PROPERTIES:
+   :SOURCE: eca-client.js (commit 7e76478)
+   :END:
+
+=eca-server= (Jetty 12 / binaire natif GraalVM) lève une
+=IllegalArgumentException= ("No matching field found: getOutputStream...")
+sur plusieurs endpoints HTTP dès qu'un chat détient du contenu — sans
+impact fonctionnel côté client (réponse toujours obtenue via les fallbacks/
+SSE existants) mais pollue fortement les logs =eca-server=.
+
+- =promptAndWaitSSE()= — alternative à l'ancien =promptAndWait()= (polling
+  =GET /api/v1/chats/:id=, déclencheur principal du bug), construite sur
+  =subscribeEcaEvents()= (=GET /api/v1/events=, déjà utilisé par le terminal
+  sans être affecté). Prompt one-shot → texte complet, aucun polling.
+- =pingTcp()= — probe de connexion TCP pure (aucune requête HTTP) pour
+  vérifier la joignabilité d'=eca-server= sans jamais passer par sa couche
+  HTTP buguée.
 
 * Routing interne (navigation SPA)
   :PROPERTIES:
@@ -207,3 +227,41 @@ Le breadcrumb (=#breadcrumb=) est mis à jour à chaque navigation.
 
 =auth.js= est un middleware appliqué avant tous les routers (vérification
 token ECA depuis le header =Authorization=).
+
+* Import — routage via session ECA headless (2026-10-14)
+  :PROPERTIES:
+  :CATEGORY: Architecture
+  :SOURCE: server/routes/projects.js
+  :END:
+
+⚠️ L'ancien pipeline d'import =POST /api/projects/.../import= invoquait
+=spawnPerl(['chorus-import-project.pl', ...])= — un script **qui n'a jamais
+existé** dans le repo (placeholder MVP0 jamais implémenté). La route
+d'import n'a donc **jamais réellement fonctionné** avant le commit =387b103=.
+
+La véritable implémentation de =chorus-import-project= est un skill ECA
+(=Engine/agent/skills/chorus-import-project.md=), invocable uniquement via
+une session de chat ECA headless — pas un process Perl autonome.
+
+Nouveau pattern (repris de =server/routes/terminal.js=) :
+- chat dédié =eca-import-<sbId>-<projId>=
+- =subscribeEcaEvents()= pour le streaming SSE
+- routage explicite vers l'agent =code=
+- stratégie anti-race "fire-and-forget prompt + ~200ms delay + setChatAgent"
+  pour les chats neufs (identique à =terminal.js=)
+- timeout configurable (15 min par défaut, borné 1 min–4h) + heartbeat
+- protocole de complétion =DONE=
+
+Les routes =/run=, =/check=, =/chat=, =/run-report= restent inchangées
+(=spawnPerl= toujours utilisé par =/run= pour le vrai script =run.pl=).
+
+** Correctifs découverts lors des premiers tests réels (Docker stack)
+
+| Commit | Problème | Correctif |
+|---|---|---|
+| =bacdb66= | =EXDEV: cross-device link= sur =fs.renameSync= — upload (=os.tmpdir()=, layer interne container) vs =SANDBOXES_DIR= (volume bind-mounté) = deux devices différents | =fs.copyFileSync()= + =fs.unlinkSync()= au lieu de =renameSync()= |
+| =6c66e3d= | =frames:0= après import réussi — 3 défauts empilés : (1) =--out= non documenté en mode Single ; (2) =chorus/scanner.js::scanEntity= n'reconnaît un JSON "flat" que via regex =^(projet\|project)[-_].*\.json$= — un =<projId>.json= nu est invisible ; (3) la route appelait =chorus.scanProject()= (alias =scanNestedProject()=, scanner legacy cherchant =sources/<projId>/frames.pl=, sans rapport avec le JSON produit par le skill) | =--out= pointe désormais vers =project-<projId>.json= ; route utilise =chorus.scanEntity()= (agrège flat + nested), recherche prioritaire du slug flat |
+
+⚠️ =frames:0= juste après un import simple reste un comportement **attendu**
+(frames compte la résolution pipeline de =run.pl=, jamais le contenu de
+l'import) — pas un bug résiduel une fois les deux correctifs ci-dessus appliqués.

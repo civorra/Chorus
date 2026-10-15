@@ -1,5 +1,5 @@
 #+TITLE: Chorus Web — Composants JS & CSS
-#+DATE: 2026-10-12
+#+DATE: 2026-10-14
 #+PROPERTY: CATEGORY WebApp
 
 * Carte des 45 sections JS
@@ -10,6 +10,11 @@
 
 Chaque section est délimitée par =// ─── NOM ───=. La liste ci-dessous
 donne le numéro de ligne (base 1) dans =chorus-web.js= post-Niveau 1.5.
+
+⚠️ Numérotation de lignes ci-dessous **obsolète depuis le 2026-10-13/14**
+(fichier passé de 6366 à 6883 lignes suite aux commits =3b0e641=, =729a1f8=,
+=92c2e84=, =cfa059f=, =6ce063b=) — conservée à titre indicatif de structure
+relative, à revérifier avant toute référence précise par numéro de ligne.
 
 | # | Section | Ligne | Groupe Vite cible |
 |---|---|---|---|
@@ -102,8 +107,34 @@ donne le numéro de ligne (base 1) dans =chorus-web.js= post-Niveau 1.5.
 | =renderProjectsTab()= | Sections Importing / Imported / Available |
 | =renderProjectRow(proj)= | Génère une ligne projet (statut, KPIs, actions) |
 | =switchTab(name)= | Bascule entre onglets =projects= / =tests= |
-| =renderTestingTab()= | Affiche les fichiers =projet-rules-*.json= de la racine sandbox |
+| =renderTestingTab()= | Affiche les fichiers =project-*.json=/=projet-*.json= (iso/edges/cross/scale, FR+EN tolérés depuis =92c2e84=) de la racine sandbox. Badge convergence basé uniquement sur les discordances (jamais le compte "non traité") ; bouton "🔧 Renforcer" masqué si aucune discordance ; icône ⟲ pour régénérer un test existant (backup horodaté avant écrasement) ; invalide les données de run obsolètes si le fichier a été régénéré après son dernier run (=cfa059f=) ; affiche la date de création du fichier distinctement de la date du dernier run |
 | =renderResolvedBugs()= | Accordéon des sessions de débogage (sandbox) |
+
+*** Détail — Testing Tab, évolutions 2026-10-14 (commits =92c2e84=, =cfa059f=, =7528bd5=)
+    :PROPERTIES:
+    :SOURCE: chorus/scanner.js, chorus/reports.js
+    :END:
+
+- =chorus/scanner.js= tolère =project-*.json= (EN) **et** =projet-*.json= (FR)
+  pour détecter les fichiers de test iso/edges/cross/scale.
+- =chorus/reports.js::computeConvergenceFromRunReport()= — réapplique la
+  convention de nommage =-OK-=/=-KO-= directement sur =elements[]= d'un
+  =run-report-*.json= pour calculer les discordances sans exiger
+  =chorus-check --all=. Fallback utilisé quand
+  =.last-check-results.json= est absent ou ne couvre pas un fichier projet
+  donné. Gère le verdict =NOT_CHECKED= distinctement de (non traité).
+- Invalidation de run obsolète : comparaison du mtime du fichier projet
+  avec le =generated_at= du dernier run-report correspondant — si le
+  fichier a été régénéré (⟲) après son dernier run connu, ce run-report est
+  jugé périmé et écarté (=lastRun=/=convergence= → =null=, "Jamais exécuté").
+  Nouveau champ =fileDate= (mtime du fichier projet) + date+heure complète
+  (au lieu de date seule) sur =lastRun.date=.
+- =refreshSandboxReports()= re-render désormais aussi l'onglet Tests s'il
+  est actif ; =levelTerminalExec= post-run refresh couvre également les
+  terminaux de niveau =sandbox= (utilisé par =runTestingStrategy=).
+- Garde de concurrence : une seule session terminal de =kind= =strengthen=
+  par sandbox à la fois, timeout plafonné à 45 min (cf.
+  =webapp-architecture.org= / section Terminal ECA pour le détail serveur).
 
 ** Vue Projet
    :PROPERTIES:
@@ -167,6 +198,48 @@ donne le numéro de ligne (base 1) dans =chorus-web.js= post-Niveau 1.5.
 | =(DOM ring buffer)= | Limite à N nœuds visibles dans =.eca-session-output= (anti-fuite mémoire) |
 | =minimizeLevelTerminal()= | Réduit le terminal sans fermer la session SSE |
 
+*** Évolutions 2026-10-13/14 (commits =729a1f8=, =7528bd5=, =7e76478=)
+
+- **Routage explicite skill → agent** (=729a1f8=) : le champ =agent= du body
+  =/prompt= REST n'a aucun effet (chat reste sur =defaultAgent=) — le vrai
+  mécanisme est la route non documentée =POST /api/v1/chats/:id/agent= (204,
+  persiste durablement). =eca-client.js= expose =setChatAgent(chatId, agent)=
+  (best-effort). =terminal.js= : table =AGENT_BY_TRIGGER= miroir du mapping
+  Trigger→Skill→Agent d'=Engine/AGENTS.md=, =detectExpectedAgent()= par
+  keyword matching, appelée avant l'envoi du prompt. Gère la race condition
+  nouveau-chat (route =/agent= 404 tant que le chat n'est pas matérialisé par
+  le premier =/prompt=) via prompt fire-and-forget + court délai + =setChatAgent=.
+- **Bannière skill actif** (=729a1f8=) : =classifyToolCall()= extrait désormais
+  =isSkillLoad=/=skillName= depuis les arguments de l'outil =skill= — correction
+  d'un bug où =TOOL_FAMILIES= ne matchait jamais rien (ECA émet les noms
+  d'outils bruts, sans préfixe =eca__=, en remote), tous les tool calls
+  retombaient silencieusement sur la famille générique ⚙. =terminal.js= suit
+  =currentSkill=/=skillHistory= par session, émet un événement SSE =skill=
+  dédié ; bannière persistante sous le titlebar du terminal.
+- **Live task board** (=729a1f8=) : =eca__task= retourne déjà l'état consolidé
+  (tasks/summary/activeSummary) à chaque appel plan/start/complete —
+  =classifyToolCall()= l'expose via =isTaskUpdate=/=taskboard=, sans
+  reconstruction manuelle. Événement SSE =taskboard= dédié ; panneau checklist
+  repliable (☐/⏳/☑), mis à jour en direct.
+- **Visibilité sub-agents parallèles** (=729a1f8=) : les tool calls internes
+  d'un sub-agent (ses propres grep/read_file pendant que =spawn_agent=
+  s'exécute) sont émis par ECA sous un =chatId= **séparé**
+  (=subagent-<toolCallId>=), invisible à qui ne surveille que le =chatId=
+  parent. =eca-client.js::subscribeEcaEvents()= élargit désormais
+  dynamiquement son watch set à chaque =subagentChatId= révélé par un
+  toolCallRun =spawn_agent=, relaie via le callback =onSubagentToolLog()=.
+  =terminal.js= relaie via un événement SSE =subagent-tool=, historique
+  persistant par session. UI : section DOM repliable dédiée par sub-agent.
+- **Garde de concurrence terminal** (=7528bd5=) : interdiction de plus d'une
+  session terminal de =kind= =strengthen= par sandbox à la fois (vérifiée
+  côté serveur avant contact avec =eca-server=) — timeout par défaut plafonné
+  à 45 min (au lieu de 60) pour =chorus-strengthen=. =kind= fourni
+  explicitement par le bouton "🔧 Renforcer" dédié de l'onglet Tests, jamais
+  inféré d'une saisie libre.
+- **Health-check robuste** (=7e76478=) : cf. § *Pattern SSE — Bug Jetty
+  eca-server* dans =webapp-architecture.org= (=promptAndWaitSSE()=,
+  =pingTcp()=).
+
 ** Import
    :PROPERTIES:
    :SECTIONS: 29-30, 36
@@ -177,7 +250,7 @@ donne le numéro de ligne (base 1) dans =chorus-web.js= post-Niveau 1.5.
 | Fonction | Description |
 |---|---|
 | =openImportModal()= | Ouvre le modal d'import (nouveau projet) |
-| =startImport()= | Valide le formulaire, =POST /api/projects/import= |
+| =startImport()= | Valide le formulaire, =POST /api/projects/import= → session ECA headless (cf. =webapp-architecture.org § Import — routage via session ECA headless=, commit =387b103=). Remplace l'ancien =spawnPerl('chorus-import-project.pl')= fantôme (script jamais existant, MVP0 jamais implémenté — la route n'a donc jamais fonctionné avant ce commit) |
 | =quickImport(proj)= | Import direct depuis une ligne projet (ré-import) |
 | =closeImportSession()= | Ferme le panneau de session d'import animée |
 | =validateImportName()= | Validation en temps réel du nom de projet (hint sous l'input) |
@@ -228,8 +301,10 @@ donne le numéro de ligne (base 1) dans =chorus-web.js= post-Niveau 1.5.
 | =saveAuthApiKey()= | AUTH STATUS | =POST /api/eca/auth= avec la clé API manuelle |
 | =bootServices()= | ECA SERVICE STATUS | Lance le polling du statut ECA (pills + sparkline) |
 | =refreshEcaStatus()= | ECA SERVICE STATUS | =GET /api/eca/health= → met à jour les pills de statut |
-| =openServicesModal()= | SERVICES MODAL | Affiche config réelle + latence sparkline |
+| =openServicesModal()= | SERVICES MODAL | Affiche config réelle, latence sparkline, statut d'authentification (réutilise =GET /api/auth/status=), bouton "Redémarrer" (=/api/auth/reload-eca=). Bloc statique "Workspace & sessions" (dossiers workspace, nb chats actifs, nom container) supprimé — obsolète/non alimenté (commit =3b0e641=) |
 | =refreshServicesModalData()= | Services modal données | =GET /api/eca/info= → modèles actifs + workspace |
+| =refreshEngineVersionBadge()= | ECA SERVICE STATUS | =GET /api/eca/version= → badge LIVE/DEGRADED/OFFLINE dynamique (interroge =Chorus.pm $VERSION= + chargeabilité =Chorus::Engine= via =perl -e=), remplace l'ancien placeholder figé "v2.1 · LIVE" (commit =729a1f8=) |
+| Timeout terminal configurable | SETTINGS DRAWER § ECA Server | Nouveau champ 1–240 min (défaut 60), persisté en =localStorage=, envoyé en =timeoutMinutes= à chaque =POST /terminal= ; honoré côté serveur (=server/routes/terminal.js=, borné 1–240 min, défaut 60 si invalide/absent) — remplace l'ancien timeout fixe de 20 min (commit =3b0e641=) |
 | =toggleEcaWeb()= | ECA-WEB PANEL | Collapse/expand le panel ECA dans l'import session |
 
 ** Utils
