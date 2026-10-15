@@ -30,3 +30,7 @@ sandboxes/**/.chorus-wip.md
 sandboxes/**/.kb-hash
 sandboxes/**/.last-check-results.json
 
+# chorus-pdf regression test — generated artefacts, never commit
+t/fixtures/*-text.md
+t/fixtures/*.md.log
+
