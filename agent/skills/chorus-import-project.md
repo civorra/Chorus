@@ -77,6 +77,33 @@
 > 3. `$WORKSPACE/import-report-*.org` existing → previous alignment decisions
 >    (`$WORKSPACE` = `$SANDBOX/workspace/`, created if absent)
 >
+> ⛔ **Never silently reuse a prior import's alignment decisions verbatim just because
+> the source file is byte-identical (same hash) to a file already imported before.**
+> Noticing and reporting this to the engineer (e.g. "this looks like the Nth import of
+> the same file") is useful and encouraged — but it must **never**, on its own, justify
+> skipping or shortcutting Phase 2 (raw inventory) / Phase 3 (terminology alignment) /
+> any sandbox-local extension's slot-injection logic (Phase -0.1) for the elements
+> involved. Each element's resolution must always be re-derived from the **current**
+> state of the KB and any sandbox-local extensions — never assumed stable just because
+> the source bytes are identical to a previous run. The KB and its extensions evolve
+> between imports (`chorus-feed --enrich`, bugfixes to sandbox-local extension files);
+> a copy-forward shortcut silently freezes the project JSON at whatever KB/extension
+> state existed at the time of the *first* import of that source, defeating the entire
+> purpose of KB enrichment and extension bugfixes for every subsequent re-import of the
+> same file. If the engineer genuinely wants historical-continuity reuse (e.g.
+> deliberately reproducing a prior audit's exact figures for comparison), this must be
+> an **explicit, stated choice** in the invocation — never the silent default behavior.
+> — Incident reference: sandbox `08-ANSSI-PG-083-CENTRIC`/`eviden`, 2026-10-16 — a CBOM
+> source already imported twice before was re-imported a third time; the agent detected
+> the identical hash, declared a "RE-IMPORT" and copied forward all prior alignment
+> decisions as-is, including a `nom_mecanisme`-missing bug in a sandbox-local extension
+> that had meanwhile been fixed — compliance score stayed artificially stuck at 70%
+> across two further re-import attempts, while a genuinely fresh import of the same
+> source in a different entity the same day correctly scored 84% (same KB, same
+> extension version — only the re-alignment-from-scratch path produced the fix). See
+> that sandbox's `skills/chorus-cbom-import.md` § "Re-import duplicate-detection
+> shortcut" for the full incident writeup.
+>
 > ⛔ **Never read** `Helpers.pm`, `Feed.pm`, `Agent/*.pm` to infer slots.
 > ⛔ **Never invent** a value absent from the source document — report the gap.
 
