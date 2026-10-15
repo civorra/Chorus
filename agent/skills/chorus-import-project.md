@@ -14,12 +14,31 @@
 >                    plain text, table pasted in the chat, or directory path**.
 >                    Document files (PDF/DOCX/XLSX/CSV/XML/HTML) are automatically converted
 >                    to plain text before semantic processing.
-> `--out`          : output JSON filename (merge mode only; overrides the default
->                    location entirely — see "Output JSON location", Phase 5).
+> `--out`          : output JSON filename — applies to **Single and Merge modes**
+>                    (overrides the default location entirely, highest priority —
+>                    see "Output JSON location", Phase 5). **Not applicable in Batch
+>                    mode**: Batch produces one JSON per source file, so a single
+>                    `--out` filename has no well-defined target — ignored (with a
+>                    warning) if passed alongside `--batch`.
 >                    Default when absent: `project-import-<NNN>.json`, written under
 >                    `$WORKSPACE/<client>/` if this import's Scope resolves to a
 >                    non-global client, or `$SANDBOX/agent/` otherwise.
+>                    ⚠️ Corrected 2026 — this synopsis previously read "merge mode
+>                    only", contradicting "Output JSON location" (Phase 5) which
+>                    always treats an explicit `--out` as highest priority regardless
+>                    of Single/Merge — confirmed and fixed as part of chorus-web
+>                    TODO `[#K]` (naming convention mismatch with `chorus.scanProject`).
 > `--batch`        : force batch mode even if a single source is provided
+> `--check-fidelity` : after each auto-conversion of a document source
+>                    (PDF/DOCX/XLSX/CSV/XML/HTML — see "Format Detection &
+>                    Auto-conversion" below), invoke `chorus-markdown` on the
+>                    converted file before proceeding to alignment. Optional,
+>                    advisory only (non-blocking — `chorus-markdown` is invoked
+>                    without `--strict`): surfaces a fidelity report
+>                    (`workspace/reports/markdown-check-<slug>.md`) so the
+>                    engineer can sanity-check the alignment input quality
+>                    before trusting Phase 3's terminology matches. Off by
+>                    default to avoid slowing down routine imports.
 > `--context <label>` : declares the terminology scope for this import (e.g. a client
 >                    name, a project family, a business domain). Optional — manual
 >                    override only. If absent, the scope is auto-derived from the
@@ -176,6 +195,13 @@ For each source in <source…>:
     # Replace source with converted file for subsequent phases
     source = converted_path
     Print: "[import] Auto-converted <original.ext> → <converted_path>"
+
+    # Optional fidelity check — chorus-markdown (advisory, non-blocking by default)
+    # Only run if --check-fidelity was passed on this invocation.
+    if --check-fidelity:
+      Call: chorus-markdown <sandbox> <source_original.ext> <converted_path> --report
+      # Non-blocking: report surfaced to the engineer, Phase 3 proceeds regardless
+      # unless the engineer explicitly stops after reviewing a ❌ row.
 
     # Step 4 — Record the converted file under the dedicated section
     # (NOT under * Corpus — see warning above). Done once per source, here,
@@ -2343,6 +2369,9 @@ per source in Batch mode — see below) is written to:
 1. --out <filename> passed explicitly       → write exactly there (path as given by
    the engineer — absolute or relative to the invocation's working directory).
    Explicit override, highest priority, unchanged behaviour.
+   ⚠️ Not applicable in Batch mode (one JSON per source file — a single --out
+   filename has no well-defined target; ignored with a warning if combined with
+   --batch).
 
 2. Otherwise, if this import's Scope C != "global" (i.e. it was resolved from
    $WORKSPACE/<C>/sources/ or from --context <C> — see "Scope derivation", Phase 1.2b)

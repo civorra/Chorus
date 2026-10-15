@@ -667,6 +667,94 @@ pages with undetected borderless tables):
 > budget this as an explicit post-extraction review pass before handing the
 > `.md` to `chorus-feed`, not as an afterthought.
 
+## Table strategy — confidence thresholds for vision fallback
+
+The blind spots above (§1.4b–§1.4g) are **not duplicated here** — this
+section only adds explicit, actionable confidence thresholds for when a
+page should automatically trigger the `--hybrid`/`--auto` vision fallback
+instead of relying on the text-mode heuristics alone.
+
+**Trigger rule:** when `has_table` (§1.4b) is `False` **and**
+`borderless_table_suspect` (§1.4d) is also `False` on a page whose text
+contains a heading matching `Table \d+`/`Tableau \d+`, this is a **silent
+gap** — none of the current heuristics fired, yet the source explicitly
+announces a table. This is exactly the audit [#J] § T3 finding (table-count
+log is not a reliable completeness signal): a page can contain a real
+table that trips neither the vector-line detector nor the borderless-table
+density heuristic (e.g. a very small 2×2 table, or one using an unusual
+layout).
+
+| Signal combination on a `Table N`/`Tableau N` page | Confidence table was captured | Recommended action |
+|---|---|---|
+| `has_table = True` (vector lines found) | High | Keep text-mode `pdfplumber` reconstruction, apply §1.4g checklist |
+| `borderless_table_suspect = True` (§1.4d) | Medium | Apply §1.4d `pdftotext -layout` fallback, flag for manual column-mapping review |
+| `rotated_header_suspect = True` (§1.4c) | Medium | Apply §1.4c `pdftotext -layout` fallback, do not auto-convert to pipe syntax |
+| **Neither signal fires, but a `Table N`/`Tableau N` heading is present** | **Low (silent gap)** | **Re-run this specific page with `--hybrid`/`--auto` as a targeted vision fallback** — do not trust the text-mode output for this page alone |
+| No `Table N`/`Tableau N` heading nearby, no signal fires | N/A — no table expected | No action |
+
+**Implementation note:** this is a per-page decision, not a whole-document
+one — re-running the entire PDF in `--hybrid` mode to recover a handful of
+missed pages is wasteful. When the "silent gap" row applies, the practical
+workaround today (no automated single-page re-dispatch exists yet in the
+generated script) is to note the page number during the §1.4g audit pass
+and manually invoke `chorus-pdf <sandbox> <file.pdf> --hybrid` once, then
+splice the recovered page(s) into the text-mode output — or, if the
+document is small enough, accept the cost of a full `--hybrid` re-run.
+Automating per-page re-dispatch is a natural follow-up but is not
+implemented in the current script templates (Phase 2).
+
+## Formula strategy
+
+Motivated directly by audit `[#J]` findings F1/F2/F3 (see
+`todo-history/TODO.org` § `[#J]` and `chorus-markdown.md` § "Known failure
+patterns"): unlike figures, mathematical formulas were never flagged in
+text mode prior to this section — they silently blend into the prose flow,
+with no equivalent of `[FIGURE — not extracted]` to signal a risk zone.
+
+**Detection patterns** (implemented in `detect_and_tag_formulas()`, see
+"Shared utilities — Text & Hybrid modes", and invoked in the Text-mode
+script template just before the output file is written):
+
+| Pattern | Example | Audit finding |
+|---|---|---|
+| Unicode math symbols | `≥ ≤ ⊕ √ ∑ ∏ ² ³ ℓ λ σ ± × ÷ ≈` | F2 (symbols preserved but formula context lost) |
+| Functional notation | `XH(M, ℓ)`, `f(x, y)` | F2 — formula split mid-block by `pdfminer` layout grouping |
+| Ambiguous flattened exponent | `2128` (= `2^128`), `2h/2` (= `2^(h/2)`) — only flagged near keywords `bits`/`calculs`/`opérations`/`complexité`/`collision` | F1 — visually indistinguishable from a plain integer |
+
+**Transcription:** best-effort only, and only for the single unambiguous
+case of a Unicode superscript digit directly following an identifier
+(`A²` → `A^2`). Every other detected pattern receives a bare
+`[FORMULA: pattern detected (<reason>) — verify against source]`
+placeholder immediately after the flagged line — never an invented LaTeX
+transcription for a pattern that cannot be resolved reliably (false
+transcription is worse than no transcription for a normative/security
+threshold).
+
+**Placeholder convention** — mirrors `[FIGURE — not extracted]`:
+
+```
+2128 opérations.
+[FORMULA: pattern detected (ambiguous exponent) — verify against source]
+```
+
+**Why this is best-effort, not exhaustive:** the regex context keywords
+(§ table above) are deliberately narrow to limit false positives on years
+or identifiers (e.g. a document revision "2024" must not be tagged) — per
+audit [#J], a purely syntactic check ("does this look like `2` + digits?")
+is not enough; a contextual keyword check is required to "aim right
+without too many false positives". Expect occasional misses on formulas
+phrased without any of the listed keywords nearby — this is a detection
+aid for a human/`chorus-markdown` review pass, not a guarantee of complete
+recall.
+
+**Relationship to `chorus-markdown`:** `chorus-markdown` §2.5 checks for
+the **presence** of `[FORMULA: ...]` placeholders in the output (previously
+only `ℹ️`-level/informational because `chorus-pdf` never emitted this
+placeholder — see `chorus-markdown.md` § "Known failure patterns"). With
+this section shipped, that control can be escalated from informational to
+a real `⚠️`/`❌` severity in a future `chorus-markdown` revision, since the
+placeholder now actually exists to be checked.
+
 ## Phase 1.5 — nohup gate (hybrid mode only)
 
 After the layout analysis (`analyse_pages`), the script knows the **exact number of
@@ -1105,6 +1193,69 @@ def analyse_pages(pdf_path):
     return result
 
 
+def detect_and_tag_formulas(text):
+    """Detect likely mathematical-formula fragments in a page's assembled text
+    and wrap them with a `[FORMULA: ...]` placeholder, mirroring the existing
+    `[FIGURE — not extracted]` convention (see § "Formula strategy").
+
+    Motivated by audit [#J] § F1/F2/F3: unlike figures, formulas were never
+    flagged in text mode — ambiguous exponents (`2^128` → `2128`) are
+    silently indistinguishable from plain integers, and no signal exists for
+    a human/operator to locate risk zones without reading the whole document.
+
+    This is a best-effort, line-local heuristic — no LaTeX transcription is
+    attempted beyond a few trivial, unambiguous cases (superscript Unicode
+    digits). Returns the text with `[FORMULA: ...]` markers inserted inline,
+    immediately after each detected fragment.
+    """
+    import re
+
+    # Unicode math symbols whose mere presence strongly suggests a formula
+    MATH_SYMBOLS = re.compile(r'[≥≤⊕√∑∏²³ℓλσ±×÷≈≠∈∉⊂⊃∀∃∞]')
+
+    # Functional notation: f(x, y) / XH(M, ℓ) style — identifier immediately
+    # followed by a parenthesised argument list containing at least one
+    # comma or a known math-symbol argument.
+    FUNC_NOTATION = re.compile(r'\b[A-Zℓλσ][A-Za-z0-9]{0,4}\([^()]{1,40},[^()]{0,40}\)')
+
+    # Ambiguous flattened exponent: a leading "2" directly followed by 2-3
+    # more digits, only flagged when a crypto/security-flavoured keyword is
+    # present nearby (same line or same paragraph) to limit false positives
+    # on years/identifiers (audit [#J] § F1).
+    EXPONENT_CONTEXT = re.compile(
+        r'(?i)\b(bits?|calculs?|op[ée]rations?|complexit[ée]s?|collisions?|operations?|complexity)\b'
+    )
+    EXPONENT_PATTERN = re.compile(r'\b2\d{2,3}\b')
+
+    def tag_line(line):
+        tags = []
+
+        if FUNC_NOTATION.search(line):
+            tags.append("functional notation")
+        if MATH_SYMBOLS.search(line):
+            tags.append("math symbol")
+        if EXPONENT_PATTERN.search(line) and EXPONENT_CONTEXT.search(line):
+            tags.append("ambiguous exponent")
+
+        if not tags:
+            return line
+
+        # Best-effort LaTeX transcription — only for the unambiguous
+        # superscript-Unicode case; everything else falls back to a bare
+        # placeholder (never invent a transcription we cannot verify).
+        latex_hint = ""
+        m = re.search(r'(\w)([²³])', line)
+        if m:
+            base, exp = m.group(1), m.group(2)
+            power = {"²": "2", "³": "3"}[exp]
+            latex_hint = f" — best-effort LaTeX: {base}^{power}"
+
+        reason = ", ".join(tags)
+        return f"{line}\n[FORMULA: pattern detected ({reason}){latex_hint} — verify against source]"
+
+    return "\n".join(tag_line(line) for line in text.split("\n"))
+
+
 def call_claude_with_retry(payload, headers, label, timeout=300):
     """Execute a Claude API call with exponential backoff (MAX_RETRIES attempts).
     Returns the text content of Claude's first response block.
@@ -1159,6 +1310,22 @@ except ImportError:
         os.execv(_pipx_py, [_pipx_py] + sys.argv)
     # else: pdfplumber genuinely absent — graceful fallback will apply later
 
+def _log_environment():
+    """Log the actually-running interpreter and library versions, emitted AFTER
+    the os.execv() bootstrap above so it reflects the final interpreter, not the
+    one the script was originally launched with."""
+    import importlib.metadata as _ilmd
+    parts = []
+    for pkg in ("pdfminer.six", "pdfplumber"):
+        try:
+            parts.append(f"{pkg}=={_ilmd.version(pkg)}")
+        except _ilmd.PackageNotFoundError:
+            parts.append(f"{pkg}==<not installed>")
+    print(f"[chorus-pdf] Environment: {', '.join(parts)} (interpreter: {sys.executable})",
+          file=sys.stderr)
+
+_log_environment()
+
 PDF_PATH    = "<input-pdf-path>"
 OUTPUT_PATH = "<output-md-path>"
 
@@ -1181,6 +1348,7 @@ def main():
         HAS_PDFPLUMBER = False
         print("[chorus-pdf] ⚠️  pdfplumber not available — vector tables will not be reconstructed",
               file=sys.stderr)
+    # → detect_and_tag_formulas() — see "Shared utilities — Text & Hybrid modes" above
 
     print(f"[chorus-pdf] Text mode — {PDF_PATH}", file=sys.stderr)
     page_data = analyse_pages(PDF_PATH)   # → "Shared utilities — Text & Hybrid modes" above
@@ -1237,8 +1405,28 @@ def main():
     if plumber_pdf:
         plumber_pdf.close()
 
+    if HAS_PDFPLUMBER and total_tables:
+        print(f"[chorus-pdf] Table reconstruction: pdfplumber active ({total_tables} table(s) reconstructed)",
+              file=sys.stderr)
+    elif not HAS_PDFPLUMBER:
+        print("[chorus-pdf] ⚠️  Table reconstruction skipped: pdfplumber unavailable — "
+              "tables flattened to plain text (fallback, degraded output)",
+              file=sys.stderr)
+
+    final_text = "\n\n".join(parts)
+    # Formula detection pass (§ "Formula strategy" — audit [#J] § F1/F2/F3):
+    # tags Unicode math symbols, functional notation, and ambiguous flattened
+    # exponents with a `[FORMULA: ...]` placeholder, mirroring the existing
+    # FIGURE_PLACEHOLDER convention — never previously applied in text mode.
+    final_text = detect_and_tag_formulas(final_text)
+    n_formulas = final_text.count("[FORMULA:")
+
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        f.write("\n\n".join(parts))
+        f.write(final_text)
+
+    if n_formulas:
+        print(f"[chorus-pdf]    {n_formulas} formula pattern(s) tagged [FORMULA: ...] — see § Formula strategy",
+              file=sys.stderr)
 
     print(f"[chorus-pdf] ✅ {len(page_data)} pages extracted, {total_tables} table(s)", file=sys.stderr)
     if fig_pages:
@@ -1297,12 +1485,35 @@ except ImportError:
         os.execv(_pipx_py, [_pipx_py] + sys.argv)
     # else: pdfplumber genuinely absent — graceful fallback will apply later
 
+def _log_environment():
+    """Log the actually-running interpreter and library versions, emitted AFTER
+    the os.execv() bootstrap above so it reflects the final interpreter, not the
+    one the script was originally launched with."""
+    import importlib.metadata as _ilmd
+    parts = []
+    for pkg in ("pdfminer.six", "pdfplumber", "Pillow"):
+        try:
+            parts.append(f"{pkg}=={_ilmd.version(pkg)}")
+        except _ilmd.PackageNotFoundError:
+            parts.append(f"{pkg}==<not installed>")
+    print(f"[chorus-pdf] Environment: {', '.join(parts)} (interpreter: {sys.executable})",
+          file=sys.stderr)
+
+_log_environment()
+
 PDF_PATH    = "<input-pdf-path>"
 OUTPUT_PATH = "<output-md-path>"
 DPI         = 150
 MAX_RETRIES = 4
 API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 API_URL     = "https://api.anthropic.com/v1/messages"
+if not API_KEY:
+    print("[chorus-pdf] ⚠️  ANTHROPIC_API_KEY absent — hybrid mode cannot call Claude vision; "
+          "figures will fail at API call time. Re-run without --hybrid for text-only fallback.",
+          file=sys.stderr)
+else:
+    print("[chorus-pdf] ANTHROPIC_API_KEY detected — Claude vision will be used for cropped figures.",
+          file=sys.stderr)
 
 FIGURE_PROMPT = """You are a technical document extraction engine.
 Describe this figure extracted from a normative PDF document.
@@ -1381,6 +1592,11 @@ def render_and_crop(pdf_path, page_num, bbox, page_height, tmpdir):
     except ImportError:
         print("⛔ Pillow not installed. Run: pip install Pillow", file=sys.stderr)
         sys.exit(1)
+
+    if not getattr(render_and_crop, "_pillow_logged", False):
+        print("[chorus-pdf] Figure cropping: Pillow active (cropping figure bounding boxes)",
+              file=sys.stderr)
+        render_and_crop._pillow_logged = True
 
     prefix = os.path.join(tmpdir, f"p{page_num:04d}")
     result = subprocess.run(
@@ -1789,6 +2005,13 @@ def main():
     if xref_index:
         parts.append(xref_index)
 
+    if HAS_PDFPLUMBER and total_tables:
+        print(f"[chorus-pdf] Table reconstruction: pdfplumber active ({total_tables} table(s) reconstructed)",
+              file=sys.stderr)
+    if n_figs:
+        print(f"[chorus-pdf] Vision extraction: Claude active ({n_figs} figure(s) described via API)",
+              file=sys.stderr)
+
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n\n".join(parts))
     print(f"[chorus-pdf] ✅ {total} pages, {n_figs} figure(s), {total_tables} table(s) — "
@@ -1853,6 +2076,21 @@ import urllib.request
 import urllib.error
 import os
 
+def _log_environment():
+    """Log the running interpreter and library versions (auto mode has no
+    os.execv() bootstrap, so this simply reflects sys.executable as launched)."""
+    import importlib.metadata as _ilmd
+    parts = []
+    for pkg in ("pdfminer.six", "pypdf"):
+        try:
+            parts.append(f"{pkg}=={_ilmd.version(pkg)}")
+        except _ilmd.PackageNotFoundError:
+            parts.append(f"{pkg}==<not installed>")
+    print(f"[chorus-pdf] Environment: {', '.join(parts)} (interpreter: {sys.executable})",
+          file=sys.stderr)
+
+_log_environment()
+
 PDF_PATH    = "<input-pdf-path>"
 OUTPUT_PATH = "<output-md-path>"
 CHUNK_SIZE  = 5
@@ -1860,6 +2098,13 @@ DPI         = 150
 MAX_RETRIES = 4
 API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 API_URL     = "https://api.anthropic.com/v1/messages"
+if not API_KEY:
+    print("[chorus-pdf] ⚠️  ANTHROPIC_API_KEY absent — auto mode cannot call Claude vision "
+          "for figure pages; script will abort at startup check below.",
+          file=sys.stderr)
+else:
+    print("[chorus-pdf] ANTHROPIC_API_KEY detected — Claude vision will be used for figure pages.",
+          file=sys.stderr)
 
 PROMPT = """<verbatim vision extraction prompt — see Phase 2>"""
 
@@ -2013,6 +2258,9 @@ def main():
     total = len(classification)
     print(f"[chorus-pdf]   → {len(text_pages)}/{total} text-only pages  (pdfminer)", file=sys.stderr)
     print(f"[chorus-pdf]   → {len(vision_pages)}/{total} pages with figures (vision LLM)", file=sys.stderr)
+    print("[chorus-pdf] ⚠️  Auto mode does not reconstruct vector tables (pdfplumber not invoked) — "
+          "tables on text pages are flattened to plain text. Use --hybrid for table reconstruction.",
+          file=sys.stderr)
 
     results = {}
 
@@ -2048,6 +2296,9 @@ def main():
                       file=sys.stderr)
 
     # --- Assemble in page order ---
+    if vision_pages:
+        print(f"[chorus-pdf] Vision extraction: Claude active ({len(vision_pages)} page(s) described via API)",
+              file=sys.stderr)
     parts = [f"# ORIGINAL: {PDF_PATH}"] + [results[p] for p in sorted(results)]
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n\n".join(parts))
@@ -2098,6 +2349,20 @@ DPI         = 150
 MAX_RETRIES = 4
 API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 API_URL     = "https://api.anthropic.com/v1/messages"
+
+def _log_environment():
+    """Log the running interpreter (images mode has no os.execv() bootstrap)."""
+    print(f"[chorus-pdf] Environment: (interpreter: {sys.executable})", file=sys.stderr)
+
+_log_environment()
+
+if not API_KEY:
+    print("[chorus-pdf] ⚠️  ANTHROPIC_API_KEY absent — images mode cannot call Claude vision; "
+          "script will abort at startup check below.",
+          file=sys.stderr)
+else:
+    print("[chorus-pdf] ANTHROPIC_API_KEY detected — Claude vision will be used for all pages.",
+          file=sys.stderr)
 
 PROMPT = """<verbatim vision extraction prompt — see Phase 2>"""
 
@@ -2185,6 +2450,8 @@ def main():
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write(f"# ORIGINAL: {PDF_PATH}\n\n" + "\n\n".join(all_text))
+    print(f"[chorus-pdf] Vision extraction: Claude active ({total} page(s) described via API)",
+          file=sys.stderr)
     print(f"[chorus-pdf] ✅ Written to {OUTPUT_PATH}", file=sys.stderr)
 
 
@@ -2332,6 +2599,74 @@ Report the sanity check results to the user before proceeding.
 | Text mode: garbled multi-column | pdfminer layout | Normal on very complex layouts — use `--auto` instead |
 | Auto mode: page miscategorised | `pypdf` image detection | Force individual pages to vision by adjusting text threshold in `classify_pages` |
 
+## Cross-tool comparison — standard triage procedure for suspect pages
+
+> This procedure was applied ad hoc during audit `[#J]` to resolve a disputed
+> extraction result; it is now documented here as a **standard method**, not a
+> one-off gesture, and should be invoked systematically whenever a page is
+> flagged suspect — not only during a formal audit.
+
+**When to invoke it:**
+
+- Any page `chorus-markdown` reports as `⚠️` or `❌` (§2.2 table-count
+  mismatch, §2.3 borderless flattening, §2.4 rotated-header pattern, §2.6
+  length-ratio outlier, §2.7 encoding residue) — before concluding the defect
+  is in the source PDF itself.
+- Any page where a human reviewer manually doubts the fidelity of the
+  `chorus-pdf` text-mode output (garbled columns, missing table, suspicious
+  formula rendering), even outside a formal `chorus-markdown` run.
+
+**Exact command:**
+
+```bash
+pdftotext -layout -f <page> -l <page> <pdf> -
+```
+
+- `-layout` preserves the visual column/row structure as best `poppler-utils`
+  can infer it from the PDF's glyph positions — a **completely independent**
+  layout engine from `pdfminer`/`pdfplumber` (different codebase, different
+  heuristics, no shared library).
+- `-f <page> -l <page>` restricts extraction to the single suspect page
+  (1-indexed, matches the page numbering already used in `chorus-markdown`
+  reports and in this skill's own page-by-page logs).
+- `-` sends output to stdout for immediate inspection (pipe to `less`, or
+  redirect to a scratch file for diffing against the corresponding section of
+  `<output.md>`).
+- Fully offline, no API call, no network dependency — safe to run at any time,
+  including when `ANTHROPIC_API_KEY` is absent.
+
+**How to interpret the result:**
+
+- **If `pdftotext -layout` renders a coherent, readable structure** (e.g. a
+  table with aligned columns, a formula with its exponent correctly
+  positioned) **that `pdfminer`/`pdfplumber` failed to reconstruct** — this is
+  a **strong signal that the defect originates in the layout-analysis
+  heuristic** (`pdfminer`'s block segmentation, `pdfplumber`'s vector-line
+  detection, or `chorus-markdown`'s own suspicious-zone heuristics), **not in
+  the PDF's actual content or encoding**. In this case: do not treat the
+  source PDF as corrupt; instead, consider it a known blind spot of the
+  current extraction pipeline (cf. findings T1/T2 below) and document it as
+  such rather than re-attempting extraction with the same tool.
+- **If `pdftotext -layout` is equally garbled or produces the same gap**
+  (e.g. the same borderless table collapses into unseparated characters in
+  both outputs) — this points instead to a genuine property of the source
+  PDF (e.g. no embedded structure to recover, a scanned/rasterised page, or a
+  font encoding issue) that no text-layer tool can resolve; vision-mode
+  (`--hybrid`/`--auto`/`--images`) extraction should be considered instead of
+  further text-mode tuning.
+- **Reference precedent — audit `[#J]` findings T1/T2:** both the
+  borderless-table flattening (T1) and the rotated-header collapse (T2)
+  blind spots documented in this skill (§1.4c/§1.4d) were confirmed using
+  exactly this procedure — `pdftotext -layout` on the suspect page recovered
+  a legible (if imperfect) table structure that `pdfminer`'s line-by-line
+  text blocks had silently flattened, confirming the defect was in
+  `pdfminer`'s layout heuristic rather than in the PDF's own content. This is
+  the canonical worked example to follow when applying the procedure to a
+  new suspect page.
+
+> See also `chorus-markdown.md` §2.3/§2.4, which references this procedure
+> directly as the recommended triage step for any `⚠️`/`❌` row it reports.
+
 ## Phase 4 — Update sandbox metadata
 
 ### 4.1 Update `README.org`
@@ -2412,6 +2747,29 @@ chorus-feed <sandbox> corpus/003-uk-approved-doc-a-2013-text.md
 If a `.txt` from `pdftotext` already exists alongside the PDF, prefer the `-text.md`
 (text mode) or `-vision.md` (hybrid/auto/images) for `chorus-feed`.
 The `pdftotext` output can be kept for diff/audit purposes.
+
+### Post-processing — fidelity check (`chorus-markdown`)
+
+After every extraction (single file or each file in a `--batch` run), invoke
+`chorus-markdown` on the produced output before handing it to `chorus-feed`:
+
+```
+chorus-markdown <sandbox> <source.pdf> <output.md> --report
+```
+
+- `--report` is recommended by default: this adds a source-independent
+  cross-check (Table-heading count vs. pipe-tables actually produced —
+  directly targeting the audit [#J] § T3 "silent gap" finding — word-count
+  ratio, residual encoding artefacts, `[FORMULA: ...]` placeholder presence
+  per § "Formula strategy" above, and XREF orphan detection).
+- `--strict` is optional: use it only when the result feeds an automated
+  pipeline with no human review step before `chorus-feed`.
+- This invocation is **non-blocking by default** — a `⚠️`/`❌` row in the
+  report does not stop the workflow unless `--strict` is passed.
+- Complements, does not replace, the manual §1.4g checklist and the
+  per-page §"Table strategy" confidence thresholds above — `chorus-markdown`
+  operates on the finished `.md` file, after generation, as a second,
+  independent fidelity signal.
 
 ## Quick Reference — Naming Conventions
 

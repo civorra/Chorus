@@ -437,6 +437,9 @@ import os
 CSV_PATH    = "<input-csv-path>"
 OUTPUT_PATH = "<output-txt-path>"
 
+print(f"[chorus-excel] Environment: csv (stdlib only) (interpreter: {sys.executable})",
+      file=sys.stderr)
+
 def csv_to_markdown_safe(csv_path):
     """Convert CSV to Markdown pipe table (safe version without list method abuse)."""
     with open(csv_path, newline='', encoding='utf-8-sig') as f:
@@ -524,6 +527,14 @@ def main():
         print("⛔ openpyxl not installed. Run: pip install openpyxl", file=sys.stderr)
         sys.exit(1)
 
+    import importlib.metadata as _ilmd
+    try:
+        _ver = _ilmd.version("openpyxl")
+    except _ilmd.PackageNotFoundError:
+        _ver = "<not installed>"
+    print(f"[chorus-excel] Environment: openpyxl=={_ver} (interpreter: {sys.executable})",
+          file=sys.stderr)
+
     print(f"[chorus-excel] Text mode — {XLSX_PATH}", file=sys.stderr)
     wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
     sheets = [SHEET_FILTER] if SHEET_FILTER else wb.sheetnames
@@ -566,6 +577,14 @@ def main():
 
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         f.write("\n\n".join(parts))
+    total_imgs_placeholder = sum(len(wb[s]._images) for s in sheets if s in wb.sheetnames)
+    total_charts_placeholder = sum(len(wb[s]._charts) for s in sheets if s in wb.sheetnames)
+    if total_imgs_placeholder:
+        print(f"[chorus-excel] ⚠️  {total_imgs_placeholder} image(s) not extracted (text mode) — "
+              f"set ANTHROPIC_API_KEY to enable hybrid mode", file=sys.stderr)
+    if total_charts_placeholder:
+        print(f"[chorus-excel] ⚠️  {total_charts_placeholder} chart(s) not extracted (text mode) — "
+              f"set ANTHROPIC_API_KEY to enable hybrid mode", file=sys.stderr)
     print(f"[chorus-excel] ✅ Written to {OUTPUT_PATH}", file=sys.stderr)
 
 if __name__ == "__main__":
@@ -625,6 +644,27 @@ API_URL     = "https://api.anthropic.com/v1/messages"
 SHEET_FILTER = None   # set to a sheet name string to process only that sheet
 NOHUP_THRESHOLD = 15
 
+def _log_environment():
+    import importlib.metadata as _ilmd
+    parts = []
+    for pkg in ("openpyxl", "Pillow"):
+        try:
+            parts.append(f"{pkg}=={_ilmd.version(pkg)}")
+        except _ilmd.PackageNotFoundError:
+            parts.append(f"{pkg}==<not installed>")
+    print(f"[chorus-excel] Environment: {', '.join(parts)} (interpreter: {sys.executable})",
+          file=sys.stderr)
+
+_log_environment()
+
+if not API_KEY:
+    print("[chorus-excel] ⚠️  ANTHROPIC_API_KEY absent — hybrid mode cannot call Claude vision; "
+          "script will abort at startup check below.",
+          file=sys.stderr)
+else:
+    print("[chorus-excel] ANTHROPIC_API_KEY detected — Claude vision will be used for images/charts.",
+          file=sys.stderr)
+
 FIGURE_PROMPT = """You are a technical document extraction engine.
 Describe this figure extracted from a normative PDF document.
 
@@ -679,6 +719,11 @@ def extract_image_png(img_anchor):
         print("⛔ Pillow not installed. Run: pip install Pillow", file=sys.stderr)
         sys.exit(1)
 
+    if not getattr(extract_image_png, "_pillow_logged", False):
+        print("[chorus-excel] Image conversion: Pillow active (normalising embedded images to PNG)",
+              file=sys.stderr)
+        extract_image_png._pillow_logged = True
+
     blob = img_anchor.image.blob   # raw bytes
     try:
         img = Image.open(io.BytesIO(blob))
@@ -689,6 +734,8 @@ def extract_image_png(img_anchor):
         # Fallback: if blob starts with PNG magic, return as-is
         if blob[:4] == b'\x89PNG':
             return blob
+        print("[chorus-excel] ⚠️  Embedded image unsupported (EMF/WMF) — skipped (degraded output)",
+              file=sys.stderr)
         return None   # unsupported format (EMF/WMF) — skip
 
 # → get_image_position / get_chart_position — see "Shared utilities — Text & Hybrid modes" above
@@ -1038,7 +1085,8 @@ def main():
                 print(f"[chorus-excel]   → LibreOffice: {len(chart_pages_png)} page(s) rendered",
                       file=sys.stderr)
             else:
-                print("[chorus-excel]   → LibreOffice not available — chart placeholders will be used",
+                print("[chorus-excel] ⚠️  LibreOffice not available — chart placeholders will be used "
+                      "(metadata only, no visual description — degraded output)",
                       file=sys.stderr)
 
         for sheet_name in sheets:
@@ -1131,6 +1179,19 @@ def main():
 
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         f.write("\n\n".join(output_parts))
+    print(f"[chorus-excel] Table reconstruction: openpyxl active ({len(sheet_parts)} sheet(s) reconstructed)",
+          file=sys.stderr)
+    if total_images:
+        print(f"[chorus-excel] Image extraction: Claude vision active ({total_images} image(s) described via API)",
+              file=sys.stderr)
+    if total_charts:
+        if libreoffice_available:
+            print(f"[chorus-excel] Chart reconstruction: LibreOffice + Claude vision active "
+                  f"({total_charts} chart(s) described via API)", file=sys.stderr)
+        else:
+            print(f"[chorus-excel] ⚠️  Chart reconstruction: LibreOffice unavailable — "
+                  f"{total_charts} chart(s) reduced to metadata placeholder (degraded output)",
+                  file=sys.stderr)
     print(f"[chorus-excel] ✅ {len(sheet_parts)} sheet(s), {total_figs} figure(s) — "
           f"Written to {OUTPUT_PATH}", file=sys.stderr)
 
@@ -1357,6 +1418,26 @@ chorus-feed <sandbox> corpus/003-devis-isolation-vision.md
 chorus-excel        <sandbox> corpus/source.xlsx
 chorus-import-project <sandbox> corpus/<NNN>-source-vision.md
 ```
+
+### Post-processing — fidelity check (`chorus-markdown`)
+
+After every extraction (single file, `--sheet`-scoped, or each file in a
+multi-file corpus), invoke `chorus-markdown` before handing the output to
+`chorus-feed` or `chorus-import-project`:
+
+```
+chorus-markdown <sandbox> <source.xlsx|source.csv> <output.md> --report
+```
+
+- Particularly relevant for XLSX: `chorus-markdown`'s table-count control
+  (§2.2) compares non-empty cell/sheet counts from `openpyxl` against the
+  Markdown pipe tables actually produced — catches silently dropped sheets
+  or truncated ranges that `chorus-excel`'s own merged-cell logic does not
+  self-check against.
+- `--report` recommended by default; `--strict` only for fully automated
+  pipelines with no human review before `chorus-feed`.
+- Non-blocking unless `--strict` is passed — a `⚠️`/`❌` row does not stop
+  the workflow by itself.
 
 ### Why `chorus-excel` vs. `chorus-import-project`'s built-in Excel handler
 

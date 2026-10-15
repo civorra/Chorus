@@ -447,6 +447,17 @@ import os
 DOCX_PATH   = "<input-docx-path>"
 OUTPUT_PATH = "<output-txt-path>"
 
+def _log_environment():
+    import importlib.metadata as _ilmd
+    try:
+        ver = _ilmd.version("python-docx")
+    except _ilmd.PackageNotFoundError:
+        ver = "<not installed>"
+    print(f"[chorus-word] Environment: python-docx=={ver} (interpreter: {sys.executable})",
+          file=sys.stderr)
+
+_log_environment()
+
 IMAGE_PLACEHOLDER = (
     "[IMAGE — not extracted]\n"
     "[Run chorus-word with ANTHROPIC_API_KEY set to extract images via hybrid mode]"
@@ -522,8 +533,11 @@ def main():
 
     print(f"[chorus-word] ✅ {n_paras} paragraph(s), {n_tables} table(s), "
           f"{n_images} image(s) — written to {OUTPUT_PATH}", file=sys.stderr)
+    if n_tables:
+        print(f"[chorus-word] Table reconstruction: python-docx active ({n_tables} table(s) reconstructed)",
+              file=sys.stderr)
     if n_images:
-        print(f"[chorus-word]    {n_images} image(s) not extracted — "
+        print(f"[chorus-word] ⚠️  {n_images} image(s) not extracted — "
               f"set ANTHROPIC_API_KEY to enable hybrid mode", file=sys.stderr)
 
     # Phase 2b — CHORUS:no_auto_rules auto-annotation (same logic as chorus-pdf Phase 2b)
@@ -577,6 +591,27 @@ MAX_RETRIES = 4
 API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 API_URL     = "https://api.anthropic.com/v1/messages"
 
+def _log_environment():
+    import importlib.metadata as _ilmd
+    parts = []
+    for pkg in ("python-docx", "Pillow"):
+        try:
+            parts.append(f"{pkg}=={_ilmd.version(pkg)}")
+        except _ilmd.PackageNotFoundError:
+            parts.append(f"{pkg}==<not installed>")
+    print(f"[chorus-word] Environment: {', '.join(parts)} (interpreter: {sys.executable})",
+          file=sys.stderr)
+
+_log_environment()
+
+if not API_KEY:
+    print("[chorus-word] ⚠️  ANTHROPIC_API_KEY absent — hybrid mode cannot call Claude vision; "
+          "script will abort at startup check below.",
+          file=sys.stderr)
+else:
+    print("[chorus-word] ANTHROPIC_API_KEY detected — Claude vision will be used for embedded images.",
+          file=sys.stderr)
+
 FIGURE_PROMPT = """<verbatim — see "Figure description prompt" above in Phase 2>"""
 
 # ---------------------------------------------------------------------------
@@ -626,11 +661,20 @@ def convert_to_png(blob):
         print("⛔ Pillow not installed. Run: pip install Pillow", file=sys.stderr)
         sys.exit(1)
 
+    if not getattr(convert_to_png, "_pillow_logged", False):
+        print("[chorus-word] Image conversion: Pillow active (converting embedded images to PNG)",
+              file=sys.stderr)
+        convert_to_png._pillow_logged = True
+
     # EMF magic: 0x01000000 little-endian
     if len(blob) >= 4 and blob[:4] == b'\x01\x00\x00\x00':
+        print("[chorus-word] ⚠️  EMF image detected — unsupported by Pillow, image skipped (degraded output)",
+              file=sys.stderr)
         return None   # EMF — not supported by Pillow
     # WMF magic: 0xD7CD (or 0x01 0x00 for Placeable WMF)
     if len(blob) >= 2 and blob[:2] in (b'\xd7\xcd', b'\x01\x00'):
+        print("[chorus-word] ⚠️  WMF image detected — unsupported by Pillow, image skipped (degraded output)",
+              file=sys.stderr)
         return None   # WMF — not supported by Pillow
 
     try:
@@ -1035,6 +1079,13 @@ def main():
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         f.write(output)
 
+    if n_tables:
+        print(f"[chorus-word] Table reconstruction: python-docx active ({n_tables} table(s) reconstructed)",
+              file=sys.stderr)
+    if all_image_descs:
+        print(f"[chorus-word] Vision extraction: Claude active ({len(all_image_descs)} image(s) described via API)",
+              file=sys.stderr)
+
     print(
         f"[chorus-word] ✅ {n_paras} paragraph(s), {n_tables} table(s), "
         f"{len(all_image_descs)} image(s) — written to {OUTPUT_PATH}",
@@ -1258,10 +1309,32 @@ chorus-word  <sandbox> --batch
 → corpus/004-note-de-calcul-vision.md
 → ...
 
+# Post-processing — fidelity check (recommended, see below):
+chorus-markdown <sandbox> corpus/002-cctp-structure.docx corpus/003-cctp-structure-vision.md --report
+
 # Then in all cases:
 chorus-feed <sandbox> corpus/003-cctp-structure-text.txt
             (or: corpus/003-cctp-structure-vision.md)
 ```
+
+### Post-processing — fidelity check (`chorus-markdown`)
+
+After every extraction (single file or each file in a `--batch` run), invoke
+`chorus-markdown` on the produced output before handing it to `chorus-feed`:
+
+```
+chorus-markdown <sandbox> <source.docx> <output-vision.md> --report
+```
+
+- `--report` is recommended by default: `chorus-word`'s own validation
+  (§3.2) checks structural integrity at generation time, but
+  `chorus-markdown` adds a source-independent fidelity cross-check
+  (section/table count vs. the DOCX's native `document.tables`, word-count
+  ratio, encoding artefacts, XREF orphan detection).
+- `--strict` is optional: use it only when the result feeds an automated
+  pipeline with no human review step before `chorus-feed`.
+- This invocation is non-blocking by default — a `⚠️`/`❌` row in the
+  report does not stop the workflow unless `--strict` is passed.
 
 
 ## Dependencies
