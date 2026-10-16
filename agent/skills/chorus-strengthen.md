@@ -250,6 +250,74 @@ For each element in `uncertain_ids` that produced a discordance:
 
 ---
 
+## Phase 4.5 — Serialize gap report to JSON
+
+> **This step is mandatory** — it enables `chorus-fix` and the webapp Tests tab
+> to consume the gap report without re-parsing the text output.
+>
+> Write immediately after displaying the text report. Do not skip even if no
+> gaps were found (write with `total_gaps: 0` and an empty `gaps[]` array —
+> the webapp uses this to distinguish "strengthen ran, no gaps" from "strengthen
+> never ran").
+
+Write `$SANDBOX/.last-strengthen-report.json`:
+
+```json
+{
+  "kb_hash":    "<current sha256 hash of $SANDBOX/agent/chorus/*.org>",
+  "timestamp":  "<ISO 8601 — now>",
+  "sandbox":    "<sandbox-name>",
+  "total_gaps": N,
+  "summary": {
+    "bucket_b": N,
+    "bucket_c": N,
+    "bucket_a": N,
+    "rule_too_strict":       N,
+    "rule_too_permissive":   N,
+    "rule_perm_blocked":     N,
+    "feed_gap":              N
+  },
+  "gaps": [
+    {
+      "id":                1,
+      "gap_type":          "rule_too_strict|rule_too_permissive|rule_perm_blocked|feed_gap",
+      "bucket":            "B|C|A",
+      "agent":             "<agent-slug>",
+      "rule_file":         "<R0N-slug.yml>  (or null if no rule fired)",
+      "element_id":        "<id from project JSON>",
+      "type_element":      "<type_element value>",
+      "project_file":      "<project-rules-iso.json>",
+      "expected":          "CONFORME|NON_CONFORME",
+      "got":               "CONFORME|NON_CONFORME|unprocessed",
+      "hypothesis":        "<concise one-line description>",
+      "corpus_ref":        "<§N — section — document>  (or null)",
+      "suggested_fix_type":"threshold|condition|exception_pattern|filtre_to_condition|new_rule|feed",
+      "blocked":           false
+    }
+  ]
+}
+```
+
+**`bucket` derivation rules** (for the webapp — derived mechanically, not from LLM judgment):
+
+| `gap_type` | `suggested_fix_type` | `bucket` |
+|---|---|---|
+| `rule_too_strict` or `rule_too_permissive` or `rule_perm_blocked` | `threshold`, `condition`, `exception_pattern`, `filtre_to_condition` | `B` |
+| `rule_too_strict` or `rule_too_permissive` | `new_rule` | `C` |
+| `feed_gap` | `feed` | `C` |
+| any | corpus ref is `null` or `unknown` | `A` |
+
+> **`blocked` field:** set to `true` when the anti-regression guard in `chorus-fix`
+> has previously flagged this gap as requiring manual verification before patching.
+> On a fresh strengthen run, always set to `false` — `chorus-fix` may update this
+> field in place after running the guard (the webapp reads the updated file).
+
+**`kb_hash`:** use the same value as in `.last-check-results.json` if strengthen
+was triggered from a cached result (Phase 1.1); otherwise recompute from the current
+`agent/.kb-hash` file.
+
+---
+
 ## Phase 5 — Enrichment roadmap
 
 ### 5.1 Group gaps by corrective action
