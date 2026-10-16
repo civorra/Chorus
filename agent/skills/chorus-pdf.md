@@ -581,7 +581,7 @@ If the layout output is clean and aligned, the failure is in the extraction
 pipeline (apply the fallback above); if it is also garbled, escalate as a
 genuine PDF rendering problem — do not attempt automated reconstruction.
 
-### 1.4e Header cell split mid-word — `quality_check()` blind spot
+### 1.4e Header cell split mid-word — `quality_check()` blind spot — ✅ mitigated
 
 **⛔ Known failure mode:** even when `has_table` correctly fires and
 `pdfplumber` successfully reconstructs a table, the **column-boundary
@@ -593,25 +593,52 @@ header row where the phrase is split character-run by character-run:
 ```
 | Assurance components by p pack | rotation profile assurance age |
 ```
+A second, related symptom (observed in practice on FIPS 186-5 Table A.1/A.2):
+a **trailing prose-pollution row** — `pdfplumber` occasionally captures the
+start of the next paragraph (unrelated running text below the table's visual
+boundary) as a spurious extra row, mostly empty cells plus one long
+multi-word fragment.
+
 **Why `quality_check()` does not catch this:** the four existing filters
 (§ "Shared utilities") reject tables based on empty-cell ratio, short
 lowercase fragments, or single-column long-text — none of them test for
-*"a word straddling a cell boundary"*. A single mis-split header row does
-not push the overall empty/fragment ratios past any threshold, so the
-table passes quality control despite the header being unreadable.
+*"a word straddling a cell boundary"* or *"a trailing row that is actually
+unrelated prose"*. Neither symptom pushes the overall empty/fragment ratios
+past any threshold, so the table passes quality control despite being
+unreliable.
 
-**Detection heuristic (informational — no automated fix, human check
-required):** after table reconstruction, if any two adjacent cells in the
-**first one or two rows** each end/start with a sub-word fragment (i.e.
-concatenating `cell[i][-N:] + cell[i+1][:M]` reconstitutes a dictionary
-word or a corpus-recurring compound term not present in either cell alone),
-flag the table for manual header review before trusting it.
+**✅ Mitigation implemented — `detect_and_fix_header_split()`:** (see
+`format_table()` in "Shared utilities — Text & Hybrid modes") applied to
+every table before it is written to the output `.md`:
 
-**Practical mitigation until an automated filter exists:** always visually
-scan the **header row(s)** of every `pdfplumber`-reconstructed table (not
-just the empty-cell ratio) during the manual `pdftotext -layout` audit pass
-(§1.4c/§1.4d) — this failure mode has been observed even on tables that pass
-every existing `quality_check()` filter.
+- **Trailing prose-pollution row** → removed automatically. A row is
+  considered pollution when all but one cell are empty and the remaining
+  cell is a long (>60 char), multi-word (>6 words) fragment unrelated to
+  the table's own short tabular values — never legitimate data, always a
+  mis-captured next-paragraph fragment.
+- **Mid-word header split** → **not auto-merged** (risk of inventing a
+  wrong reconstruction is higher than the cost of a flagged review) — but
+  no longer silently passed through either. A visible banner is prepended
+  to the table in the generated `.md`:
+  ```
+  [TABLE QUALITY WARNING — §1.4e mis-split header cells / prose-pollution check — see chorus-pdf.md Known failure modes]
+    - Row 1, cells 2-3 look mid-word split (§1.4e symptom 1): "Max. of len(p" | ") + len(q2) 2" — NOT auto-merged (verify against source before trusting this header).
+  [END TABLE QUALITY WARNING]
+  ```
+  This turns a previously **undetectable** blind spot into an **explicit,
+  human-reviewable signal** directly in the output — consistent with the
+  `[FIGURE — not extracted]` / `[FORMULA: ...]` placeholder convention
+  already used elsewhere in this skill. `chorus-markdown` (if invoked in
+  post-processing) can also be extended to scan for this exact banner
+  string as an additional fidelity check.
+
+**Practical mitigation — manual correction still required for the header
+itself:** this mechanism detects and flags, it does not reconstruct the
+correct header wording — that still requires cross-checking against
+`pdftotext -layout` (§1.4c method) and manually rewriting the header row.
+Always visually scan the **header row(s)** of every table carrying a
+`[TABLE QUALITY WARNING]` banner during the manual audit pass (§1.4g)
+before trusting it in `chorus-feed`.
 
 ### 1.4f Multi-page table continuity — no automatic stitching
 
@@ -639,21 +666,27 @@ per-page architecture.
 
 ### 1.4g Practical checklist — auditing a generated `.md` for table integrity
 
-Given that §1.4c–§1.4f are all **manual-verification** failure modes (no
-fully automated fix exists yet for any of them), apply this checklist to
-**every** table-bearing page of a newly generated `.md`, not only to pages
-that "look suspicious" at first glance — borderless tables (§1.4d) in
-particular produce no visually obvious warning sign in the raw log output
-(`chorus-pdf` only reports pages where `has_table` fired, silently omitting
-pages with undetected borderless tables):
+Given that §1.4c, §1.4d and §1.4f are still **manual-verification**
+failure modes (no fully automated fix exists for them), apply this
+checklist to **every** table-bearing page of a newly generated `.md`, not
+only to pages that "look suspicious" at first glance — borderless tables
+(§1.4d) in particular produce no visually obvious warning sign in the raw
+log output (`chorus-pdf` only reports pages where `has_table` fired,
+silently omitting pages with undetected borderless tables). §1.4e is now
+**semi-automated** (detection + explicit in-file warning banner — see
+below) but still requires a human to confirm/rewrite the flagged header.
 
 1. Search the generated `.md` for every `Table \d+` / `Tableau \d+` heading
    in the corpus's own numbering scheme.
 2. For each, confirm the surrounding text renders as a proper `| ... | ... |`
    Markdown table — not a flat sequence of single-line paragraphs (§1.4d
    symptom).
-3. For each detected pipe table, re-read the **header row** specifically —
-   confirm no word is split across adjacent cells (§1.4e symptom).
+3. Search the generated `.md` for `[TABLE QUALITY WARNING` banners (§1.4e)
+   — each one flags a table whose header row is suspected mid-word split.
+   Cross-check against `pdftotext -layout` and rewrite the header manually;
+   do not trust the flagged header as-is. Tables **without** this banner
+   still deserve a quick visual header check (the heuristic is
+   conservative, not exhaustive).
 4. Check whether the table's last row on a page looks truncated (fewer
    columns filled than expected, or the very next page continues with more
    rows of the same shape) — if so, apply the §1.4f merge/continuation
@@ -1066,11 +1099,123 @@ def extract_tables_from_page(page):
         
         return True
 
+    def detect_and_fix_header_split(rows):
+        """§1.4e mitigation — mis-split header cells / trailing prose-pollution row.
+
+        Two independent symptoms are addressed here, both observed in real
+        extractions (FIPS 186-5 Table A.1/A.2) and previously left as a
+        "no automated fix, human check required" blind spot:
+
+        1. **Mid-word header split**: a header cell spans 2+ logical columns
+           in the source but pdfplumber's column-boundary detection places a
+           cut in the middle of a word/phrase (e.g. "Max. of len(p1) + len(p2)
+           and len(q1)" | ") + len(q2) 2"). Detected by checking whether any
+           two horizontally-adjacent cells in the first 2 rows, when
+           concatenated, look like a split token (one ends without
+           whitespace/punctuation and the next starts with a lowercase letter
+           or a closing-paren/digit continuation) — conservative best-effort,
+           not a dictionary-based reconstruction. When detected, the cells are
+           NOT silently merged (risk of inventing a wrong reconstruction) —
+           instead this row is tagged for the explicit `[TABLE QUALITY WARNING]`
+           banner below, so a human (or chorus-markdown) can verify it.
+
+        2. **Trailing prose-pollution row**: pdfplumber occasionally captures
+           the start of the *next* paragraph/section (unrelated prose from
+           below the table's visual boundary) as a spurious final "row" of
+           the table — recognisable because most of its cells are empty and
+           the non-empty cell(s) contain long, multi-word fragments with no
+           resemblance to the table's own column content (numbers, short
+           codes, bit-length expressions). This row is dropped automatically
+           — it is never legitimate tabular data, only mis-captured prose.
+
+        Returns (cleaned_rows, warnings) where warnings is a list of
+        human-readable strings describing what was detected/removed.
+        """
+        if not rows or len(rows) < 2:
+            return rows, []
+
+        warnings = []
+        cleaned = list(rows)
+
+        # --- Symptom 2: trailing prose-pollution row -----------------------
+        # A row is "prose pollution" if: it has >=2 cells, all but one (or all)
+        # are empty/whitespace, and the one non-empty cell is long (>60 chars)
+        # with multiple whitespace-separated words — i.e. unrelated running
+        # text, not a short tabular value.
+        while len(cleaned) >= 2:
+            last = cleaned[-1]
+            non_empty = [str(c or "").strip() for c in last if str(c or "").strip()]
+            if len(non_empty) == 0:
+                cleaned.pop()
+                continue
+            if len(non_empty) == 1 and len(non_empty[0]) > 60 and len(non_empty[0].split()) > 6:
+                warnings.append(
+                    "Trailing row removed — looks like unrelated prose captured "
+                    "past the table's visual boundary (§1.4e symptom 2): "
+                    f"\"{non_empty[0][:80]}...\""
+                )
+                cleaned.pop()
+                continue
+            break
+
+        if not cleaned or len(cleaned) < 2:
+            return cleaned, warnings
+
+        # --- Symptom 1: mid-word header split detection (first 2 rows) -----
+        def looks_like_split(a, b):
+            a = str(a or "").strip()
+            b = str(b or "").strip()
+            if not a or not b:
+                return False
+            # heuristic: left fragment has no trailing punctuation/space before
+            # cut, right fragment starts with a lowercase letter, a closing
+            # paren, or a bare digit immediately followed by more digits that
+            # don't look like a standalone unit on their own (e.g. "1" right
+            # after "len(p" on the left — reconstitutes "len(p1)").
+            if a[-1].isalnum() and (b[0].islower() or b[0] in ")]1234567890"):
+                # avoid false positives: both fragments are already full words
+                # when they are long AND contain a space (unlikely to be a cut)
+                if len(a) > 25 and " " in a and len(b) > 25 and " " in b:
+                    return False
+                return True
+            return False
+
+        for row_idx in range(min(2, len(cleaned))):
+            row = cleaned[row_idx]
+            for i in range(len(row) - 1):
+                if looks_like_split(row[i], row[i + 1]):
+                    warnings.append(
+                        f"Row {row_idx + 1}, cells {i + 1}-{i + 2} look "
+                        f"mid-word split (§1.4e symptom 1): "
+                        f"\"{str(row[i]).strip()}\" | \"{str(row[i + 1]).strip()}\" "
+                        "— NOT auto-merged (verify against source before trusting "
+                        "this header)."
+                    )
+
+        return cleaned, warnings
+
     def format_table(rows):
-        """Format extracted rows as Markdown pipe table."""
+        """Format extracted rows as Markdown pipe table.
+
+        Applies detect_and_fix_header_split() first (§1.4e mitigation):
+        drops trailing prose-pollution rows automatically, and prepends a
+        visible [TABLE QUALITY WARNING] banner (instead of silently passing
+        quality_check()) when a mid-word header split is suspected — turning
+        a previously undetectable blind spot into an explicit, human-reviewable
+        signal in the generated .md, consistent with the [FIGURE — not
+        extracted] / [FORMULA: ...] placeholder convention already used
+        elsewhere in this skill.
+        """
+        rows, warnings = detect_and_fix_header_split(rows)
         if not rows:
             return None
         lines = []
+        if warnings:
+            lines.append("[TABLE QUALITY WARNING — §1.4e mis-split header cells / "
+                          "prose-pollution check — see chorus-pdf.md Known failure modes]")
+            for w in warnings:
+                lines.append(f"  - {w}")
+            lines.append("[END TABLE QUALITY WARNING]")
         lines.append("| " + " | ".join(cell(c) for c in rows[0]) + " |")
         lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
         for row in rows[1:]:
