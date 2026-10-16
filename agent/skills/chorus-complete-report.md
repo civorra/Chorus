@@ -369,7 +369,7 @@ when relevant to the question is explicitly within this skill's scope.
 
 | Classification | Meaning |
 |---|---|
-| ✅ Source limitation confirmed | The uncertain value/field is genuinely absent (or the format cannot express it) in the original source — not an import defect |
+| ✅ Source limitation confirmed | The uncertain value/field is genuinely absent (or the format cannot express it) in the original source — not an import defect. ⚠️ **Before closing:** check whether a normative rule covering this element exists in the source corpus but was never brought into the KB (gap of corpus coverage, not a source limitation proper). If so, annotate the report with `ENRICH-SUGGESTED` — see § *Convention ENRICH-SUGGESTED* at the end of this skill. |
 | 🛠️ Pipeline artefact detected | The value **is** present in the source, **and** is backed by a normative reference already available to the KB (standard/RFC/ANSSI text in the corpus or reachable via `CORPUS-DIRECTIVES.md`) — but was lost, defaulted incorrectly, or mistranslated during import. Actionable fix: add/correct the catalogue or thesaurus alias, then re-import. |
 | ❓ Still unresolved | No matching entry found, the source content itself is ambiguous, **or** the value is present but names an implementation-specific construction (library class, vendor-internal term) with no normative text in scope to adjudicate conformity — cannot conclude either way; leave the original uncertainty untouched and say so explicitly. This case requires a domain-expert arbitration (or acquiring a missing reference standard), not a catalogue/thesaurus edit. |
 | 🏷️ Mistyped at import | The value is correct and present in the source **as-is** — but Step 3.5 detected that the `type_element` assigned at import time does not match the normative category the source/thesaurus actually indicates for this element. The compliance pipeline evaluated it against the wrong KB rule. Actionable fix: **retype** the affected element(s) to the correct `type_element` in the project JSON (or re-run `chorus-import-project` after confirming/extending the thesaurus mapping per `chorus-import-project.md § Thesaurus alias variants`) — do not conflate with 🛠️, which assumes the value itself was mistranscribed; here the value is fine, the classification rule applied to it is wrong. |
@@ -571,3 +571,72 @@ If any ⚖️ (verdict logic defect) was detected, explicitly recommend as next 
   verdict. This is a rule/engine defect, not a data or typing issue — no
   re-import is needed.
 ```
+
+
+## Convention ENRICH-SUGGESTED
+
+### Rôle
+
+L'annotation `ENRICH-SUGGESTED` permet de capitaliser une observation faite
+**pendant la lecture d'un rapport** — sans rupture de contexte, sans relancer
+un skill complet. Elle cible le cas spécifique où une règle normative est
+*présente dans le corpus* mais n'a jamais été portée dans la KB (gap de
+couverture corpus, distinct d'une limitation source).
+
+Ce cas échappe à tous les mécanismes automatiques existants :
+- `chorus-strengthen` détecte les écarts de tests (règles trop strictes/permissives).
+- `chorus-review-kb --decisions` détecte les articles non couverts.
+- `chorus-complete-report` lui-même ne produit pas de sortie vers `--enrich`.
+
+### Quand annoter
+
+Annoter avec `ENRICH-SUGGESTED` quand, en lisant le rapport, on observe :
+- Un élément classé `✅ Source limitation confirmed` mais dont la règle normative
+  correspondante **existe dans le corpus source** (document déjà présent dans
+  `$SANDBOX/corpus/`) sans avoir été extrait dans la KB.
+- Un verdict `_a_confirmer` ou un fallback déclaratif dont la résolution réelle
+  est bloquée par l'absence d'une entrée catalogue — et cette entrée est fondée
+  sur un texte normatif en main (pas un arbitrage métier ouvert).
+
+Ne pas annoter si le gap nécessite l'acquisition d'une source normative
+supplémentaire ou un arbitrage expert — c'est un `❓ Still unresolved`, pas
+un `ENRICH-SUGGESTED`.
+
+### Syntaxe
+
+Insérer directement dans le corps du rapport `.md` au point exact de
+l'observation, sous forme de blockquote Markdown :
+
+```markdown
+> 🌱 **ENRICH-SUGGESTED** — <référence normative courte> : <description du gap>.
+> <Texte normatif candidat, extrait de la source, ou paraphrase précise.>
+> <Indiquer le fichier corpus source si non évident.>
+```
+
+Exemple réel (sandbox `08-ANSSI-PG-083-CENTRIC`) :
+
+```markdown
+> 🌱 **ENRICH-SUGGESTED** — FIPS 186-5 §7 EdDSA/Ed25519 : mécanisme de signature
+> sur courbes de Montgomery non couvert par `catalogue_mecanisme_asym`.
+> Source : `corpus/019-fips186-5-dss.md` — §7 absent de l'extraction actuelle.
+> Fix : extraire §7, puis `chorus-feed ... corpus/019-fips186-5-dss.md --enrich`.
+```
+
+### Collecte automatique
+
+`scripts/harvest-enrich-suggestions.py` scanne tous les rapports du sandbox
+(`workspace/**/reports/*.md`, `agent/explain-*.md`, `agent/synthese-*.md`) et
+agrège les occurrences en un `corpus-correctif-harvested-<NNN>.txt` prêt pour
+`chorus-feed <sandbox> corpus-correctif-harvested-<NNN>.txt --enrich`.
+
+```bash
+python3 scripts/harvest-enrich-suggestions.py <sandbox-path>
+# → <sandbox>/corpus-correctif-harvested-001.txt
+
+# Prévisualiser sans écrire :
+python3 scripts/harvest-enrich-suggestions.py <sandbox-path> --dry-run
+```
+
+L'annotation reste dans le rapport `.md` après collecte — elle est idempotente
+(relancer le script avec de nouvelles annotations produit un nouveau fichier
+`-002.txt` sans écraser le précédent).
