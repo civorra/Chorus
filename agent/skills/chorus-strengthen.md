@@ -298,8 +298,8 @@ Reinforcement loop:
        ↓
   chorus-strengthen <sb>                      ← identify gaps (typical + stress suites)
        ↓
-  [edit YAML directly]                        ← bucket B fixes
-  chorus-feed <sb> corpus-correctif.txt --enrich  ← bucket C new rules
+  chorus-fix <sb> [--dry-run]                 ← apply bucket B patches + generate corpus-correctif
+  chorus-feed <sb> corpus-correctif.txt --enrich  ← bucket C new rules (auto via chorus-fix --bucket-c)
        ↓
   chorus-check <sb> --all                     ← verify both suites
        ↓
@@ -314,11 +314,11 @@ Reinforcement loop:
 
 ## Separation of responsibilities
 
-| | `chorus-feed` | `chorus-create-project` | `chorus-stress` | `chorus-check` | `chorus-strengthen` |
-|---|---|---|---|---|---|
-| **Reads** | corpus | sandbox org KB | org KB + YAML CONDITIONs | org KB + YAML | pipeline output + org KB |
-| **Produces** | KB org, YAML, Helpers.pm | `project-*.json` (typical) | `project-stress-*.json` (adversarial) | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap |
-| **Expected results** | — | LLM + KB inference | **Deterministic from threshold_registry** | — | — |
-| **Modifies KB** | ✅ | ✗ | ✗ | ✗ | ✗ |
-| **Modifies YAML** | ✅ | ✗ | ✗ | ✗ | ✗ |
-| **Triggered by** | new standard | coverage need | after `--batch` | project to validate | failed `--all` |
+| | `chorus-feed` | `chorus-create-project` | `chorus-stress` | `chorus-check` | `chorus-strengthen` | `chorus-fix` |
+|---|---|---|---|---|---|---|
+| **Reads** | corpus | sandbox org KB | org KB + YAML CONDITIONs | org KB + YAML | pipeline output + org KB | gap report + YAML + project JSON |
+| **Produces** | KB org, YAML, Helpers.pm | `project-*.json` (typical) | `project-stress-*.json` (adversarial) | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap | patched YAML + `corpus-correctif.txt` |
+| **Expected results** | — | LLM + KB inference | **Deterministic from threshold_registry** | — | — | — |
+| **Modifies KB** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Modifies YAML** | ✅ | ✗ | ✗ | ✗ | ✗ | **✅ (Bucket B)** |
+| **Triggered by** | new standard | coverage need | after `--batch` | project to validate | failed `--all` | strengthen gap report |
