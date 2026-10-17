@@ -1,7 +1,7 @@
 # Skill — chorus-check
 
-> Trigger: `chorus-check <sandbox-name> <fichier-project> [--all] [--explain] [--summary]`
-> Trigger: `chorus-check <sandbox-name> --from-report <run-report-path> [--explain] [--summary]`
+> Trigger: `chorus-check <sandbox-name> <fichier-project> [--all] [--explain] [--summary] [--lang <fr|en>]`
+> Trigger: `chorus-check <sandbox-name> --from-report <run-report-path> [--explain] [--summary] [--lang <fr|en>]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: sandbox containing the KB and YAML rules (produced by `chorus-feed`)
@@ -17,6 +17,10 @@
 >              figures, substantive vs. mapping-anomaly breakdown, recommendation) — see
 >              § Option `--summary` below. Can be combined with `--explain` (recommended)
 >              or used standalone.
+> `--lang <fr|en>`: force the language of `--explain`/`--summary` reports. Overrides
+>                   auto-detection. Only affects report output — never the YAML rules,
+>                   KB org files, or run.pl output (those follow the YAML language
+>                   convention documented in `AGENTS.md`). See `## Phase L0` below.
 > `--from-report <path>`: **pipeline-free mode** — skip Phases 0–6 entirely; read
 >                         element data directly from an existing run-report JSON.
 >                         `<path>` is relative to `$SANDBOX`
@@ -1317,6 +1321,34 @@ If **NOT CONVERGED** → recommend:
 ```
 
 
+## Phase L0 — Report language resolution (`$REPORT_LANG`)
+
+> **Runs once, before Phase E0, whenever `--explain` or `--summary` is present.**
+> Produces `$REPORT_LANG ∈ { fr, en }` used by all subsequent phases to select
+> French or English templates. Priority (highest first) :
+
+```
+1. --lang <fr|en> flag    → use directly, no further check
+2. #+CORPUS_LANG in       → read first line matching "^#\+CORPUS_LANG:" in
+   agent/chorus/index.org    $SANDBOX/agent/chorus/index.org
+                              value must be fr or en (case-insensitive), else skip
+3. YAML dominant language → scan all files in $SANDBOX/rules/**/*.yml
+                              count occurrences of "^RULE:" (→ en) and "^REGLE:" (→ fr)
+                              $REPORT_LANG = language with the higher count
+                              tie → fr
+4. Default                → fr
+```
+
+**Log line (mandatory):**
+```
+[lang] $REPORT_LANG=<fr|en>  source=<flag|index.org|yaml-scan|default>
+```
+
+This log line is the only place `$REPORT_LANG` is announced — do not repeat it.
+All phases below consume `$REPORT_LANG` silently; never re-run this resolution.
+
+---
+
 ## Option `--explain` — Human-readable non-conformity explanations
 
 > Runs **after** Phase 6 (single-file mode) or Phase 6-all (`--all` mode), once the
@@ -1409,13 +1441,9 @@ If `index.org` is missing or has no `* Integrated corpus` table → record
 **c) Canonical header block format** (identical in both `--explain` and `--summary`,
 inserted verbatim after the document's own title/date/status lines).
 
-> ⚠️ **Language:** this block (section heading + field labels) must be rendered
-> in the **corpus language** (`#+CORPUS_LANG` in `index.org`, or inferred from
-> corpus content — see `chorus-engine.md § Canonical Language Rule`), exactly
-> like every other artefact in the sandbox. The French labels below are the
-> **default illustration** for a French-corpus sandbox; for an English-corpus
-> sandbox, render the English equivalent shown beneath it. Do not mix languages
-> within a single generated file.
+> ⚠️ **Language:** render this block using `$REPORT_LANG` resolved in **Phase L0**.
+> `fr` → French template below. `en` → English template beneath it.
+> Do not mix languages within a single generated file.
 
 French corpus (default template):
 ```markdown
@@ -1531,10 +1559,8 @@ For each element `e` in `TARGETS`:
 
 ### Phase E3 — Per-element explanation block format
 
-> ⚠️ **Language:** render this block in the **corpus language**, per the
-> canonical rule in `chorus-engine.md § Canonical Language Rule`. The French
-> template below is the default illustration; use the English equivalent
-> beneath it for an English-corpus sandbox. Never mix languages within one file.
+> ⚠️ **Language:** render using `$REPORT_LANG` from **Phase L0**.
+> `fr` → French template. `en` → English template below. Never mix languages.
 
 French corpus (default template):
 ```markdown
@@ -1626,9 +1652,8 @@ element as genuinely non-compliant.
 
 ### Phase E4 — Assemble and write the explanation file
 
-> ⚠️ **Language:** render section headings, labels, and free text below in the
-> **corpus language** (see canonical rule). French template is the default
-> illustration; use the English equivalent for an English-corpus sandbox.
+> ⚠️ **Language:** render using `$REPORT_LANG` from **Phase L0**.
+> `fr` → French template. `en` → English template below.
 
 French corpus (default template):
 ```markdown
@@ -1793,12 +1818,10 @@ Write `$WORKSPACE/synthese-<project-slug>-<RUN_TIMESTAMP>.md` using this exact t
 (`$WORKSPACE` as defined at the top of this document —
 `$SANDBOX/workspace/<entity>/reports/`, created if absent).
 
-> ⚠️ **Language:** render section headings, labels, and free text in the
-> **corpus language** (see canonical rule). French template is the default
-> illustration; use the English equivalent for an English-corpus sandbox.
-> Never mix languages within one file. The filename itself
-> (`synthese-<slug>-<RUN_TIMESTAMP>.md`) keeps its French-derived prefix regardless of
-> corpus language; `<RUN_TIMESTAMP>` is shared with the corresponding
+> ⚠️ **Language:** render using `$REPORT_LANG` from **Phase L0**.
+> `fr` → French template. `en` → English template below. Never mix languages.
+> The filename (`synthese-<slug>-<RUN_TIMESTAMP>.md`) keeps its French-derived prefix
+> regardless of `$REPORT_LANG`; `<RUN_TIMESTAMP>` is shared with the corresponding
 > `run-report-<RUN_TIMESTAMP>.json` and `explain-<slug>-<RUN_TIMESTAMP>.md` (Phase 6.0).
 
 French corpus (default template):
