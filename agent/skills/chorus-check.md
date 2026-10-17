@@ -1016,7 +1016,7 @@ sha256sum "$ENGINE/agent/skills/chorus-templates.md" > $SANDBOX/agent/.template-
 ```
 
 (`$ENGINE` = absolute path to the Chorus Engine repository root, e.g.
-`/home/civ/Documents/DEV/Chorus/Engine` — resolved from `AGENTS.md` at skill load time.)
+`/home/civ/Chorus/engine` — resolved from `AGENTS.md` at skill load time.)
 
 Both files are **never committed** (local artefacts, like `sessions/`).
 `.kb-hash` is invalidated (deleted) by `chorus-feed` at the end of each run.

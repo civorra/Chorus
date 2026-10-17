@@ -7,7 +7,7 @@
 > This skill covers the version bump, artifact verification, tarball build,
 > PAUSE upload, and git tagging.
 >
-> Repository: `$ENGINE` = `/home/civorra/Documents/Chorus/Engine`
+> Repository: `$ENGINE` = `/home/civ/Chorus/engine`
 > Upload tool: `cpan-upload` (CPAN::Uploader) — credentials in `~/.pause`
 
 ---
@@ -18,13 +18,13 @@ Run sequentially:
 
 ```bash
 # Version actuelle dans le module
-grep "VERSION" /home/civorra/Documents/Chorus/Engine/lib/Chorus/Engine.pm | head -3
+grep "VERSION" /home/civ/Chorus/engine/lib/Chorus/Engine.pm | head -3
 
 # Dernier tag git
-git -C /home/civorra/Documents/Chorus/Engine tag --sort=-v:refname | head -5
+git -C /home/civ/Chorus/engine tag --sort=-v:refname | head -5
 
 # Repository status
-git -C /home/civorra/Documents/Chorus/Engine status
+git -C /home/civ/Chorus/engine status
 ```
 
 Display the result and ask for confirmation before continuing:
@@ -58,14 +58,14 @@ X.YY    YYYY-MM-DD
 Propose a summary of commits since the last tag:
 
 ```bash
-git -C /home/civorra/Documents/Chorus/Engine log --oneline $(git -C /home/civorra/Documents/Chorus/Engine tag --sort=-v:refname | head -1)..HEAD
+git -C /home/civ/Chorus/engine log --oneline $(git -C /home/civ/Chorus/engine tag --sort=-v:refname | head -1)..HEAD
 ```
 
 ### 1.3 Commit the Bump
 
 ```bash
-git -C /home/civorra/Documents/Chorus/Engine add lib/Chorus/Engine.pm Changes
-git -C /home/civorra/Documents/Chorus/Engine commit -m "release: bump version to X.YY"
+git -C /home/civ/Chorus/engine add lib/Chorus/Engine.pm Changes
+git -C /home/civ/Chorus/engine commit -m "release: bump version to X.YY"
 ```
 
 ---
@@ -75,7 +75,7 @@ git -C /home/civorra/Documents/Chorus/Engine commit -m "release: bump version to
 ### 2.1 Regenerate MANIFEST
 
 ```bash
-cd /home/civorra/Documents/Chorus/Engine && perl Makefile.PL && make manifest
+cd /home/civ/Chorus/engine && perl Makefile.PL && make manifest
 ```
 
 Verify that `lib/Chorus/Engine/AIAgent.pod` is present in `MANIFEST`.
@@ -84,7 +84,7 @@ Verify that `agent/`, `doc/`, `MYMETA.*`, `Makefile` are absent (excluded by `MA
 ### 2.2 Check MANIFEST Discrepancies
 
 ```bash
-cd /home/civorra/Documents/Chorus/Engine && make distcheck 2>&1
+cd /home/civ/Chorus/engine && make distcheck 2>&1
 ```
 
 Zero discrepancies expected. If files are missing from `MANIFEST`: add them and re-run.
@@ -92,7 +92,7 @@ Zero discrepancies expected. If files are missing from `MANIFEST`: add them and 
 ### 2.3 Full Test Suite
 
 ```bash
-cd /home/civorra/Documents/Chorus/Engine && make test 2>&1
+cd /home/civ/Chorus/engine && make test 2>&1
 ```
 
 All tests must pass (ok). Stop if a test fails — never publish a distribution with failing tests.
@@ -100,13 +100,13 @@ All tests must pass (ok). Stop if a test fails — never publish a distribution 
 ### 2.4 Author Tests (POD)
 
 ```bash
-cd /home/civorra/Documents/Chorus/Engine && AUTHOR_TESTING=1 make test 2>&1
+cd /home/civ/Chorus/engine && AUTHOR_TESTING=1 make test 2>&1
 ```
 
 ### 2.5 Direct POD Check
 
 ```bash
-cd /home/civorra/Documents/Chorus/Engine && perl -e "
+cd /home/civ/Chorus/engine && perl -e "
   use Pod::Checker;
   podchecker('lib/Chorus/Engine.pm');
   podchecker('lib/Chorus/Expert.pm');
@@ -124,7 +124,7 @@ Zero errors expected.
 ## Phase 3 — Tarball Build
 
 ```bash
-cd /home/civorra/Documents/Chorus/Engine && make dist 2>&1
+cd /home/civ/Chorus/engine && make dist 2>&1
 ```
 
 Verify that the tarball `Chorus-X.YY.tar.gz` is created in `$ENGINE/`.
@@ -132,7 +132,7 @@ Verify that the tarball `Chorus-X.YY.tar.gz` is created in `$ENGINE/`.
 Inspect the contents to confirm the absence of unwanted files:
 
 ```bash
-tar tzf /home/civorra/Documents/Chorus/Engine/Chorus-X.YY.tar.gz | sort
+tar tzf /home/civ/Chorus/engine/Chorus-X.YY.tar.gz | sort
 ```
 
 Checkpoints:
@@ -165,7 +165,7 @@ password MOTDEPASSE
 ### 4.2 Upload
 
 ```bash
-cpan-upload /home/civorra/Documents/Chorus/Engine/Chorus-X.YY.tar.gz
+cpan-upload /home/civ/Chorus/engine/Chorus-X.YY.tar.gz
 ```
 
 After the upload:
@@ -180,20 +180,20 @@ After the upload:
 ### 5.1 Tag the Release
 
 ```bash
-git -C /home/civorra/Documents/Chorus/Engine tag vX.YY
-git -C /home/civorra/Documents/Chorus/Engine push origin vX.YY
+git -C /home/civ/Chorus/engine tag vX.YY
+git -C /home/civ/Chorus/engine push origin vX.YY
 ```
 
 ### 5.2 Push the Branch
 
 ```bash
-git -C /home/civorra/Documents/Chorus/Engine push origin devel
+git -C /home/civ/Chorus/engine push origin devel
 ```
 
 ### 5.3 Clean Up Build Artifacts
 
 ```bash
-cd /home/civorra/Documents/Chorus/Engine && make distclean
+cd /home/civ/Chorus/engine && make distclean
 ```
 
 Removes: `Makefile`, `MYMETA.*`, `pm_to_blib`, `blib/`, the `.tar.gz` tarball.
@@ -246,7 +246,7 @@ cpan CPAN::Uploader
 **Test the tarball locally before uploading:**
 
 ```bash
-cd /tmp && tar xzf /home/civorra/Documents/Chorus/Engine/Chorus-X.YY.tar.gz
+cd /tmp && tar xzf /home/civ/Chorus/engine/Chorus-X.YY.tar.gz
 cd Chorus-X.YY && perl Makefile.PL && make test
 ```
 
