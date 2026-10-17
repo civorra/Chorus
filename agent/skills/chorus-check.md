@@ -1688,6 +1688,46 @@ evaluable element(s) (<X>%) — <N> terminology-mapping anomaly/ies detected
 separately, not counted as product defects.
 ```
 
+**Thesaurus decisions appendix (--explain):** Before writing, check whether
+`$WORKSPACE/thesaurus-log-<project-slug>.md` exists.
+
+If it does, append the following section **after** the `## Synthèse` / `## Summary`
+table and before the closing horizontal rule at the end of the file:
+
+French corpus:
+```markdown
+---
+
+## Décisions terminologiques (résolutions manuelles)
+
+> Termes du thésaurus confirmés ou rejetés manuellement depuis chorus-web
+> (onglet Thésaurus du projet). Ces décisions sont déjà intégrées dans
+> `agent/thesaurus/<shard>.org` et seront prises en compte lors du prochain
+> `chorus-import-project`.
+
+<copy the full Markdown table from thesaurus-log-<project-slug>.md here>
+
+📒 Journal complet : `thesaurus-log-<project-slug>.md`
+```
+
+English corpus:
+```markdown
+---
+
+## Terminology Decisions (manual resolutions)
+
+> Thesaurus terms manually confirmed or rejected via the chorus-web Thesaurus tab.
+> These decisions are already integrated into `agent/thesaurus/<shard>.org` and
+> will be applied on the next `chorus-import-project` run.
+
+<copy the full Markdown table from thesaurus-log-<project-slug>.md here>
+
+📒 Full log: `thesaurus-log-<project-slug>.md`
+```
+
+If `thesaurus-log-<project-slug>.md` does not exist: skip this section entirely
+(no empty placeholder — the section only appears when there is something to report).
+
 Write to: `$WORKSPACE/explain-<project-slug>-<RUN_TIMESTAMP>.md` (`$WORKSPACE`
 as defined at the top of this document — `$SANDBOX/workspace/<entity>/reports/`,
 created if absent).
@@ -1910,6 +1950,38 @@ strict/permissive, or direct correction of the project document otherwise.>"
 `workspace/<entity>/reports/explain-<project-slug>-<RUN_TIMESTAMP>.md` for the full rule-by-rule detail of
 each element.*
 ```
+
+**Thesaurus decisions note (--summary):** Before writing, check whether
+`$WORKSPACE/thesaurus-log-<project-slug>.md` exists.
+
+If it does, append the following compact section **after** the `## Recommandation` /
+`## Recommendation` paragraph and before the closing `---` footnote line:
+
+French corpus:
+```markdown
+
+## Décisions terminologiques
+
+<N> terme(s) résolu(s) manuellement depuis chorus-web
+(<n_confirm> ✅ confirmé(s) · <n_reject> ❌ rejeté(s)).
+Voir le journal complet : `thesaurus-log-<project-slug>.md`
+```
+
+English corpus:
+```markdown
+
+## Terminology Decisions
+
+<N> term(s) manually resolved via chorus-web
+(<n_confirm> ✅ confirmed · <n_reject> ❌ rejected).
+Full log: `thesaurus-log-<project-slug>.md`
+```
+
+Count `<N>`, `<n_confirm>`, `<n_reject>` by counting table rows (excluding the
+header) in `thesaurus-log-<project-slug>.md` and matching `✅ Confirmé`/`❌ Rejeté`
+(FR) or `✅ Confirmed`/`❌ Rejected` (EN) in the Action column.
+
+If `thesaurus-log-<project-slug>.md` does not exist: skip this section entirely.
 
 Print: `[summary] Synthesis written → workspace/<entity>/reports/synthese-<project-slug>-<RUN_TIMESTAMP>.md`
 
