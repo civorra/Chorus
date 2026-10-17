@@ -1450,9 +1450,9 @@ sandbox-wide bookkeeping table):
   Sandbox-wide (not sharded — lives only in global.org, regardless of which Scope the
   term will eventually resolve to once confirmed).
 
-  | Project term   | Proposed KB mapping            | Flag              | Source import     |
-  |---|---|---|---|
-  | isolant soufflé | type_element: isolant_vrac ?  | ⚠️ _a_confirmer  | import-report-003 |
+  | Project term   | Proposed KB mapping            | Flag              | Source import     | Scope  |
+  |---|---|---|---|---|
+  | isolant soufflé | type_element: isolant_vrac ?  | ⚠️ _a_confirmer  | import-report-003 | global |
 
 * Out-of-scope terms (⬜)
   Terms explicitly identified as outside this sandbox's KB scope.
@@ -2054,8 +2054,18 @@ before Phase 6 completes.
 
 **New pending entry:**
 ```org
-| <project term> | type_element: <proposed> ? | ⚠️ _a_confirmer | import-report-<NNN> |
+| <project term> | type_element: <proposed> ? | ⚠️ _a_confirmer | import-report-<NNN> | <Scope: global or context-label> |
 ```
+
+> The `Scope` column (5th) records the import's Scope `C` at the time the ⚠️ was raised.
+> It is used by any future confirmation tool (chorus-web, chorus-import-project, etc.)
+> to determine which shard the confirmed alias should be written into — without this,
+> a webapp confirmation cannot know whether the term belongs in `global.org` or in a
+> client shard. Rows written by older versions of this skill that lack the 5th column
+> must be treated as `Scope = global` (backward-compatible default).
+> For `⚠️ confirmed → ✅`, the target shard is always derived from this column, not from
+> the current import's Scope — the engineer who confirms may be running a different import
+> than the one that originally raised the ⚠️.
 
 **Out-of-scope:**
 ```org
