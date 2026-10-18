@@ -1591,7 +1591,7 @@ French corpus (default template):
 | <slot_a> | <valeur> |
 | <slot_b> | <valeur> |
 
-**Pourquoi cette règle s'applique (et pas une autre) :**
+**Pourquoi cette règle s'applique :**
 <one or two sentences: which FIND.filtre condition matched, contrasted with the
 nearest sibling rule's filtre that did NOT match>
 
