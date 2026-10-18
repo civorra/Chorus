@@ -1635,7 +1635,7 @@ English corpus:
 | <slot_a> | <value> |
 | <slot_b> | <value> |
 
-**Why this rule applies (and not another):**
+**Why this rule applies:**
 <one or two sentences: which FIND filtre condition matched, contrasted with the
 nearest sibling rule's filtre that did NOT match>
 
