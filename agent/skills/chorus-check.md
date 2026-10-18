@@ -1573,6 +1573,7 @@ French corpus (default template):
 **Référence normative :** §<N> para <M> — <one-line summary of the requirement>
 <if e._rule_trace has more than one entry — chaîne complète de traçabilité:>
 **Chaîne de règles (`_rule_trace`) :**
+
 | Ordre | Règle | Référence corpus |
 |---|---|---|
 | 1 | `<rule_id_1>` | <corpus_ref_1> |
@@ -1617,6 +1618,7 @@ English corpus:
 **Normative reference:** §<N> para <M> — <one-line summary of the requirement>
 <if e._rule_trace has more than one entry — full traceability chain:>
 **Rule chain (`_rule_trace`):**
+
 | Order | Rule | Corpus reference |
 |---|---|---|
 | 1 | `<rule_id_1>` | <corpus_ref_1> |
