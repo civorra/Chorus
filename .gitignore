@@ -16,7 +16,8 @@ Build
 *.saved
 mcp
 sandboxes/
-.vscode/demo_en/**/.kb-hash
+sandboxes/demo_en/**/.kb-hash
+.vscode/
 .venv-*/
 
 # User sandbox working areas (unversioned, may host independent git repos)
