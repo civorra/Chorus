@@ -1,6 +1,7 @@
 # Skill — chorus-feed
 
 > Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich] [--harvest-aliases <import-report.org>]`
+> Trigger: `chorus-feed <sandbox-name> --unattended [--corpus-dir <path>] [--max-passes N]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: name of the sandbox directory under `$SANDBOXES/`
@@ -8,6 +9,12 @@
 >              **or** a document file requiring preprocessing (PDF, DOCX, XLSX/CSV, XML/HTML).
 >              If a document format is provided, the corresponding conversion skill is called automatically.
 > `--enrich`: activates Mode B (incremental enrichment) — absent by default
+> `--unattended`: activates Mode D — see §[Mode D — Unattended batch] below.
+>              One-file-per-session model: each invocation processes exactly one
+>              corpus file (Mode A or B) and exits. Prerequisite: `SCOPING.md`
+>              (confirmed) and `CORPUS-DIRECTIVES.md` must exist in `$SANDBOX/`.
+> `--corpus-dir <path>`: directory containing pre-split `.md` files (default: `$SANDBOX/corpus/`)
+> `--max-passes N`: absolute loop ceiling (default: `2 × number of corpus files`)
 > `--harvest-aliases <global.org|import-report.org>`: activates Mode C — integrates
 >              confirmed ✅ mappings into the KB `** Aliases` sections. Accepts either
 >              `$SANDBOX/agent/thesaurus/global.org` (recommended — harvests all
@@ -2009,6 +2016,182 @@ ELSE:
   Do NOT mention chorus-review-kb — KB is not yet stable.
 ```
 
+
+## Mode D — Unattended batch (`--unattended` required)
+
+> **One session = one file.** Each invocation processes exactly one corpus
+> file (Mode A or Mode B depending on checkpoint state) and exits.
+> This keeps every ECA session within timeout limits regardless of corpus size.
+> The webapp (or the operator) re-invokes until `"converged": true`.
+
+### Prerequisites check (blocking)
+
+Before any processing, verify:
+
+1. `SCOPING.md` exists in `$SANDBOX/` with status `CONFIRMED` or `LOCKED`.
+2. `CORPUS-DIRECTIVES.md` exists in `$SANDBOX/`.
+3. No `.chorus-wip.md` in `$SANDBOX/` (previous operation incomplete — stop and warn).
+4. At least one `.md` file in `--corpus-dir` (default: `$SANDBOX/corpus/`).
+
+If any prerequisite is missing → stop immediately:
+```
+⛔ chorus-feed --unattended: prerequisite missing — <reason>
+   Never create SCOPING.md or CORPUS-DIRECTIVES.md automatically.
+```
+
+### Step 0 — OOS reclassification (silent)
+
+Read existing coverage reports (`README.org * Coverage`) across all agents.
+For each `⛔ Out of scope` entry:
+
+| Motif | Action |
+|---|---|
+| `informative` / out-of-domain | Keep `⛔` — truly definitive |
+| `external-norm` | **Reclassify to `⏭ Deferred (external-norm)`** — the norm is absent from corpus, not out-of-domain |
+| `⛔ pré-exclu (scoping)` | Keep `⛔` — managed by `chorus-corpus-scoping`, not here |
+
+Record reclassifications for the final report.
+
+**⏭/⛔ decision rule:**
+
+| Pattern | Correct classification | Definitive? |
+|---|---|---|
+| Pure informative section (examples, rationale) | `⛔ OOS` | ✅ Yes |
+| Explicit out-of-domain | `⛔ OOS` | ✅ Yes |
+| External norm absent from corpus | `⏭ Deferred (external-norm)` | ⚠️ No — reopenable |
+| Procedural, no threshold | `⏭-S Deferred` | ⚠️ No — reopenable |
+| `⛔ pré-exclu (scoping)` | Separate category | ⚠️ No — revisable via scoping |
+
+### Step 1 — Read / initialize checkpoint
+
+Read `$SANDBOX/.chorus-unattended-state.json` if present.
+
+**If absent** (first run): create checkpoint with `status: "waiting"`, list
+all `.md` files from `--corpus-dir` in deterministic order (`NNN-<slug>.md`).
+
+**If present**:
+- `status: "converged"` → display convergence summary and exit (nothing to do).
+- `status: "cancelled"` → display cancellation message and exit.
+- `status: "stopped_max_passes"` → display max-passes message and exit.
+- `status: "waiting"` or `status: "running"` → resume from `current_file`.
+
+### Step 2 — Write "running" checkpoint
+
+**Before processing the file**, update checkpoint:
+
+```json
+{ "status": "running", "current_file": "<NNN-slug.md>",
+  "current_mode": "A|B", "last_update": "<ISO8601>" }
+```
+
+This ensures the webapp sees `status: "running"` immediately (progress bar active).
+
+### Step 3 — Process one file
+
+**If `current_mode = "A"`** (first pass on this file):
+→ Run full Mode A on `current_file` (§ Mode A above).
+
+**If `current_mode = "B"`** (second pass, enrich):
+→ Run Mode B `--enrich` on `current_file` (§ Mode B above).
+
+Apply the convergence criteria from Phase 6.5:
+`Deferred-S = 0 AND Deferred-C = 0 AND CORPUS:unresolved = 0`
+
+### Step 4 — Update checkpoint ("waiting") and evaluate
+
+After processing, update checkpoint:
+
+```json
+{
+  "status": "waiting",
+  "files_done": K,
+  "files_pending": N-K,
+  "coverage_pct": X,
+  "deferred_s": DS,
+  "deferred_c": DC,
+  "last_update": "<ISO8601>",
+  "next_action": "chorus-feed <sandbox> --unattended"
+}
+```
+
+Determine next state:
+
+| Condition | Next state | Action |
+|---|---|---|
+| All files done AND Deferred-S=0 AND Deferred-C=0 AND CORPUS:unresolved=0 | `converged` | Write final report, display ✅ |
+| All files done AND Deferred remain | Re-run Mode B on Deferred files (if < max_passes) OR `stopped_max_passes` | |
+| Files still pending | Process next file (Mode A) next session | |
+| `passes_done ≥ max_passes` | `stopped_max_passes` | Write report, signal incomplete |
+
+### Step 5 — Display end-of-session message
+
+```
+✅ Pass P/MAX done — <NNN-slug.md> (Mode A|B)
+   Coverage: X% · Deferred-S: DS · Deferred-C: DC · CORPUS:unresolved: U
+   Next: chorus-feed <sandbox> --unattended
+```
+
+If `status: "converged"`:
+```
+✅ Unattended run complete — full corpus coverage reached.
+   Passes: P · Files: N · Final coverage: X%
+   Report: $SANDBOX/agent/autofeed-report-<NNN>.md
+```
+
+### Checkpoint JSON structure (reference)
+
+```json
+{
+  "sandbox": "<name>",
+  "started": "<ISO8601>",
+  "status": "running|waiting|converged|stopped_max_passes|cancelled",
+  "files_total": N,
+  "files_done": K,
+  "files_pending": N-K,
+  "current_file": "<NNN-slug.md>",
+  "current_mode": "A|B",
+  "passes_done": P,
+  "max_passes": 2N,
+  "coverage_pct": X,
+  "deferred_s": DS,
+  "deferred_c": DC,
+  "oos_reclassified": [{"section": "§3.2", "from": "⛔ OOS", "to": "⏭ Deferred"}],
+  "last_update": "<ISO8601>",
+  "converged": false,
+  "next_action": "chorus-feed <sandbox> --unattended"
+}
+```
+
+> **Webapp integration (WEB-004):** poll `$SANDBOX/.chorus-unattended-state.json`
+> every 2s via `/api/sandbox/:id/unattended-state`. Progress bar =
+> `passes_done / max_passes * 100`. Cancel by writing `status: "cancelled"`.
+> The checkpoint replaces the complex real-time SSE originally planned for
+> WEB-004 Phase 1 — same UX, less code.
+
+### Final report (`$SANDBOX/agent/autofeed-report-<NNN>.md`)
+
+Written at convergence or `stopped_max_passes`. Contains:
+
+- Run summary (files, passes, duration, coverage)
+- Deferred-S residuals with motif (structural/too-ambiguous — corpus revision needed)
+- Deferred-C residuals with motif (contextual — dependency or external norm)
+- `⛔ OOS` definitive list
+- OOS reclassified to Deferred (Step 0)
+- CORPUS:unresolved residuals
+- **"Corpus extensions suggested"** section (if any `external-norm` Deferred):
+
+```markdown
+## Corpus extensions suggested
+
+The following sections are blocked on an external norm absent from the corpus.
+Add the listed sources and re-run --unattended.
+
+| Blocked section | Missing norm | Deferred motif |
+|---|---|---|
+| §3.2 — PQC algorithms | NIST SP 800-208 | external-norm |
+```
+
+---
 
 ## Mode B — Incremental Enrichment (`--enrich` required)
 
