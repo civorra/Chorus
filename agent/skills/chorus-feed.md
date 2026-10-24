@@ -2062,18 +2062,35 @@ Record reclassifications for the final report.
 | Procedural, no threshold | `⏭-S Deferred` | ⚠️ No — reopenable |
 | `⛔ pré-exclu (scoping)` | Separate category | ⚠️ No — revisable via scoping |
 
+### Step 0.5 — Detect mode: pre-split vs single-corpus
+
+Read `SCOPING.md § Agents` (if present):
+- If agent entries reference files matching `corpus/NNN-<slug>.md` → **`mode: "presplit"`**
+- Otherwise → **`mode: "single"`**
+
+> **Pre-split constraint:** in `presplit` mode, Phase A (Mode A × N agents)
+> must be **fully completed before any Mode B** pass. Agents share SHARED/CONTEXT
+> sections — enriching one agent before its dependencies are initialized produces
+> incorrect Deferred counts and cascading misses.
+
 ### Step 1 — Read / initialize checkpoint
 
 Read `$SANDBOX/.chorus-unattended-state.json` if present.
 
-**If absent** (first run): create checkpoint with `status: "waiting"`, list
-all `.md` files from `--corpus-dir` in deterministic order (`NNN-<slug>.md`).
+**If absent** (first run): create checkpoint:
+```json
+{ "status": "waiting", "mode": "presplit|single", "phase": "A",
+  "files_mode_a_pending": ["001-slug.md", "002-slug.md", ...],
+  "files_mode_b_pending": [],
+  "passes_done": 0, "max_passes": 2N }
+```
 
 **If present**:
-- `status: "converged"` → display convergence summary and exit (nothing to do).
+- `status: "converged"` → display convergence summary and exit.
 - `status: "cancelled"` → display cancellation message and exit.
 - `status: "stopped_max_passes"` → display max-passes message and exit.
-- `status: "waiting"` or `status: "running"` → resume from `current_file`.
+- `status: "waiting"` → resume from next pending file (Phase A or B).
+- `status: "running"` → previous session may have crashed; resume from `current_file`.
 
 ### Step 2 — Write "running" checkpoint
 
@@ -2088,13 +2105,22 @@ This ensures the webapp sees `status: "running"` immediately (progress bar activ
 
 ### Step 3 — Process one file
 
-**If `current_mode = "A"`** (first pass on this file):
-→ Run full Mode A on `current_file` (§ Mode A above).
+Determine which file to process this session:
 
-**If `current_mode = "B"`** (second pass, enrich):
-→ Run Mode B `--enrich` on `current_file` (§ Mode B above).
+**`presplit` mode:**
+- If `files_mode_a_pending` is non-empty → take first file, run **Mode A**.
+- Else if `files_mode_b_pending` is non-empty → take first file, run **Mode B `--enrich`**.
+- Else → evaluate convergence (Step 4).
 
-Apply the convergence criteria from Phase 6.5:
+**`single` mode:**
+- If `files_mode_a_pending` is non-empty → take first file, run **Mode A** (all agents).
+- Else if `files_mode_b_pending` is non-empty → take first file, run **Mode B `--enrich`**.
+- Else → evaluate convergence (Step 4).
+
+After processing, remove the file from its pending list and evaluate Phase 6.5.
+If the processed file still has Deferred after Mode A → add to `files_mode_b_pending`.
+
+Convergence criterion:
 `Deferred-S = 0 AND Deferred-C = 0 AND CORPUS:unresolved = 0`
 
 ### Step 4 — Update checkpoint ("waiting") and evaluate
@@ -2145,13 +2171,15 @@ If `status: "converged"`:
   "sandbox": "<name>",
   "started": "<ISO8601>",
   "status": "running|waiting|converged|stopped_max_passes|cancelled",
+  "mode": "presplit|single",
+  "phase": "A|B",
   "files_total": N,
-  "files_done": K,
-  "files_pending": N-K,
+  "files_mode_a_pending": ["003-crypto-asym.md", "004-gestion-cles.md"],
+  "files_mode_b_pending": ["001-crypto-alea.md"],
   "current_file": "<NNN-slug.md>",
   "current_mode": "A|B",
   "passes_done": P,
-  "max_passes": 2N,
+  "max_passes": "2N",
   "coverage_pct": X,
   "deferred_s": DS,
   "deferred_c": DC,
@@ -2161,6 +2189,10 @@ If `status: "converged"`:
   "next_action": "chorus-feed <sandbox> --unattended"
 }
 ```
+
+- `phase`: `"A"` while `files_mode_a_pending` is non-empty; `"B"` once Phase A is complete.
+- `files_mode_a_pending`: files not yet initialized (Mode A). In `presplit` mode, each maps to one agent.
+- `files_mode_b_pending`: files whose agent has residual Deferred after Mode A.
 
 > **Webapp integration (WEB-004):** poll `$SANDBOX/.chorus-unattended-state.json`
 > every 2s via `/api/sandbox/:id/unattended-state`. Progress bar =
