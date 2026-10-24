@@ -83,6 +83,17 @@ If **all files converge** (SOLVED, 0 discordances, 0 unprocessed) → report:
    The KB covers all tested cases. No enrichment needed at this time.
 ```
 
+> ⚠️ **Partial convergence warning:** this message is only reliable if a
+> `project-stress-*.json` file also exists in `$SANDBOX/`. Without adversarial
+> test cases (boundary values, missing mandatory slots, `_AFTER` propagation
+> chains), the suite exercises nominal paths only — edge-case gaps remain
+> invisible. If no stress file is present, append to the report:
+> ```
+> ⚠️ Convergence is partial — no chorus-stress suite found.
+>    Run: chorus-stress <sandbox-name>  then re-run chorus-strengthen
+>    for a complete picture.
+> ```
+
 and stop. No gap report is needed.
 
 ---
@@ -147,6 +158,19 @@ For each element, identify:
 - The expected result (from `_resultats_attendus` in the JSON, or from the ID naming convention)
 - The actual result (from the pipeline output)
 - The rule that fired (if any) — visible in the pipeline output as `raison_non_conformite`
+- The project file it belongs to (`project-rules-iso`, `project-edges`, `project-cross`, `project-scale`)
+
+> **Diagnostic method by suite type — run these checks BEFORE modifying any YAML:**
+>
+> | Suite in discordance | First diagnostic | Rationale |
+> |---|---|---|
+> | `edges` or `scale` | Run `chorus-markdown --report` on the source `.md` file(s) for the implicated threshold | A discordance concentrated on numeric thresholds may come from an OCR/vision extraction error in the `.md` — fixing the YAML would address a symptom, not the cause |
+> | `cross` | Read `agent/chorus/index.org § Slot ownership` for the implicated slot | Cross discordances often trace to a "rule permanently blocked" pattern — a guard EXCEPTION was written too early by an upstream agent. The slot ownership table immediately identifies the responsible agent |
+> | `iso` | The gap is most likely a genuine rule quality issue — proceed normally with Phase 3 |
+>
+> A discordance concentrated on a single suite type is a **diagnostic signal**: apply
+> the above check before reading any rule file. If the check reveals an extraction
+> error or a slot ownership conflict, fix at that level — do not modify the YAML rule.
   or from the absence of any firing rule
 - The project file it belongs to (`project-rules-iso`, `project-edges`, etc.)
 

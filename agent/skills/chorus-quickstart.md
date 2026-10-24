@@ -234,6 +234,10 @@ chorus-strengthen <sandbox>               ← identify gaps
 chorus-feed <sandbox> fix.txt --enrich    ← bucket C: KB gap
    ↓
 chorus-stress <sandbox>                   ← regenerate adversarial tests
+                                         ⚠️ mandatory before claiming convergence:
+                                            chorus-strengthen reports "✅ converged"
+                                            only on the suites it ran — without stress
+                                            tests, edge-case gaps remain invisible
 chorus-check  <sandbox> --all
    ↓
 chorus-strengthen <sandbox>               ← verify convergence

@@ -780,6 +780,24 @@ EFFET: |
 > → See canonical rule in `chorus-engine.md § Canonical Language Rule`.
 
 > **CORPUS line:** when the rule encodes a single standard article, one `CORPUS:` line suffices.
+
+> **Aggregation rules without a named normative reference:** some rules aggregate
+> sub-verdicts (e.g. `aggregate-verdict`, `publish-taille-min`) without a
+> single normative article to cite. In this case, the `CORPUS:` header **must**
+> carry an explicit justification comment rather than being left vague or omitted:
+>
+> ```yaml
+> # CORPUS: agrégation interne — pas de règle normative nommée
+> #         (synthèse des verdicts R01-R04, aucun §-ref direct dans le corpus)
+> ```
+>
+> This annotation is mandatory for diagnosability: without it, a
+> `chorus-strengthen` gap on this rule cannot be traced back to a corpus
+> section — the analyst has no starting point to determine whether the
+> aggregation logic is correct. A vague `# CORPUS: §2.1 — agrégation` that
+> cites a section but claims no named rule is equivalent to an absent reference
+> and must be replaced with the explicit form above.
+
 > When the rule combines several articles, list them all:
 > ```yaml
 > # CORPUS: §4.2 — NF DTU 31.2 — Section minimale montant porteur
