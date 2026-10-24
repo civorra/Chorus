@@ -52,6 +52,23 @@
 
 ### 0.0 Sandbox inventory (first tool call — token keepalive)
 
+**KB consistency pre-flight (before generating any JSON)**
+
+If `scripts/validate-kb-consistency.py` is available in `$ENGINE/scripts/`,
+run it silently on the sandbox:
+
+```bash
+python3 $ENGINE/scripts/validate-kb-consistency.py $SANDBOX --quiet
+```
+
+| Result | Action |
+|---|---|
+| ✅ 0 divergences | Proceed normally |
+| ⚠️ divergences present | **Warn the operator** with the divergence list; continue only if the operator confirms or passes `--force`. Do not silently generate JSON over a known-inconsistent KB — values inferred from a mismatched KB may be wrong by construction. |
+
+> Skip this pre-flight if `$ENGINE` is unavailable (standalone sandbox,
+> no engine checkout). Never block generation for a missing script.
+
 **Before reading any file**, read the directory tree $SANDBOX/` immediately.
 
 This serves two purposes:

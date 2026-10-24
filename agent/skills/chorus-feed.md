@@ -1527,6 +1527,27 @@ rm -f $SANDBOX/agent/.kb-hash
 rm -f $SANDBOX/.last-check-results.json
 ```
 
+**KB consistency gate (mandatory after invalidation)**
+
+Run `scripts/validate-kb-consistency.py` on the sandbox before closing
+the agent. This check verifies internal coherence between the three
+artefacts just written (org KB ↔ YAML rules ↔ Helpers.pm):
+
+```bash
+python3 $ENGINE/scripts/validate-kb-consistency.py $SANDBOX [--agent <slug>]
+```
+
+| Outcome | Action |
+|---|---|
+| ✅ 0 divergences | Close agent — proceed to Phase 6.5 |
+| ⚠️ HELPERS-EXIST / HELPERS-SYNC | Fix before closing: add missing `** function` section in org, or add/remove from `@EXPORT_OK` |
+| ⚠️ TYPE-DEAD | Fix YAML filtre or add value to org catalogue |
+| ⚠️ TYPE-ORPHAN | Fix org catalogue or add `# intentionally uncovered — <reason>` annotation |
+
+> This gate is **non-blocking only if every divergence is annotated**
+> `# intentionally uncovered`. An unannotated divergence must be resolved
+> before the agent status is set to ✅ in `README.org`.
+
 ### Phase 6.5 — Coverage report (mandatory)
 
 **After every Mode A execution**, produce a structured coverage report and
