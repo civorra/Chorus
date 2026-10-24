@@ -317,6 +317,23 @@ about the value itself.
 > `type_element`/slots in `rules/<agent>/*.yml`) and the corresponding KB org
 > section, to determine whether:
 
+1. The rule's own documentation/comments acknowledge a limitation relevant
+   here (e.g. "this rule only flags X, it does not judge sufficiency of Y" —
+   exactly the kind of self-documented scope limit that should be read, not
+   guessed at).
+2. The verdict is computed by a **downstream generic function** (e.g. a
+   catch-all `element_verdict()`-style dispatcher in `run.pl`) that combines
+   multiple slots from possibly multiple rules into a final binary verdict —
+   if so, check whether that combination logic correctly reflects the
+   standard's actual requirement (here: whether a *justified, explicitly
+   claimed* augmentation should be treated differently from an undocumented
+   one) or applies an overly blunt rule (any augmentation ⇒ NON_CONFORME,
+   regardless of justification).
+3. The source document explicitly justifies/claims the condition the verdict
+   is penalising (as in the EAL augmentation example) — if so, this is a
+   strong signal that the defect lies in the verdict-computation logic, not
+   in the data or its typing.
+
 > ⚠️ **Contamination guard — do not inherit `--from-report`'s restrictions by
 > association.** If the `explain-*.md` being patched carries a banner stating
 > it was generated in `chorus-check --from-report` mode (e.g. "Per this mode's
@@ -343,25 +360,8 @@ about the value itself.
 > honestly, rather than presenting second-hand knowledge as a fresh
 > cross-check finding.
 
-1. The rule's own documentation/comments acknowledge a limitation relevant
-   here (e.g. "this rule only flags X, it does not judge sufficiency of Y" —
-   exactly the kind of self-documented scope limit that should be read, not
-   guessed at).
-2. The verdict is computed by a **downstream generic function** (e.g. a
-   catch-all `element_verdict()`-style dispatcher in `run.pl`) that combines
-   multiple slots from possibly multiple rules into a final binary verdict —
-   if so, check whether that combination logic correctly reflects the
-   standard's actual requirement (here: whether a *justified, explicitly
-   claimed* augmentation should be treated differently from an undocumented
-   one) or applies an overly blunt rule (any augmentation ⇒ NON_CONFORME,
-   regardless of justification).
-3. The source document explicitly justifies/claims the condition the verdict
-   is penalising (as in the EAL augmentation example) — if so, this is a
-   strong signal that the defect lies in the verdict-computation logic, not
-   in the data or its typing.
-
 If this investigation confirms a verdict-logic defect, classify as
-🏷️⚖️ Verdict logic defect (below) — **do not** settle for ❓ Still unresolved
+⚖️ Verdict logic defect (below) — **do not** settle for ❓ Still unresolved
 merely because the answer requires reading a rule file; reading rule files
 when relevant to the question is explicitly within this skill's scope.
 
