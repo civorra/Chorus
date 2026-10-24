@@ -1724,6 +1724,22 @@ Deferred reasons (use one per entry):
 - `too-ambiguous` — section wording is insufficiently precise to codify reliably
   *(only valid after Step 2b retry has failed — see below)*
 
+**Sub-type tags ⏭-S / ⏭-C** (append to the reason, inline — e.g. `too-ambiguous / ⏭-S`):
+
+| Tag | Meaning | Apply to motifs |
+|---|---|---|
+| `⏭-S` Structural | Section is too ambiguous or inaccessible — the corpus itself cannot produce a rule in its current state; no further `--enrich` pass will unblock it without a corpus revision | `too-ambiguous`, `diagram-dependent` |
+| `⏭-C` Contextual | Rule is expressible but depends on an inter-agent or inter-Frame relationship not yet resolved; a later `--enrich` pass targeting the right agent may unblock it | `multi-element` |
+
+For `external-norm` and `procedural`: apply `⏭-S` if the section is genuinely
+inaccessible (missing reference standard, procedural with no extractable threshold),
+`⏭-C` if it is only temporarily unresolved pending another agent's output.
+When uncertain, omit the sub-type tag rather than forcing it.
+
+> These tags appear **only in the README.org `detail` field** of each Deferred entry
+> (inside the parentheses) — they do not change the `** ⏭ Deferred` heading format
+> and have no impact on webapp parsing.
+
 **Step 2b — Mandatory retry protocol for `too-ambiguous` candidates**
 
 Every section tentatively classified `too-ambiguous` in Step 2a **must** go through
@@ -1937,7 +1953,7 @@ Check the `* Agent status` table in `README.org`:
 | **All agents processed AND 🧮 Helper-source pending > 0** | Write the missing Helper(s) now (Phase 5.5) for the pending sections, then re-run Step 1c. Still not a stability point — a KB with an unextracted `HELPER-SOURCE` section is exactly the incomplete-coverage failure mode this mechanism exists to prevent. |
 | **All agents processed AND 🔍 UNSCANNED > 0** | Re-run `scripts/corpus-inventory.py` (Step 1d), manually re-check the listed corpus file(s) against their `Coverage` block, classify any genuinely missing section into ✅/⏭/⛔, then re-run the script. Still not a stability point. |
 | **All agents processed AND Step 1e flagged any `MISSING _rule_trace`/`MISSING motif`** | Fix each flagged rule in place (per Step 1e above), then re-run the Step 1e scan. Still not a stability point — same incomplete-coverage failure mode as Helper-source pending, just for traceability instead of normative content. |
-| **All agents processed AND ⏭ Deferred = 0 AND 🧮 Helper-source pending = 0 AND 🔍 UNSCANNED = 0 AND ⚠️ CORPUS: unresolved = 0 AND Step 1e clean** | **Stability point 1 reached** — see convergence check below. |
+| **All agents processed AND ⏭ Deferred-S = 0 AND ⏭ Deferred-C = 0 AND 🧮 Helper-source pending = 0 AND 🔍 UNSCANNED = 0 AND ⚠️ CORPUS: unresolved = 0 AND Step 1e clean** | **Stability point 1 reached** — see convergence check below. |
 
 **Stability point 1 — Single corpus mode (no pre-split)**
 
@@ -1948,7 +1964,8 @@ If no agent files exist (small corpus, pre-split not triggered):
 **Convergence check at stability point 1**
 
 ```
-IF ⏭ Deferred = 0
+IF ⏭ Deferred-S = 0
+   AND ⏭ Deferred-C = 0
    AND 🧮 Helper-source pending = 0
    AND 🔍 UNSCANNED = 0
    AND ⚠️ CORPUS: unresolved = 0 :
@@ -2316,7 +2333,8 @@ If `N_remaining == 0 AND N_helper_remaining == 0 AND N_unscanned_remaining == 0`
 Then apply the **Step 4b convergence check** (same logic as Phase 6.5 Step 4b):
 
 ```
-IF ⏭ Deferred = 0
+IF ⏭ Deferred-S = 0
+   AND ⏭ Deferred-C = 0
    AND 🧮 Helper-source pending = 0
    AND 🔍 UNSCANNED = 0
    AND ⚠️ CORPUS: unresolved = 0 :
@@ -2377,8 +2395,8 @@ Display confirmation:
 
 | Point | Condition | What it means |
 |---|---|---|
-| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
-| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
+| **SP1 — Mode A complete** | All agents in `SCOPING.md ## Agents` have status ✅ in `README.org * Agent status` AND `⏭ Deferred-S = 0` AND `⏭ Deferred-C = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB structurally complete for this corpus — ready for mechanical audit |
+| **SP2 — Post-enrich** | A `--enrich` pass completes Phase B4.5 (WIP deleted) AND `⏭ Deferred-S = 0` AND `⏭ Deferred-C = 0` AND `🧮 Helper-source pending = 0` AND `🔍 UNSCANNED = 0` AND `⚠️ CORPUS: unresolved = 0` | KB updated — ready for re-audit |
 
 > ⛔ `chorus-review-kb` must **never** be invoked between two agent passes of a
 > pre-split Mode A cycle — the KB is structurally incomplete until all agents
@@ -2388,7 +2406,7 @@ Display confirmation:
 ### Loop diagram
 
 ```
-[SP1 reached — all agents done, Deferred=0, CORPUS:unresolved=0]
+[SP1 reached — all agents done, Deferred-S=0, Deferred-C=0, CORPUS:unresolved=0]
         │
         ▼
 chorus-review-kb <sandbox> --format org
