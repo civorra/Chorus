@@ -2064,9 +2064,39 @@ Record reclassifications for the final report.
 
 ### Step 0.5 — Detect mode: pre-split vs single-corpus
 
-Read `SCOPING.md § Agents` (if present):
-- If agent entries reference files matching `corpus/NNN-<slug>.md` → **`mode: "presplit"`**
-- Otherwise → **`mode: "single"`**
+> ⚠️ **Do not use a single regex on SCOPING.md to detect pre-split** — the
+> `## Corpus reviewed` section always lists `corpus/NNN-*.md` source files,
+> producing a guaranteed false positive. Use the 3-indicator logic below.
+
+Detection requires **all 3 indicators** to be true for `mode: "presplit"`:
+
+1. **Indicator 1 — Phase 2 section present in SCOPING.md**
+   The SCOPING.md contains a line matching:
+   `chorus-corpus-scoping.*Phase 2` OR `Corpus pre-split complete`
+   (case-insensitive). This section is only written by `chorus-corpus-scoping`
+   after Phase 2 completes — never by Phase 1 alone.
+
+2. **Indicator 2 — Agent slugs listed in SCOPING.md**
+   Extract slugs from the `## Agents` table (e.g. `` `crypto-alea` ``,
+   `` `crypto-asym` ``). At least one slug must be found.
+
+3. **Indicator 3 — Agent corpus files exist on the filesystem**
+   At least one file matching `$SANDBOX/corpus/NNN-<slug>.md` exists where
+   `<slug>` matches one of the slugs from Indicator 2.
+   → Filesystem check, not just a regex on SCOPING.md content.
+
+```
+if indicator_1 AND indicator_2 AND indicator_3:
+    mode = "presplit"
+    agent_files = sorted matched files from indicator_3
+else:
+    mode = "single"
+```
+
+Edge case — Phase 2 planned but files not yet generated:
+if Indicator 1 is true but Indicator 3 is false → `mode: "single"` (Phase 2
+was scoped but corpus files were not yet produced; treat as single-corpus
+until files exist).
 
 > **Pre-split constraint:** in `presplit` mode, Phase A (Mode A × N agents)
 > must be **fully completed before any Mode B** pass. Agents share SHARED/CONTEXT
