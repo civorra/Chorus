@@ -969,6 +969,63 @@ Mandatory fill order:
    instead of at `chorus-check`/`perl run.pl` time.
 10. Constraints & Pitfalls
 
+#### ⛔ Mandatory: document aggregate co-presence constraint for `chorus-create-project` (step 8 → 10)
+
+**Trigger:** whenever the Rule catalog (step 8) contains an **aggregate rule** — i.e. a
+rule whose ACTION iterates a list of expected child Frames and blocks until all of them
+have a given slot defined (pattern: `push @pending, $id unless defined $child->get('<slot>')`,
+or an fmatch loop collecting a "not-yet-set" list, or an equivalent bounded-wait counter).
+
+**Why this matters:** `chorus-create-project` reads `Constraints & Pitfalls` to understand
+test-generation constraints. An aggregate rule creates a **silent co-presence dependency**:
+the parent Frame cannot produce its verdict unless ALL expected child Frames are present in
+the **same project JSON file**. Without explicit documentation, the skill generates parent
+Frames in isolation → the aggregate never fires → `<parent_verdict_slot>` never set → all
+such Frames left `(unprocessed)` in every generated test file, with no error at generation
+time and no diagnostic at `chorus-check` time.
+
+**Detection signal (scan during step 8 Rule catalog authoring):**
+
+```bash
+# In the ACTION of the aggregate rule being generated, look for:
+grep -E "push @pending|unless defined.*get\(|scalar.*fmatch.*> 0" <rule-file>
+```
+
+**Mandatory action** — if the pattern is present, add this entry to `Constraints & Pitfalls`
+(step 10) of the **same agent's org file**:
+
+```org
+- **⛔ `<parent_frame_type>` + ALL its `<child_frame_type>` Frames MUST co-appear in the
+  project JSON — `chorus-create-project` constraint, never generate isolated Frames.**
+  Pipeline: R<N> (aggregate) waits for every `<child_frame_type>` listed in
+  `<elements_slot>` to have `<child_verdict_slot>` defined. Without the full group,
+  the aggregate loops indefinitely → `<parent_verdict_slot>` never set →
+  `<downstream_agent>` sees missing input → Frames left (unprocessed).
+  **Test generation rule:** always output one `<parent_frame_type>` Frame +
+  ALL its catalog `<child_frame_type>` Frames as a unit (see Helper catalog for the
+  exhaustive per-<parent_frame_type> list). Conformant scenario: `<child_input_slot>=1`
+  on all children. Non-conformant scenario: `<child_input_slot>=0` on one or more.
+  Never generate a parent without its children or children without their parent.
+```
+
+Template variables:
+
+| Variable | How to fill |
+|---|---|
+| `<parent_frame_type>` | Frame type whose verdict the aggregate writes (e.g. `sar_component`) |
+| `<child_frame_type>` | Frame type iterated by the aggregate (e.g. `sar_element`) |
+| `<elements_slot>` | Slot carrying the expected child list (e.g. `elements`) |
+| `<child_verdict_slot>` | Slot the aggregate checks on each child (e.g. `sar_content_ok`) |
+| `<parent_verdict_slot>` | Slot the aggregate writes on the parent (e.g. `sar_component_declared`) |
+| `<child_input_slot>` | Project-JSON input slot driving the child verdict (e.g. `content_declared`) |
+| `<downstream_agent>` | Agent that reads `<parent_verdict_slot>` downstream (if known) |
+
+> **This constraint is easy to document at authoring time and expensive to reconstruct
+> after the fact.** Its absence produces silent `(unprocessed)` Frames in every test file —
+> no error at generation time, no diagnostic clue at `chorus-check` time; root cause only
+> visible after a `chorus-strengthen` analysis (incident: sandbox `05c-CC-3.1.4-NEW-TMP`,
+> 2026-10-25, 233 discordances traced to 7 SAR agent org files missing this entry).
+
 #### ⛔ Mandatory check before authoring any CONDITION/EXCEPTION on a cross-agent targeting slot (step 3/8)
 
 Before writing a `CONDITION`/`EXCEPTION` clause that reads a targeting slot
@@ -1354,6 +1411,15 @@ YAML Checklist:
       the cycle. Never assume a lower-numbered rule fires before a higher-numbered one.
 - [ ] ⛔ **`fmatch` in YAML ACTION** → guaranteed infinite loop — use the two-rule pattern (Rule A: per-Frame computation, Rule B: EXCEPTION fmatch + TERMINAL: solved + ACTION: "1") or pure Perl `addrule()` as fallback (see `chorus-check.md` Phase 3)
 - [ ] ⛔ **`TERMINAL: solved` on a per-Frame computation rule in multi-patient pipelines** → pipeline stops after the first patient — split into Rule A (computation, no TERMINAL) + Rule B (global termination via EXCEPTION fmatch)
+- [ ] ⛔ **Aggregate rule generated?** (`push @pending` / fmatch loop awaiting child Frames) →
+  verify the owning agent's `Constraints & Pitfalls` in `agent/chorus/<slug>.org` contains the
+  **co-presence constraint** (see Phase 3 step 10 "Mandatory: document aggregate co-presence
+  constraint"). If absent → add it now, before `chorus-check` discovers it as `(unprocessed)`
+  Frames. *This check applies to every rule whose ACTION gathers a list of child Frames and
+  `return 0`s while any child slot is undefined — regardless of whether the rule also carries
+  a bounded-wait counter (Step 5e of `chorus-check.md` catches the runtime bug; this check
+  catches the missing KB documentation that prevents `chorus-create-project` from generating
+  correct test data).*
 - [ ] If `PREMISES` present: consistent with the KB `Slot dictionary`
 
 ### Phase 5.5 — Generate Perl Helpers
