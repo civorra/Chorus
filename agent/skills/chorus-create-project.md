@@ -501,6 +501,37 @@ the threshold in the correct direction.
 > rejected by a universal rule even if it was designed to test a completely different criterion.
 > Annotate the verification in `_note_calc` with the agent name and rule reference.
 
+> ⚠️ **KO fixtures — CONDITION-satisfying slots mandatory (silent-rule trap).**
+> A KO fixture that **omits a slot required by its target rule's `CONDITION`** will
+> silently get the **wrong verdict**: the rule never fires → the element passes as CONFORME
+> → the fixture appears as a Bucket B discordance in `chorus-strengthen` — but the gap is
+> in the *fixture*, not in the rule. This is distinct from Bucket B (rule too permissive):
+> here the rule IS correct, the fixture is just never reaching it.
+>
+> **Canonical example (sandbox `08b-ANSSI-PG-083-CENTRIC-BIS`, 2026-10-25):**
+> R13b targets `encapsulation_chiffrement` with:
+> ```
+> CONDITION: $f->{pq_vise} && defined $f->{type_produit} && $f->{type_produit} eq 'produit_final'
+> ```
+> Fixture `S-ENC-KO-02` had `pq_vise=1` but **no `type_produit`** → R13b silent →
+> element CONFORME despite intended KO → appeared as Bucket B discordance after
+> 3 sessions of chorus-fix/enrich, root cause only discovered by reading R13b's CONDITION.
+>
+> **⛔ Rule — KO fixtures:** for every KO test case, read the **full `CONDITION`** of its
+> target rule and include **every slot** that appears in it with a value that **satisfies**
+> the CONDITION (so the rule actually fires). Only the specific "KO" slot should carry
+> a failing value. Optional slots required by CONDITION are **not optional in KO fixtures**.
+>
+> **Procedure (apply per KO element in Phase 2/3):**
+> 1. Identify the target rule in `$SANDBOX/rules/<slug>/` (the rule this KO element tests).
+> 2. Extract its full `CONDITION` clause.
+> 3. For each slot in CONDITION: include it in the fixture with a value satisfying the CONDITION.
+> 4. Annotate in `_note_calc`: `"<slot> inclus pour satisfaire CONDITION <rule-id>"`.
+>
+> **Detection in `chorus-strengthen`:** if a KO element gets CONFORME but no rule fired
+> on it (no rule appears in the pipeline output for that element), suspect this trap before
+> classifying as Bucket B — check the CONDITION of the expected target rule first.
+
 > ⚠️ **Lifecycle/aggregation rules — multi-slot `CONDITION`, pipeline-blocking if never satisfied.**
 > Some rules (typically the last rule of an agent, aggregating a verdict across several
 > prior phases) have a `CONDITION` requiring **several `conforme_*`/status slots to be
