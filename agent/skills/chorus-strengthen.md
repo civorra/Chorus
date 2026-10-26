@@ -177,10 +177,65 @@ under a dedicated section (§ Uncertain stress results).
 
 If no `project-stress-*.json` file exists → skip this step silently.
 
+### 2.0-bis — Project-file bug pre-filter (C1–C5 detection)
+
+> **Purpose:** some discordances originate from a bug in the project JSON itself
+> (wrong slot, wrong id convention) rather than from a missing or incorrect KB rule.
+> Classifying them as "rule gaps" would produce misleading gap reports and unnecessary
+> KB modifications. This step detects and quarantines them **before** Phase 2.1.
+>
+> **Incident (2026-10-26, sandbox 05c-CC-3.1.4-NEW-TMP):** `S-FDP_ETC.2` had
+> `besoin_conformite: 1` in `project-scale.json` → `toe-structure` fired on an SFR
+> component → `introduction_ok: 0` → `verdict: FAILED`. `chorus-strengthen` would
+> have misclassified this as "Rule too permissive" and proposed spurious YAML changes.
+
+For each discordant element, read its entry in its project JSON file and check:
+
+| Pattern | Bug type | Signature |
+|---|---|---|
+| **C2** | `besoin_conformite` on non-ST/PP/TOE | Element has `besoin_conformite` in JSON AND `type_element` does NOT match `^(ST\|PP\|TOE)$` |
+| **C3** | sfr_element -KO-RNN- naming | Element id contains `-KO-R\d+` AND `type_element` matches `\.\d+\.\d+$` (sfr_element) |
+| **C4** | SAR -KO- with sar_component_declared=1 | Element id contains `-KO-` AND `type_element` matches `^(ACO\|ADV\|AGD\|ALC\|ASE\|ATE\|AVA)_` AND run output shows `sar_component_declared: 1` |
+| **C5** | conformance-ctrl driver on -OK- ST/PP/TOE | Element id contains `-OK-` AND `type_element` in `(ST, PP, TOE)` AND run output shows `pipeline_complete_ok: 1` on this frame |
+
+Build a **project-bug exclusion set** `project_bug_ids`:
+
+```
+project_bug_ids = {}   # id → { bug_type, project_file, fix_action }
+
+for each discordant element:
+    entry = read element from its project-*.json
+    if C2 pattern matches:
+        project_bug_ids[id] = {
+          bug_type: "C2 — besoin_conformite on SFR/SAR frame",
+          project_file: "<slug>.json",
+          fix_action: "regenerate with ⟲ (chorus-create-project --strategy <slug> applies C2 automatically)"
+        }
+    elif C3 pattern matches: project_bug_ids[id] = { bug_type: "C3 — sfr_element -KO-RNN- naming", … }
+    elif C4 pattern matches: project_bug_ids[id] = { bug_type: "C4 — SAR -KO- sar_component_declared=1", … }
+    elif C5 pattern matches: project_bug_ids[id] = { bug_type: "C5 — conformance-ctrl driver on -OK-", … }
+```
+
+**Any element in `project_bug_ids` is excluded from Phase 2.1 classification** — it is
+NOT a KB gap, NOT listed in Phase 4 gap report, and does NOT appear in the enrichment
+roadmap. It is reported in Phase 4 under a dedicated section **§ Project-file bugs**.
+
+If `project_bug_ids` is non-empty, record for the gap report:
+```
+  N element(s) identified as project-file bugs (Cx) — excluded from KB gap classification.
+  Fix: click ⟲ on the affected test card(s) in the webapp Tests tab to regenerate.
+```
+
+> **Caution — false negatives:** this filter covers only the 4 known mechanical patterns.
+> A project-file bug that does not match any pattern will pass through to Phase 2.1
+> and may be misclassified. If a Phase 2.1 hypothesis feels implausible (e.g. "a rule
+> fires on a frame that should never be in scope"), always re-read the element's JSON
+> entry to rule out a C-type bug first.
+
 ### 2.1 — Gap classification
 
-For each discordant element (expected ≠ actual) **not in `uncertain_ids`**, classify into one of three
-gap types:
+For each discordant element (expected ≠ actual) **not in `uncertain_ids`** and **not in
+`project_bug_ids`**, classify into one of three gap types:
 
 | Gap type | Pattern | Root cause |
 |---|---|---|
@@ -294,6 +349,29 @@ After all gaps:
   Rule perm. blocked    : N gap(s)  → EXCEPTION Pattern 1→2, or filtre→CONDITION
   Feed gap              : N gap(s)  → %SLOTS_REQUIS or Feed logic to extend
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+If `project_bug_ids` (from Phase 2.0-bis) is non-empty, append a dedicated section
+**before** the Uncertain stress results section:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Project-file bugs — excluded from KB gap classification
+  Fix: click ⟲ on the affected test card(s) in the webapp Tests tab
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+For each element in `project_bug_ids`:
+
+```
+  ── Project bug #N ──────────────────────────────────────────
+  Element      : <id>  in <project_file>
+  Bug type     : <C2 — besoin_conformite on SFR/SAR frame>
+  Symptom      : Expected CONFORME → got FAILED
+                 (toe-structure fired on SFR component due to besoin_conformite: 1)
+  Fix          : ⟲ Régénérer — chorus-create-project --strategy <slug>
+                 (Phase 5b C2 auto-correction removes besoin_conformite)
+  NOT a KB gap : do not modify any YAML rule or org file for this element.
 ```
 
 If `uncertain_ids` (from Phase 2.0) is non-empty, append a dedicated section:
@@ -414,9 +492,21 @@ Write `$SANDBOX/.last-strengthen-report.json`:
       "suggested_fix_type":"threshold|condition|exception_pattern|filtre_to_condition|new_rule|feed",
       "blocked":           false
     }
+  ],
+  "project_bugs": [
+    {
+      "id":           "<element id>",
+      "bug_type":     "C2|C3|C4|C5",
+      "project_file": "<project-scale.json>",
+      "symptom":      "Expected CONFORME → got FAILED",
+      "fix_action":   "regenerate — chorus-create-project --strategy <slug>"
+    }
   ]
 }
 ```
+
+> `project_bugs` may be an empty array `[]` (no C-type bug detected).
+> Never include a project bug entry in `gaps[]` — these two arrays are mutually exclusive.
 
 **`bucket` derivation rules** (for the webapp — derived mechanically, not from LLM judgment):
 
