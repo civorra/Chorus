@@ -1348,6 +1348,64 @@ If **NOT CONVERGED** → recommend:
   Next step: chorus-strengthen <sandbox-name>
 ```
 
+### 6.3 — Patch `.last-check-results.json` (single-project upsert)
+
+> **This step runs after every single-project `chorus-check` invocation**
+> (Phase 6A or 6B) — not in `--all` mode (Phase 6-all.6 writes the file
+> wholesale for all projects; this step is redundant there).
+>
+> **Purpose:** keep the webapp Tests-tab convergence badges accurate after
+> a single-project run, without requiring a full `--all` cycle.
+> Synergy with WEB-021: writing this file triggers an immediate SSE `refresh`
+> event in the webapp terminal, updating the Tests tab mid-session.
+
+**Algorithm:**
+
+```
+1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
+2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+3. Read $SANDBOX/.last-check-results.json if it exists    → existing (or {})
+4. Build entry for the current project file:
+     {
+       "file":         "<basename of fichier-project>",
+       "status":       "SOLVED" | "FAILED",
+       "conforme":     N,
+       "non_conforme": N,
+       "unprocessed":  N,
+       "discordances": N,
+       "disc_detail":  [ { "id": "...", "expected": "...", "got": "..." }, ... ],
+       "unproc_detail":[ { "id": "...", "type": "..." }, ... ]
+     }
+5. Upsert: replace the entry with matching "file" in existing["files"],
+   or append if absent.
+6. Recompute aggregates over the full updated files array:
+     overall_discordances = sum of discordances
+     overall_total        = len(files)
+     converged            = all files SOLVED AND overall_discordances == 0
+                            AND sum(unprocessed) == 0
+7. Write $SANDBOX/.last-check-results.json:
+     {
+       "kb_hash":   kb_hash_current,
+       "proj_hash": proj_hash_current,
+       "timestamp": "<ISO-8601 UTC>",
+       "files":     <updated files array>,
+       "overall_discordances": N,
+       "overall_total":        N,
+       "converged":            true|false
+     }
+```
+
+> **Partial coverage is expected and correct:** after a single-project run,
+> `files` may contain only one entry (or a subset of all projects). The webapp
+> scanner reads per-file entries individually — a partial file is valid and
+> correctly reflected in the Tests tab. Missing projects show their last known
+> entry (from a previous run) or "Convergence inconnue" if the file was absent.
+>
+> **`kb_hash` and `proj_hash` are always recomputed** from the current state,
+> even when patching. This ensures the stale-detection logic in the webapp
+> (`scanner.js § readLastCheckResults`) stays accurate: if the KB or any
+> project file changed since the last `--all`, the new hash reflects it.
+
 
 ## Phase L0 — Report language resolution (`$REPORT_LANG`)
 
