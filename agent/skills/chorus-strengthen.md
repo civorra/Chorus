@@ -51,17 +51,43 @@ Before running anything, probe for a cached result file:
 ```bash
 cat $SANDBOX/.last-check-results.json   # absent → go to 1.2
 sha256sum $SANDBOX/agent/chorus/*.org   # compute current KB hash
+sha256sum $SANDBOX/project-*.json       # compute current project-file hash
 ```
 
-Compare the `kb_hash` field in `.last-check-results.json` against the current
-hash of `$SANDBOX/agent/chorus/*.org`:
+Compute a **composite cache key** covering BOTH KB org files AND project files:
 
-- **Match** → the KB has not changed since the last `chorus-check --all`.
-  Load the structured results directly from the file.
+```bash
+# KB hash (as before)
+kb_hash_current=$(sha256sum $SANDBOX/agent/chorus/*.org | sha256sum | awk '{print $1}')
+
+# Project-files hash  ← NEW: tracks any project-*.json modification
+proj_hash_current=$(sha256sum $SANDBOX/project-*.json 2>/dev/null | sha256sum | awk '{print $1}')
+```
+
+Compare BOTH hashes against the fields in `.last-check-results.json`:
+
+- **Both match** → KB has not changed AND no project file has been regenerated since
+  the last `chorus-check --all`. Load the structured results directly from the file.
   **Skip Phase 1.2 entirely** — no sub-agent is spawned, no `perl run.pl` is run.
   Note in the gap report header: `Suite results: from cache (.last-check-results.json)`.
 
-- **No file** or **hash mismatch** → the cache is absent or stale. Go to Phase 1.2.
+- **Either mismatches** (or file absent) → the cache is stale. Go to Phase 1.2.
+  Common causes:
+  - `kb_hash` mismatch → KB org enriched since last check
+  - `proj_hash` mismatch → one or more `project-*.json` regenerated since last check
+    (e.g., `chorus-create-project --strategy cross` fixed CO-PRESENCE catalog errors)
+
+> ⚠️ **Design note — why the project-file hash matters:** the legacy cache key (KB hash
+> only) produced a silent stale-cache bug: after regenerating a project file with
+> `chorus-create-project` (which does NOT modify KB org files), `chorus-strengthen`
+> would hit the cache, load discordance counts from BEFORE the regeneration, and
+> produce a misleading gap report against already-fixed data. Adding `proj_hash` as
+> a second cache key field closes this gap.
+>
+> **Incident (2026-10-26, sandbox 05c-CC-3.1.4-NEW-TMP):** `project-cross.json` was
+> regenerated from 139 → 0 discordances; `.last-check-results.json` still showed 139.
+> The KB hash happened to mismatch (coincidental org change), forcing a re-run — but
+> if the KB had been unchanged, the stale cache would have been used silently.
 
 ### 1.2 — Run the full suite (fallback)
 
@@ -289,6 +315,7 @@ Write `$SANDBOX/.last-strengthen-report.json`:
 ```json
 {
   "kb_hash":    "<current sha256 hash of $SANDBOX/agent/chorus/*.org>",
+  "proj_hash":  "<current sha256 hash of $SANDBOX/project-*.json>",
   "timestamp":  "<ISO 8601 — now>",
   "sandbox":    "<sandbox-name>",
   "total_gaps": N,

@@ -2184,6 +2184,7 @@ when the KB has not changed since the last `chorus-check --all`.
 ```json
 {
   "kb_hash": "<content of $SANDBOX/agent/.kb-hash — verbatim>",
+  "proj_hash": "<sha256sum $SANDBOX/project-*.json | sha256sum | awk '{print $1}'>",
   "timestamp": "<ISO-8601 UTC>",
   "files": [
     {
@@ -2213,6 +2214,10 @@ when the KB has not changed since the last `chorus-check --all`.
 - This file is **never committed** (local artefact, like `.kb-hash`).
 - It is **invalidated** (deleted) by `chorus-feed` at the end of each run,
   alongside `.kb-hash`.
+- `proj_hash` ensures that regenerating a `project-*.json` (via
+  `chorus-create-project --strategy X`) also invalidates the cache, even when the KB
+  org files are unchanged. Without this field, `chorus-strengthen` would incorrectly
+  read stale discordance counts from the previous project generation.
 
 > **Sub-agent mode guarantee:** each sub-agent has its own IDE session and token.
 > No timeout risk regardless of pipeline complexity or number of project files.
