@@ -81,11 +81,22 @@ sha256sum $SANDBOX/project-*.json       # compute current project-file hash
 Compute a **composite cache key** covering BOTH KB org files AND project files:
 
 ```bash
-# KB hash (as before)
-kb_hash_current=$(sha256sum $SANDBOX/agent/chorus/*.org | sha256sum | awk '{print $1}')
+# KB hash — read agent/.kb-hash VERBATIM (do NOT recompute with sha256sum | sha256sum —
+# that produces a composite incompatible with the multiline format stored by chorus-check
+# Phase 6-all.6; same issue as Phase 4.5 kb_hash — see fix note there).
+kb_hash_current=$(cat $SANDBOX/agent/.kb-hash)
 
-# Project-files hash  ← NEW: tracks any project-*.json modification
+# Project-files hash — composite is fine here (both sides use sha256sum | sha256sum).
 proj_hash_current=$(sha256sum $SANDBOX/project-*.json 2>/dev/null | sha256sum | awk '{print $1}')
+```
+
+**Comparison — first-token normalisation (mirrors `scanner.js § normalizeHash`):**
+
+```bash
+# Extract first whitespace-delimited token from each side before comparing.
+# This is robust to path differences (absolute vs relative) in the multiline output.
+kb_token_stored=$(awk 'NR==1{print $1}' <<< "$stored_kb_hash")
+kb_token_current=$(awk 'NR==1{print $1}' <<< "$kb_hash_current")
 ```
 
 Compare BOTH hashes against the fields in `.last-check-results.json`:
