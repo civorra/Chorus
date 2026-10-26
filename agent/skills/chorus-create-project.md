@@ -1013,28 +1013,170 @@ for e in elems:
 
 ---
 
-### Convergence loop summary
+### Convergence loop — with interactive checkpoints
+
+> **Design principle:** the corrections below are automatic and deterministic, but
+> each major batch of changes is surfaced to the user before applying. This ensures
+> the same interactive experience whether the skill is triggered from a direct ECA
+> session or from a webapp-launched ECA terminal. Both use `eca__ask_user` — there
+> is no "headless" mode difference.
+>
+> **Future evolution:** if a `--auto` flag is added to this trigger, the checkpoints
+> below should auto-accept their default option without prompting.
+
+**Step 1 — First run**
+```bash
+perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json 2>&1 | tee /tmp/run-output.txt
+```
+Capture full output into `/tmp/run-output.txt`.
+
+---
+
+**Step 2 — Apply C1 + C2 (silent, no prompt needed)**
+
+C1 (catalog) and C2 (besoin_conformite) are fully objective: run.pl either reports
+"not a recognised element" / "expected elements missing" or it doesn't. Apply both
+corrections silently without asking the user.
+
+After applying C1/C2, re-run immediately:
+```bash
+perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json 2>&1 | tee /tmp/run-output-2.txt
+```
+
+---
+
+**Checkpoint 5b.1 — Present C1/C2 results to user**
+
+Display a compact bilan:
+```
+[Phase 5b] Catalog + structure corrections applied:
+
+  C1 — CO-PRESENCE:
+    Removed  : N wrong element IDs (e.g. AGD_OPE.1.8C, ALC_FLR.3.12C, ...)
+    Added    : N missing element IDs (e.g. ADV_ARC.1.2D, ALC_CMC.4.3D, ...)
+
+  C2 — besoin_conformite:
+    Removed from : N sfr_component/sfr_element frames
+
+  Re-run result after C1/C2:
+    Pipeline   : SOLVED ✅
+    Unprocessed: N  (N _expected_uncertain)
+    Discordances: N
+    "not a recognised element": 0  ✅
+```
+
+If discordances = 0 (or all _expected_uncertain) → skip to Checkpoint 5b.3 (done).
+Otherwise → proceed to Step 3.
+
+---
+
+**Step 3 — Analyse discordances (C3/C4/C5)**
+
+From `/tmp/run-output-2.txt`, classify each discordance using C3/C4A/C4B/C5 criteria
+(see sections above). Build a plan:
 
 ```
-1. perl run.pl → capture output
-2. Apply C1 if "not a recognised element" or "expected elements missing" present
-3. Apply C2 if sfr_component/sfr_element has besoin_conformite in JSON
-4. Re-run if C1 or C2 applied
-5. Analyse discordances:
-   - C3: sfr_element -KO-RNN- → rename
-   - C4A: SAR comp -KO- with all content_declared=True → fix content_declared
-   - C4B: SAR comp -KO- with sar_dependency_ok=0 → rename -CROSSDEP-
-   - C5: ST/PP/TOE -OK- + verdict=FAILED + conformite_globale=CONFORME → _expected_uncertain
-6. Re-run after any renaming/marking
-7. Verify: Pipeline SOLVED + Unprocessed=0 + Discordances=0 (or all _expected_uncertain)
-8. Update INDEX.md with final CONFORME/NON_CONFORME counts and correction notes
+[Phase 5b] Naming corrections planned:
+
+  C3 — sfr_element -KO-RNN- (N items):
+    X-DEP-FAUFPT-KO-FAU_GEN.1.1  → X-DEP-FAUFPT-PAIRELEM-FAU_GEN.1.1
+    ...
+
+  C4B — SAR comp -KO- / sar_component_declared=1 (N items):
+    X-EAL-KO-AGD_OPE.1   → X-EAL-CROSSDEP-AGD_OPE.1
+    ...
+
+  C5 — ST/PP/TOE -OK- + verdict=FAILED (N items):
+    E-ST-OK-ECD-REQUIRED-01  → mark _expected_uncertain
+    ...
+
+  Remaining discordances after rename: 0 (estimated)
+```
+
+---
+
+**Checkpoint 5b.2 — Ask user to confirm naming corrections**
+
+```python
+eca__ask_user(
+  question="Apply the naming corrections above and re-run the pipeline?",
+  options=[
+    {"label": "✅ Apply all (recommended)",
+     "description": "Rename/mark the N items listed above, then re-run to verify 0 discordances."},
+    {"label": "⏭ Skip renames — accept current discordances",
+     "description": "Keep the file as-is and document the discordances as known issues in INDEX.md."},
+    {"label": "✏️ Show me the full list first",
+     "description": "Display all planned renames before confirming."}
+  ],
+  allowFreeform=False
+)
+```
+
+- **Apply all** → apply C3/C4/C5 → re-run → go to Checkpoint 5b.3
+- **Skip renames** → go to Checkpoint 5b.3 with current discordances documented
+- **Show full list** → display complete rename table → re-ask this question
+
+---
+
+**Step 4 — Re-run after C3/C4/C5**
+```bash
+perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json 2>&1 | tee /tmp/run-output-3.txt
+```
+
+---
+
+**Checkpoint 5b.3 — Final status + INDEX.md update**
+
+Display final bilan and ask:
+```
+[Phase 5b] Final state of project-<slug>.json:
+
+  Pipeline     : SOLVED ✅
+  Elements     : N total
+  CONFORME     : N
+  NON_CONFORME : N
+  Unprocessed  : N  (all _expected_uncertain: <list>)
+  Discordances : N  (all _expected_uncertain: <list> | 0 ✅)
+```
+
+```python
+eca__ask_user(
+  question="Update archive/INDEX.md with these final results?",
+  options=[
+    {"label": "✅ Update INDEX.md (recommended)",
+     "description": "Append a row with CONFORME/NON_CONFORME counts and a correction summary."},
+    {"label": "⏭ Skip INDEX.md update",
+     "description": "Leave INDEX.md as-is for now."}
+  ],
+  allowFreeform=False
+)
+```
+
+If **Update INDEX.md** → append row to `$SANDBOX/archive/<slug>/INDEX.md` with:
+`| NNN | date | ~N rules | n/a | SOLVED ✅ | N | N | Phase 5b: C1 (<corrections>), C3 (<renames>), 0 disc |`
+
+---
+
+**Full convergence loop (summary)**
+
+```
+1.  perl run.pl → /tmp/run-output.txt
+2.  Apply C1 (catalog) + C2 (besoin_conformite) → silently
+3.  Re-run → /tmp/run-output-2.txt
+4.  [Checkpoint 5b.1] Present C1/C2 results
+5.  Classify discordances → plan C3/C4A/C4B/C5
+6.  [Checkpoint 5b.2] Ask: apply naming corrections?
+7.  Apply C3/C4/C5 if confirmed
+8.  Re-run → /tmp/run-output-3.txt
+9.  [Checkpoint 5b.3] Ask: update INDEX.md?
+10. Verify: Pipeline SOLVED + Unprocessed=0 + Discordances=0 (or all _expected_uncertain)
 ```
 
 **Incident (2026-10-26, sandbox 05c-CC-3.1.4-NEW-TMP):** the absence of this correction
-loop in the skill created a visible gap: the webapp "re-generate test" button (which
-launches a fresh ECA terminal and triggers this skill) produced files with 80–139
-discordances that required multiple interactive follow-up sessions to resolve. Adding
-Phase 5b closes this gap — the first ECA session now converges automatically.
+loop in the skill created a visible gap: the webapp "re-generate test" button produced
+files with 80–139 discordances requiring multiple follow-up sessions. The checkpoints
+above ensure the same interactive experience in both a direct ECA session and a
+webapp-launched ECA terminal — both support `eca__ask_user`.
 
 ---
 
