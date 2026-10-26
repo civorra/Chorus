@@ -2119,7 +2119,7 @@ ELSE:
 > **`eca__ask_user` désactivé** — même raison que `chorus-strengthen Phase 4-checkpoint` :
 > le tool call interactif n'est pas fiable dans le terminal webapp (mode DONE).
 > ECA procède directement avec la décision SP calculée.
-> La révision des décisions SP se fait en session Emacs multi-turn ou via WEB-022.
+> La révision des décisions SP se fait en session Emacs multi-turn ou via WEB-023.
 
 
 ## Mode D — Unattended batch (`--unattended` required)

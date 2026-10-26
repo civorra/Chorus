@@ -424,9 +424,9 @@ For each element in `uncertain_ids` that produced a discordance:
 > classique (multi-turn), ou relancer `chorus-strengthen` après avoir modifié
 > manuellement le sandbox.
 >
-> **Évolution prévue (WEB-022 / WEB-023) :** une interface de révision des hypothèses
-> directement dans l'onglet Tests de la webapp, alimentée par `project_bugs[]` et
-> `gaps[]` du rapport JSON, remplacera ce checkpoint.
+> **Évolution prévue (WEB-023) :** une interface de révision des hypothèses directement
+> dans l'onglet Tests de la webapp (Zone 2 étape ②), alimentée par `project_bugs[]` et
+> `gaps[]` du rapport JSON, remplacera ce checkpoint. WEB-022 (refonte Tests tab) est DONE.
 
 ---
 
