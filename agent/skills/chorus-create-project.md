@@ -1178,6 +1178,22 @@ files with 80–139 discordances requiring multiple follow-up sessions. The chec
 above ensure the same interactive experience in both a direct ECA session and a
 webapp-launched ECA terminal — both support `eca__ask_user`.
 
+**Checkpoint 5b.4 — Upsert `.last-check-results.json`**
+
+After Phase 5b corrections are complete (Checkpoint 5b.3 done), apply the same upsert
+as `chorus-check` Phase 6.3 — same algorithm, using the final corrected run.pl results:
+
+```
+1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
+2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+3. Read $SANDBOX/.last-check-results.json if exists       → existing (or {})
+4. Upsert entry for the generated project file (basename).
+5. Recompute aggregates. Write file.
+```
+
+> No `eca__ask_user` here — this write is automatic and silent.
+> Triggers WEB-021 SSE `refresh` → Tests tab updates immediately.
+
 ---
 
 ## Phase 6 — Multi-file mode (`--batch`, `--batch-seq`, or `--strategy`)
@@ -1339,6 +1355,26 @@ Using the KB summary and coverage table (from `.chorus-batch-ctx.md`, Phase 0+1,
    - Re-run after C3/C4/C5
    - **Stop when** Pipeline SOLVED + Unprocessed=0 + Discordances=0 (or all _expected_uncertain)
    See `## Phase 5b` above for the complete correction logic and Python snippets.
+
+5. **Upsert `.last-check-results.json`** — after all corrections are done and the final
+   run.pl result is stable, apply the same upsert logic as `chorus-check` Phase 6.3:
+
+   ```
+   1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
+   2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+   3. Read $SANDBOX/.last-check-results.json if it exists    → existing (or {})
+   4. Build/replace entry for "project-<slug>.json" with final SOLVED/FAILED,
+      CONFORME, NON_CONFORME, UNPROCESSED, DISCORDANCES counts.
+      disc_detail and unproc_detail from the last run.pl output.
+   5. Recompute overall_discordances, overall_total, converged.
+   6. Write $SANDBOX/.last-check-results.json with updated kb_hash, proj_hash, timestamp.
+   ```
+
+   > **Why here:** `chorus-create-project --strategy X` produces fresh results from a
+   > freshly generated project file. Writing them immediately to `.last-check-results.json`
+   > means the webapp Tests tab reflects the correct convergence state as soon as the
+   > generation is done — without requiring a separate `chorus-check --all`.
+   > Synergy with WEB-021: this write triggers the SSE `refresh` event immediately.
 
 ### 6.3 `--batch-seq` — Safe sequential orchestration
 
