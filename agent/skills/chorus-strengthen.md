@@ -522,9 +522,19 @@ Write `$SANDBOX/.last-strengthen-report.json`:
 > On a fresh strengthen run, always set to `false` — `chorus-fix` may update this
 > field in place after running the guard (the webapp reads the updated file).
 
-**`kb_hash`:** use the same value as in `.last-check-results.json` if strengthen
-was triggered from a cached result (Phase 1.1); otherwise recompute from the current
-`agent/.kb-hash` file.
+**`kb_hash`:** always use the **verbatim content** of `$SANDBOX/agent/.kb-hash`
+(read the file as a string — do NOT recompute a sha256 of the org files, as that
+would produce a different format). The webapp scanner (`scanner.js § normalizeHash`)
+compares the first whitespace-delimited token of this field against the first token
+of `agent/.kb-hash` — any other computation format will cause a permanent false "stale".
+
+```bash
+# ⛔ WRONG — produces a composite hash incompatible with .kb-hash format:
+sha256sum $SANDBOX/agent/chorus/*.org | sha256sum
+
+# ✅ CORRECT — read verbatim:
+cat $SANDBOX/agent/.kb-hash   →  copy the full content into "kb_hash"
+```
 
 ---
 
