@@ -1315,11 +1315,46 @@ YOUR TASKS:
 3. Write the file using eca__write_file.
 4. Validate:
    python3 -c "import json; json.load(open('<SANDBOX>/<FILE>')); print('JSON valide')"
-5. If <SANDBOX>/run.pl exists:
-   perl <SANDBOX>/run.pl <SANDBOX>/<FILE>
+5. If <SANDBOX>/run.pl exists, run the **Phase 5b correction loop in automatic mode**
+   (no user prompts — all corrections applied silently, maximum 3 iterations):
+
+   **Iteration 1:**
+   ```bash
+   perl <SANDBOX>/run.pl <SANDBOX>/<FILE> 2>&1 | tee /tmp/run-<slug>-1.txt
+   ```
+   Apply C1 (catalog errors) + C2 (besoin_conformite) automatically
+   from `/tmp/run-<slug>-1.txt` using the Python snippets in
+   `chorus-create-project.md § Correction C1` and `§ Correction C2`.
+   Write corrected JSON back with `eca__write_file`.
+
+   **Iteration 2:**
+   ```bash
+   perl <SANDBOX>/run.pl <SANDBOX>/<FILE> 2>&1 | tee /tmp/run-<slug>-2.txt
+   ```
+   Apply C3 (sfr_element -KO-RNN- renaming) + C4A/C4B (SAR -KO- with
+   sar_component_declared=1) + C5 (conformance-ctrl driver _expected_uncertain)
+   automatically from `/tmp/run-<slug>-2.txt` using
+   `chorus-create-project.md § Correction C3/C4/C5`.
+   Write corrected JSON back with `eca__write_file`.
+
+   **Iteration 3 (final verification):**
+   ```bash
+   perl <SANDBOX>/run.pl <SANDBOX>/<FILE> 2>&1 | tee /tmp/run-<slug>-3.txt
+   ```
+   Stop when: `Pipeline: SOLVED ✅` + `Unprocessed: 0`
+   + `Discordances: 0` (or all remaining are `_expected_uncertain: true`).
+
+   > **Auto mode rules:**
+   > - Never call `eca__ask_user` — apply every correction silently.
+   > - Skip Checkpoint 5b.1, 5b.2, 5b.3 entirely.
+   > - Skip INDEX.md update (Step 4 orchestrator handles the synthesis).
+   > - If still discordant after 3 iterations → proceed anyway, report
+   >   residual discordances in the return block.
+
 6. Return exactly this block:
    FILE: <SANDBOX>/<FILE>
    ELEMENTS: <N> CONFORME / <N> NON_CONFORME
+   DISCORDANCES: <N>  (0 if fully converged, or list residuals)
    PIPELINE: SOLVED ✅  |  <error summary if failed>
 ```
 
@@ -1353,8 +1388,7 @@ Tests tab reflects the regenerated projects immediately (synergy with WEB-021):
        conforme     = N  (from "N CONFORME")
        non_conforme = N  (from "N NON_CONFORME")
        unprocessed  = 0  (sub-agents report 0 or a summary — use 0 if absent)
-       discordances = 0  (--batch sub-agents do not run Phase 5b corrections;
-                          set 0 here — chorus-check --all will detect real discordances)
+       discordances = N  (from sub-agent DISCORDANCES field — 0 if fully converged)
        disc_detail  = []
        unproc_detail= []
      Upsert: replace existing entry with matching "file", or append.
@@ -1362,13 +1396,10 @@ Tests tab reflects the regenerated projects immediately (synergy with WEB-021):
 6. Write $SANDBOX/.last-check-results.json with kb_hash, proj_hash, timestamp.
 ```
 
-> **`discordances: 0` is intentional here:** `--batch` sub-agents run `perl run.pl`
-> once without Phase 5b corrections — they do not compute discordances vs
-> `_resultats_attendus`. Setting 0 is conservative (not misleading the webapp into
-> thinking the projects are converged) and consistent: the `converged` field is
-> `true` only if all pipelines are SOLVED AND overall_discordances=0. A subsequent
-> `chorus-check --all` will fill in the real discordance counts and overwrite this
-> entry with accurate data.
+> **`discordances`** reflects the final state after Phase 5b corrections (sub-agent
+> Task step 5). If fully converged (0 discordances after ≤ 3 iterations), `converged`
+> is `true` for this entry. If residual discordances remain (> 3 iterations or structural
+> issue), the real count is stored — a subsequent `chorus-strengthen` will diagnose them.
 >
 > Triggers WEB-021 SSE `refresh` → Tests tab updates immediately after `--batch`.
 
