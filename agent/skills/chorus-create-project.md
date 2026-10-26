@@ -1211,6 +1211,25 @@ as `chorus-check` Phase 6.3 — same algorithm, using the final corrected run.pl
 
 ### 6.1 `--batch` — Orchestrator workflow
 
+#### Step 0-bis — Task planning
+
+Call `eca__task` once before Step 1 to give the webapp terminal a live checklist (☐⏳☑):
+
+```
+eca__task(op="plan", tasks=[
+  { subject: "Step 1 — KB reading (Phase 0+1)",    description: "Full KB inventory + coverage table" },
+  { subject: "Step 2 — Compact KB summary",         description: "Distil KB into ≤ 60 lines for sub-agents" },
+  { subject: "Step 3a — Generate iso",              description: "Sub-agent: project-rules-iso.json" },
+  { subject: "Step 3b — Generate edges",            description: "Sub-agent: project-edges.json" },
+  { subject: "Step 3c — Generate cross",            description: "Sub-agent: project-cross.json" },
+  { subject: "Step 3d — Generate scale",            description: "Sub-agent: project-scale.json" },
+  { subject: "Step 4 — Synthesis + cache update",   description: "Collect results + upsert .last-check-results.json" },
+])
+```
+
+Mark each step `start` / `complete` as it executes. Steps 3a–3d may complete out of
+order (parallel sub-agents) — mark them complete as each sub-agent returns its block.
+
 #### Step 1 — Run Phases 0+1
 
 Run Phase 0 in full (inventory + KB reading + keepalives) and Phase 1 (coverage table).
@@ -1317,6 +1336,41 @@ project-scale      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unp
 
 If a sub-agent failed → re-run with `chorus-create-project <sandbox> --strategy <slug>`
 in a new session, pasting the compact KB summary as context to skip Phase 0.
+
+#### Step 5 — Upsert `.last-check-results.json`
+
+After displaying the synthesis table, update the results cache so the webapp
+Tests tab reflects the regenerated projects immediately (synergy with WEB-021):
+
+```
+1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
+2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+3. Read $SANDBOX/.last-check-results.json if exists       → existing (or {})
+4. For each sub-agent result block (FILE / PIPELINE / ELEMENTS):
+     Build entry:
+       file         = basename(FILE)
+       status       = "SOLVED" if PIPELINE contains "SOLVED", else "FAILED"
+       conforme     = N  (from "N CONFORME")
+       non_conforme = N  (from "N NON_CONFORME")
+       unprocessed  = 0  (sub-agents report 0 or a summary — use 0 if absent)
+       discordances = 0  (--batch sub-agents do not run Phase 5b corrections;
+                          set 0 here — chorus-check --all will detect real discordances)
+       disc_detail  = []
+       unproc_detail= []
+     Upsert: replace existing entry with matching "file", or append.
+5. Recompute overall_discordances=0, overall_total=N, converged=(all SOLVED).
+6. Write $SANDBOX/.last-check-results.json with kb_hash, proj_hash, timestamp.
+```
+
+> **`discordances: 0` is intentional here:** `--batch` sub-agents run `perl run.pl`
+> once without Phase 5b corrections — they do not compute discordances vs
+> `_resultats_attendus`. Setting 0 is conservative (not misleading the webapp into
+> thinking the projects are converged) and consistent: the `converged` field is
+> `true` only if all pipelines are SOLVED AND overall_discordances=0. A subsequent
+> `chorus-check --all` will fill in the real discordance counts and overwrite this
+> entry with accurate data.
+>
+> Triggers WEB-021 SSE `refresh` → Tests tab updates immediately after `--batch`.
 
 ### 6.2 `--strategy` — Single-file workflow
 
