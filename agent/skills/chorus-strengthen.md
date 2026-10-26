@@ -300,6 +300,51 @@ For each element in `uncertain_ids` that produced a discordance:
 
 ---
 
+## Phase 4-checkpoint — Validation interactive des hypothèses
+
+> **Skip this phase entirely if `total_gaps == 0`** (convergence → go directly to Phase 4.5).
+
+Before writing the JSON report and the enrichment roadmap, pause and ask the operator
+to validate the gap hypotheses. This checkpoint exists because:
+- A wrong hypothesis in Phase 4 will produce a misleading roadmap in Phase 5.
+- In a live ECA session (Emacs or webapp terminal), the operator may have additional
+  context (e.g. a recent corpus change, a known extraction artefact) that would
+  change the diagnosis before it gets serialised.
+
+Call `eca__ask_user` with the following:
+
+```
+question: "<N> gap(s) identifié(s) — les hypothèses ci-dessus sont-elles correctes ?"
+options:
+  - label: "Valider et continuer"
+    description: "Les hypothèses sont correctes — écrire le rapport JSON et produire le roadmap."
+  - label: "Préciser une hypothèse"
+    description: "Indiquez le gap #N et la correction souhaitée."
+  - label: "Continuer sans confirmation"
+    description: "Mode autonome — enchaîner directement (webapp / batch)."
+allowFreeform: true
+```
+
+**Response handling:**
+
+| Response | Action |
+|---|---|
+| "Valider et continuer" (or equivalent) | Proceed to Phase 4.5 immediately. |
+| "Continuer sans confirmation" (or equivalent) | Proceed to Phase 4.5 immediately. |
+| Free-form correction (e.g. "Gap #2 : l'hypothèse est incorrecte — la vraie cause est X") | Update the relevant gap entry: correct `hypothesis`, `corpus_ref`, `suggested_fix_type` as needed. Re-display the corrected gap entry (condensed, single line). Repeat `eca__ask_user` with the same options if other gaps may still need review, or proceed to Phase 4.5 if the operator confirms. |
+| "Préciser une hypothèse" | Ask follow-up: "Quel gap #N et quelle correction ?" then apply as above. |
+
+> **Timeout / no response:** if the operator does not respond (webapp terminal left
+> unattended), the execution will wait until the session timeout fires. To avoid
+> this in autonomous / CI contexts, always select "Continuer sans confirmation" or
+> pass a free-form message such as "ok" / "continue".
+>
+> **Future improvement note:** a session-level `--no-confirm` flag (or a per-terminal
+> default) could bypass this checkpoint automatically without user input — tracked
+> as a known UX improvement for webapp batch contexts.
+
+---
+
 ## Phase 4.5 — Serialize gap report to JSON
 
 > **This step is mandatory** — it enables `chorus-fix` and the webapp Tests tab
