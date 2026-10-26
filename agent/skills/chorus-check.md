@@ -1233,11 +1233,39 @@ path** of `<fichier-project>` — not a hardcoded `$SANDBOX/project.json`
 path the user/caller provided, run.pl's own `dirname($fichier)/reports/`
 write location depends on it being correct):
 
+**Preferred — streaming mode (background job):**
+
+Use `eca__shell_command` with `background` to stream `run.pl` output live
+in the webapp terminal instead of waiting for full completion:
+
+```
+job_id = eca__shell_command(
+  command    = "perl $SANDBOX/run.pl <resolved path of fichier-project> 2>&1",
+  background = "run-<slug>"   # e.g. "run-project-rules-iso"
+)
+# Stream output progressively — poll until the job finishes:
+loop:
+  chunk = eca__bg_job(action="read_output", job_id=job_id)
+  if chunk.output: display chunk.output as streaming text
+  if chunk.status in ("completed", "failed"): break
+  sleep ~2s
+```
+
+This causes the webapp terminal to display each frame being processed
+(`Checking FIA.1/1… CONFORME`, `Checking FCS.1/3… NON_CONFORME`, …)
+as it happens, rather than all at once after the run completes.
+
+**Fallback — blocking mode (if background is unavailable or job_id is absent):**
+
 ```bash
 perl $SANDBOX/run.pl <resolved path of fichier-project>
 ```
 
-Capture the output. If Perl errors occur:
+Use this fallback if `eca__shell_command` background mode is not supported
+in the current execution environment (job_id absent → silent timeout 0s).
+Capture full output after completion.
+
+If Perl errors occur:
 - `loadRules` error → check the YAML files (syntax, indentation)
 - `Can't locate` error → check `use lib` and the namespace
 - `FAILED/TIMEOUT` pipeline → check the termination rule
@@ -2019,6 +2047,27 @@ Print: `[summary] Synthesis written → workspace/<entity>/reports/synthese-<pro
 
 ## Phase 6-all — `--all` mode (batch run)
 
+### 6-all.0-bis — Task planning
+
+> Call `eca__task` once at the very start of `--all` mode to give the webapp terminal
+> a live checklist (☐⏳☑). Use the discovered project files as task subjects.
+
+```
+eca__task(op="plan", tasks=[
+  { subject: "6-all.1 — Discover project files",  description: "ls $SANDBOX/project-*.json" },
+  { subject: "6-all.2 — Run <file1>",             description: "Sub-agent for project-rules-iso.json" },
+  { subject: "6-all.2 — Run <file2>",             description: "Sub-agent for project-edges.json" },
+  // … one task per discovered file
+  { subject: "6-all.3 — Synthesis table",         description: "Aggregate results + write .last-check-results.json" },
+  { subject: "6-all.4 — Convergence verdict",     description: "CONVERGED / DISCORDANCES report" },
+])
+```
+
+> Replace `<file1>`, `<file2>` etc. with the actual filenames found in 6-all.1 once known.
+> If files are not yet known at plan time, use generic subjects
+> (`"6-all.2 — Run file 1"`, …) and `eca__task(op="update")` to rename them after discovery.
+
+Mark each step `start` / `complete` as it executes.
 
 > This phase is used **instead of Phase 6** when `--all` is present.
 > Infrastructure detection (Step 0) is shared — the hash check runs once.

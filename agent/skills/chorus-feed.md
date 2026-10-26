@@ -95,6 +95,38 @@ Inline content (no file extension) is always accepted as-is.
 After auto-conversion (if any), proceed to Phase 0 — Sandbox Initialization.
 
 
+## 0-bis. Task planning (all modes)
+
+> Call `eca__task` **once**, immediately after mode detection, to plan the phases
+> of the current run. This gives the webapp terminal a live checklist (☐⏳☑).
+> Adapt the task list to the active mode — use only the phases relevant to the
+> current invocation (Mode A, B, C, or D). Mark each phase `start` when beginning
+> it and `complete` when done.
+
+**Mode A example:**
+```
+eca__task(op="plan", tasks=[
+  { subject: "Prerequisites + mode detection" },
+  { subject: "Phase -1 — Corpus directives (if needed)" },
+  { subject: "Phase -0.5 — Corpus scoping gate (if needed)" },
+  { subject: "Phase 1.0 — Pre-annotation scan (no_auto_rules)" },
+  { subject: "Phase 1 — Corpus analysis" },
+  { subject: "Phase 2 — KB org generation" },
+  { subject: "Phase 3 — YAML rules generation" },
+  { subject: "Phase 4 — Helpers.pm" },
+  { subject: "Phase 5 — Index + README" },
+  { subject: "Phase 6.5 — Coverage report + stability check" },
+])
+```
+
+**Mode B:** same structure, replace Phase 2 subject with `"Phase 2 — KB enrichment"`.
+**Mode D:** one task per corpus file to process + `"Checkpoint state"`.
+**Mode C:** `"Phase C1 — Scope guard"` · `"Phase C2 — Alias harvest"` · `"Phase C3 — Promote + purge"`.
+
+> Skip tasks whose trigger condition is not met (e.g. skip "Phase -1" if corpus is
+> a single-source standard). Use `eca__task(op="delete", ids=[...])` to remove
+> them cleanly after checking the condition.
+
 ## Mode Selection
 
 **Default: Mode A — always, regardless of the sandbox state.**
@@ -2081,6 +2113,39 @@ ELSE:
     or --enrich for remaining deferred sections).
   Do NOT mention chorus-review-kb — KB is not yet stable.
 ```
+
+**Step 4b-checkpoint — Interactive stability point validation**
+
+> **Skip this step if `--unattended` is active** (Mode D) — the unattended
+> batch model does not support interactive pauses.
+
+After computing the SP decision above, pause and ask the operator to validate
+before writing `** Next step` in `README.org`:
+
+```
+eca__ask_user:
+  question: "<SP reached / not yet reached> — <concise 1-line reason>. Continuer ?"
+  options:
+    - label: "Valider et écrire README"
+      description: "La décision SP est correcte — mettre à jour ** Next step et terminer."
+    - label: "Forcer un nouveau passage (--enrich)"
+      description: "Même si SP1 est atteint, relancer chorus-feed --enrich sur le corpus suivant."
+    - label: "Marquer comme SP malgré les Deferred restants"
+      description: "Cas exceptionnel : les sections ⏭ restantes sont hors périmètre — déclarer SP1 quand même."
+    - label: "Continuer sans confirmation"
+      description: "Mode autonome — appliquer la décision calculée sans attendre."
+  allowFreeform: true
+```
+
+**Response handling:**
+
+| Response | Action |
+|---|---|
+| "Valider et écrire README" | Write `** Next step` as computed, proceed. |
+| "Continuer sans confirmation" (or "ok" / "continue") | Write `** Next step` as computed, proceed. |
+| "Forcer un nouveau passage" | Override SP decision to "not reached", write `** Next step` with `--enrich` guidance. |
+| "Marquer comme SP malgré les Deferred" | Override SP decision to "SP1 reached" even if Deferred > 0 — write `** Next step` accordingly with a `⚠️ operator override` note. |
+| Free-form context | Update the SP decision if the operator's input changes the assessment (e.g. "section X is out of scope"), then ask again or proceed if unambiguous. |
 
 
 ## Mode D — Unattended batch (`--unattended` required)

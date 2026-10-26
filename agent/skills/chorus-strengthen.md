@@ -20,6 +20,30 @@
 
 ---
 
+## Phase 0-bis — Task planning
+
+> **Run this before Phase 0.** Call `eca__task` once to plan the full session.
+> This gives the webapp terminal a live checklist (☐⏳☑) updated as phases progress.
+
+```
+eca__task(op="plan", tasks=[
+  { subject: "Phase 0 — Sandbox inventory",       description: "Verify run.pl, .kb-hash, project-*.json" },
+  { subject: "Phase 1 — Suite results",            description: "Cache hit (1.1) or chorus-check --all (1.2)" },
+  { subject: "Phase 2 — Classify discordances",    description: "Gap type per discordant element" },
+  { subject: "Phase 3 — Read KB sections",         description: "Agent org files for implicated rules" },
+  { subject: "Phase 4 — Gap report",               description: "Produce structured text report" },
+  { subject: "Phase 4-checkpoint",                 description: "Interactive hypothesis validation" },
+  { subject: "Phase 4.5 — Serialize JSON",         description: "Write .last-strengthen-report.json" },
+  { subject: "Phase 5 — Enrichment roadmap",       description: "Bucket A/B/C + corpus-correctif" },
+])
+```
+
+Then call `eca__task(op="start", ids=[<phase-0-id>])` immediately and proceed.
+At the start of each subsequent phase, call `eca__task(op="start", ids=[<id>])` and
+`eca__task(op="complete", ids=[<id>])` when done.
+
+---
+
 ## Phase 0 — Sandbox inventory
 
 Read the directory tree $SANDBOX/ (max_depth=3) to confirm:
