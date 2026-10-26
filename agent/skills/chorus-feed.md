@@ -2114,38 +2114,12 @@ ELSE:
   Do NOT mention chorus-review-kb — KB is not yet stable.
 ```
 
-**Step 4b-checkpoint — Interactive stability point validation**
+**Step 4b-checkpoint — Note d'implémentation**
 
-> **Skip this step if `--unattended` is active** (Mode D) — the unattended
-> batch model does not support interactive pauses.
-
-After computing the SP decision above, pause and ask the operator to validate
-before writing `** Next step` in `README.org`:
-
-```
-eca__ask_user:
-  question: "<SP reached / not yet reached> — <concise 1-line reason>. Continuer ?"
-  options:
-    - label: "Valider et écrire README"
-      description: "La décision SP est correcte — mettre à jour ** Next step et terminer."
-    - label: "Forcer un nouveau passage (--enrich)"
-      description: "Même si SP1 est atteint, relancer chorus-feed --enrich sur le corpus suivant."
-    - label: "Marquer comme SP malgré les Deferred restants"
-      description: "Cas exceptionnel : les sections ⏭ restantes sont hors périmètre — déclarer SP1 quand même."
-    - label: "Continuer sans confirmation"
-      description: "Mode autonome — appliquer la décision calculée sans attendre."
-  allowFreeform: true
-```
-
-**Response handling:**
-
-| Response | Action |
-|---|---|
-| "Valider et écrire README" | Write `** Next step` as computed, proceed. |
-| "Continuer sans confirmation" (or "ok" / "continue") | Write `** Next step` as computed, proceed. |
-| "Forcer un nouveau passage" | Override SP decision to "not reached", write `** Next step` with `--enrich` guidance. |
-| "Marquer comme SP malgré les Deferred" | Override SP decision to "SP1 reached" even if Deferred > 0 — write `** Next step` accordingly with a `⚠️ operator override` note. |
-| Free-form context | Update the SP decision if the operator's input changes the assessment (e.g. "section X is out of scope"), then ask again or proceed if unambiguous. |
+> **`eca__ask_user` désactivé** — même raison que `chorus-strengthen Phase 4-checkpoint` :
+> le tool call interactif n'est pas fiable dans le terminal webapp (mode DONE).
+> ECA procède directement avec la décision SP calculée.
+> La révision des décisions SP se fait en session Emacs multi-turn ou via WEB-022.
 
 
 ## Mode D — Unattended batch (`--unattended` required)
