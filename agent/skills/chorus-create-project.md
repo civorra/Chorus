@@ -1356,21 +1356,51 @@ YOUR TASKS:
    ELEMENTS: <N> CONFORME / <N> NON_CONFORME
    DISCORDANCES: <N>  (0 if fully converged, or list residuals)
    PIPELINE: SOLVED ✅  |  <error summary if failed>
+   CORRECTIONS:
+     C1: <N> catalog errors fixed  (or "none")
+     C2: <N> besoin_conformite removed  (or "none")
+     C3: <N> sfr_element -KO- renamed  (or "none")
+     C4: <N> SAR -KO- fixed  (or "none")
+     C5: <N> conformance-ctrl driver marked _expected_uncertain  (or "none")
+     ITERATIONS: <N>  (number of perl run.pl passes, min 1)
+   (omit CORRECTIONS block entirely if no correction was needed — 0 for all C1–C5)
 ```
 
 #### Step 4 — Collect results and report
 
-After all sub-agents complete, display the synthesis table:
+After all sub-agents complete, display the enriched synthesis table including
+corrections applied during Phase 5b auto mode:
 
 ```
-project-rules-iso  │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
-project-edges      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
-project-cross      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
-project-scale      │ SOLVED ✅ │  N CONFORME │  N NON_CONFORME │  0 unprocessed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  chorus-create-project --batch  <sandbox-name>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Strategy │ Status     │ Elements │ Disc │ Corrections
+  ─────────┼────────────┼──────────┼──────┼────────────────────
+  iso      │ SOLVED ✅  │  N / N   │   0  │ C2×1 (1 pass)
+  edges    │ SOLVED ✅  │  N / N   │   0  │ none (1 pass)
+  cross    │ SOLVED ✅  │  N / N   │   0  │ C1×3 C3×2 (2 passes)
+  scale    │ SOLVED ✅  │  N / N   │   1  │ C2×1 (2 passes) ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+- **Corrections** column: summarise each Cx with count (from sub-agent CORRECTIONS block).
+  Omit if all "none". Show ⚠️ if DISCORDANCES > 0 (residual after 3 iterations).
+- **Disc > 0** → add below table: `⚠️ <slug>: <N> residual discordance(s) — run chorus-strengthen to diagnose.`
 
 If a sub-agent failed → re-run with `chorus-create-project <sandbox> --strategy <slug>`
 in a new session, pasting the compact KB summary as context to skip Phase 0.
+
+**Auto-update `archive/<slug>/INDEX.md`** for each sub-agent that applied ≥ 1 correction
+(or produced ≥ 1 residual discordance), append one row per strategy:
+
+```
+| <NNN+1> | <YYYY-MM-DD> | <N> elements | n/a | SOLVED ✅ | <N>/<N> | <N> disc |
+  --batch auto corrections: <C1×N> <C2×N> <C3×N> <C4×N> <C5×N> — <N> pass(es) |
+```
+
+> If no correction was applied for a strategy (CORRECTIONS block absent from sub-agent
+> result), skip INDEX.md update for that strategy — no noise for clean generations.
 
 #### Step 5 — Upsert `.last-check-results.json`
 
