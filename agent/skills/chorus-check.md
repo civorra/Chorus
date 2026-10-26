@@ -1363,7 +1363,7 @@ If **NOT CONVERGED** → recommend:
 
 ```
 1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
 3. Read $SANDBOX/.last-check-results.json if it exists    → existing (or {})
 4. Build entry for the current project file:
      {
@@ -2291,7 +2291,7 @@ when the KB has not changed since the last `chorus-check --all`.
 ```json
 {
   "kb_hash": "<content of $SANDBOX/agent/.kb-hash — verbatim>",
-  "proj_hash": "<sha256sum $SANDBOX/project-*.json | sha256sum | awk '{print $1}'>",
+  "proj_hash": "<sha256sum $SANDBOX/project-*.json | awk '{print \$1}' | sha256sum | awk '{print \$1}'>",
   "timestamp": "<ISO-8601 UTC>",
   "files": [
     {

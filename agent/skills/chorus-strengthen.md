@@ -87,7 +87,7 @@ Compute a **composite cache key** covering BOTH KB org files AND project files:
 kb_hash_current=$(cat $SANDBOX/agent/.kb-hash)
 
 # Project-files hash — composite is fine here (both sides use sha256sum | sha256sum).
-proj_hash_current=$(sha256sum $SANDBOX/project-*.json 2>/dev/null | sha256sum | awk '{print $1}')
+proj_hash_current=$(sha256sum $SANDBOX/project-*.json 2>/dev/null | awk '{print $1}' | sha256sum | awk '{print $1}')
 ```
 
 **Comparison — first-token normalisation (mirrors `scanner.js § normalizeHash`):**

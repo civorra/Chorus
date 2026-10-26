@@ -1185,7 +1185,7 @@ as `chorus-check` Phase 6.3 — same algorithm, using the final corrected run.pl
 
 ```
 1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
 3. Read $SANDBOX/.last-check-results.json if exists       → existing (or {})
 4. Upsert entry for the generated project file (basename).
 5. Recompute aggregates. Write file.
@@ -1409,7 +1409,7 @@ Tests tab reflects the regenerated projects immediately (synergy with WEB-021):
 
 ```
 1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
 3. Read $SANDBOX/.last-check-results.json if exists       → existing (or {})
 4. For each sub-agent result block (FILE / PIPELINE / ELEMENTS):
      Build entry:
@@ -1476,7 +1476,7 @@ Using the KB summary and coverage table (from `.chorus-batch-ctx.md`, Phase 0+1,
 
    ```
    1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-   2. sha256sum $SANDBOX/project-*.json | sha256sum          → proj_hash_current
+   2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
    3. Read $SANDBOX/.last-check-results.json if it exists    → existing (or {})
    4. Build/replace entry for "project-<slug>.json" with final SOLVED/FAILED,
       CONFORME, NON_CONFORME, UNPROCESSED, DISCORDANCES counts.
