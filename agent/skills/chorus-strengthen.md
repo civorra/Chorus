@@ -413,20 +413,44 @@ For each element in `uncertain_ids` that produced a discordance:
 
 ---
 
-## Phase 4-checkpoint — Note d'implémentation
+## Phase 4-checkpoint — Validation interactive des hypothèses
 
-> **`eca__ask_user` n'est pas utilisé ici.** Dans le contexte du terminal ECA webapp
-> (mode DONE), les tool calls interactifs mid-session ne sont pas fiables : l'agent
-> peut écrire le checkpoint en texte sans appeler le tool, bloquant la session.
->
-> **Comportement actuel :** enchaîner directement vers Phase 4.5 sans validation
-> interactive. L'opérateur peut corriger les hypothèses dans une session ECA Emacs
-> classique (multi-turn), ou relancer `chorus-strengthen` après avoir modifié
-> manuellement le sandbox.
->
-> **Évolution prévue (WEB-023) :** une interface de révision des hypothèses directement
-> dans l'onglet Tests de la webapp (Zone 2 étape ②), alimentée par `project_bugs[]` et
-> `gaps[]` du rapport JSON, remplacera ce checkpoint. WEB-022 (refonte Tests tab) est DONE.
+> **WEB-025 (2026-10-26) — `eca__ask_user` réactivé.**
+> La race condition qui bloquait la session webapp (idle prématuré pendant l'attente
+> de réponse) a été corrigée dans `server/routes/terminal.js` (flag `waitingForUserInput`).
+> `eca__ask_user` est maintenant fiable dans le terminal webapp.
+
+Call `eca__ask_user` to let the operator validate or correct hypotheses before
+serializing the final JSON report.
+
+Prepare a concise summary of the gaps found and ask:
+
+```
+eca__ask_user(
+  question: "Phase 4-checkpoint — <N> gap(s) détecté(s).\n\n" +
+            "<brief gap list: #1 [B] rule_too_strict · S-XXX — hypothesis>\n" +
+            "<#2 [C] feed_gap · S-YYY — hypothesis>\n\n" +
+            "Les hypothèses sont-elles correctes ?\n" +
+            "• Répondez OUI pour continuer vers Phase 4.5.\n" +
+            "• Répondez NON + corrections pour ajuster avant la sérialisation.",
+  options: [
+    { label: "OUI — hypothèses correctes, continuer", description: "Sérialiser le rapport JSON tel quel" },
+    { label: "NON — corriger les hypothèses", description: "Indiquez les corrections dans votre réponse" }
+  ]
+)
+```
+
+**If the operator answers OUI (or a freeform confirmation):** proceed directly to Phase 4.5.
+
+**If the operator answers NON + corrections:**
+- Parse the corrections from the freeform response (e.g. "Gap #2 : hypothesis should be…").
+- Update the in-memory `gaps[]` array accordingly (do NOT re-run Phases 2–3).
+- Summarise changes applied, then proceed to Phase 4.5.
+
+> **If `eca__ask_user` is unavailable** (non-webapp context, no tool access):
+> skip this checkpoint and proceed directly to Phase 4.5.
+> The operator can correct hypotheses afterwards via WEB-023 (interactive
+> review panel in the Tests tab) or by editing `.last-strengthen-report.json`.
 
 ---
 
