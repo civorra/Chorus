@@ -317,7 +317,36 @@ full fix history across all `chorus-fix` runs on this sandbox.
 
 Path: `$SANDBOX/.last-fix-history.json`
 
-**Accumulation procedure (mandatory — never overwrite blindly):**
+> ⛔ **NEVER write this file without reading it first.**
+> Overwriting blindly destroys the entire fix history (no undo).
+> Always execute the accumulation procedure below, even on the very first run after
+> upgrading to this skill version — the file may already exist from a prior session.
+
+**Accumulation procedure (mandatory):**
+
+```
+# Step A — read existing history (or start empty)
+if $SANDBOX/.last-fix-history.json exists:
+    existing = read_json($SANDBOX/.last-fix-history.json)
+    old_run  = { timestamp, sandbox, dry_run, gaps_before, gaps_after,
+                 gaps_resolved, patches, corpus_correctif, bucket_a_count }
+             # extract all top-level fields EXCEPT previous_runs
+    history  = existing.previous_runs   # list, may be []
+else:
+    old_run  = null
+    history  = []
+
+# Step B — prepend old run (if any) and trim to 10
+if old_run is not null:
+    history = [old_run] + history
+history = history[:10]   # keep only the 10 most recent
+
+# Step C — write new file (current run at top level, history preserved)
+write_json($SANDBOX/.last-fix-history.json, {
+    ...current_run_fields,          # timestamp, patches[], etc.
+    "previous_runs": history
+})
+```
 
 1. If `$SANDBOX/.last-fix-history.json` already exists, read and parse it.
 2. Extract the existing top-level run fields (`timestamp`, `patches`, etc.) into a

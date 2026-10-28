@@ -219,7 +219,7 @@ For each discordant element, read its entry in its project JSON file and check:
 | Pattern | Bug type | Signature |
 |---|---|---|
 | **C2** | `besoin_conformite` on non-ST/PP/TOE | Element has `besoin_conformite` in JSON AND `type_element` does NOT match `^(ST\|PP\|TOE)$` |
-| **C3** | sfr_element paired with a KO component (any `-KO-<suffix>`, not just `-KO-R04`) | Element `type_element` matches `\.\d+\.\d+$` (sfr_element) AND no rule ever writes the implicated slot (e.g. `dependency_catalog_ok`) on that exact `type_element` AND a sibling element shares the same parent component (`type_element` minus trailing `.\d+`) with `-KO-` in its own id |
+| **C3** | sfr_element paired with a KO component (any `-KO-<suffix>`, not just `-KO-R04`) | Element `type_element` matches `\.\d+\.\d+$` (sfr_element) AND **the run.pl trace explicitly shows the implicated slot was never written** for this element AND a sibling element shares the same parent component (`type_element` minus trailing `.\d+`) with `-KO-` in its own id. ⚠️ **Require explicit run.pl evidence** — do NOT apply C3 on structural reasoning alone (see caution below table) |
 | **C4** | SAR `-KO-` with sar_component_declared=1, **or** a component declared only as a dependency TARGET with incomplete elements (Case C) | Element id contains `-KO-` AND `type_element` matches `^(ACO\|ADV\|AGD\|ALC\|ASE\|ATE\|AVA)_` AND run output shows `sar_component_declared: 1` — **or** `_note_calc` mentions "dependency target"/"Annex-C"/"so ... resolves" AND the component's own D/C/E elements are missing/incomplete |
 | **C5** | conformance-ctrl driver on -OK- ST/PP/TOE | Element id contains `-OK-` AND `type_element` in `(ST, PP, TOE)` AND run output shows `pipeline_complete_ok: 1` on this frame |
 | **C6** | duplicate `type_element` across an OK/KO Frame pair in the same file | Two or more elements share the exact same `type_element` value AND their ids carry mixed `-OK-`/`-KO-` polarity — any component-level aggregate rule matching elements by `type_element` regex will merge both, contaminating the OK Frame's verdict |
@@ -257,11 +257,20 @@ If `project_bug_ids` is non-empty, record for the gap report:
   Fix: click ⟲ on the affected test card(s) in the webapp Tests tab to regenerate.
 ```
 
-> **Caution — false negatives:** this filter covers only the 4 known mechanical patterns.
+> **Caution — false negatives:** this filter covers only the known mechanical patterns.
 > A project-file bug that does not match any pattern will pass through to Phase 2.1
 > and may be misclassified. If a Phase 2.1 hypothesis feels implausible (e.g. "a rule
 > fires on a frame that should never be in scope"), always re-read the element's JSON
 > entry to rule out a C-type bug first.
+>
+> **Caution — C3 false positives (R5):** C3 requires confirming that *no rule writes
+> the implicated slot on this exact `type_element`*. This cannot be determined reliably
+> by reading YAML files alone — the slot may be written conditionally, or only on a
+> specific subtype. **Only apply C3 when the run.pl trace explicitly shows the slot
+> was never written for this element** (e.g. `dependency_catalog_ok` absent from the
+> element's frame dump). If the trace is unavailable or ambiguous, **do not quarantine**
+> — let the element fall through to Phase 2.1. A false Phase 2.1 misclassification is
+> recoverable; a false C3 quarantine silently removes a real gap from the roadmap.
 
 ### 2.1 — Gap classification
 
@@ -467,10 +476,19 @@ eca__ask_user(
 - Update the in-memory `gaps[]` array accordingly (do NOT re-run Phases 2–3).
 - Summarise changes applied, then proceed to Phase 4.5.
 
-> **If `eca__ask_user` is unavailable** (non-webapp context, no tool access):
-> skip this checkpoint and proceed directly to Phase 4.5.
-> The operator can correct hypotheses afterwards via WEB-023 (interactive
-> review panel in the Tests tab) or by editing `.last-strengthen-report.json`.
+> **Skip this checkpoint and proceed directly to Phase 4.5 in any of these cases:**
+> - `eca__ask_user` is **not in the agent's tool catalog** (non-webapp context, CLI, sub-agent)
+> - This strengthen run was triggered **inside a sub-agent** or automated pipeline
+>   (DONE-protocol context — the operator is not actively waiting for a question)
+> - `chorus-strengthen` is called as part of a batch sequence
+>   (`chorus-fix --bucket-c`, `chorus-strengthen` after `chorus-feed --unattended`, etc.)
+>
+> ⚠️ **"Unavailable" means tool not in catalog** — it does NOT mean "tool present but
+> webapp not responding". If `eca__ask_user` IS in the catalog but the session context
+> is non-interactive (sub-agent, batch), still skip — a blocked tool call in those
+> contexts causes an indefinite hang (root cause of WEB-025 pre-fix incident).
+> The operator can correct hypotheses afterwards via WEB-023 (interactive review panel
+> in the Tests tab) or by editing `.last-strengthen-report.json` directly.
 
 ---
 
