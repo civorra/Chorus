@@ -923,23 +923,51 @@ for e in elems:
 ### Correction C3 — sfr_element paired with a KO component (naming convention)
 
 **Detection:** discordance `KO-got-OK` where the element type_element matches
-`FAMILY.N.N` or `FAMILY_EXT.N.N` (sfr_element) AND the rule in the ID is R04 or
-similar (which applies to the component, not the element). The sfr_element verdict=1
-is correct — R04 never fires on elements.
+`FAMILY.N.N` or `FAMILY_EXT.N.N` (sfr_element) AND the actual gap is a dependency
+failure that only ever fires at the **component** level (`dependency_catalog_ok`),
+never on the element itself (`operation_mandate_ok`). The sfr_element verdict=1
+is correct — no rule in any SFR class agent ever propagates a component's
+`dependency_catalog_ok` down to its own `.N.M` sub-elements.
+
+> ⚠️ **Incident (2026-10-27, sandbox 05b-CC-3.1.4-NEW):** the original detection
+> regex (`-KO-R04` literal substring) only matched ids that explicitly named the
+> rule tag in the suffix. Four elements with generic `-KO-\d+` suffixes
+> (`E-FMT_SMR.2.2-KO-01`, `E-FCS_CKM.1.1-KO-02`, `E-FCO_NRO.1.1-KO-01`,
+# `E-FRU_FLT.2.1-KO-01`) went undetected by C3 and surfaced as 4 unexplained
+> discordances in `chorus-strengthen`. Detection is now based on **structural
+> verification** (does any rule actually write `dependency_catalog_ok` on this
+> Frame's own `type_element`?), not on a literal id substring — this covers any
+> future `-KO-<anything>` suffix, not just `-KO-R04`.
 
 **Fix:**
 ```python
 for e in elems:
     eid = e.get('id',''); te = e.get('type_element','')
-    is_sfr_elem = bool(re.match(r'^[A-Z]+_[A-Z_]+\.\d+\.\d+$', te))
-    if is_sfr_elem and '-KO-R04' in eid.upper():
-        e['id'] = re.sub(r'-KO-R04', '-R04PAIR', eid, flags=re.IGNORECASE)
+    is_sfr_elem = bool(re.match(r'^[A-Z]+_[A-Z_]+(_EXT)?\.\d+\.\d+$', te))
+    if not is_sfr_elem or '-KO-' not in eid.upper():
+        continue
+    # Structural check (not a literal 'R04' substring match): does this
+    # element's own run.pl trace show operation_mandate_ok=1 (correctly
+    # computed, grammar-valid) while the id's -KO- suffix actually refers
+    # to a sibling COMPONENT's own dependency_catalog_ok=0? If so, this is
+    # a mislabelled element, not a genuine element-level gap.
+    parent_component = re.sub(r'\.\d+$', '', te)  # strip trailing ".N" sub-element index
+    sibling_component_ko = any(
+        e2.get('type_element','') == parent_component and '-KO-' in e2.get('id','').upper()
+        for e2 in elems
+    )
+    if sibling_component_ko:
+        e['id'] = re.sub(r'-KO-\d+', '-DEPPAIR-01', eid, flags=re.IGNORECASE)
         e.setdefault('_note_calc', '')
-        e['_note_calc'] += ' (renamed: R04 applies to sfr_component not sfr_element — element verdict=1 is correct; -KO- removed to prevent false discordance)'
+        e['_note_calc'] += (f' (renamed: dependency_catalog_ok is only ever computed on the '
+                             f'parent component {parent_component}, never propagated to this '
+                             f'sub-element — element verdict=1 is correct; -KO- removed to '
+                             f'prevent false discordance; see chorus-create-project.md § C3)')
 ```
 
-Apply the same pattern for other R-prefixed tags that only apply to components
-(R05, R06) if the element is an sfr_element.
+Apply the same pattern for any other R-prefixed tags that only apply to components
+(R05, R06) if the element is an sfr_element — the structural check above (no rule
+ever writes the implicated slot on an `.N.M` Frame) generalises to all of them.
 
 ---
 
@@ -982,6 +1010,25 @@ for e in elems:
             e['_note_calc'] += ' (renamed: sar_component_declared=1 because all elements content_declared=True; KO captured in sar_dependency_ok=0 — not reflected in displayed verdict; see chorus-create-project.md § C4)'
 ```
 
+> **Case C — component declared only as a dependency TARGET for another
+> component under test, never under test itself:** if a component's own
+> `_note_calc` states it exists solely to satisfy a sibling's Annex-C/Table
+> dependency (e.g. "declared here so sar_dependency_ok for X resolves =1"),
+> it still needs its own D/C/E elements with `content_declared: true` to pass
+> `R05-component-declared-aggregate` — a bare mention in `dependances_declarees`
+> is not enough. Detect any component whose `_note_calc` contains "dependency
+> target"/"Annex-C"/"so ... resolves" and verify its element list is complete
+> (same catalog lookup as the main C1 block above); if elements are missing,
+> add any missing elements with `content_declared: true` rather than leaving
+> the component incomplete and expecting `-OK-` to still mean CONFORME.
+>
+> **Incident (2026-10-27, sandbox 05b-CC-3.1.4-NEW):** `X-EAL-OK-ATE_COV.1` was
+> declared purely as an Annex-C dependency target for `ATE_IND.2`, with no
+> `.1D/.1C/.1E` elements at all — `R05-component-declared-aggregate` waited
+> `MAX_WAIT_CYCLES` then gave up, producing `sar_component_declared=0` and an
+> unexplained `OK-got-KO` discordance. C4 as originally scoped (requires an
+> explicit `-KO-` tag on the component itself) never triggered on this case.
+
 ---
 
 ### Correction C5 — conformance-ctrl driver frame receiving `verdict=FAILED`
@@ -1010,6 +1057,131 @@ for e in elems:
 > becomes the conformance-ctrl driver). Do not blanket-mark all ST/PP/TOE Frames.
 > Verify by checking whether `pipeline_complete_ok` appears in the Frame's state in
 > the run.pl output — only the driver Frame carries this slot.
+
+---
+
+### Correction C6 — duplicate `type_element` across an OK/KO Frame pair (component contamination)
+
+> **Context (incident 2026-10-27, sandbox 05b-CC-3.1.4-NEW):** a component's
+> own sub-element appeared twice in the same project file under the exact
+> same `type_element` (once `-OK-`, once `-KO-WRONGOP-`). Any component-level
+> aggregate rule that collects elements by matching `type_element` against
+> the `"<component>.<N>"` convention merges both Frames indiscriminately —
+> the OK scenario's verdict gets silently contaminated by the KO sibling.
+> This is a structural hazard of the flat single-file project format
+> whenever a KB agent aggregates by `type_element` pattern rather than by
+> scenario/id — not specific to `_EXT` components.
+
+**Detection — mandatory pre-write check, run on every generated project file
+before finalising it (not only during gap triage):**
+```python
+from collections import defaultdict
+te_to_ids = defaultdict(list)
+for e in elems:
+    te_to_ids[e.get('type_element','')].append(e.get('id',''))
+duplicates = {te: ids for te, ids in te_to_ids.items() if len(ids) > 1}
+# A duplicate is HARMLESS only if every id in the group shares the same
+# OK/KO polarity (e.g. two "-OK-" variants testing different unrelated
+# slots on the same Frame on purpose). It is HAZARDOUS if the group mixes
+# "-OK-" and "-KO-" ids — that is exactly the contamination pattern above.
+for te, ids in duplicates.items():
+    polarities = {('KO' if '-KO-' in i.upper() else 'OK') for i in ids}
+    if len(polarities) > 1:
+        print(f"⛔ C6 hazard: type_element '{te}' shared by mixed-polarity ids: {ids}")
+```
+
+**Fix — do not rely on `_expected_uncertain` here (the contamination is a real
+engine behaviour difference, not test-oracle noise); resolve the collision
+itself:**
+1. **Preferred:** move the `-KO-WRONGOP-`/`-KO-*` Frame (and only that one —
+   never the `-OK-` Frame) out of the current project file into a dedicated
+   file (or `project-stress-*.json` if the case is adversarial by nature),
+   so the OK scenario's own file never contains a competing `type_element`.
+2. **Alternative (when splitting is impractical):** suffix the `type_element`
+   of the KO Frame with a disambiguating marker the KB agent's own element-
+   matching regex still accepts if the corpus allows an iteration/variant
+   suffix (e.g. the `(N)` iteration suffix already supported by several
+   agents' `parse_*_identifier()` Helpers) — verify this is actually
+   supported by the implicated agent before using it; do not invent a
+   suffix convention the KB does not already parse.
+3. Document the applied fix in `_note_calc` on both Frames: which file/
+   suffix resolved the collision, and which `type_element` each now carries.
+
+---
+
+### Correction C7 — single element shared between two mutually exclusive
+### file-level scenarios (irreducible conflict)
+
+> **Context (incident 2026-10-27, sandbox 05b-CC-3.1.4-NEW):** a global
+> package Frame (`I-EAL4-OK-01`) expected `CONFORME` while the same project
+> file deliberately reused one of its components, with an incomplete
+> `content_declared: false`, as the sole basis of a separate intentional
+> `-KO-` test elsewhere in the same file. Because the aggregate slot
+> (`eal_package_complete`) is file-wide, not scenario-scoped, the file could
+> never simultaneously host a complete-baseline OK scenario and an
+> incomplete-baseline KO scenario sharing the same component instance.
+
+**Detection:** before finalising a project file, for any file-wide/global
+aggregate slot (`eal_package_complete`, `global_non_conformity_count`, or any
+other slot computed once across the *entire* file rather than per-Frame),
+check whether more than one element's expected verdict depends on that same
+global aggregate reaching two different values. If the file declares both an
+"-OK-" id expecting the aggregate to resolve true and a "-KO-" id expecting
+it to resolve false — **and both depend on the same shared component
+instance** — the scenario pair cannot coexist in one file.
+
+**Fix (in order of preference):**
+1. **Split into two project files** — one with the complete baseline (true
+   OK scenario, aggregate resolves CONFORME), one with the isolated KO
+   component (aggregate resolves NON_CONFORME as designed). This is the only
+   fix that produces a genuinely verifiable OK verdict.
+2. **If splitting is impractical for this test round:** mark the global-
+   aggregate-dependent "-OK-" id `_expected_uncertain: true` with a
+   `_note_calc` explaining the shared-component conflict and which other id
+   in the same file is the true source of the KO — exactly mirroring the
+   existing C5 pattern, but for a file-wide aggregate conflict rather than a
+   conformance-ctrl driver-Frame conflict.
+
+---
+
+### Correction C8 — grammar-only id claims a global verdict it was never designed to assert
+
+> **Context (incident 2026-10-27, sandbox 05b-CC-3.1.4-NEW):** an id suffixed
+> `-OK-GRAMMAR-` was expected `CONFORME`, but `verdict_of()` returns the
+> Frame's overall pipeline verdict, not the isolated grammar-check slot. The
+> file's own partial baseline (never intended to carry a complete package)
+> correctly made the overall aggregate fail — the test's intent ("grammar is
+> valid") and the oracle's claim ("verdict is CONFORME") were conflated.
+
+**Detection:** any id containing a scope-qualifying suffix that names a
+*specific* sub-check (`-GRAMMAR-`, `-SYNTAX-`, `-FORMAT-`, or similar) must
+have its `expected` value verified against the **specific slot** the suffix
+names — never against the Frame's overall `verdict_of()` result — unless the
+project file is independently confirmed to carry a complete baseline/package
+for that Frame (i.e. the overall verdict and the specific slot coincide).
+
+**Fix:**
+```python
+for e in elems:
+    eid = e.get('id','').upper()
+    if '-GRAMMAR-' in eid or '-SYNTAX-' in eid or '-FORMAT-' in eid:
+        # Verify independently: does this file carry a COMPLETE baseline/
+        # package for this Frame's type? If not (e.g. an `edges`-scoped file
+        # with a partial component set), the only verdict verdict_of() can
+        # honestly return is NON_CONFORME/FAILED, regardless of whether the
+        # grammar-specific slot itself is valid — correct 'expected' to match.
+        e.setdefault('_note_calc', '')
+        e['_note_calc'] += (' (verify: -GRAMMAR- suffix asserts only the grammar slot; '
+                             'if this file lacks a complete baseline for this Frame, '
+                             'correct expected to NON_CONFORME/FAILED to match '
+                             'verdict_of()s actual overall-verdict semantics — '
+                             'see chorus-create-project.md § C8)')
+```
+
+> This is a **documentation/naming discipline** fix as much as a data fix:
+> going forward, prefer a suffix that names the file's actual scope honestly
+> (e.g. `-GRAMMAR-PARTIAL-BASELINE-` for an edges file) over a bare
+> `-GRAMMAR-` that implies the Frame is otherwise fully conformant.
 
 ---
 

@@ -188,7 +188,7 @@ under a dedicated section (§ Uncertain stress results).
 
 If no `project-stress-*.json` file exists → skip this step silently.
 
-### 2.0-bis — Project-file bug pre-filter (C1–C5 detection)
+### 2.0-bis — Project-file bug pre-filter (C1–C8 detection)
 
 > **Purpose:** some discordances originate from a bug in the project JSON itself
 > (wrong slot, wrong id convention) rather than from a missing or incorrect KB rule.
@@ -199,15 +199,27 @@ If no `project-stress-*.json` file exists → skip this step silently.
 > `besoin_conformite: 1` in `project-scale.json` → `toe-structure` fired on an SFR
 > component → `introduction_ok: 0` → `verdict: FAILED`. `chorus-strengthen` would
 > have misclassified this as "Rule too permissive" and proposed spurious YAML changes.
+>
+> **Incident (2026-10-27, sandbox 05b-CC-3.1.4-NEW):** 14 discordances (6 `_EXT`
+> component contamination, 4 generic `-KO-\d+` sfr_element/component pairs not
+> caught by the original C3's literal `-KO-R04` match, 1 file-wide aggregate
+> conflict, 1 grammar-only id misread as an overall-verdict assertion, 2 component-
+> as-dependency-target cases) went undetected by C1–C5 as originally scoped and had
+> to be diagnosed manually against the live `run.pl` trace. See `chorus-create-
+> project.md § C3 (widened)`, `§ C4 (Case C added)`, `§ C6`, `§ C7`, `§ C8` for the
+> generalised detection logic now folded into those corrections.
 
 For each discordant element, read its entry in its project JSON file and check:
 
 | Pattern | Bug type | Signature |
 |---|---|---|
 | **C2** | `besoin_conformite` on non-ST/PP/TOE | Element has `besoin_conformite` in JSON AND `type_element` does NOT match `^(ST\|PP\|TOE)$` |
-| **C3** | sfr_element -KO-RNN- naming | Element id contains `-KO-R\d+` AND `type_element` matches `\.\d+\.\d+$` (sfr_element) |
-| **C4** | SAR -KO- with sar_component_declared=1 | Element id contains `-KO-` AND `type_element` matches `^(ACO\|ADV\|AGD\|ALC\|ASE\|ATE\|AVA)_` AND run output shows `sar_component_declared: 1` |
+| **C3** | sfr_element paired with a KO component (any `-KO-<suffix>`, not just `-KO-R04`) | Element `type_element` matches `\.\d+\.\d+$` (sfr_element) AND no rule ever writes the implicated slot (e.g. `dependency_catalog_ok`) on that exact `type_element` AND a sibling element shares the same parent component (`type_element` minus trailing `.\d+`) with `-KO-` in its own id |
+| **C4** | SAR `-KO-` with sar_component_declared=1, **or** a component declared only as a dependency TARGET with incomplete elements (Case C) | Element id contains `-KO-` AND `type_element` matches `^(ACO\|ADV\|AGD\|ALC\|ASE\|ATE\|AVA)_` AND run output shows `sar_component_declared: 1` — **or** `_note_calc` mentions "dependency target"/"Annex-C"/"so ... resolves" AND the component's own D/C/E elements are missing/incomplete |
 | **C5** | conformance-ctrl driver on -OK- ST/PP/TOE | Element id contains `-OK-` AND `type_element` in `(ST, PP, TOE)` AND run output shows `pipeline_complete_ok: 1` on this frame |
+| **C6** | duplicate `type_element` across an OK/KO Frame pair in the same file | Two or more elements share the exact same `type_element` value AND their ids carry mixed `-OK-`/`-KO-` polarity — any component-level aggregate rule matching elements by `type_element` regex will merge both, contaminating the OK Frame's verdict |
+| **C7** | single element/component shared between two mutually exclusive file-level scenarios | A file-wide aggregate slot (`eal_package_complete`, `global_non_conformity_count`, or similar) is expected to resolve to two different values by two different ids in the same file, both depending on the same shared component/element instance |
+| **C8** | grammar/syntax-only id's `expected` value conflated with the Frame's overall `verdict_of()` result | Element id contains `-GRAMMAR-`/`-SYNTAX-`/`-FORMAT-` AND `expected` assumes the Frame's overall verdict matches the named sub-check's own slot, without the file actually carrying a complete baseline/package for that Frame |
 
 Build a **project-bug exclusion set** `project_bug_ids`:
 
@@ -222,9 +234,12 @@ for each discordant element:
           project_file: "<slug>.json",
           fix_action: "regenerate with ⟲ (chorus-create-project --strategy <slug> applies C2 automatically)"
         }
-    elif C3 pattern matches: project_bug_ids[id] = { bug_type: "C3 — sfr_element -KO-RNN- naming", … }
-    elif C4 pattern matches: project_bug_ids[id] = { bug_type: "C4 — SAR -KO- sar_component_declared=1", … }
+    elif C3 pattern matches: project_bug_ids[id] = { bug_type: "C3 — sfr_element paired with KO component (structural check, any -KO- suffix)", … }
+    elif C4 pattern matches: project_bug_ids[id] = { bug_type: "C4 — SAR -KO- sar_component_declared=1, or dependency-target component incomplete (Case C)", … }
     elif C5 pattern matches: project_bug_ids[id] = { bug_type: "C5 — conformance-ctrl driver on -OK-", … }
+    elif C6 pattern matches: project_bug_ids[id] = { bug_type: "C6 — duplicate type_element across OK/KO Frame pair", … }
+    elif C7 pattern matches: project_bug_ids[id] = { bug_type: "C7 — shared component across mutually exclusive file-level scenarios", … }
+    elif C8 pattern matches: project_bug_ids[id] = { bug_type: "C8 — grammar-only id conflated with overall verdict", … }
 ```
 
 **Any element in `project_bug_ids` is excluded from Phase 2.1 classification** — it is
@@ -503,7 +518,7 @@ Write `$SANDBOX/.last-strengthen-report.json`:
   "project_bugs": [
     {
       "id":           "<element id>",
-      "bug_type":     "C2|C3|C4|C5",
+      "bug_type":     "C2|C3|C4|C5|C6|C7|C8",
       "project_file": "<project-scale.json>",
       "symptom":      "Expected CONFORME → got FAILED",
       "fix_action":   "regenerate — chorus-create-project --strategy <slug>"
@@ -542,6 +557,12 @@ sha256sum $SANDBOX/agent/chorus/*.org | sha256sum
 # ✅ CORRECT — read verbatim:
 cat $SANDBOX/agent/.kb-hash   →  copy the full content into "kb_hash"
 ```
+
+> ⛔ **Mechanical copy only** — produce `kb_hash` via a literal file-read tool
+> call on `agent/.kb-hash` and insert its exact returned string; never retype
+> or reconstruct it from memory/earlier conversation context — a one-line
+> slip silently misattributes every subsequent hash↔filename pairing,
+> undetectable by inspection, and breaks the webapp's stale-detection.
 
 ---
 

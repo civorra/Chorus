@@ -1418,10 +1418,21 @@ If **NOT CONVERGED** → recommend:
 2. #+CORPUS_LANG in       → read first line matching "^#\+CORPUS_LANG:" in
    agent/chorus/index.org    $SANDBOX/agent/chorus/index.org
                               value must be fr or en (case-insensitive), else skip
-3. YAML dominant language → scan all files in $SANDBOX/rules/**/*.yml
-                              count occurrences of "^RULE:" (→ en) and "^REGLE:" (→ fr)
-                              $REPORT_LANG = language with the higher count
-                              tie → fr
+3. YAML normative-content  → scan all files in $SANDBOX/rules/**/*.yml
+   dominant language          ⚠️ do NOT use the "^RULE:"/"^REGLE:" header keyword —
+                              it is a fixed structural tag from the engine's YAML
+                              template (English by default, per chorus-engine-yaml.md),
+                              not a reflection of the corpus's actual language, and is
+                              present as "RULE:" even on French-corpus sandboxes.
+                              Instead, scan the free-text normative content of each
+                              rule: the "# CORPUS:" line's reference label and the
+                              "# PURPOSE" block's prose. Count French-leaning markers
+                              (accented characters é/è/à/ê/ç, or words matching
+                              "Règle|Recommandation|Reco[A-Z]|conforme|non conforme"
+                              case-insensitively) vs English-leaning markers (words
+                              matching "Rule|Recommendation|compliant|non-compliant").
+                              $REPORT_LANG = language with the higher marker count
+                              across all scanned files; tie → fr
 4. Default                → fr
 ```
 
@@ -2288,9 +2299,21 @@ when the KB has not changed since the last `chorus-check --all`.
 
 **Format:**
 
+> ⛔ **Mandatory mechanical-copy procedure for `kb_hash`** — produce this field
+> via a literal file-read-then-write (`eca__read_file` on `agent/.kb-hash`,
+> insert the exact returned string) — never retype/reconstruct it from memory
+> or from an earlier turn's displayed content. A one-line transcription slip
+> silently shifts every hash↔filename pairing (undetectable by inspection,
+> breaks the webapp's stale-detection permanently — incident confirmed
+> 2026-10-27, sandbox 05b-CC-3.1.4-NEW).
+>
+> **Verification before writing:** confirm the first line's hash token matches
+> `sha256sum` of the actual first-listed file in `agent/.kb-hash` — do not
+> write `.last-check-results.json` if this check was skipped.
+
 ```json
 {
-  "kb_hash": "<content of $SANDBOX/agent/.kb-hash — verbatim>",
+  "kb_hash": "<content of $SANDBOX/agent/.kb-hash — verbatim, mechanically copied, see guard above>",
   "proj_hash": "<sha256sum $SANDBOX/project-*.json | awk '{print \$1}' | sha256sum | awk '{print \$1}'>",
   "timestamp": "<ISO-8601 UTC>",
   "files": [
