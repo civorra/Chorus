@@ -255,6 +255,24 @@ For each confirmed patch:
 - Remove `_incomplet: 1` flag if all mandatory slots are now filled
 - Add `_patched_by: "chorus-audit-import"` and `_patched_date: "<YYYY-MM-DD>"` to the element
 
+After applying all patches, **update the `_audit` block** in the same JSON:
+
+```json
+"_audit": {
+  ...existing fields...,
+  "patch_applied":          true,
+  "patches_applied":        N,
+  "gaps_comblables_applied": N,
+  "patch_date":             "YYYY-MM-DD"
+}
+```
+
+Field rules:
+- `patch_applied` **must be a boolean `true`** — the webapp scanner reads this field to update the badge state.
+- `patches_applied` and `gaps_comblables_applied` are informational integer counts (same value N).
+- `patch_date` is the date of this `--patch` run (not the original audit date).
+- All other existing `_audit` fields are **preserved unchanged** — never overwrite the original audit metadata.
+
 Write the patched JSON back to `<project.json>` (overwrite).
 Print: `[audit --patch] <N> corrections applied → <project.json>`
 
