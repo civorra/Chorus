@@ -1348,8 +1348,7 @@ Run this validation snippet on `$SANDBOX/corpus/<NNN>-<slug>-vision.md` (or `-te
 > `* Imported project documents (not corpus — chorus-import-project artefacts)`
 > section, never under `* Corpus`. A converted project document is never normative
 > corpus, even though it lands in the same `corpus/` output directory.
-> (Incident precedent: sandbox `07c-cyber-sec-CC-PART1-INTRO+FUNCTIONAL+ASSURANCE`,
-> file `005-SIMUL-ID-PKI-ADV-FSP2-fiche-vision.md` wrongly listed in `* Corpus`
+> (Precedent: a converted project document was wrongly listed in `* Corpus`
 > after an auto-invoked `chorus-word` call ran this step unconditionally.)
 >
 > Proceed with the row-add below **only** when invoked directly by the user

@@ -119,8 +119,8 @@ Compare BOTH hashes against the fields in `.last-check-results.json`:
 > produce a misleading gap report against already-fixed data. Adding `proj_hash` as
 > a second cache key field closes this gap.
 >
-> **Incident (2026-10-26, sandbox 05c-CC-3.1.4-NEW-TMP):** `project-cross.json` was
-> regenerated from 139 → 0 discordances; `.last-check-results.json` still showed 139.
+> **Context:** a project file was regenerated going from many discordances down to
+> zero, but `.last-check-results.json` still showed the old count.
 > The KB hash happened to mismatch (coincidental org change), forcing a re-run — but
 > if the KB had been unchanged, the stale cache would have been used silently.
 
@@ -195,15 +195,14 @@ If no `project-stress-*.json` file exists → skip this step silently.
 > Classifying them as "rule gaps" would produce misleading gap reports and unnecessary
 > KB modifications. This step detects and quarantines them **before** Phase 2.1.
 >
-> **Incident (2026-10-26, sandbox 05c-CC-3.1.4-NEW-TMP):** `S-FDP_ETC.2` had
-> `besoin_conformite: 1` in `project-scale.json` → `toe-structure` fired on an SFR
-> component → `introduction_ok: 0` → `verdict: FAILED`. `chorus-strengthen` would
-> have misclassified this as "Rule too permissive" and proposed spurious YAML changes.
+> **Context:** an SFR-like element had `besoin_conformite: 1` in a project file →
+> `toe-structure` fired on an SFR component → `introduction_ok: 0` → `verdict: FAILED`.
+> `chorus-strengthen` would have misclassified this as "Rule too permissive" and
+> proposed spurious YAML changes.
 >
-> **Incident (2026-10-27, sandbox 05b-CC-3.1.4-NEW):** 14 discordances (6 `_EXT`
-> component contamination, 4 generic `-KO-\d+` sfr_element/component pairs not
-> caught by the original C3's literal `-KO-R04` match, 1 file-wide aggregate
-> conflict, 1 grammar-only id misread as an overall-verdict assertion, 2 component-
+> **Context:** several discordances (component contamination, generic `-KO-\d+`
+> sfr_element/component pairs not caught by a literal id match, a file-wide aggregate
+> conflict, a grammar-only id misread as an overall-verdict assertion, component-
 > as-dependency-target cases) went undetected by C1–C5 as originally scoped and had
 > to be diagnosed manually against the live `run.pl` trace. See `chorus-create-
 > project.md § C3 (widened)`, `§ C4 (Case C added)`, `§ C6`, `§ C7`, `§ C8` for the

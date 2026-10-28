@@ -295,8 +295,8 @@ file**, in the pipeline order defined in `SCOPING.md ## Agents`. Each run:
 > guess is silently wrong whenever the gate is pipeline-wide across different
 > Frame types, and produces a pipeline that "runs" with no error but never
 > converges (`Chorus::Expert::process()` looping until `_MAX_ITER`, see
-> `chorus-check.md` § Step 5d for the mechanical detection check, and the
-> `05-CC-3.1.4` incident writeup in `chorus-engine-yaml.md` for the full story).
+> `chorus-check.md` § Step 5d for the mechanical detection check, and
+> see `chorus-engine-yaml.md` § INPUTS header convention for the full story).
 > **Concrete mitigation:** once agent 1's own delegation pass completes, read
 > its generated KB org's "Pipeline I/O"/"Targeting slots" section yourself
 > (the orchestrating top-level agent, not a sub-agent) to confirm exactly how
@@ -1055,8 +1055,8 @@ Template variables:
 > **This constraint is easy to document at authoring time and expensive to reconstruct
 > after the fact.** Its absence produces silent `(unprocessed)` Frames in every test file —
 > no error at generation time, no diagnostic clue at `chorus-check` time; root cause only
-> visible after a `chorus-strengthen` analysis (incident: sandbox `05c-CC-3.1.4-NEW-TMP`,
-> 2026-10-25, 233 discordances traced to 7 SAR agent org files missing this entry).
+> visible after a `chorus-strengthen` analysis (observed in practice: dozens of
+> discordances traced to SAR agent org files missing this entry).
 
 #### ⛔ Mandatory check before authoring any CONDITION/EXCEPTION on a cross-agent targeting slot (step 3/8)
 
@@ -1593,12 +1593,11 @@ sub <helper2> {
       # lib/**/*.pm — any name present in called.txt but absent from every
       # @EXPORT_OK is a live bug: the YAML calls a Helper that was never written.
       ```
-      This is the exact class of bug documented in `03-cyber-sec-ANSSI-PG-083+RGS_v-2-0_B2-REBUILD/README.org`
-      (2026-09-19): two agents' YAML called `agreger_verdicts()`, the KB org
-      documented its signature, but `lib/.../Synthese.pm` was never created —
-      undetected until an operator manually asked "does `lib/` exist?". This
-      check makes that class of bug mechanically detectable instead of relying
-      on manual review.
+      This is the exact class of bug observed in practice: two agents' YAML
+      called a Helper, the KB org documented its signature, but the Helper
+      module was never created — undetected until an operator manually asked
+      "does `lib/` exist?". This check makes that class of bug mechanically
+      detectable instead of relying on manual review.
 - [ ] Every helper referenced in a YAML ACTION has its implementation in `Helpers.pm`
 - [ ] `@EXPORT_OK` covers all helpers in the file
 - [ ] Every helper has its `Source corpus` comment
@@ -1969,8 +1968,8 @@ to the ⏭ Deferred list with:
 > prompt MUST explicitly paste this exact grammar template — do not rely on the
 > sub-agent reading this skill file on its own, and do not accept a sub-agent's
 > own free-form summary as a substitute for actually writing this block into
-> `README.org`. A regression was observed in practice (sandbox `05-CC-3.1.4`,
-> 2026-10): 20 of 21 agent passes, each delegated to a separate sub-agent,
+> `README.org`. A regression was observed in practice: nearly all agent passes,
+> each delegated to a separate sub-agent,
 > wrote their own prose-style `* Coverage — <agent>` section instead of this
 > grammar — the KB was otherwise complete and correct (all YAML/Helpers valid),
 > but entirely unreadable by `chorus-web`'s Knowledge Base tab until manually

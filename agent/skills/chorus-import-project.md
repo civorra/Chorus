@@ -93,14 +93,14 @@
 > same file. If the engineer genuinely wants historical-continuity reuse (e.g.
 > deliberately reproducing a prior audit's exact figures for comparison), this must be
 > an **explicit, stated choice** in the invocation — never the silent default behavior.
-> — Incident reference: sandbox `08-ANSSI-PG-083-CENTRIC`/`eviden`, 2026-10-16 — a CBOM
-> source already imported twice before was re-imported a third time; the agent detected
-> the identical hash, declared a "RE-IMPORT" and copied forward all prior alignment
-> decisions as-is, including a `nom_mecanisme`-missing bug in a sandbox-local extension
-> that had meanwhile been fixed — compliance score stayed artificially stuck at 70%
-> across two further re-import attempts, while a genuinely fresh import of the same
-> source in a different entity the same day correctly scored 84% (same KB, same
-> extension version — only the re-alignment-from-scratch path produced the fix). See
+> — Precedent: a source already imported twice before was re-imported a third
+> time; the agent detected the identical hash, declared a "RE-IMPORT" and copied
+> forward all prior alignment decisions as-is, including a bug in a sandbox-local
+> extension that had meanwhile been fixed — the compliance score stayed
+> artificially stuck at the old, buggy value across further re-import attempts,
+> while a genuinely fresh import of the same source correctly reflected the fix
+> (same KB, same extension version — only the re-alignment-from-scratch path
+> produced the correct result). See
 > that sandbox's `skills/chorus-cbom-import.md` § "Re-import duplicate-detection
 > shortcut" for the full incident writeup.
 >
@@ -183,10 +183,9 @@ for subsequent phases.
 > document routed through `chorus-import-project` is never normative corpus, even
 > though it physically lands in `corpus/` (shared conversion output directory) and even
 > though the same conversion skill is reused. Silently letting the invoked skill run its
-> own Phase 4.1 here would misclassify the file as corpus (see incident: sandbox
-> `07c-cyber-sec-CC-PART1-INTRO+FUNCTIONAL+ASSURANCE`, file
-> `005-SIMUL-ID-PKI-ADV-FSP2-fiche-vision.md` wrongly listed in `* Corpus` after an
-> auto-invoked `chorus-word` call).
+> own Phase 4.1 here would misclassify the file as corpus (precedent: a converted
+> project document was wrongly listed in `* Corpus` after an auto-invoked
+> `chorus-word` call).
 >
 > **Rule:** when invoking a conversion skill from this algorithm, instruct it explicitly
 > to **skip its own Phase 4.1** (pass this instruction as part of the call context —

@@ -1062,8 +1062,8 @@ template, then trigger a regeneration via `chorus-check` on the affected sandbox
 
 > **Incident:** `agent/org/incidents-log.org § cc314-template-01` *(to be added
 > when a real incident of this class is observed — the pattern is documented in
-> `TODO.org § #A` as the motivating case: `CHORUS_MAX_CYCLES`/`CHORUS_MAX_ITER`
-> override added manually to `run.pl` of sandbox `05-CC-3.1.4` instead of being
+> `TODO.org § #A` as the motivating case: a `CHORUS_MAX_CYCLES`/`CHORUS_MAX_ITER`
+> override added manually to a sandbox's `run.pl` instead of being
 > ported to template T5.)*
 
 
@@ -1323,11 +1323,9 @@ If **Discordances > 0**, list them:
 > with several specific rules (e.g. `check-archi-conformite` →
 > `check-retraitement-conformite` → `check-niveau-qualite-reco`), this would
 > point to whichever rule happened to run last, not the one that actually wrote
-> the cited reason. This exact mistake was found and fixed in `run.pl` on
-> sandbox `09b-ANSSI-PG-083_MULTI-SOURCES` (2026-09-24): `ALEA-ALGO-KO-01`'s
-> reason cited `RègleArchiGénAléa.3` (written by `check-archi-conformite`,
-> 1st in the chain) but "last entry" wrongly attributed it to
-> `check-niveau-qualite-reco` (4th, unrelated `RecoArchiGénAléa`).
+> the cited reason. This exact mistake was found and fixed in a `run.pl`: an
+> element's reason cited a rule written by the 1st rule in the chain, but
+> "last entry" wrongly attributed it to the 4th, unrelated rule.
 
 If **Unprocessed > 0**, list them:
 
@@ -2304,8 +2302,7 @@ when the KB has not changed since the last `chorus-check --all`.
 > insert the exact returned string) — never retype/reconstruct it from memory
 > or from an earlier turn's displayed content. A one-line transcription slip
 > silently shifts every hash↔filename pairing (undetectable by inspection,
-> breaks the webapp's stale-detection permanently — incident confirmed
-> 2026-10-27, sandbox 05b-CC-3.1.4-NEW).
+> breaks the webapp's stale-detection permanently — incident confirmed in practice).
 >
 > **Verification before writing:** confirm the first line's hash token matches
 > `sha256sum` of the actual first-listed file in `agent/.kb-hash` — do not
@@ -2386,7 +2383,7 @@ when the KB has not changed since the last `chorus-check --all`.
 - [ ] Report: no unexpected `(unprocessed)` elements
 - [ ] `_MAX_CYCLES`: a **flat, bounded ceiling** — NOT proportional to Frame volume or rule
       count. ⛔ **Do not use** the older `N_frames × N_rules_total × N_agents × D × 10` heuristic
-      — empirically (chorus-check 2026-10 perf incident, sandbox `05-CC-3.1.4`), this formula is
+      — empirically (a chorus-check performance incident), this formula is
       the wrong shape: cycles needed to converge scale with **bounded-wait retry depth**
       (`MAX_WAIT_CYCLES`, typically 5, used by any "aggregate — give up after N cycles if
       expected children never appear" rule — see `chorus-engine-yaml.md` § Aggregate rule
