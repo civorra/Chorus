@@ -109,6 +109,28 @@ The project-slug is `basename(project_file)` without `.json`.
 From the `explain-*.md` header (`## 📚 KB & Project` block), read the **Origin**
 line — confirms the project file and original source document reference.
 
+### Step 3b — Detect `$REPORT_LANG` of the existing report (mandatory)
+
+> This skill **patches** an existing `explain-*.md`/`synthese-*.md` pair produced
+> by `chorus-check --explain`/`--summary`, which already resolved its own
+> `$REPORT_LANG` (see `chorus-check.md § Phase L0`) — en or fr. The patch
+> blocks added by this skill (Phase C4) **must match that same language**;
+> never assume French by default, and never re-run Phase L0's YAML/corpus
+> heuristics here (that would risk a different answer than the report in
+> hand actually used).
+>
+> Detect directly from the report's own header, which is unambiguous and
+> already resolved:
+> - `## 📚 KB & Project` (English) vs `## 📚 KB & Projet` (French) in `explain-*.md`
+> - if `synthese-*.md` is being patched instead/also, use the same detection
+>   on its paired `explain-*.md` — never detect independently per file, the
+>   pair always shares one `$REPORT_LANG`.
+>
+> Log line (mandatory, same convention as `chorus-check.md`):
+> ```
+> [lang] $REPORT_LANG=<fr|en>  source=explain-header
+> ```
+
 ### Step 4 — Resolve the source document
 
 **If `--source <file>` is provided explicitly:**
@@ -162,7 +184,11 @@ For each target element, record:
 > indefinitely with no visual difference between the two states). Still
 > follow the "Before any write" backup step below before touching the file.
 >
-> Insert:
+> Detect `$REPORT_LANG` the same way as Step 3b (`## 📚 KB & Project` vs
+> `## 📚 KB & Projet` in the report header) before choosing which banner to
+> insert — never default to French.
+>
+> Insert (French, `$REPORT_LANG = fr`):
 > ```markdown
 > > 🔎 **Vérification croisée** (`chorus-complete-report`, <YYYY-MM-DD>) — ℹ️ Rien à vérifier
 > >
@@ -172,12 +198,25 @@ For each target element, record:
 > > `chorus-complete-report` sur ce rapport sans nouvel élément incertain ne
 > > produira pas de résultat différent.
 > ```
-> This banner uses a **distinct marker** (`ℹ️ Rien à vérifier`) from the
-> per-element classification banners of Phase C4 (`✅|🛠️|❓|🏷️|⚖️`) so that
-> tooling (e.g. `chorus-web`'s `detectCompleteReportDone()`) can tell "nothing
-> to do, by design" apart from "genuinely cross-checked N element(s)" and
-> render a different badge/state accordingly — never the same "✅ Croisé avec
-> source" badge used for an actual cross-check.
+>
+> Insert (English, `$REPORT_LANG = en`):
+> ```markdown
+> > 🔎 **Cross-check** (`chorus-complete-report`, <YYYY-MM-DD>) — ℹ️ Nothing to verify
+> >
+> > No `❓ uncertain` nor `_a_confirmer` element found in this report — all
+> > non-conformities are already classified 📋/🔤 with certainty. This skill
+> > only cross-checks uncertain elements; re-running `chorus-complete-report`
+> > on this report without a new uncertain element will not produce a
+> > different result.
+> ```
+>
+> This banner uses a **distinct marker** (`ℹ️ Rien à vérifier` / `ℹ️ Nothing to
+> verify`) from the per-element classification banners of Phase C4
+> (`✅|🛠️|❓|🏷️|⚖️`) so that tooling (e.g. `chorus-web`'s
+> `detectCompleteReportDone()`) can tell "nothing to do, by design" apart from
+> "genuinely cross-checked N element(s)" and render a different badge/state
+> accordingly — never the same "✅ Croisé avec source" / "✅ Cross-checked"
+> badge used for an actual cross-check.
 >
 > Then print exactly:
 > ```
@@ -422,13 +461,45 @@ when relevant to the question is explicitly within this skill's scope.
 > This also keeps the file readable as plain text/diff in any other viewer.
 
 For each cross-checked element, append directly below its existing
-`**❓ Élément marqué à confirmer :**` (or equivalent) line a **blank line**,
-then the following blockquote block:
+`**❓ Élément marqué à confirmer :**` (or equivalent, `**❓ Element marked to
+confirm:**` in English) line a **blank line**, then the blockquote block in
+the language resolved at Step 3b (`$REPORT_LANG`) — **never mix languages
+within one report; never default to French without checking Step 3b first**:
 
+French (`$REPORT_LANG = fr`):
 ```markdown
-> 🔎 **Vérification croisée** (`chorus-complete-report`, <YYYY-MM-DD>) — <✅|🛠️|❓|🏷️|⚖️> <classification label>
+> 🔎 **Vérification croisée** (`chorus-complete-report`, <YYYY-MM-DD>) — <✅|🛠️|❓|🏷️|⚖️> <classification label FR>
 >
-> <one to three sentences stating what was found directly in the source document,
+> <one to three sentences, in French, stating what was found directly in the source document,
+> quoting the resolved source file, and the resulting classification (source limitation
+> confirmed / pipeline artefact detected / still unresolved / mistyped at import / verdict logic defect). If 🛠️: state the
+> concrete fix needed (which import step/module/mapping to correct, and cite the
+> normative reference — standard/RFC/ANSSI text — that backs the missing entry).
+> If ❓ due to a library/vendor-specific name with no normative backing: say so
+> explicitly (e.g. "aucune référence normative trouvée pour cette construction — un
+> arbitrage expert ou un référentiel normatif complémentaire est requis avant toute
+> modification de catalogue/thésaurus"). Never phrase a ❓ Still unresolved case as if a
+> simple catalogue/thesaurus addition would resolve it. If 🏷️: state the correct
+> `type_element` and the structural/thesaurus evidence found (self-declaring
+> section title and/or existing thesaurus mapping under a different wording —
+> see `chorus-import-project.md § Thesaurus alias variants`), and that the value
+> itself was never in question — only its typing was. If ⚖️: **quote a verbatim
+> excerpt** from the rule file/KB org section just read in Step 3.6 (not a
+> paraphrase — see Step 3.6's "prove the read" guard), state the exact logic
+> defect found, and state the source passage that justifies/claims the condition
+> being wrongly penalised. Never write a phrase implying this skill itself is
+> restricted from reading rule files — that restriction belongs to
+> `chorus-check --from-report` only, never to this skill.
+```
+Where `<classification label FR>` is one of: `Limitation source confirmée` (✅),
+`Artefact pipeline détecté` (🛠️), `Encore non résolu` (❓), `Mistyping détecté
+à l'import` (🏷️), `Défaut de logique de verdict` (⚖️).
+
+English (`$REPORT_LANG = en`):
+```markdown
+> 🔎 **Cross-check** (`chorus-complete-report`, <YYYY-MM-DD>) — <✅|🛠️|❓|🏷️|⚖️> <classification label EN>
+>
+> <one to three sentences, in English, stating what was found directly in the source document,
 > quoting the resolved source file, and the resulting classification (source limitation
 > confirmed / pipeline artefact detected / still unresolved / mistyped at import / verdict logic defect). If 🛠️: state the
 > concrete fix needed (which import step/module/mapping to correct, and cite the
@@ -449,12 +520,11 @@ then the following blockquote block:
 > passage that justifies/claims the condition being wrongly penalised. Never
 > write a phrase implying this skill itself is restricted from reading rule
 > files (e.g. "X do not permit...") — that restriction belongs to
-> `chorus-check --from-report` only, never to this skill.>
+> `chorus-check --from-report` only, never to this skill.
 ```
-
-Where `<classification label>` is one of: `Limitation source confirmée` (✅),
-`Artefact pipeline détecté` (🛠️), `Encore non résolu` (❓), `Mistyping détecté
-à l'import` (🏷️), `Défaut de logique de verdict` (⚖️) — matching the emoji
+Where `<classification label EN>` is one of: `Source limitation confirmed` (✅),
+`Pipeline artefact detected` (🛠️), `Still unresolved` (❓), `Mistyping detected
+at import` (🏷️), `Verdict logic defect` (⚖️) — matching the emoji
 used, so the classification is readable both from the emoji and from the
 label text (accessibility / copy-paste into plain-text contexts where emoji
 may not render).
@@ -478,6 +548,9 @@ may not render).
    just as much as unmarked bold text would — see the `explain-*.md` patch
    above for the same rationale):
 
+   Use the same `$REPORT_LANG` resolved at Step 3b — never default to French:
+
+   French (`$REPORT_LANG = fr`):
    ```markdown
    ---
 
@@ -490,6 +563,28 @@ may not render).
    > **Résultat :** <n1> ✅ limitation source confirmée · <n2> 🛠️ artefact
    > pipeline détecté · <n3> ❓ encore non résolu · <n4> 🏷️ mistyping à
    > l'import · <n5> ⚖️ défaut de logique de verdict.
+   >
+   > <one aggregate paragraph summarising the cross-check outcome — same
+   > content as before, but now entirely inside the blockquote>. <if any 🛠️
+   > was found: explicitly recommend a corrective re-import before treating
+   > the compliance rate as final>. <if any ⚖️ was found: explicitly recommend
+   > a rule/verdict-logic fix (cite the file) before treating the compliance
+   > rate as final>.
+   ```
+
+   English (`$REPORT_LANG = en`):
+   ```markdown
+   ---
+
+   ### 🔎 Cross-check (chorus-complete-report)
+
+   > **<YYYY-MM-DD>** — <N> uncertain element(s) cross-checked against the
+   > original source document (`<resolved source path>`, <auto-resolved from
+   > `_import.source_file` | explicit --source>).
+   >
+   > **Result:** <n1> ✅ source limitation confirmed · <n2> 🛠️ pipeline
+   > artefact detected · <n3> ❓ still unresolved · <n4> 🏷️ mistyping at
+   > import · <n5> ⚖️ verdict logic defect.
    >
    > <one aggregate paragraph summarising the cross-check outcome — same
    > content as before, but now entirely inside the blockquote>. <if any 🛠️
