@@ -2113,12 +2113,50 @@ ELSE:
   Do NOT mention chorus-review-kb — KB is not yet stable.
 ```
 
-**Step 4b-checkpoint — Note d'implémentation**
+**Step 4b-checkpoint — Validation interactive de la décision SP**
 
-> **`eca__ask_user` désactivé** — même raison que `chorus-strengthen Phase 4-checkpoint` :
-> le tool call interactif n'est pas fiable dans le terminal webapp (mode DONE).
-> ECA procède directement avec la décision SP calculée.
-> La révision des décisions SP se fait en session Emacs multi-turn ou via WEB-023.
+> **Autonomous mode policy** — see `chorus-engine.md § Autonomous mode` for the
+> canonical definition. This checkpoint implements that policy.
+
+**Step 1 — Detect AUTONOMOUS_MODE:**
+
+```
+AUTONOMOUS_MODE = true  if any of:
+  • eca__ask_user absent from the agent's tool catalog
+  • running inside a eca__spawn_agent sub-agent
+  • --unattended / --batch flag present
+  • triggered by an orchestration loop
+```
+
+**Step 2a — If AUTONOMOUS_MODE = true:**
+```
+[checkpoint] Step 4b-checkpoint — skipped (autonomous: <reason>)
+  → OUI-default applied: SP decision accepted as-is, ** Next step emitted.
+Proceed to next phase.
+```
+
+**Step 2b — If AUTONOMOUS_MODE = false (interactive):**
+
+> **WEB-025 (2026-10-26):** `eca__ask_user` fiable dans le terminal webapp.
+> Aligne ce checkpoint sur `chorus-strengthen Phase 4-checkpoint` (même fix).
+
+Call `eca__ask_user` to let the operator confirm or override the SP decision
+before emitting the `** Next step` guidance:
+
+```
+eca__ask_user(
+  question: "Step 4b-checkpoint — Stability point : <SP1/SP2/non atteint>.\n\n" +
+            "Prochain step suggéré :\n<next-step-text>\n\n" +
+            "La décision est-elle correcte ?",
+  options: [
+    { label: "OUI — continuer", description: "Émettre ** Next step tel quel" },
+    { label: "NON — corriger", description: "Indiquez la correction dans votre réponse" }
+  ]
+)
+```
+
+**OUI:** emit `** Next step` as computed. Proceed.  
+**NON + correction:** apply the correction to the SP decision, then emit `** Next step`.
 
 
 ## Mode D — Unattended batch (`--unattended` required)

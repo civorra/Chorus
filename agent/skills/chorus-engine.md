@@ -309,3 +309,49 @@ if ($filtre->check(@tokens)) {
 use Chorus::Collection::List qw($LIST);
 use Chorus::Collection::Filter qw($FILTER @_VFILTER);
 ```
+
+---
+
+## Autonomous mode — checkpoint policy
+
+> **Canonical reference** — all Chorus skills that contain an interactive
+> checkpoint (`eca__ask_user`) implement this policy. Each skill is
+> self-contained but mirrors this section verbatim.
+
+### Detection — when is AUTONOMOUS_MODE active?
+
+`AUTONOMOUS_MODE = true` if **any** of the following conditions holds:
+
+| Condition | How to detect |
+|---|---|
+| Tool absent from catalog | `eca__ask_user` not listed in the agent's available tools |
+| Running inside a sub-agent | skill was spawned via `eca__spawn_agent` (no direct operator terminal) |
+| Batch / unattended invocation | flag `--batch`, `--batch-seq`, `--unattended`, `--auto` present |
+| Orchestration loop | skill triggered by another skill (e.g. `chorus-fix --bucket-c` → `chorus-strengthen`) |
+
+### Standard behavior
+
+| Mode | Behavior |
+|---|---|
+| **Interactive** (`AUTONOMOUS_MODE = false`) | Call `eca__ask_user` once. OUI → proceed. NON + corrections → apply then proceed. Set `checkpoint_validated: true`. |
+| **Autonomous** (`AUTONOMOUS_MODE = true`) | Skip call. Log `[checkpoint] <name> — skipped (autonomous: <reason>)`. Apply OUI-default (proceed with current result). Set `checkpoint_validated: false`, `checkpoint_skip_reason: "<reason>"`. |
+
+### Mandatory JSON fields (when the step produces a JSON artefact)
+
+Every step that runs an interactive checkpoint **must** include these two fields
+in its JSON output, regardless of mode:
+
+```json
+"checkpoint_validated":    true | false,
+"checkpoint_skip_reason":  null | "<reason string>"
+```
+
+`checkpoint_validated: false` signals to the webapp that the report was produced
+autonomously — the Tests tab can surface a **"⚠️ Non validé"** badge on those entries.
+
+### Operator recovery path (after autonomous run)
+
+- Edit the JSON artefact (`.last-strengthen-report.json`, etc.) directly and
+  re-run the downstream skill (`chorus-fix`, etc.)
+- Use **WEB-023** (interactive review panel in the Tests tab) when available
+- Re-run the skill in a fresh interactive session to trigger the checkpoint

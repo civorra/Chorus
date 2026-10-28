@@ -444,15 +444,34 @@ For each element in `uncertain_ids` that produced a discordance:
 
 ## Phase 4-checkpoint — Validation interactive des hypothèses
 
-> **WEB-025 (2026-10-26) — `eca__ask_user` réactivé.**
-> La race condition qui bloquait la session webapp (idle prématuré pendant l'attente
-> de réponse) a été corrigée dans `server/routes/terminal.js` (flag `waitingForUserInput`).
-> `eca__ask_user` est maintenant fiable dans le terminal webapp.
+> **Autonomous mode policy** — see `chorus-engine.md § Autonomous mode` for the
+> canonical definition. This checkpoint implements that policy.
 
-Call `eca__ask_user` to let the operator validate or correct hypotheses before
-serializing the final JSON report.
+**Step 1 — Detect AUTONOMOUS_MODE:**
 
-Prepare a concise summary of the gaps found and ask:
+```
+AUTONOMOUS_MODE = true  if any of:
+  • eca__ask_user absent from the agent's tool catalog
+  • running inside a eca__spawn_agent sub-agent (no direct operator terminal)
+  • --batch / --batch-seq / --unattended flag present
+  • triggered by another skill (chorus-fix --bucket-c, unattended loop, etc.)
+```
+
+**Step 2a — If AUTONOMOUS_MODE = true:**
+```
+[checkpoint] Phase 4-checkpoint — skipped (autonomous: <reason>)
+  → OUI-default applied: hypotheses accepted as-is.
+  → checkpoint_validated = false
+  → checkpoint_skip_reason = "<reason>"
+Proceed directly to Phase 4.5.
+```
+
+**Step 2b — If AUTONOMOUS_MODE = false (interactive, WEB-025 re-enabled):**
+
+> **WEB-025 (2026-10-26):** race condition corrigée dans `server/routes/terminal.js`
+> (flag `waitingForUserInput`) — `eca__ask_user` est fiable dans le terminal webapp.
+
+Call `eca__ask_user` to let the operator validate or correct hypotheses:
 
 ```
 eca__ask_user(
@@ -469,26 +488,12 @@ eca__ask_user(
 )
 ```
 
-**If the operator answers OUI (or a freeform confirmation):** proceed directly to Phase 4.5.
+**OUI (or freeform confirmation):** set `checkpoint_validated = true`, proceed to Phase 4.5.
 
-**If the operator answers NON + corrections:**
-- Parse the corrections from the freeform response (e.g. "Gap #2 : hypothesis should be…").
-- Update the in-memory `gaps[]` array accordingly (do NOT re-run Phases 2–3).
-- Summarise changes applied, then proceed to Phase 4.5.
-
-> **Skip this checkpoint and proceed directly to Phase 4.5 in any of these cases:**
-> - `eca__ask_user` is **not in the agent's tool catalog** (non-webapp context, CLI, sub-agent)
-> - This strengthen run was triggered **inside a sub-agent** or automated pipeline
->   (DONE-protocol context — the operator is not actively waiting for a question)
-> - `chorus-strengthen` is called as part of a batch sequence
->   (`chorus-fix --bucket-c`, `chorus-strengthen` after `chorus-feed --unattended`, etc.)
->
-> ⚠️ **"Unavailable" means tool not in catalog** — it does NOT mean "tool present but
-> webapp not responding". If `eca__ask_user` IS in the catalog but the session context
-> is non-interactive (sub-agent, batch), still skip — a blocked tool call in those
-> contexts causes an indefinite hang (root cause of WEB-025 pre-fix incident).
-> The operator can correct hypotheses afterwards via WEB-023 (interactive review panel
-> in the Tests tab) or by editing `.last-strengthen-report.json` directly.
+**NON + corrections:**
+- Parse corrections from the freeform response (e.g. "Gap #2 : hypothesis should be…").
+- Update the in-memory `gaps[]` array (do NOT re-run Phases 2–3).
+- Summarise changes applied. Set `checkpoint_validated = true`. Proceed to Phase 4.5.
 
 ---
 
@@ -510,6 +515,8 @@ Write `$SANDBOX/.last-strengthen-report.json`:
   "proj_hash":  "<sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum | awk '{print $1}'>",
   "timestamp":  "<ISO 8601 — now>",
   "sandbox":    "<sandbox-name>",
+  "checkpoint_validated":   true | false,
+  "checkpoint_skip_reason": null | "<reason — e.g. 'autonomous: sub-agent context'>",
   "total_gaps": N,
   "summary": {
     "bucket_b": N,
