@@ -97,9 +97,15 @@ proj_hash_current=$(sha256sum $SANDBOX/project-*.json 2>/dev/null | awk '{print 
 # This is robust to path differences (absolute vs relative) in the multiline output.
 kb_token_stored=$(awk 'NR==1{print $1}' <<< "$stored_kb_hash")
 kb_token_current=$(awk 'NR==1{print $1}' <<< "$kb_hash_current")
+
+# proj_hash: also normalise to first token — Phase 6.3 (single-project chorus-check)
+# and Phase 6-all.6 (--all) both now produce hex-only, but normalise defensively.
+proj_token_stored=$(awk '{print $1}' <<< "$stored_proj_hash")
+proj_token_current=$(awk '{print $1}' <<< "$proj_hash_current")
 ```
 
-Compare BOTH hashes against the fields in `.last-check-results.json`:
+Compare the **normalised tokens** against the fields in `.last-check-results.json`
+(compare `kb_token_stored == kb_token_current` AND `proj_token_stored == proj_token_current` — never raw strings):
 
 - **Both match** → KB has not changed AND no project file has been regenerated since
   the last `chorus-check --all`. Load the structured results directly from the file.
@@ -482,8 +488,8 @@ Write `$SANDBOX/.last-strengthen-report.json`:
 
 ```json
 {
-  "kb_hash":    "<current sha256 hash of $SANDBOX/agent/chorus/*.org>",
-  "proj_hash":  "<current sha256 hash of $SANDBOX/project-*.json>",
+  "kb_hash":    "<verbatim content of $SANDBOX/agent/.kb-hash — read with eca__read_file, never recomputed (see kb_hash note below)>",
+  "proj_hash":  "<sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum | awk '{print $1}'>",
   "timestamp":  "<ISO 8601 — now>",
   "sandbox":    "<sandbox-name>",
   "total_gaps": N,

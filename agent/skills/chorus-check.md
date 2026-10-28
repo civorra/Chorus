@@ -128,6 +128,12 @@ Compare the current KB hash against the stored one:
   → **FAST PATH**: go directly to Phase 6. Do not load `chorus-engine.md`,
   do not read `index.org`, do not read agent KBs, do not generate anything.
 - `$SANDBOX/agent/.kb-hash` **differs** → KB enriched → **FULL PATH** (silent, no prompt)
+  > **⚠️ One-time migration note (commit 23ac4b8, 2026-10-28):** `.kb-hash` files generated
+  > before this commit stored **absolute paths** (`sha256sum $SANDBOX/agent/chorus/*.org`).
+  > The current formula stores **bare filenames** (`cd … && sha256sum *.org`). The first
+  > `chorus-check` run after the update will see a `diff -q` mismatch (format changed, not
+  > KB content) → FULL PATH triggered once. Phase 5.5 writes the new bare-filename format
+  > → all subsequent runs fast-path correctly. This is expected, not an error.
 - `$SANDBOX/agent/.kb-hash` **matches** but `.template-hash` **absent or differs**
   → template updated since last generation → **FULL PATH** with user notification
   (see Phase 5.5 § Template staleness display — unlike KB changes, template changes
@@ -1374,7 +1380,7 @@ If **NOT CONVERGED** → recommend:
 
 ```
 1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
+2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum | awk '{print $1}'   → proj_hash_current
 3. Read $SANDBOX/.last-check-results.json if it exists    → existing (or {})
 4. Build entry for the current project file:
      {
