@@ -2718,6 +2718,82 @@ If nothing changed (all terms already in thesaurus) → display silently:
 📚 Thesaurus already up to date — no new entries.
 ```
 
+### Post-import — audit qualité (automatic)
+
+> ⛔ **NON-OPTIONAL** — this step runs after every `chorus-import-project` execution,
+> regardless of the import's apparent completeness.
+>
+> **Rationale:** without this audit, `NON_CONFORME` verdicts produced by `chorus-check`
+> are uninterpretable — `chorus-strengthen` cannot distinguish a KB gap (rule missing)
+> from a document gap (value absent from the source) and produces a spurious enrichment
+> roadmap. This step is as mandatory as thesaurus consolidation.
+> When spawning a sub-agent for this command, explicitly restate this audit requirement
+> in the task prompt and require confirmation of the `_audit` block written.
+
+**Execution (always AUTONOMOUS_MODE — report only, `--patch` never automatic):**
+
+Execute the audit phases from `chorus-audit-import.md` (Phases 0–3) on the produced
+JSON, in autonomous mode:
+
+- No `--patch` — patching is always a separate, explicit operator decision.
+- No `eca__ask_user` call (AUTONOMOUS_MODE — see `chorus-engine.md § Autonomous mode`).
+- Produces `$WORKSPACE/reports/audit-import-NNN.md`.
+
+In **batch mode**: run one audit per produced JSON, sequentially.
+In **fusion mode**: run one audit on the merged JSON.
+
+**After the audit — write `_audit` metadata into the JSON:**
+
+Append (or update) the `_audit` top-level block in `<project-import-NNN.json>`:
+
+```json
+"_audit": {
+  "run":               true,
+  "date":              "YYYY-MM-DD",
+  "report":            "workspace/reports/audit-import-NNN.md",
+  "gaps_comblables":   N,
+  "gaps_partiels":     N,
+  "gaps_absents":      N,
+  "gaps_mapping":      N,
+  "frames_manquantes": N,
+  "patch_applied":     false
+}
+```
+
+`patch_applied` is set to `true` only when the engineer later runs
+`chorus-audit-import --patch` and confirms the patches.
+
+**Audit summary (displayed to engineer):**
+
+```
+🔍 Audit qualité — <project-import-NNN.json>
+   ✅ Comblables    : N  (→ chorus-audit-import <sb> <json> --patch)
+   ⚠️ Partiels      : N  (source incomplète — pages/fichiers manquants)
+   ❌ Absents       : N  (hors périmètre documentaire — aucune action)
+   🔄 Mappings      : N  (décision ingénieur requise)
+   🚫 Frames man.   : N  (type présent dans source, non importé)
+   → Rapport        : workspace/reports/audit-import-NNN.md
+```
+
+If all counts are zero:
+```
+✅ Audit qualité — <project-import-NNN.json> — aucun gap détecté.
+```
+
+**Post-audit guidance (displayed only if gaps > 0):**
+
+| Situation | Action suggérée |
+|---|---|
+| `gaps_comblables > 0` | `chorus-audit-import <sandbox> <json> --patch` |
+| `gaps_partiels > 0` | Extraire les pages manquantes, relancer `chorus-import-project` |
+| `gaps_mapping > 0` | Revoir `audit-import-NNN.md § Mapping review`, corriger manuellement |
+| `frames_manquantes > 0` | Ajouter les Frames manquantes manuellement ou ré-importer |
+| Seulement `gaps_absents > 0` | Aucune action — hors périmètre documentaire |
+
+> **L'audit ne bloque jamais `chorus-check`.** Un JSON avec des gaps peut être soumis
+> au pipeline — le champ `_audit` signale à la webapp que les gaps sont d'origine
+> documentaire et non des lacunes KB, évitant une roadmap d'enrichissement erronée.
+
 ### Post-import — optional KB harvest (secondary)
 
 The thesaurus is the **primary** persistence mechanism for project terminology.
@@ -2846,13 +2922,14 @@ If `run.pl` does not yet exist → indicate that `chorus-check` should be run fi
 
 ## Separation of Responsibilities
 
-| | `chorus-feed` | `chorus-import-project` | `chorus-create-project` | `chorus-check` |
-|---|---|---|---|---|
-| **Reads** | normative corpus | engineer project docs + org KB | org KB | org KB + YAML |
-| **Produces** | KB org, YAML, Helpers.pm | `project-import-*.json` + `.org` report | `project-*.json` | Feed.pm, shells, Expert.pm, run.pl |
-| **Threshold source** | corpus | org KB only | org KB only | org KB |
-| **Gaps** | n/a | reported, never invented | computed from KB | n/a |
-| **Never reads** | — | Helpers.pm, Feed.pm | Helpers.pm, Feed.pm | — |
+| | `chorus-feed` | `chorus-import-project` | `chorus-audit-import` | `chorus-create-project` | `chorus-check` |
+|---|---|---|---|---|---|
+| **Reads** | normative corpus | engineer project docs + org KB | project JSON + source docs + KB | org KB | org KB + YAML |
+| **Produces** | KB org, YAML, Helpers.pm | `project-import-*.json` + `.org` report + `_audit` block | `audit-import-NNN.md` + `_audit` update | `project-*.json` | Feed.pm, shells, Expert.pm, run.pl |
+| **Threshold source** | corpus | org KB only | org KB (via YAML `--kb`) | org KB only | org KB |
+| **Gaps** | n/a | reported, never invented | classified by origin | computed from KB | n/a |
+| **Modifies JSON** | ✗ | ✅ (creates) | ✅ (`_audit` block + `--patch`) | ✅ (creates) | ✗ |
+| **Never reads** | — | Helpers.pm, Feed.pm | Helpers.pm, Feed.pm | Helpers.pm, Feed.pm | — |
 
 
 ## Architectural Principle — sandbox granularity = JSON granularity
