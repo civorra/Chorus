@@ -258,7 +258,7 @@ sub run {
     my $xprt = Chorus::Expert->new();
     # ⚠️ Bug connu : new() ignore ses arguments — forcer _MAX_ITER par affectation directe
     #
-    # ⛔ Re-calibrated 2026-10 (sandbox 05-CC-3.1.4 perf incident): the
+    # ⛔ Re-calibrated for performance: the
     # Engine::Expert default of 50_000 is a worst-case safeguard, not a
     # realistic per-project budget — combined with a generous max_cycles,
     # it can make a structurally non-converging project take an
@@ -327,7 +327,7 @@ printf "Feed: %d element(s) loaded\n\n", scalar @elements;
 # Calibrate _MAX_CYCLES — a flat, bounded ceiling, NOT proportional to
 # project volume.
 #
-# ⛔ Re-calibrated 2026-10 (sandbox 05-CC-3.1.4 perf incident): an earlier
+# ⛔ Re-calibrated for performance: an earlier
 # version of this template used a per-element-proportional formula
 # (N_frames × N_rules_total × D × 10, floor 10_000). This looks principled
 # but is the WRONG SHAPE: empirically, the number of engine cycles actually
@@ -837,7 +837,7 @@ This fallback is strictly inferior to a rule-authored motif (it cannot state
 the actual numeric values that caused the failure — only the rule_id/article
 that last touched the element) — it exists purely so that no non-conformity
 is ever left with nothing more informative than a bare `verdict=NO`.
-**Observed incident (sandbox `02-building-en`, 2026):** 8 of 10 non-conformity
+**Observed in practice:** 8 of 10 non-conformity
 rules in a 222-element coverage test published only a binary verdict with no
 motif text at all — `chorus-check --explain` could report nothing more than
 "Reason: none recorded" for 80% of the non-conformities, even though
@@ -860,8 +860,8 @@ artefacts (`agent/.kb-hash`, `agent/sessions/`) per the sandbox's own
 > in `motif_*` strings, especially any string that transited through
 > `JSON->new->utf8->decode()` in `Feed.pm` — those carry the UTF-8 flag, while
 > raw `print "❌"` literals in `run.pl` do not, unless `use utf8;` is present).
-> Found and fixed during `chorus-check` on sandbox `05-cyber-sec-ANSSI-PG-083+
-> RGS_v-2-0_B2-KB-OPTIM-3` (2026-09-21) — generalised here to prevent recurrence.
+> Found and fixed during `chorus-check` on a corpus with accented characters
+> — generalised here to prevent recurrence.
 > `$| = 1` is a separate, unrelated fix: without autoflush, output is lost if the
 > process is killed mid-run (timeout, background execution) — makes diagnosing
 > a hung/looping pipeline much harder.

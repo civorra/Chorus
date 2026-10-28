@@ -239,8 +239,7 @@ domain's actual slot names.
 > | **Frame-local targeting slot** | A dedicated rule's `ACTION` calls `$w->set('slot', 1)` **once per targeted Frame instance** — the rule's own `FIND` targets the *same Frame type* as every rule that later reads this slot. | `CONDITION: defined $e->{slot}` / `$e->get('slot')` — reading the Frame's own copy. | A per-element flag computed by an earlier rule on the *same* Frame (e.g. `dependency_catalog_ok` written by R04, read by R05 on the *same* component Frame). |
 > | **BOARD-global ordering gate** | A rule (anywhere in the pipeline, typically the very first agent) calls `$SELF->BOARD->{slot} = 1` **exactly once, pipeline-wide** — never replicated onto any individual Frame. | `CONDITION: defined $SELF->BOARD->{slot}` — **never** `$e->{slot}` or `$w->{slot}`, since the slot does not exist on element Frames at all. | A pipeline-wide "upstream phase N is done, phase N+1 may now target any Frame" gate shared across many *different* Frame types/agents (e.g. `besoin_conformite` set once by `toe-structure` on the `ST`/`PP`/`TOE` Frame, meant to unblock 11 *different* SFR class agents whose own Frames — `FAU_GEN.1`, `FCO_NRO.1`, etc. — never carry this slot themselves). |
 >
-> **⛔ Real incident this rule exists to prevent** (sandbox `05-CC-3.1.4`, Common
-> Criteria KB, 2026-10): `toe-structure` published `besoin_conformite` only as a
+> **⛔ Real incident this rule exists to prevent:** `toe-structure` published `besoin_conformite` only as a
 > Frame-local slot on `ST`/`PP`/`TOE` Frames. 41 rules across the 11 downstream SFR
 > class agents (`agent-fau`, `agent-fco`, … `agent-ftp`) were authored — each by a
 > separately-delegated sub-agent, none with full pipeline visibility — with
@@ -631,7 +630,7 @@ ACTION: "$SELF->BOARD->{phase_done} = 1;"
   should be authored correctly from the start by `chorus-feed`, not left to
   be caught/retrofitted at check time.
 
-> **Incident (2026-10, sandbox `05-CC-3.1.4`):** 19 `mark-phase-done-and-terminate`
+> **Incident:** a batch of `mark-phase-done-and-terminate`
 > rules (one per SFR/SAR class agent) were generated without this guard —
 > each re-fired every cycle once its aggregation condition stabilized,
 > producing a cumulative 13+ minute hang on `chorus-check`'s own smoke test.
@@ -1035,7 +1034,7 @@ across the full tree before falling back to _DEFAULT.
       `rule_id` = the exact value of the rule's own `RULE:`/`REGLE:` field (already
       lowercase in every generated rule). `corpus_ref` = a short summary derived from
       the rule's own `# CORPUS:` header line (not the full sentence).
-      **Observed incident (sandbox `02-building-en`, 2026):** all 57 rules across 6
+      **Observed incident:** all rules across multiple
       agents were generated without this block — `run.pl`'s JSON report and
       `chorus-check --explain`'s "rule chain" column were silently empty for every
       element, for the entire lifetime of the sandbox (SP1 reached, `chorus-strengthen`
@@ -1174,10 +1173,10 @@ across the full tree before falling back to _DEFAULT.
         $c->set('parent_declared', $all_ok ? 1 : 0);
         1
       ```
-      **Incident (2026-10, sandbox `05-CC-3.1.4`):** this exact unbounded pattern,
-      copy-pasted identically across 7 SAR class agents' own
-      `component-declared-aggregate` rule, left 56/256 elements permanently
-      `(unprocessed)` against a minimal "iso" test project — not a crash, not a
+      **Incident:** this exact unbounded pattern,
+      copy-pasted identically across several SAR class agents' own
+      `component-declared-aggregate` rule, left a large fraction of elements permanently
+      `(unprocessed)` against a minimal test project — not a crash, not a
       warning, just `return 0` forever on every affected component. Confirmed by
       testing each agent in isolation (fast, correct) vs. the full 21-agent
       pipeline (very slow, incomplete) — the aggregate rule's own missing-sibling
@@ -1251,12 +1250,12 @@ across the full tree before falling back to _DEFAULT.
       **Use `return 1` + immediate set whenever sub-elements cannot be expected
       to arrive later.**
 
-      **Incident (2026-10, sandbox `05-CC-3.1.4`):** 11 SFR `_EXT` parent-level
+      **Incident:** several SFR `_EXT` parent-level
       components (e.g. `FCO_NRO_EXT.2`, `FCS_CKM_EXT.1`, `FDP_CER_EXT.1`)
       went `(unprocessed)` after a TERMINAL rule started firing earlier (EAL
-      package Frame added to project). `_decl_wait_cycles=None` confirmed R06
+      package Frame added to project). `_decl_wait_cycles=None` confirmed the aggregate rule
       fired zero times despite all other logic being correct. Fixed by removing
-      the wait on `!@elements` entirely in all 11 SFR aggregate rules.
+      the wait on `!@elements` entirely in all affected SFR aggregate rules.
 - [ ] ⛔ **A pipeline-completion gate rule reading multiple BOARD flags MUST
       declare those flags in its `CONDITION`, not just in its `ACTION`.** A
       common pattern: rule R fires when "all N upstream BOARD flags are
@@ -1290,7 +1289,7 @@ across the full tree before falling back to _DEFAULT.
         $w->set('pipeline_complete_ok', 1);   # CONDITION already guarantees both are defined
         1
       ```
-      **Incident (2026-10, sandbox `05-CC-3.1.4`):** `conformance-ctrl/R01`
+      **Incident:** `conformance-ctrl/R01`
       (`wait-for-pipeline-complete`) had no `CONDITION` — it fired in cycle 1,
       set `pipeline_complete_ok=0` (4 BOARD flags absent), and was blocked by
       Pattern 1 forever. Downstream R02→R03→R04 (which all gate on
@@ -1320,8 +1319,8 @@ across the full tree before falling back to _DEFAULT.
       # exactly like the agent's own FIND filtre
       EXCEPTION: 'scalar(grep { !defined $_->{sar_component_declared} } grep { $_->{type_element} =~ /^ACO_(COR|DEV|REL|CTT|VUL)\.\d+$/ } Chorus::Frame::fmatch(slot => "type_element")) > 0'
       ```
-      **Incident (2026-10, sandbox `05-CC-3.1.4`):** this exact unfiltered
-      pattern, copy-pasted across all 7 SAR class agents' own
+      **Incident:** this exact unfiltered
+      pattern, copy-pasted across all SAR class agents' own
       `mark-phase-done-and-terminate` rule, meant none of them ever published
       their `*_phase_done` BOARD flag on any project — the downstream
       aggregation agent (`conformance-ctrl`) never saw its own completion
@@ -1338,9 +1337,9 @@ across the full tree before falling back to _DEFAULT.
       error, no warning — indistinguishable from "this rule simply never
       needed to fire yet" until a downstream rule's own `CONDITION` on this
       rule's output slot is traced back to the source.
-      **Incident (2026-10, sandbox `05-CC-3.1.4`):** `sar-eal-package`'s own
+      **Incident:** `sar-eal-package`'s own
       `eal-claim-grammar` rule targeted `attribut: eal_claim` — a slot that
-      does not exist anywhere in the sandbox's data model (the EAL claim
+      does not exist anywhere in the project's data model (the EAL claim
       string is carried directly as the Frame's own `type_element`, e.g.
       `"EAL4"` or `"EAL4 augmented with ALC_FLR.3"`, confirmed by every
       *downstream* rule in the same agent correctly reading

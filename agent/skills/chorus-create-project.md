@@ -168,20 +168,19 @@ For each agent, apply this two-step sequence:
 > filtre would ever match the literal value you are about to write, it is
 > wrong, regardless of how plausible it looks next to the KB's own section
 > headings.
-> **Incident (2026-10, sandbox `05-CC-3.1.4`):** `project-edges.json` (106
-> elements, generated for the `edges` boundary-value coverage strategy) used
-> `type_element` values `sfr_component`, `sfr_element`, `sar_component`,
-> `sar_element`, `st` — literal Frame-category labels copied from KB org
-> section headings — for **100% of its elements**. Every one of the 21
-> agents' `FIND.filtre` regexes target real CC identifiers
-> (`^FAU_[A-Z]+\.\d+$`, `^ASE_(INT|CCL|...)\.\d+$`, etc.) and never match
-> any of these 5 literal category names — so every single element in the
+> **Context:** a project file generated for a boundary-value coverage
+> strategy used `type_element` values like `sfr_component`, `sfr_element`,
+> `sar_component`, `sar_element`, `st` — literal Frame-category labels
+> copied from KB org section headings — for all of its elements. Every
+> agent's `FIND.filtre` regex targets real CC identifiers
+> (`^FAU_[A-Z]+\.\d+$`, `^ASE_(INT|CCL|...)\.\d+$`, etc.) and never matches
+> any of these literal category names — so every single element in the
 > file was invisible to every rule in the pipeline, `pipeline_solved=False`,
 > `n_conforme=0`. Not a crash, not a KB defect — a generation-time mistake
 > that silently produced a structurally unprocessable project file. Caught
-> only by comparing `project-edges.json` against the sandbox's other 3
-> strategy files (all of which correctly used real CC identifiers) and
-> noticing the systematic absence of any recognisable domain identifier.
+> only by comparing the file against other correctly-generated strategy
+> files (which used real CC identifiers) and noticing the systematic
+> absence of any recognisable domain identifier.
 
 > **Enum-valued slots — rule-coverage guard (not just org-declared domain).** For any
 > slot whose value is an enum/closed set (e.g. `mode_generation`, `usage`, `classe_*`) and
@@ -203,14 +202,14 @@ For each agent, apply this two-step sequence:
 > rule's `EXCEPTION` permanently true — **the pipeline loops until `_MAX_CYCLES`/timeout
 > instead of failing cleanly or reporting the element as unprocessed.**
 >
-> **Incident (2026-10, sandbox `08-ANSSI-PG-083_MULTI-SOURCES`):** a `--strategy scale`
-> generation populated `mode_generation` with values like `locale_derivee`, `importee`,
-> `generee_par_tiers`, `recouvree` for several `cle_cryptographique` elements — plausible
-> English/French paraphrases of real-world key-generation scenarios, but none of them
+> **Context:** a scale-strategy generation populated `mode_generation` with
+> values like `locale_derivee`, `importee`, `generee_par_tiers`, `recouvree`
+> for several `cle_cryptographique` elements — plausible English/French
+> paraphrases of real-world key-generation scenarios, but none of them
 > matched any rule's `CONDITION` (`locale_aleatoire|locale_differentiee|echange` in R02,
 > `derivation` in R04/R05, `centralisee_aleatoire` in R03). Combined with the
 > lifecycle/aggregation pattern below, this caused the same silent infinite loop as the
-> original incident, on a seemingly unrelated enum-value mistake.
+> `type_element` guard above, on a seemingly unrelated enum-value mistake.
 >
 > **Verification procedure:** while reading each agent's `.yml` files (already being read
 > for the `type_element` guard above), collect every literal value compared against each
@@ -391,8 +390,7 @@ If the blueprint is empty after scanning all slug.org files, skip Phase 1.5.
 > (e.g. `'clay'`, not `'BS EN 771-1'` — check the Helper's actual keys,
 > do not assume the corpus's own standard-number form is accepted as-is).
 >
-> **Incident (2025, sandbox `02-building-en`):** `project-rules-iso.json`
-> and `project-cross.json` referenced `masonry_unit_ref` ids that matched
+> **Context:** project files referenced `masonry_unit_ref` ids that matched
 > no element in the same file — `Feed.pm` left the ref unresolved
 > (`undef`), silently preventing the dependent rule from ever firing. The
 > JSON elements that WERE eventually added used `standard_family: "BS EN
@@ -508,7 +506,7 @@ the threshold in the correct direction.
 > in the *fixture*, not in the rule. This is distinct from Bucket B (rule too permissive):
 > here the rule IS correct, the fixture is just never reaching it.
 >
-> **Canonical example (sandbox `08b-ANSSI-PG-083-CENTRIC-BIS`, 2026-10-25):**
+> **Canonical example:**
 > R13b targets `encapsulation_chiffrement` with:
 > ```
 > CONDITION: $f->{pq_vise} && defined $f->{type_produit} && $f->{type_produit} eq 'produit_final'
@@ -558,9 +556,8 @@ the threshold in the correct direction.
 > never returns). This is NOT a KB bug and NOT something `--strategy iso`/`cross` can
 > avoid by construction — it must be compensated for explicitly at generation time.
 >
-> **Incident (2026-10, sandbox `08-ANSSI-PG-083_MULTI-SOURCES`):** `project-rules-iso.json`
-> and `project-cross.json` each populated only 1 of 6 mandatory `conforme_*` slots on
-> every `cle_cryptographique` element (by design, for rule isolation) — the aggregation
+> **Context:** project files each populated only 1 of 6 mandatory `conforme_*`
+> slots on every `cle_cryptographique` element (by design, for rule isolation) — the aggregation
 > rule `R14-publish-statut-cle.yml` never wrote `statut_cle` for any of them, and the
 > separate termination rule `R15-terminate-pipeline.yml` (`EXCEPTION`: any
 > `cle_cryptographique` Frame still missing `statut_cle`) never became false. `run.pl`
@@ -929,11 +926,10 @@ never on the element itself (`operation_mandate_ok`). The sfr_element verdict=1
 is correct — no rule in any SFR class agent ever propagates a component's
 `dependency_catalog_ok` down to its own `.N.M` sub-elements.
 
-> ⚠️ **Incident (2026-10-27, sandbox 05b-CC-3.1.4-NEW):** the original detection
+> ⚠️ **Context:** the original detection
 > regex (`-KO-R04` literal substring) only matched ids that explicitly named the
-> rule tag in the suffix. Four elements with generic `-KO-\d+` suffixes
-> (`E-FMT_SMR.2.2-KO-01`, `E-FCS_CKM.1.1-KO-02`, `E-FCO_NRO.1.1-KO-01`,
-# `E-FRU_FLT.2.1-KO-01`) went undetected by C3 and surfaced as 4 unexplained
+> rule tag in the suffix. Elements with generic `-KO-\d+` suffixes
+> went undetected by C3 and surfaced as unexplained
 > discordances in `chorus-strengthen`. Detection is now based on **structural
 > verification** (does any rule actually write `dependency_catalog_ok` on this
 > Frame's own `type_element`?), not on a literal id substring — this covers any
@@ -1022,9 +1018,9 @@ for e in elems:
 > add any missing elements with `content_declared: true` rather than leaving
 > the component incomplete and expecting `-OK-` to still mean CONFORME.
 >
-> **Incident (2026-10-27, sandbox 05b-CC-3.1.4-NEW):** `X-EAL-OK-ATE_COV.1` was
-> declared purely as an Annex-C dependency target for `ATE_IND.2`, with no
-> `.1D/.1C/.1E` elements at all — `R05-component-declared-aggregate` waited
+> **Context:** a component was
+> declared purely as an Annex-C dependency target for another component, with no
+> sub-elements at all — `R05-component-declared-aggregate` waited
 > `MAX_WAIT_CYCLES` then gave up, producing `sar_component_declared=0` and an
 > unexplained `OK-got-KO` discordance. C4 as originally scoped (requires an
 > explicit `-KO-` tag on the component itself) never triggered on this case.
@@ -1062,7 +1058,7 @@ for e in elems:
 
 ### Correction C6 — duplicate `type_element` across an OK/KO Frame pair (component contamination)
 
-> **Context (incident 2026-10-27, sandbox 05b-CC-3.1.4-NEW):** a component's
+> **Context:** a component's
 > own sub-element appeared twice in the same project file under the exact
 > same `type_element` (once `-OK-`, once `-KO-WRONGOP-`). Any component-level
 > aggregate rule that collects elements by matching `type_element` against
@@ -1112,7 +1108,7 @@ itself:**
 ### Correction C7 — single element shared between two mutually exclusive
 ### file-level scenarios (irreducible conflict)
 
-> **Context (incident 2026-10-27, sandbox 05b-CC-3.1.4-NEW):** a global
+> **Context:** a global
 > package Frame (`I-EAL4-OK-01`) expected `CONFORME` while the same project
 > file deliberately reused one of its components, with an incomplete
 > `content_declared: false`, as the sole basis of a separate intentional
@@ -1146,7 +1142,7 @@ instance** — the scenario pair cannot coexist in one file.
 
 ### Correction C8 — grammar-only id claims a global verdict it was never designed to assert
 
-> **Context (incident 2026-10-27, sandbox 05b-CC-3.1.4-NEW):** an id suffixed
+> **Context:** an id suffixed
 > `-OK-GRAMMAR-` was expected `CONFORME`, but `verdict_of()` returns the
 > Frame's overall pipeline verdict, not the isolated grammar-check slot. The
 > file's own partial baseline (never intended to carry a complete package)
@@ -1344,9 +1340,9 @@ If **Update INDEX.md** → append row to `$SANDBOX/archive/<slug>/INDEX.md` with
 10. Verify: Pipeline SOLVED + Unprocessed=0 + Discordances=0 (or all _expected_uncertain)
 ```
 
-**Incident (2026-10-26, sandbox 05c-CC-3.1.4-NEW-TMP):** the absence of this correction
+**Context:** the absence of this correction
 loop in the skill created a visible gap: the webapp "re-generate test" button produced
-files with 80–139 discordances requiring multiple follow-up sessions. The checkpoints
+files with many discordances requiring multiple follow-up sessions. The checkpoints
 above ensure the same interactive experience in both a direct ECA session and a
 webapp-launched ECA terminal — both support `eca__ask_user`.
 
