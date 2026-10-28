@@ -74,7 +74,7 @@ Before running anything, probe for a cached result file:
 
 ```bash
 cat $SANDBOX/.last-check-results.json   # absent → go to 1.2
-sha256sum $SANDBOX/agent/chorus/*.org   # compute current KB hash
+(cd $SANDBOX/agent/chorus && sha256sum *.org)   # compute current KB hash (path-independent — see chorus-check.md § Phase 5.5)
 sha256sum $SANDBOX/project-*.json       # compute current project-file hash
 ```
 

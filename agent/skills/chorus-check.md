@@ -115,11 +115,16 @@ $SANDBOX/lib/<Namespace>/Agent/<Nom>.pm  ← au moins un
 Compare the current KB hash against the stored one:
 
 ```bash
-sha256sum $SANDBOX/agent/chorus/*.org > /tmp/kb-hash-current
+# ⚠️ Path-independent: cd into the directory first so sha256sum records
+# bare filenames, never the $SANDBOX absolute path — a sandbox rename must
+# never invalidate this hash (see Phase 5.5 for the full rationale).
+(cd $SANDBOX/agent/chorus && sha256sum *.org) > /tmp/kb-hash-current
 ```
 
 - `$SANDBOX/agent/.kb-hash` **absent** → predates hash tracking → **FULL PATH**
-- `$SANDBOX/agent/.kb-hash` matches AND `$SANDBOX/agent/.template-hash` matches
+- `$SANDBOX/agent/.kb-hash` matches (`diff -q /tmp/kb-hash-current $SANDBOX/agent/.kb-hash`
+  — both now path-independent, so this is a reliable byte-for-byte comparison
+  regardless of any sandbox rename) AND `$SANDBOX/agent/.template-hash` matches
   → **FAST PATH**: go directly to Phase 6. Do not load `chorus-engine.md`,
   do not read `index.org`, do not read agent KBs, do not generate anything.
 - `$SANDBOX/agent/.kb-hash` **differs** → KB enriched → **FULL PATH** (silent, no prompt)
@@ -1013,7 +1018,15 @@ fingerprints so that the next `chorus-check` can detect staleness on both dimens
 
 ```bash
 # 1. KB hash — tracks changes to the KB org content
-sha256sum $SANDBOX/agent/chorus/*.org > $SANDBOX/agent/.kb-hash
+# ⛔ Path-independent by construction: cd into the directory first so
+# sha256sum records bare filenames (e.g. "agent-fau.org"), never the
+# $SANDBOX absolute path. A sandbox folder rename changes nothing in this
+# file's content, so it must never be treated as a KB change — writing
+# `sha256sum $SANDBOX/agent/chorus/*.org > ...` directly (full path recorded
+# on every line) is the WRONG form: it silently invalidates `.kb-hash` the
+# moment the sandbox is renamed, forcing a spurious full infrastructure
+# regeneration with no actual KB change.
+(cd $SANDBOX/agent/chorus && sha256sum *.org) > $SANDBOX/agent/.kb-hash
 
 # 2. Template hash — tracks changes to the infrastructure templates
 sha256sum "$ENGINE/agent/skills/chorus-templates.md" > $SANDBOX/agent/.template-hash
