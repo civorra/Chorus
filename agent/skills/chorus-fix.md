@@ -309,6 +309,99 @@ Next: chorus-fix <sandbox-name>   ← another pass (remaining B/C gaps)
   or: chorus-strengthen <sandbox-name>   ← re-diagnose if KB has changed
 ```
 
+### 4.1 — Write `.last-fix-history.json`
+
+**Always write this file**, even in `--dry-run` mode (use `"dry_run": true` in that case).
+This file is the machine-readable record consumed by the webapp Test tab to display the
+full fix history across all `chorus-fix` runs on this sandbox.
+
+Path: `$SANDBOX/.last-fix-history.json`
+
+**Accumulation procedure (mandatory — never overwrite blindly):**
+
+1. If `$SANDBOX/.last-fix-history.json` already exists, read and parse it.
+2. Extract the existing top-level run fields (`timestamp`, `patches`, etc.) into a
+   run object. Collect existing `previous_runs` array (default `[]`).
+3. Prepend the extracted run to `previous_runs` → `[old_run, ...previous_runs]`.
+4. Trim `previous_runs` to the **10 most recent entries** (drop the oldest) to
+   avoid unbounded growth.
+5. Write the new file with the **current run** at the top level and the accumulated
+   history in `previous_runs`.
+
+If the file does not exist yet → write with `previous_runs: []`.
+
+Format:
+
+```json
+{
+  "timestamp":       "YYYY-MM-DDTHH:MM:SSZ",
+  "sandbox":         "<sandbox-name>",
+  "dry_run":         false,
+  "gaps_before":     N,
+  "gaps_after":      M,
+  "gaps_resolved":   N-M,
+  "patches": [
+    {
+      "gap_id":         1,
+      "gap_type":       "rule too strict",
+      "element_id":     "AES-GCM-128-OK-001",
+      "rule_file":      "R02-algo-sym.yml",
+      "agent":          "crypto-mecanismes-sym",
+      "change":         "CONDITION: $f->{taille_cle} >= 256  →  >= 128",
+      "status":         "applied",
+      "blocked_reason": null
+    },
+    {
+      "gap_id":         3,
+      "gap_type":       "rule too permissive",
+      "element_id":     "RSA-1024-KO-007",
+      "rule_file":      "R05-algo-asym.yml",
+      "agent":          "crypto-mecanismes-asym",
+      "change":         null,
+      "status":         "blocked",
+      "blocked_reason": "anti-regression guard: element RSA-2048-OK-001 would be rejected"
+    }
+  ],
+  "corpus_correctif": "corpus-correctif-002.txt",
+  "bucket_a_count":   N,
+  "bucket_a_items": [
+    {
+      "gap_id":     5,
+      "element_id": "DILITHIUM-KO-003",
+      "hypothesis": "Corpus §4.3.2 ambiguous — manual review required"
+    }
+  ],
+  "previous_runs": [
+    {
+      "timestamp":     "YYYY-MM-DDTHH:MM:SSZ",
+      "dry_run":       false,
+      "gaps_before":   5,
+      "gaps_after":    3,
+      "gaps_resolved": 2,
+      "patches": [...],
+      "corpus_correctif": null,
+      "bucket_a_count": 1
+    }
+  ]
+}
+```
+
+Field rules:
+- `gaps_after` is `null` in `--dry-run` mode (Phase 3 not run, no new strengthen output).
+- `gaps_resolved` is `null` in `--dry-run` mode.
+- `corpus_correctif` is `null` if no Bucket C file was generated.
+- `patches[].change` is `null` for `blocked` or `skipped` entries.
+- `patches[].blocked_reason` is `null` for `applied` entries.
+- `bucket_a_items` may be an empty array `[]` if no Bucket A gaps exist.
+- `previous_runs` entries use the same fields as the top-level run (minus `previous_runs`
+  itself — no nesting). `bucket_a_items` may be omitted in historical entries to save
+  space — the webapp only uses `bucket_a_count` for historical display.
+- Maximum 10 entries in `previous_runs` (oldest dropped on overflow).
+
+> This file is **never committed** (add to `.gitignore` alongside `.last-strengthen-report.json`
+> if not already covered). It is a cumulative operational artefact, updated on each
+> `chorus-fix` run.
+
 ---
 
 ## Separation of responsibilities
@@ -316,7 +409,7 @@ Next: chorus-fix <sandbox-name>   ← another pass (remaining B/C gaps)
 | | `chorus-feed` | `chorus-create-project` | `chorus-stress` | `chorus-check` | `chorus-strengthen` | **`chorus-fix`** |
 |---|---|---|---|---|---|---|
 | **Reads** | corpus | sandbox org KB | org KB + YAML CONDITIONs | org KB + YAML | pipeline output + org KB | gap report + YAML + project JSON |
-| **Produces** | KB org, YAML, Helpers.pm | `project-*.json` (typical) | `project-stress-*.json` | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap | patched YAML + `corpus-correctif.txt` |
+| **Produces** | KB org, YAML, Helpers.pm | `project-*.json` (typical) | `project-stress-*.json` | Feed.pm, Agent shells, Expert.pm, run.pl | gap report + enrichment roadmap | patched YAML + `corpus-correctif.txt` + `.last-fix-history.json` |
 | **Modifies KB** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | **Modifies YAML** | ✅ | ✗ | ✗ | ✗ | ✗ | **✅ (Bucket B)** |
 | **Triggered by** | new standard | coverage need | after `--batch` | project to validate | failed `--all` | strengthen gap report |
