@@ -15,6 +15,12 @@
 > missing Frame types), determine whether the information is available in the source
 > document, structurally absent, or requires extraction of additional pages/files.
 >
+> ⛔ **Every invocation — with or without `--patch` — writes/updates the `_audit`
+> block in `<project.json>` (Phase 3.5), unconditionally, even with all-zero counts.**
+> The webapp reads only this JSON block (never `audit-import-NNN.md`) to render the
+> audit badge and patch button — an audit without this block is invisible to the
+> webapp regardless of how thorough the `.md` report is.
+>
 > Pipeline position:
 > ```
 > chorus-import-project → [chorus-audit-import] → (corrections) → chorus-check
@@ -222,6 +228,55 @@ Write report to: `$WORKSPACE/audit-import-<NNN>.md` (`$WORKSPACE` =
 Print: `[audit] Report written → workspace/audit-import-<NNN>.md`
 
 
+## Phase 3.5 — Write `_audit` metadata into the JSON (ALWAYS — never conditional on `--patch`)
+
+> ⛔ **NON-OPTIONAL, unconditional.** This phase runs at the end of **every**
+> `chorus-audit-import` invocation — with or without `--patch`, whether called
+> standalone or chained automatically after `chorus-import-project`. The webapp
+> (`chorus/scanner.js`) reads **only** `project.json._audit` to render the audit
+> badge and the patch button — it never parses `audit-import-NNN.md`. **A report
+> without this JSON block is invisible to the webapp**, even though the audit was
+> genuinely performed. Skipping this step is the single most common cause of
+> "I ran the audit but the webapp shows nothing" incidents.
+
+From the Phase 3 classification counts (regardless of whether this is a first run
+or a re-run over an existing `_audit` block), write/update the top-level `_audit`
+block in `<project.json>`:
+
+```json
+"_audit": {
+  "run":               true,
+  "date":              "YYYY-MM-DD",
+  "report":            "workspace/<...>/audit-import-NNN.md",
+  "gaps_comblables":   N,
+  "gaps_partiels":     N,
+  "gaps_absents":      N,
+  "gaps_mapping":      N,
+  "frames_manquantes": N,
+  "patch_applied":     false
+}
+```
+
+Field source (from Phase 3 classification table):
+- `gaps_comblables`   = count of ✅ Comblable entries
+- `gaps_partiels`     = count of ⚠️ Extraction partielle entries
+- `gaps_absents`      = count of ❌ Structurellement absent entries
+- `gaps_mapping`      = count of 🔄 Mapping à confirmer entries **+** 🔴 Incohérence KB /
+                        décision de périmètre entries not yet resolved (any residual
+                        gap requiring an engineer decision, not mechanically patchable)
+- `frames_manquantes` = count of 🚫 Frame manquante entries
+- `patch_applied`     = `false` on a report-only run (Phase 4 not executed).
+  Only Phase 4.3 (actual `--patch` application) may set this to `true`.
+
+**Rule:** this block must be written even when every count is zero (clean audit,
+nothing to report) — an all-zero `_audit` block is what makes the webapp show
+"✅ Audité · aucun gap actionnable" instead of nothing at all.
+
+Write the updated JSON back to `<project.json>` (overwrite — only the `_audit`
+block changes in a report-only run; all `elements` stay untouched).
+Print: `[audit] _audit metadata written → <project.json>`
+
+
 ## Phase 4 — Patch Mode (--patch)
 
 Only if `--patch` flag is active.
@@ -255,7 +310,9 @@ For each confirmed patch:
 - Remove `_incomplet: 1` flag if all mandatory slots are now filled
 - Add `_patched_by: "chorus-audit-import"` and `_patched_date: "<YYYY-MM-DD>"` to the element
 
-After applying all patches, **update the `_audit` block** in the same JSON:
+After applying all patches, **update the `_audit` block already written by
+Phase 3.5** in the same JSON (never write it from scratch here — Phase 3.5 is
+unconditional and has already run earlier in this same invocation):
 
 ```json
 "_audit": {
@@ -286,7 +343,7 @@ Add a `### Patches applied` section to the report listing all changes made.
 | File | Description |
 |---|---|
 | `$WORKSPACE/audit-import-<NNN>.md` | Full audit report (always produced) |
-| `<project.json>` | Patched JSON (only with `--patch` after confirmation) |
+| `<project.json>` | `_audit` block written/updated (ALWAYS — see Phase 3.5, every run, even all-zero counts, even without `--patch`); `elements` additionally patched only with `--patch` after confirmation |
 
 > **NNN** is a zero-padded 3-digit counter matching the source JSON number
 > (e.g. `project-ZAC-Ferney-001.json` → `audit-import-001.md`).
