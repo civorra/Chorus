@@ -28,7 +28,7 @@ def main():
     # Match: a non-pipe, non-blank line immediately followed by a pipe line.
     # Replace with a blank line between them. Does NOT touch pipe→pipe
     # transitions (consecutive table rows), which must stay adjacent.
-    text = re.sub(r'([^\n|][^\n]*)\n(\|)', r'\1\n\n\2', text)
+    text = re.sub(r'^([^\n|][^\n]*)$\n^(\|)', r'\1\n\n\2', text, flags=re.MULTILINE)
 
     html_body = markdown.markdown(text, extensions=['tables', 'fenced_code'])
     title = md_path.rsplit('/', 1)[-1]
