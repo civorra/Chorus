@@ -972,7 +972,7 @@ for `$e->{statut_conformite}` wherever the base template reads that slot directl
 * Coverage
 
 ** ✅ Integrated — <agent-slug> (<N> rules / <N> helpers)
-   Corpus : corpus/<NNN>-<slug>.md
+   Corpus : corpus/<NNN>-<slug>.md        ← optionnel mais recommandé (requis par corpus-inventory.py)
    | Section / Article corpus              | Artefact généré                              |
    |---------------------------------------+----------------------------------------------|
    | §<ref> — <title>                      | R<NN>-<slug>.yml                             |
