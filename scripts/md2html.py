@@ -9,6 +9,7 @@ Reuses the exact same CSS styling as md2pdf.py so the HTML and PDF versions
 of a report are visually consistent.
 """
 import sys
+import re
 import markdown
 
 def main():
@@ -19,6 +20,15 @@ def main():
     md_path, html_path = sys.argv[1], sys.argv[2]
     with open(md_path, encoding='utf-8') as f:
         text = f.read()
+
+    # Ensure a blank line precedes every table block.
+    # Python markdown's 'tables' extension requires a blank line before the
+    # first pipe row — without it, text immediately before the table merges
+    # into an inline paragraph and the table is never recognised.
+    # Match: a non-pipe, non-blank line immediately followed by a pipe line.
+    # Replace with a blank line between them. Does NOT touch pipe→pipe
+    # transitions (consecutive table rows), which must stay adjacent.
+    text = re.sub(r'([^\n|][^\n]*)\n(\|)', r'\1\n\n\2', text)
 
     html_body = markdown.markdown(text, extensions=['tables', 'fenced_code'])
     title = md_path.rsplit('/', 1)[-1]

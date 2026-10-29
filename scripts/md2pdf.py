@@ -14,6 +14,7 @@ copies of the generated Markdown reports, alongside chorus-pdf/chorus-word's
 own PDF exports.
 """
 import sys
+import re
 import markdown
 from weasyprint import HTML
 
@@ -25,6 +26,9 @@ def main():
     md_path, pdf_path = sys.argv[1], sys.argv[2]
     with open(md_path, encoding='utf-8') as f:
         text = f.read()
+
+    # Ensure a blank line precedes every table block (same fix as md2html.py).
+    text = re.sub(r'^([^|].*)$\n^(\|)', r'\1\n\n\2', text, flags=re.MULTILINE)
 
     html_body = markdown.markdown(text, extensions=['tables', 'fenced_code'])
     html = f"""<!DOCTYPE html>
