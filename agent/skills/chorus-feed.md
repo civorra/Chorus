@@ -2072,10 +2072,7 @@ Append the following block to `README.org`:
    #+END_EXAMPLE
 ```
 
-> ⚠️ **See also: `chorus-templates.md § T6`** — verbatim copy-paste template with
-> `parser.js` contract details and a concrete filled-in example from the reference
-> sandbox. Load T6 when delegating to a sub-agent (paste the template verbatim into
-> the delegation prompt — the sub-agent must not infer the format on its own).
+> ⚠️ **Delegation:** load `chorus-templates.md § T6` and paste it verbatim into the sub-agent prompt.
 
 **Step 4 — Display the report summary to the user**
 
@@ -2703,7 +2700,7 @@ Replace the `* Coverage` block with the updated version:
    #+END_EXAMPLE
 ```
 
-> ⚠️ **See also: `chorus-templates.md § T6`** — même contrat de parsing que Phase 6.5 Step 3.
+> ⚠️ **Delegation:** load `chorus-templates.md § T6` and paste it verbatim into the sub-agent prompt.
 
 > ⛔ **Règle d'édition atomique — bloc `* Coverage` :**
 > Cette étape est **un seul appel `eca__edit_file`** ciblant le bloc `* Coverage`

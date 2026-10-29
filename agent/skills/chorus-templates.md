@@ -1016,17 +1016,15 @@ for `$e->{statut_conformite}` wherever the base template reads that slot directl
 
 ### Anti-patterns à éviter (invisibles dans la webapp)
 
+> Le premier anti-pattern (prose `* Coverage — agent`) est déjà illustré dans
+> `chorus-feed.md` Phase 6.5 Step 3 § INCORRECT/CORRECT. Les deux cas spécifiques
+> au `— label` manquant sont documentés ici car ils sont plus subtils :
+
 ```org
-❌  * Coverage — agent-fau (Mode A pass, 2026-10-09)
-      - PRIMARY sections processed: 2
-      - Rules generated: 7 (R01-R07)
-
 ❌  ** ✅ Integrated
-      agent-building (Mode A, 2026-10-29)
-      Corpus sections: §2A, §2C4...
-      Rules: 5 ...
+      agent-building (Mode A, 2026-10-29)   ← pas de "— label" sur la ligne **
 
-❌  ** ✅ Integrated (5 rules / 4 helpers)     ← manque le "— label"
+❌  ** ✅ Integrated (5 rules / 4 helpers)   ← parenthèse sans "— label" avant
       Corpus : corpus/004-...
       | Section | Artefact |
 ```
