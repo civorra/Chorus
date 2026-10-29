@@ -564,6 +564,7 @@ Write `$SANDBOX/.last-strengthen-report.json`:
 
 | `gap_type` | `suggested_fix_type` | `bucket` |
 |---|---|---|
+| `rule_too_strict` or `rule_too_permissive` | `threshold` **AND** the CONDITION/ACTION tests a numeric security parameter (slot name contains `bits`, `niveau`, `seuil`, `taille`, `score`, `longueur`, or the change matches pattern `>=N→>=M`) | **`A`** — ⛔ NEVER `B` — human expert validation required (see `chorus-fix.md § SECURITY GUARD`) |
 | `rule_too_strict` or `rule_too_permissive` or `rule_perm_blocked` | `threshold`, `condition`, `exception_pattern`, `filtre_to_condition` | `B` |
 | `rule_too_strict` or `rule_too_permissive` | `new_rule` | `C` |
 | `feed_gap` | `feed` | `C` |

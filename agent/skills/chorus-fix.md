@@ -106,10 +106,41 @@ If the file does not exist → skip this gap with a warning:
 
 ### 1.2 — Compute the patch
 
-Apply the patch formula matching the gap type:
+Apply the patch formula matching the gap type.
+
+> ⛔ **SECURITY GUARD — numeric compliance thresholds (check FIRST, before any patch):**
+>
+> If the CONDITION or ACTION being patched tests a **numeric security parameter**, the
+> gap MUST be moved to **Bucket A** and NOT auto-applied — regardless of `suggested_fix_type`.
+>
+> **Indicators (any one is sufficient):**
+> - The slot being adjusted contains `bits`, `niveau`, `seuil`, `taille`, `longueur`,
+>   `score`, `ecc_bits`, `module_bits` (e.g. `$f->{taille_cle_bits} >= 256`)
+> - The `change` description matches pattern `>=N→>=M`, `>N→>M`, `<=N→<=M`
+>   (or French equivalents) with N ≠ M
+> - The corpus reference cites a normative threshold (`§N.N.N — ≥ X bits`, `niveau ≥ N`)
+>
+> **Action — do NOT write any YAML file:**
+> ```
+> ⚠️ Security threshold guard — Gap #N MOVED TO BUCKET A.
+>    Patch   : <change description>
+>    Reason  : numeric compliance threshold — auto-application forbidden.
+>              A human expert must confirm this change against the normative source
+>              (§<ref>) before any YAML edit.
+> ```
+> Add the gap to the residual report (Phase 4) with `bucket: "A"`, `blocked: true`,
+> `blocked_reason: "security threshold — human review required"`.
+>
+> **Rationale:** threshold relaxations in compliance rules are security decisions.
+> `chorus-strengthen` classifying a gap as `rule_too_strict` + `threshold`
+> does NOT constitute sufficient justification to auto-lower a key-size floor or
+> security level — that requires a normative expert review.
+> Incident reference: sandbox 08-ANSSI-PG-083-CENTRIC, Run 1 2026-10-26,
+> `R02-check-chiffrement-bloc.yml` `>=256→>=128` — auto-applied without validation.
 
 **Rule too strict** (expected CONFORME → got NON_CONFORME):
-- Threshold relaxation: identify the numeric threshold in the `CONDITION` or `ACTION`
+- Threshold relaxation: *(only applies after the security guard above is cleared)*
+  identify the numeric threshold in the `CONDITION` or `ACTION`
   that rejects the failing element; adjust it in the direction that would accept
   the element (e.g. lower a minimum, raise a maximum).
 - CONDITION widening: if the `CONDITION` excludes a valid subtype or class,
