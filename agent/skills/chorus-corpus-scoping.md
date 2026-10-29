@@ -114,6 +114,36 @@ identified post-generation).
 > The cost of an unnecessary scoping pass on a small corpus is low; the cost of
 > skipping it on a large one is high (KB/YAML/Helpers.pm rework).
 
+## ⛔ CORPUS LANGUAGE RULE — mandatory, applies to every output of this skill
+
+> **The corpus language is the only authoritative source for ALL identifiers
+> produced by this skill.** This is not a preference — it is a hard constraint
+> with no exception and no override.
+>
+> Concretely, if the corpus is in **English**, then every identifier in
+> `SCOPING.md` and every corpus agent file produced in Phase 2 **must** be in
+> English: agent slugs, Frame type names, `type_element` values, slot names,
+> Helper function names, YAML rule keys (RULE/FIND/ACTION/PREMISES), slot
+> values derived from corpus terminology — **everything**.
+>
+> If the corpus is in **French**, everything must be in French (REGLE/CHERCHER/
+> EFFET/PREMISSES, French slot names, French type_element values, etc.).
+>
+> **The only exceptions — fixed engine conventions that never change regardless
+> of corpus language:**
+> - `type_element` — the slot name itself is invariant (engine constraint)
+> - `attribut`, `filtre` — YAML sub-keys, invariant
+> - `_DEFAULT`, `_NEEDED`, `_AFTER`, `_BEFORE`, `_REQUIRE` — control slot names, invariant
+>
+> **Failure mode to prevent:** producing French slot names (`nb_etages`,
+> `epaisseur_proposee`, `vitesse_vent_ms`) for an English corpus is incorrect
+> — even if French is the agent's default language or the prior sandbox used
+> French. Each corpus determines its own naming space independently.
+>
+> **Practical check before writing any identifier:** ask "does this word appear
+> in the corpus?" If not, it is a translation — replace it with the corpus's
+> own term.
+
 ## The five structuring questions
 
 These are the same analytical questions as `chorus-feed.md` §1.1–1.3, made

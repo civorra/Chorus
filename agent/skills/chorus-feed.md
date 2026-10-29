@@ -36,6 +36,28 @@
 > To validate a project based on this knowledge → use `chorus-check`.
 
 
+## ⛔ CORPUS LANGUAGE RULE — mandatory, check before writing any identifier
+
+> **The corpus language determines every identifier produced by this skill.**
+> This is a hard constraint, not a default: it applies to agent slugs, Frame
+> type names, `type_element` values, slot names, YAML rule names, Helper
+> function names, and all slot values derived from corpus vocabulary.
+>
+> **English corpus → every identifier in English.**
+> **French corpus → every identifier in French (REGLE/CHERCHER/EFFET/PREMISSES).**
+>
+> Invariant engine identifiers that never change regardless of corpus language:
+> `type_element` (slot name), `attribut`, `filtre`, `_DEFAULT`, `_NEEDED`,
+> `_AFTER`, `_BEFORE`, `_REQUIRE`, `_ISA`, `_SELF`, `_ITEMS`, `_CONTAINER`.
+>
+> **Practical check:** before writing any slot name, ask "does this word appear
+> in the corpus text?" If not, it is a translation — replace it with the
+> corpus's own term. French words in an English corpus (or vice versa) are
+> always wrong, regardless of any previous sandbox or agent convention.
+>
+> This rule also applies to the `SCOPING.md` produced by `chorus-corpus-scoping`
+> and to every `corpus/NNN-<slug>.md` agent file produced by Phase 2 of that skill.
+
 ## ⛔ Strict sandbox isolation
 
 **Never read any file, KB, YAML, or artifact from a sandbox other than `<sandbox-name>`.**
