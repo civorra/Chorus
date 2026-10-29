@@ -940,3 +940,93 @@ matches nothing if `$e` happens to be declared elsewhere in scope.
 
 **Blocks 3 and 4** need no structural change beyond substituting `verdict_of($e)`
 for `$e->{statut_conformite}` wherever the base template reads that slot directly.
+
+---
+
+## T6 — README.org `* Coverage` grammar
+
+> **Loaded by:** `chorus-feed` Phase 6.5 Step 3 (Coverage report) — referenced from there.
+> **Purpose:** verbatim copy-paste template for the `* Coverage` section of `README.org`.
+>
+> ⛔ **Ce format est un contrat de parsing, pas une convention stylistique.**
+> Il est consommé mécaniquement par trois systèmes — toute déviation entraîne
+> une invisibilité silencieuse dans la webapp (aucune erreur levée) :
+>
+> | Système | Regex / clé utilisée |
+> |---------|----------------------|
+> | `chorus-web` `parseSandboxReadme()` | `^\*{2}\s+[✅⏭⛔]\s+(Integrated\|Deferred\|Out of scope)` |
+> | `scripts/corpus-inventory.py` Step 1d | même regex + `Corpus :` (avec espace avant `:`) |
+> | `chorus-feed` Phase 6.5 Step 4b SP check | compte les `** ✅ Integrated` et `** ⏭ Deferred` |
+>
+> **Trois règles absolues :**
+> 1. `** ✅ Integrated` doit être suivi de ` — <label>` (tiret em, espace, texte libre).
+>    Sans ce ` — label`, `dashMatch` échoue → `label = ''` → ligne visible mais vide dans la webapp.
+> 2. `Corpus :` (avec espace avant `:`) doit apparaître seul sur la ligne suivante du `**`.
+>    C'est la seule façon pour `corpus-inventory.py` de relier une entrée Coverage à son fichier source.
+> 3. Le contenu détaillé sous chaque `**` doit être une **table org** `| col | col |`.
+>    De la prose libre est ignorée par le parser — elle n'apparaît pas en foldable lines dans la webapp.
+
+### Template complet (à copier-coller, remplacer les `<…>`)
+
+```org
+* Coverage
+
+** ✅ Integrated — <agent-slug> (<N> rules / <N> helpers)
+   Corpus : corpus/<NNN>-<slug>.md
+   | Section / Article corpus              | Artefact généré                              |
+   |---------------------------------------+----------------------------------------------|
+   | §<ref> — <title>                      | R<NN>-<slug>.yml                             |
+   | Table <N> — <title> (HELPER-SOURCE)   | Helper: <function_name>()                    |
+
+** ⏭ Deferred — <agent-slug> (<N> sections)
+   | Section / Article     | Reason          | retry-note                        | Suggested new rule / agent |
+   |-----------------------+-----------------+-----------------------------------+----------------------------|
+   | §<N> — <title>        | <reason>        | <blank or Step-2b failure reason> | <RNN-slug or new-agent>    |
+
+** ⛔ Out of scope — <label> (<N> sections)
+   | Section / Article     | Reason                                     |
+   |-----------------------+--------------------------------------------|
+   | §<N> — <title>        | informative / external-norm / procedural   |
+```
+
+> Sections `🧮 Helper-source pending`, `🔍 UNSCANNED`, `⚠️ CORPUS: unresolved`
+> et `** Next step` : omise si N=0 / non applicable — voir le template complet
+> dans `chorus-feed.md` Phase 6.5 Step 3.
+
+### Exemple concret (sandbox de référence : `08-ANSSI-PG-083-CENTRIC`)
+
+```org
+** ✅ Integrated — crypto-alea, ANSSI-PG-083 (7 règles / 0 table)
+   Corpus : corpus/001-anssi-guide-mecanismes-crypto-3.00-2-vision.md
+   | Section / Règle corpus                                    | Règles générées                     |
+   |-----------------------------------------------------------+-------------------------------------|
+   | §2.3.1 RègleArchiGénAléa.2, .3, .4                        | R01-check-archi-conformite.yml      |
+   | §2.3.2 RègleGénPhysAléa.1, .2                             | R05-check-gen-phys-conformite.yml   |
+
+** ⏭ Deferred — crypto-alea, ANSSI-PG-083 (2 sous-règles)
+   | Section / Règle corpus                              | Raison                                                   |
+   |-----------------------------------------------------+----------------------------------------------------------|
+   | §2.3.1 RègleArchiGénAléa.1 (état interne)           | Non vérifiable par slot — attestée par existence Frame   |
+
+** ⛔ Out of scope — ANSSI-PG-083 (sections SHARED, non génératrices)
+   | Section                          | Raison           |
+   |----------------------------------+------------------|
+   | §1 Introduction (PG-083)         | SHARED — contexte|
+```
+
+### Anti-patterns à éviter (invisibles dans la webapp)
+
+```org
+❌  * Coverage — agent-fau (Mode A pass, 2026-10-09)
+      - PRIMARY sections processed: 2
+      - Rules generated: 7 (R01-R07)
+
+❌  ** ✅ Integrated
+      agent-building (Mode A, 2026-10-29)
+      Corpus sections: §2A, §2C4...
+      Rules: 5 ...
+
+❌  ** ✅ Integrated (5 rules / 4 helpers)     ← manque le "— label"
+      Corpus : corpus/004-...
+      | Section | Artefact |
+```
