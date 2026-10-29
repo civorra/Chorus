@@ -28,7 +28,7 @@ def main():
         text = f.read()
 
     # Ensure a blank line precedes every table block (same fix as md2html.py).
-    text = re.sub(r'^([^|].*)$\n^(\|)', r'\1\n\n\2', text, flags=re.MULTILINE)
+    text = re.sub(r'^([^\n|][^\n]*)$\n^(\|)', r'\1\n\n\2', text, flags=re.MULTILINE)
 
     html_body = markdown.markdown(text, extensions=['tables', 'fenced_code'])
     html = f"""<!DOCTYPE html>
