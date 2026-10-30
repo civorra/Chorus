@@ -1323,34 +1323,42 @@ wording.
 
 #### Thesaurus storage layout — sharded by Scope
 
-**WEB-027 (2026-10-30) — Architecture thésaurus refonte.**
-
-Le thésaurus est stocké **par entity**, sous `$SANDBOX/workspace/<entity>/` :
+**WEB-027 (2026-10-30) — Architecture thésaurus 3 niveaux.**
 
 ```
-$SANDBOX/workspace/Apache/thesaurus.org    ← toutes les données Apache
-$SANDBOX/workspace/eviden/thesaurus.org    ← toutes les données eviden
-$SANDBOX/workspace/<C>/thesaurus.org       ← une entity = un fichier complet
+Niveau 1 — KB / CBOM-oid-registry.yml          ← automatique, partagé sandbox
+  OID/RFC → KB slots. Jamais dans le thésaurus.
+  Résolu par l'extension sandbox (Phase -0.1) avant toute consultation du thésaurus.
+
+Niveau 2 — Projet (défaut pour les résolutions à l'import)
+  $SANDBOX/workspace/<C>/<projId>.thesaurus.json
+  Décisions spécifiques à UN projet/import. N'affecte que les réimports du même projet.
+  Exemple : PBKDF2 → derivation_cle décidé pour Cosmian KMS ≠ hachage_mot_de_passe
+  dans un autre projet.
+
+Niveau 3 — Entity (promotion explicite uniquement)
+  $SANDBOX/workspace/<C>/thesaurus.org
+  Mappings valides pour TOUS les projets de l'entity <C>.
+  Jamais automatique à l'import — promotion via bouton 🏢 webapp ou décision explicite.
 ```
 
-Chaque fichier entity contient ses propres sections `* Aliases`, `* Pending`,
-`* Out-of-scope`, et `* Conflicts` — **aucun partage cross-entity**.
+**Règles d'écriture à l'import :**
+- ✅ certaine (depuis CBOM-oid-registry, fiabilité certaine/haute) → **Niveau 2** (projet JSON)
+- ✅ confirmée par l'ingénieur en session → **Niveau 2** (projet JSON) — sauf si l'ingénieur dit
+  explicitement "valide pour tous les projets <C>" → **Niveau 3** (entity org)
+- ⚠️ `_a_confirmer` newly seen → **Niveau 3 Pending** (entity org) — les Pending sont entity-scoped
+  pour être visibles à la webapp quel que soit le projet courant
+- ⬜ out-of-scope → **Niveau 3 Out-of-scope** (entity org)
 
-**Pourquoi pas de global :** les mappings OID/RFC (`SHA256 → hachage`) sont
-déjà résolus par l'extension sandbox `CBOM-oid-registry.yml` (Phase -0.1) avant
-même que le thésaurus soit consulté. Le thésaurus ne contient que des décisions
-contextuelles (interprétatives) qui sont par définition entity-specific.
-
-**Quel fichier lire pour un import** avec `C` = Scope de cet import :
+**Quel fichier lire pour un import** (C = Scope de cet import, projId = nom du JSON produit) :
 ```
-Lire : $SANDBOX/workspace/<C>/thesaurus.org (si présent)
+Lire en priorité : $SANDBOX/workspace/<C>/<projId>.thesaurus.json   (Niveau 2 — projet)
+Puis :             $SANDBOX/workspace/<C>/thesaurus.org              (Niveau 3 — entity)
 Ne jamais lire le thésaurus d'une autre entity.
 ```
-Si le fichier n'existe pas → aucune entrée thésaurus disponible,
-continuer vers Phase 1.3/KB lookup.
 
-**`* Pending`, `* Out-of-scope`, `* Conflicts`** vivent dans le même fichier
-entity (`workspace/<C>/thesaurus.org`). Aucune section sandbox-wide.
+**`* Pending`, `* Out-of-scope`, `* Conflicts`** vivent dans le fichier entity
+(`workspace/<C>/thesaurus.org`). Jamais au Niveau 2 (projet JSON).
 
 **Compat descendante :** si `$SANDBOX/agent/thesaurus/<C>.org` existe et
 `workspace/<C>/thesaurus.org` absent → utiliser le fichier legacy (migration
@@ -2557,41 +2565,51 @@ document stays under the dedicated section regardless of format or mode
 ### Post-import — thesaurus consolidation (automatic)
 
 After writing the import report, perform a **thesaurus consolidation pass** to ensure
-the relevant shard(s) (`agent/thesaurus/global.org` + `agent/thesaurus/<C>.org` if this
-import's Scope `C != global`) are fully up to date — even if Phase 3 already wrote
-entries incrementally, this pass catches any edge cases (batch mode, interrupted
-sessions, confirmed ⚠️ items). This pass never touches any other client's shard.
+les fichiers de niveaux 2 et 3 sont à jour. Cette passe est idempotente (ne duplique
+pas les entrées déjà présentes). Ne touche jamais les shards d'une autre entity.
+
+**WEB-027 — Architecture 3 niveaux (voir "Thesaurus storage layout" ci-dessus) :**
+- Niveau 2 = `workspace/<C>/<projId>.thesaurus.json` (projet-spécifique, défaut)
+- Niveau 3 = `workspace/<C>/thesaurus.org` (entity-wide, promotion explicite)
 
 #### Consolidation rules
 
 ```
-For each alignment produced in this import (C = current import's context, `global` by default):
+For each alignment produced in this import (C = Scope, projId = JSON output filename stem):
 
-  ✅ certain (newly confirmed in this session):
-    → if a row with the same (term, Scope=C) already exists WITH THE SAME mapping:
-      update confidence + source + KB hash @ validation (see "KB hash tracking &
-      revalidation", Phase 1.2b)
-    → if a row with the same (term, Scope=C) already exists WITH A DIFFERENT mapping:
-      do NOT overwrite — append to * Conflicts (Scope=C) instead (see Deduplication
-      rule, Phase 3 § Immediate thesaurus update). The existing Aliases row stays untouched.
-    → if the term exists only at a *different* Scope (≠ C): not a conflict — append a
-      new independent (term, Scope=C) row (see "Thesaurus scoping by context")
-    → if NOT already in thesaurus Aliases at any Scope: append to appropriate Aliases
-      section with Scope=C, recording the current `.kb-hash` (or `—` if absent)
-    → if present in thesaurus Pending: move to Aliases at Scope=C, update confidence
-      + source + KB hash
+  ✅ certain (résolu directement, sans intervention ingénieur) :
+    → Écrire dans Niveau 2 (workspace/<C>/<projId>.thesaurus.json)
+    → Si même terme déjà présent en Niveau 2 avec même mapping : mettre à jour confidence/date
+    → Si même terme déjà présent en Niveau 2 avec mapping DIFFÉRENT :
+        NE PAS écraser → ajouter à * Conflicts du Niveau 3 (entity org) — arbitrage requis
+    → Si terme absent du Niveau 2 → créer l'entrée en Niveau 2 (jamais en Niveau 3 par défaut)
+    ⛔ JAMAIS écrire des mappings OID-backed (Niveau 1) dans le thésaurus — ils sont
+       couverts par CBOM-oid-registry.yml. Ne pas polluer le Niveau 2 avec
+       des entrées triviales (SHA256→hachage, AES-256-GCM→chiffrement_authentifie etc.)
+       qui n'apportent rien au-delà de ce que le registre fait déjà.
 
-  ⚠️ confirmed by engineer in this session:
-    → move from Pending to Aliases (type_element or slot values) at Scope=C
-    → record source import as current import-report-NNN
-    → same (term, Scope) conflict check as above applies
+  ✅ confirmée par l'ingénieur en session (avec décision explicite) :
+    → Si décision universelle pour l'entity ("valide pour tous les projets <C>") :
+        Écrire en Niveau 3 (workspace/<C>/thesaurus.org), section * Aliases
+    → Sinon (décision produit-spécifique — défaut) :
+        Écrire en Niveau 2 (workspace/<C>/<projId>.thesaurus.json)
+    → Même conflict check que ci-dessus
 
   ⚠️ newly seen (no prior record):
-    → append to Pending (if not already present)
+    → Écrire en Niveau 3 Pending (workspace/<C>/thesaurus.org, section * Pending)
+    → Raison : les Pending sont entity-scoped pour être visibles dans la webapp
+      quel que soit le projet courant (une entrée Pending de l'import N est utile
+      lors de l'import N+1 du même produit par un autre ingénieur)
+
+  ⚠️ confirmed by engineer in this session:
+    → Supprimer de Niveau 3 * Pending + écrire en Niveau 2 * aliases_type_element
+      (sauf décision entity-wide → Niveau 3 * Aliases)
+    → Record source import + date
 
   ⬜ out-of-scope (confirmed by engineer):
-    → append to Out-of-scope (if not already present)
-    → remove from Pending if present there
+    → Écrire en Niveau 3 * Out-of-scope (entity-scoped — un terme hors-périmètre
+      pour cette entity l'est probablement pour tous ses projets)
+    → Supprimer de Pending si présent
 
   ⛔ gap (mandatory slot absent — not a mapping decision):
     → do NOT write to thesaurus (gaps are import-specific, not terminology mappings)
@@ -2610,16 +2628,18 @@ consolidation pass (`global.org`, and `<C>.org` if applicable) with today's date
 #### Consolidation summary (displayed to engineer)
 
 ```
-📚 Thesaurus updated — $SANDBOX/agent/thesaurus/ (Scope: <C>)
-   ✅ N new aliases added   (type_element: n / slot values: n) — shard: <C>.org or global.org
-   🔄 N pending → confirmed  (global.org)
-   ⬜ N out-of-scope added   (global.org)
-   📋 Shard <C>.org now covers M distinct project terms (global.org: M' terms)
+📚 Thesaurus updated (WEB-027 — 3 niveaux)
+   🔑 Niveau 2 (projet) : workspace/<C>/<projId>.thesaurus.json
+      ✅ N new aliases added   (type_element: n / slot values: n)
+   🏢 Niveau 3 (entity) : workspace/<C>/thesaurus.org
+      ⚠️  N new pending entries
+      ⬜ N out-of-scope added
+      🔄 N pending → confirmed (promu Niveau 3 par l'ingénieur)
 ```
 
 If nothing changed (all terms already in thesaurus) → display silently:
 ```
-📚 Thesaurus already up to date — no new entries.
+📚 Thesaurus already up to date — no new entries (Niveau 2 + Niveau 3).
 ```
 
 ### Post-import — audit qualité (automatic)
