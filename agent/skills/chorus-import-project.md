@@ -1930,6 +1930,73 @@ For each ❓ term, present the following to the engineer:
 **Do not proceed until blocking ❓ items are resolved** (ambiguous `type_element` slots).
 ⚠️ items may be provisionally accepted with a `_a_confirmer: 1` flag.
 
+### _a_confirmer resolution — three tiers (interactive terminal + autonomous fallback)
+
+When a `⚠️` item is encountered — either during Phase 3 alignment or during a
+re-import that finds pending thesaurus entries — apply the following tier logic:
+
+| Tier | Criterion | Action |
+|---|---|---|
+| **Obvious** | Derivable from external standards without domain knowledge: platform constraints (JDK API removal, RFC defaults), OID registry, mathematical definitions | Call `eca__ask_user` with proposed resolution as default option `[auto]` — countdown 30s — auto-confirmed if no response |
+| **Ambiguous** | Requires domain knowledge or has competing valid interpretations (EC GFp vs GF2n without platform context, curve family not determinable from CBOM) | Call `eca__ask_user`, no auto — **block until engineer responds** |
+| **Unresolvable** | Structurally absent from source (exposant RSA absent du schéma CycloneDX, primitive=other non identifiable) | Mark `❌ Structurellement absent` — never auto-resolve — document gap |
+
+#### Obvious tier — eca__ask_user with [auto] countdown
+
+```javascript
+eca__ask_user({
+  question: "RSA-2048 → exposant_public_valeur : confirmer 65537 ?",
+  options: [
+    {
+      label:       "Confirmer 65537",
+      description: "[auto] RFC 8017 §A.1.1 — Java KeyPairGenerator default, aucune surcharge détectée dans le code source"
+    },
+    {
+      label:       "Valeur différente",
+      description: "indiquer l'exposant réel (HSM legacy, configuration non standard)"
+    },
+    {
+      label:       "Marquer _a_confirmer",
+      description: "laisser pour validation manuelle ultérieure"
+    }
+  ],
+  allowFreeform: true
+})
+```
+
+The `[auto]` prefix in `description` triggers a 30s countdown in the webapp terminal
+(see `chorus-web.js § lvlTermAskUser`). The engineer can:
+- **Click "Confirmer"** — validates immediately, countdown cancelled
+- **Click "Valeur différente" + type** — overrides with exact value
+- **Do nothing** — countdown expires → auto-confirms the `[auto]` option
+- **Running as sub-agent** — `eca__ask_user` returns `""` → apply Obvious-tier default silently
+
+#### Ambiguous tier — interactive, no countdown
+
+```javascript
+eca__ask_user({
+  question: "EC → type_element : GFp ou GF2n ?",
+  options: [
+    { label: "GFp (NIST P-256/P-384/P-521)", description: "courbes NIST standard" },
+    { label: "GF2n (courbes binaires)",        description: "binaire — rare, Java 8+ a retiré le support JSSE" },
+    { label: "Indéterminable",                 description: "marquer _a_confirmer permanent" }
+  ],
+  allowFreeform: false
+})
+// No [auto] marker — blocks until engineer responds.
+// If eca__ask_user returns "" (sub-agent) → keep _a_confirmer: 1, do NOT auto-resolve.
+```
+
+#### ⛔ Rules for all tiers
+
+- **Never auto-resolve an Ambiguous item** — even if the reasoning seems compelling.
+  What happened before this rule existed: EC→GFp was auto-confirmed based on JDK-8235039
+  reasoning without asking the engineer — technically correct in that case, but the engineer
+  had no opportunity to contradict if the context were atypical (embedded JDK, custom curve).
+- **Never call `eca__ask_user` in a loop** — one call per `_a_confirmer` item.
+- **`"" return` in sub-agent**: Obvious tier → apply default silently. Ambiguous → keep
+  `_a_confirmer: 1`, never promote to `✅`.
+
 ### Immediate thesaurus update after each resolution
 
 **After each engineer decision** (❓ resolved or ⚠️ confirmed/rejected), write the
