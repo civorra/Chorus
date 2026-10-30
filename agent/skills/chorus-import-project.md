@@ -316,8 +316,9 @@ For each file `f` in `files`:
    if absent) — increment NNN independently for each file
 4. At the end of the batch → produce the **batch summary report** (see Phase 6-BATCH)
 
-> ⚠️ Phase 1 (KB reading) is run **once only** at the start of the batch
-> and reused for all files — the terminology reference is shared.
+> ⚠️ Phase 1 (index.org read) is run **once only** at the start of the batch.
+> The lazy KB cache (`loaded_agents`) is also shared across all files — each
+> `<slug>.org` is loaded at most once for the entire batch (WEB-029).
 
 ### Phase 0-FUSION — Multi-Source Merge
 
@@ -1163,9 +1164,22 @@ Read `$SANDBOX/agent/chorus/index.org`:
 - Namespace + agent list (slug, pos)
 - Global slot dictionary (if present in the index)
 
-### 1.2 Per-agent terminology
+### 1.2 Per-agent terminology — lazy loading (WEB-029)
 
-For each agent, apply this two-step sequence:
+> **⚠️ WEB-029 — Do NOT read `<slug>.org` files in Phase 1.**
+> Loading all KB agent files upfront inflates the LLM context by ~150 KB
+> (tool call outputs) before a single term is aligned — observed at 149 K tokens
+> on a 6-agent sandbox, causing 20–25 min/block after blk1.
+>
+> **Agent KB files are loaded on demand in Phase 3**, the first time a term is
+> matched to that agent's `type_element` domain.
+>
+> Phase 1.2 records only the **agent list** derived from Phase 1.0 (directory tree)
+> and Phase 1.1 (`index.org`): slug names, their positions, and rule directories.
+> No `eca__read_file` calls for `<slug>.org` happen here.
+
+When a `<slug>.org` is loaded in Phase 3 (first time that agent is needed), apply
+this two-step sequence:
 
 1. **Read** `$SANDBOX/agent/chorus/<slug>.org` and extract:
 
@@ -1178,14 +1192,14 @@ For each agent, apply this two-step sequence:
 | `Dictionnaire des slots` — `Frame ref` / `→` annotation | Inter-frame link slots — Phase 3.5 processes them; `*_ref` fields are optional |
 | `Dictionnaire des slots` — `Triggers X on Y (_AFTER)` annotation | Forward propagation — informational only; no impact on JSON content |
 
-2. **Immediately after** (no thinking between the two calls): read the directory tree $SANDBOX/rules/<slug>/
+2. **Immediately after** (no thinking between the two calls): read the directory tree `$SANDBOX/rules/<slug>/`
    to list the rule files for this agent.
 
-> **Why the immediate tool call:** Opus extended thinking after reading a dense KB file
-> can be long enough to expire the IDE token. Reading the directory tree right after
-> each read resets the token TTL and produces a useful rules inventory at no extra cost.
+> **Why the immediate tool call:** reading a dense KB file can trigger a long thinking
+> cycle. Reading the directory tree right after each read resets the token TTL and
+> produces a useful rules inventory at no extra cost.
 
-Build an internal **terminology reference**:
+Build an internal **terminology reference** for this slug:
 ```
 concept_kb        → type_element / slot_kb       unit_kb     domain          flags
 ───────────────────────────────────────────────────────────────────────────────────
@@ -1205,9 +1219,9 @@ section           → section_bois                —           "BxH"           
 > A `DERIVED` slot that IS present in the project file takes precedence over the
 > computed value — include it in the JSON normally.
 
-> **`type_element` — canonical name guard:** while reading the KB, verify that
-> the element type slot is named **`type_element`** in the `Dictionnaire des slots`
-> of each `<slug>.org`. Then, immediately after reading the directory tree of
+> **`type_element` — canonical name guard:** when loading a `<slug>.org` in Phase 3,
+> verify that the element type slot is named **`type_element`** in the
+> `Dictionnaire des slots`. Then, immediately after reading the directory tree of
 > `$SANDBOX/rules/<slug>/`, read one representative `.yml` file and verify that its
 > `FIND`/`CHERCHER` block uses `attribut: type_element` (not `element_type`, `type`,
 > `kind`, or any variant).
@@ -1761,7 +1775,8 @@ If the engineer confirms `yes`, proceed — but set `"_couverture_kb": "low"` in
 `_import` block and list the unrecognised types under a dedicated section
 `* KB coverage gap` in the import report (Phase 6).
 
-> **Batch mode:** compute the gauge once per file, using the shared KB loaded in Phase 1.
+> **Batch mode:** compute the gauge once per file, using the shared lazy KB cache
+> (agents already loaded by Phase 3 for previous files, plus on-demand loads for new agents).
 > Files with 🔴 coverage are flagged in the batch summary report (Phase 6-BATCH)
 > with a `⚠️ low KB coverage` marker in the results table — the batch is not aborted.
 
@@ -1774,9 +1789,9 @@ If the engineer confirms `yes`, proceed — but set `"_couverture_kb": "low"` in
 > against the KB reference. On a large project this can take 10–20 minutes of thinking
 > with no tool call — enough to expire the IDE token.
 > The fix: **read the consolidated inventory file written by Phase 2** (one tool call =
-> keepalive), then **write a partial alignment file every 20 terms** — each write resets
-> the token TTL. Full context (KB + inventory) is preserved throughout; only the *writes*
-> are batched.
+> keepalive), then **write a partial alignment file every 10 terms** — each write resets
+> the token TTL. KB files are loaded lazily (WEB-029 — see Phase 1.2): only the *writes*
+> and the on-demand KB reads are split; alignment reasoning always sees the complete picture.
 
 ```
 # Step 0 — reload inventory from disk (keepalive + single source of truth)
@@ -1785,13 +1800,27 @@ Read eca__read_file:
 terms = all distinct terms extracted from the inventory
 Print: "[Phase 3] Inventory loaded — <len(terms)> distinct terms to align"
 
-BLOCK_SIZE = 20   # terms per partial write
+BLOCK_SIZE = 10   # terms per partial write (WEB-029 — reduced from 20)
 
+loaded_agents = {}   # slug → terminology reference (lazy — loaded on demand)
 block_num  = 1
 alignment  = []   # accumulates ALL aligned terms across all blocks
 
 For each term T in terms (full sequential alignment):
-  Align T against KB reference (Phase 1.2) → produce alignment row
+
+  # Lazy KB loading (WEB-029): load agent KB only when first needed
+  slug = infer_agent_slug(T)
+  # slug inference: structural tags (Phase 1.2b) > thesaurus hit > index.org type hints
+  # slug = None means the term maps to global slots only (no per-agent <slug>.org needed)
+  If slug is not None and slug not in loaded_agents:
+    Read eca__read_file: path = $SANDBOX/agent/chorus/<slug>.org
+    Read eca__directory_tree: path = $SANDBOX/rules/<slug>/
+    Read eca__read_file: path = first .yml in $SANDBOX/rules/<slug>/   # type_element guard
+    loaded_agents[slug] = extracted terminology reference
+    Print: "[Phase 3] KB loaded for agent '<slug>' — <len(loaded_agents)> agent(s) loaded so far"
+
+  # Align using the now-available KB reference for this agent
+  Align T against loaded_agents.get(slug) or index.org global slots → produce alignment row
   Append row to alignment
 
   If len(alignment) % BLOCK_SIZE == 0:
@@ -1809,10 +1838,14 @@ Write eca__write_file:
 Print: "[Phase 3] Complete alignment written — <len(alignment)> terms total"
 ```
 
-> **Context integrity guarantee:** the full KB reference (Phase 1.2) and the full
-> inventory (all elements) remain in the agent's context window throughout.
-> Only the *output writes* are split into blocks — the alignment reasoning always
-> sees the complete picture. No information is lost, no cross-element context is broken.
+> **Context integrity guarantee (WEB-029):** KB files are loaded lazily — only the
+> agents actually referenced by inventory terms are ever read, and each is loaded
+> exactly once. The full inventory and all loaded KB references remain in context
+> throughout Phase 3. Only the *output writes* are batched; alignment reasoning
+> always sees the complete picture. No information is lost, no cross-element context
+> is broken. On a 6-agent sandbox with 2–3 agents active, this reduces Phase 1
+> context load from ~150 KB to ~20 KB (`index.org` only), and defers the remaining
+> ~130 KB to Phase 3 where it is loaded incrementally alongside alignment writes.
 
 > **Partial block files** (`.import-alignment-<NNN>-blk*.org`) are transient.
 > The **consolidated file** (`.import-alignment-<NNN>.org`) is the single source of
