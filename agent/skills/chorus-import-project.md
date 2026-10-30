@@ -1151,11 +1151,10 @@ This serves two purposes:
 Use this inventory to:
 - Confirm the list of `<slug>.org` files to read in 1.2
 - Know which `rules/<slug>/` directories exist (for the keepalive calls in 1.2)
-- Detect the sandbox thesaurus: **new sharded layout**
-  `$SANDBOX/agent/thesaurus/global.org` (+ `$SANDBOX/agent/thesaurus/<client>.org` if
-  scoped shards exist) **or legacy monolithic** `$SANDBOX/agent/thesaurus.org` (for
-  1.2b — highest priority source; see "Thesaurus storage layout" for the detection
-  and one-way migration rule)
+- Detect the sandbox thesaurus (WEB-027) :
+  `$SANDBOX/workspace/<C>/thesaurus.org` (layout WEB-027, prioritaire)
+  **ou** `$SANDBOX/agent/thesaurus/<C>.org` (legacy pre-WEB-027, compat descendante)
+  (voir "Thesaurus storage layout" pour la détection et la migration automatique)
 - Detect any existing `import-report-*.org` files (for 1.3 — secondary memory)
 
 ### 1.1 Pipeline Index
@@ -1224,10 +1223,9 @@ section           → section_bois                —           "BxH"           
 
 ### 1.2b Sandbox thesaurus (highest priority source)
 
-If a sandbox thesaurus exists (sharded layout `$SANDBOX/agent/thesaurus/*.org`, or
-legacy monolithic `$SANDBOX/agent/thesaurus.org` — see "Thesaurus storage layout"
-below), **read the relevant shard(s) immediately after Phase 1.2**, before any
-import-report.
+Si un thésaurus existe (`$SANDBOX/workspace/<C>/thesaurus.org` ou legacy
+`$SANDBOX/agent/thesaurus/<C>.org` — voir "Thesaurus storage layout"), **lire
+le fichier entity immédiatement après Phase 1.2**, avant tout import-report.
 
 The thesaurus is the **canonical project-terminology memory** for this sandbox. It is
 separated from the normative KB (`<slug>.org`) and from import reports: it stores
@@ -1361,150 +1359,67 @@ nouveaux fichiers sous `agent/thesaurus/`.
 
 **Each shard file's own header:**
 ```org
-#+TITLE: Project terminology thesaurus — sandbox <name> — shard: global|<client>
+#+TITLE: Project terminology thesaurus — sandbox <name> — entity: <entity>
 #+UPDATED: <date>
-#+LAST_HARVEST: never          ← global.org only (see below)
-#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox, Scope=<shard>.
-               Maintained automatically by chorus-import-project. Part of a sharded
-               thesaurus — see agent/thesaurus/global.org for Pending/Out-of-scope/Conflicts.
-```
-`#+LAST_HARVEST:` is meaningful only in `global.org` — `chorus-feed --harvest-aliases`
-only ever promotes `Scope=global` rows (see `chorus-feed.md § Phase C1 — Scope guard`),
-so only `global.org` is ever purged/touched by a harvest. Client shards never carry
-this header.
-
-#### Legacy monolithic `thesaurus.org` — detection and one-way migration
-
-Sandboxes created before this sharding convention may still have a single
-`$SANDBOX/agent/thesaurus.org` file (no `thesaurus/` subfolder). Detection order:
-
-```
-1. $SANDBOX/agent/thesaurus/ directory exists → sharded layout, use it (ignore any
-   leftover $SANDBOX/agent/thesaurus.org — should not coexist; if it does, warn and
-   treat the sharded layout as authoritative, do not merge automatically)
-2. $SANDBOX/agent/thesaurus/ absent, $SANDBOX/agent/thesaurus.org exists → legacy
-   monolithic sandbox. Read it as-is for this import (fully backward compatible: all
-   Scope resolution, dedup, and conflict logic below works identically on a single
-   file — sharding is a storage optimisation, not a change to the logic).
-   Then, **once this import completes successfully** (Phase 6), perform a one-way
-   migration: split thesaurus.org into agent/thesaurus/global.org (+ one shard per
-   distinct non-global Scope found in its Aliases rows), moving `* Pending`,
-   `* Out-of-scope`, and `* Conflicts` into global.org unchanged. Delete the original
-   thesaurus.org only after all shards are written and verified (row count in shards
-   == row count in the original file). Report the migration to the engineer:
-   ```
-   📦 Legacy thesaurus.org migrated to sharded layout:
-      agent/thesaurus/global.org        (N aliases, Pending/Out-of-scope/Conflicts)
-      agent/thesaurus/client-alpha.org  (N aliases)
-      Original agent/thesaurus.org removed.
-   ```
-3. Neither exists → no thesaurus yet, proceed to "Thesaurus creation" (first import).
+#+DESCRIPTION: Validated project-term → KB-slot mappings, Scope=<entity>.
+               Maintained automatically by chorus-import-project.
+               WEB-027: canonical location = workspace/<entity>/thesaurus.org.
+               Do NOT edit KB org files to add project aliases — use this file instead.
 ```
 
-> ⚠️ Migration is **one-way and one-time** — never re-split an already-sharded
-> thesaurus, never reconstruct a monolithic file from shards. If both a `thesaurus/`
-> folder and a `thesaurus.org` file exist simultaneously (should not normally happen),
-> treat it as a corruption signal: stop, report both, and let the engineer decide
-> manually rather than guessing which is authoritative.
+#### Thesaurus format — `workspace/<entity>/thesaurus.org`
 
-#### Thesaurus format
-
-**`agent/thesaurus/global.org`** (always the first shard consulted; holds every
-sandbox-wide bookkeeping table):
+Un seul fichier par entity contient toutes les sections. Exemple pour l'entity `Apache` :
 
 ```org
-#+TITLE: Project terminology thesaurus — sandbox <name> — shard: global
+#+TITLE: Project terminology thesaurus — sandbox <name> — entity: Apache
 #+UPDATED: <date>
-#+LAST_HARVEST: never
-#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox, Scope=global.
-               Maintained automatically by chorus-import-project. Part of a sharded
-               thesaurus — see agent/thesaurus/<client>.org for other Scopes.
-               Do NOT edit KB org files to add project aliases — use this file instead.
-               #+LAST_HARVEST is set by `chorus-feed --harvest-aliases` (never edit manually).
+#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox, Scope=Apache.
+               Maintained automatically by chorus-import-project.
+               WEB-027: workspace/Apache/thesaurus.org — isolated, no cross-entity sharing.
 
 * Aliases — type_element
-  Project terms validated as mapping to a specific KB type_element, Scope=global.
-  Applied at ✅ confidence on every future import without asking again — unless the
+  Project terms validated as mapping to a specific KB type_element, Scope=Apache.
+  Applied at ✅ confidence on every future import of the same entity — unless the
   KB has changed since validation (see "KB hash tracking & revalidation" below).
 
-  | Project term             | KB type_element       | Confidence   | Source import     | KB hash @ validation | Scope   |
+  | Project term | KB type_element                | Confidence   | Source import     | KB hash @ validation | Scope  |
   |---|---|---|---|---|---|
-  | panneau contreventement  | panneau_osb           | ✅ confirmed | import-report-001 | a1b2c3d4              | global  |
-  | poteau intérieur cloison | montant_non_porteur   | ✅ confirmed | import-report-001 | a1b2c3d4              | global  |
+  | SHA256       | hachage                        | ✅ confirmed | import-report-001 | —                     | Apache |
+  | RSA-2048     | probleme_factorisation         | ✅ confirmed | import-report-001 | —                     | Apache |
 
 * Aliases — slot values
-  Project value expressions validated as mapping to a specific KB slot + value, Scope=global.
-  Applied at ✅ confidence on every future import without asking again — unless the
-  KB has changed since validation (see "KB hash tracking & revalidation" below).
+  Project value expressions validated as mapping to a specific KB slot + value, Scope=Apache.
 
-  | Project term  | KB slot             | KB value | Confidence   | Source import     | KB hash @ validation | Scope   |
+  | Project term | KB slot                | KB value | Confidence   | Source import     | KB hash @ validation | Scope  |
   |---|---|---|---|---|---|---|
-  | classe 2      | traitement_applique | "cl2"    | ✅ confirmed | import-report-002 | a1b2c3d4              | global  |
-  | laine 032     | classe_conductivite | "032"    | ✅ confirmed | import-report-002 | b5e6f7a8              | global  |
+  | RSA-2048     | exposant_public_valeur | 65537    | ✅ confirmed | import-report-001 | —                     | Apache |
 
-* Pending — to confirm on next import
-  Terms provisionally mapped (⚠️) in a previous import, not yet confirmed by the engineer.
-  Re-raised on next import if the same term appears — engineer decision upgrades to ✅ or rejects.
-  Sandbox-wide (not sharded — lives only in global.org, regardless of which Scope the
-  term will eventually resolve to once confirmed).
+* Pending — to confirm on next import of this entity
+  Terms provisionally mapped (⚠️) — re-raised on next import of this entity.
+  Engineer decision upgrades to ✅ (Aliases) or ❌ (Out-of-scope).
 
-  | Project term   | Proposed KB mapping            | Flag              | Source import     | Scope  |
+  | Project term   | Proposed KB mapping           | Flag             | Source import     | Scope  |
   |---|---|---|---|---|
-  | isolant soufflé | type_element: isolant_vrac ?  | ⚠️ _a_confirmer  | import-report-003 | global |
+  | AES-128-CBC    | type_element: chiffrement_bloc ? | ⚠️ _a_confirmer | import-report-001 | Apache |
 
 * Out-of-scope terms (⬜)
-  Terms explicitly identified as outside this sandbox's KB scope.
-  Silently excluded on future imports — not re-raised to the engineer.
-  Sandbox-wide (not sharded — lives only in global.org).
+  Terms explicitly excluded from this entity's KB scope.
 
-  | Project term  | Reason                      | Recommended sandbox  | Last seen         |
+  | Project term | Reason                                          | Recommended sandbox | Last seen         |
   |---|---|---|---|
-  | bardage zinc  | hors périmètre sandbox-structurel | sandbox-bardage | import-report-001 |
+  | PRIVATE KEY  | primitive=other, non exploitable sans code source | —               | import-report-001 |
 
 * Conflicts (⚠️ CONFLICT — blocking, requires engineer arbitration)
-  A term already resolved to one mapping **at a given Scope** in a prior import,
-  re-encountered with a **different** mapping **at that same Scope** in a later import.
-  Cross-scope differences (e.g. `client-alpha` vs. `client-beta`) are **not** conflicts
-  — see "Thesaurus scoping by context" above; they are two independent, correctly
-  scoped rows, living in their respective shards. A true Conflict only arises when
-  both the term AND the Scope match but the target mapping differs (legitimate
-  homonymy within the same scope — a rarer, genuinely ambiguous case). Never
-  auto-resolved, never silently overwritten — see "Deduplication rule" below. Must be
-  arbitrated before the conflicting term is applied again.
-  Sandbox-wide (not sharded — lives only in global.org, even for a same-scope conflict
-  detected on a client shard: the Scope column already identifies which shard is
-  affected, no need to duplicate the table per shard).
+  Term already resolved with a different mapping at the same Scope in a prior import.
 
-  | Project term | Scope   | Existing mapping                        | New mapping                              | First seen         | Conflict raised in | Status            |
-  |---|---|---|---|---|---|---|
-  | poteau        | global  | montant_porteur (import-report-012)     | montant_non_porteur (import-report-340)  | import-report-012  | import-report-340  | ⚠️ to arbitrate  |
-```
-
-**`agent/thesaurus/client-alpha.org`** (an example client shard — only the two
-`* Aliases` tables, same columns, same Scope value repeated on every row for clarity
-even though it is implied by the filename):
-
-```org
-#+TITLE: Project terminology thesaurus — sandbox <name> — shard: client-alpha
-#+UPDATED: <date>
-#+DESCRIPTION: Validated project-term → KB-slot mappings for this sandbox, Scope=client-alpha.
-               Maintained automatically by chorus-import-project. Part of a sharded
-               thesaurus — see agent/thesaurus/global.org for Pending/Out-of-scope/Conflicts.
-               Do NOT edit KB org files to add project aliases — use this file instead.
-
-* Aliases — type_element
-  Project terms validated as mapping to a specific KB type_element, Scope=client-alpha.
-
-  | Project term | KB type_element  | Confidence   | Source import     | KB hash @ validation | Scope        |
-  |---|---|---|---|---|---|
-  | poteau        | montant_porteur | ✅ confirmed | import-report-012 | c3d4e5f6              | client-alpha |
-
-* Aliases — slot values
-  Project value expressions validated as mapping to a specific KB slot + value, Scope=client-alpha.
-
-  | Project term | KB slot | KB value | Confidence | Source import | KB hash @ validation | Scope |
+  | Project term | Scope  | Existing mapping            | New mapping                 | First seen        | Conflict raised in | Status           |
   |---|---|---|---|---|---|---|
 ```
+
+> **Compat descendante :** `agent/thesaurus/<entity>.org` (pre-WEB-027) est lu si
+> `workspace/<entity>/thesaurus.org` est absent. Migration automatique au premier accès.
+> Ne jamais créer de nouveaux fichiers sous `agent/thesaurus/`.
 
 #### KB hash tracking & revalidation
 
