@@ -355,3 +355,100 @@ autonomously — the Tests tab can surface a **"⚠️ Non validé"** badge on t
   re-run the downstream skill (`chorus-fix`, etc.)
 - Use **WEB-023** (interactive review panel in the Tests tab) when available
 - Re-run the skill in a fresh interactive session to trigger the checkpoint
+
+---
+
+## Interactive patterns — eca__ask_user in terminal skills
+
+> **WEB-025 (2026-10-30):** `eca__ask_user` is fully functional in the webapp
+> ECA terminal (direct execution, not sub-agent). Four canonical patterns below.
+>
+> ⛔ **Sub-agent restriction:** `eca__ask_user` called from a skill running inside
+> `eca__spawn_agent` silently returns `""` — the widget is never shown to the user.
+> Always set `AUTONOMOUS_MODE = true` when the skill detects it is running as a
+> sub-agent (see `$EAKB/pitfalls.org § eca__ask_user silencieusement ignoré`).
+
+### Pattern A — Validation checkpoint (gate before commit)
+
+Use at any point where ECA has produced a result that needs operator sign-off
+before writing files or taking irreversible action.
+
+```
+eca__ask_user(
+  question = "Valider les N gaps détectés avant application ?",
+  options  = [
+    { label: "OUI — appliquer",         description: "procéder avec le résultat actuel" },
+    { label: "NON — corriger d'abord",  description: "je vais indiquer les corrections" },
+    { label: "Abandonner",              description: "stopper sans écrire" },
+  ],
+  allowFreeform = true   // allow inline correction text
+)
+```
+
+*Used by:* `chorus-strengthen` (Phase 4-checkpoint), `chorus-feed` (Phase 6.5 SP decision).
+
+### Pattern B — Strategy choice before heavy operation
+
+Use before launching a long operation with multiple valid strategies, to avoid
+having to restart if the wrong strategy was applied.
+
+```
+eca__ask_user(
+  question = "Quelle stratégie de génération ?",
+  options  = [
+    { label: "iso",   description: "conformité nominale uniquement" },
+    { label: "edges", description: "valeurs limites et cas-limites" },
+    { label: "cross", description: "combinaisons inter-slots" },
+    { label: "scale", description: "volume et charge" },
+  ],
+  allowFreeform = false
+)
+```
+
+*Candidate:* `chorus-create-project --batch-seq` (choose strategy in the same session).
+
+### Pattern C — Confirmation before destructive write
+
+Use before overwriting existing artefacts (YAML rules, KB org, project JSON).
+
+```
+eca__ask_user(
+  question = "N fichiers YAML existants vont être écrasés. Continuer ?",
+  options  = [
+    { label: "Oui — écraser",            description: "continuer normalement" },
+    { label: "Non — backup d'abord",     description: "créer une copie horodatée avant" },
+    { label: "Annuler",                  description: "stopper sans modifier" },
+  ],
+  allowFreeform = false
+)
+```
+
+*Candidate:* `chorus-feed --enrich` when rules already exist for a slot.
+
+### Pattern D — Mid-session triage of ambiguous elements
+
+Use when ECA encounters N ambiguous items that would normally require stopping
+the whole session — ask how to handle them in bulk rather than aborting.
+
+```
+eca__ask_user(
+  question = "N éléments ⚠️ ambigus détectés. Comment les traiter ?",
+  options  = [
+    { label: "Passer en _a_confirmer",    description: "continuer, marquer pour révision" },
+    { label: "Me montrer le premier",     description: "afficher le détail et décider" },
+    { label: "Ignorer tous",              description: "exclure de cette passe" },
+  ],
+  allowFreeform = false
+)
+```
+
+*Candidate:* `chorus-feed` when `⏭ Deferred` count exceeds threshold mid-pass.
+
+### Implementation rules for all patterns
+
+1. **Always check return value** — if `""` is returned, apply `AUTONOMOUS_MODE`
+   default (pattern A: OUI-default; pattern C: safe/backup-first default).
+2. **One call per decision point** — never loop on `eca__ask_user` for the same
+   question (infinite-loop risk if `""` is received).
+3. **Log the choice** in the terminal output: `[checkpoint] <name> — operator chose: <answer>`.
+4. **Never use in sub-agents** — see sub-agent restriction above.

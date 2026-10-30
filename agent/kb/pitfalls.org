@@ -320,3 +320,61 @@ ACTION: |
 # Option B — ignorer l'élément si lien absent
 EXCEPTION: 'not defined $w->get("link_slot")'
 #+end_src
+
+* PITFALL eca__ask_user silencieusement ignoré dans un sub-agent
+  :PROPERTIES:
+  :COMPONENT: chorus-web / ECA terminal
+  :SEVERITY: Moyen (dégradation silencieuse, pas d'erreur)
+  :DISCOVERED: 2026-10-30
+  :END:
+
+** Symptôme
+Un skill exécuté via =eca__spawn_agent= appelle =eca__ask_user= — l'appel
+retourne immédiatement =""= sans afficher aucun widget à l'utilisateur.
+Le skill continue avec une réponse vide, produisant un résultat incorrect ou
+incomplet sans signal d'erreur.
+
+** Cause
+Dans =subscribeEcaEvents= (=eca-client.js=), les événements des sous-chats
+(=isSubagentChat=) ne déclenchent pas le handler =chat:ask-question= :
+
+#+begin_src javascript
+if (isParentChat && eventType === 'chat:ask-question') {
+  // ← ce guard exclut les sub-agents
+}
+#+end_src
+
+Le sous-agent s'exécute dans un chatId séparé (=subagent-<id>=). Le handler
+=chat:ask-question= n'est actif que pour le chat parent. L'appel =eca__ask_user=
+côté ECA reçoit =""= et continue sans bloquer.
+
+** Pattern affecté
+Tout skill qui appelle =eca__ask_user= ET peut être lancé via =eca__spawn_agent=.
+Skills Chorus concernés : =chorus-strengthen= (Phase 4-checkpoint),
+=chorus-feed= (Phase 6.5), =chorus-create-project= (Phase 3 --batch-seq).
+
+** Protection en place (insuffisante)
+Le guard =AUTONOMOUS_MODE= (=chorus-engine.md § Autonomous mode=) détecte
+=eca__ask_user= absent du catalogue d'outils — ce qui couvre le cas "outil
+non disponible" mais PAS le cas "outil disponible mais sub-agent" : l'outil
+est présent dans le catalogue du sous-agent, donc =AUTONOMOUS_MODE= ne se
+déclenche pas, et =eca__ask_user= est appelé → retourne =""=.
+
+** Fix recommandé
+Ajouter la détection explicite du contexte sub-agent comme condition
+=AUTONOMOUS_MODE= supplémentaire dans chaque skill concerné :
+
+#+begin_src markdown
+| Running inside a sub-agent | Spawned via `eca__spawn_agent` — OR —
+  detect empirically: call `eca__ask_user` with a sentinel value and check
+  if the return is `""` without user interaction delay |
+#+end_src
+
+Fix structurel à terme : propager =chat:ask-question= des sub-agents vers
+le terminal parent (=subscribeEcaEvents= § sub-agent handling), en routant
+la réponse vers le bon chatId. Non implémenté à ce jour (2026-10-30).
+
+** Règle à retenir
+=eca__ask_user= n'est fiable que dans le chat **parent** d'un terminal ECA
+webapp. Tout skill potentiellement spawné via =eca__spawn_agent= doit
+implémenter =AUTONOMOUS_MODE= pour gérer le cas de retour =""=.
