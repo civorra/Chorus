@@ -1325,40 +1325,39 @@ wording.
 
 #### Thesaurus storage layout — sharded by Scope
 
-The thesaurus is stored as **one `.org` file per Scope**, under
-`$SANDBOX/agent/thesaurus/`, rather than a single monolithic file:
+**WEB-027 (2026-10-30) — Architecture thésaurus refonte.**
+
+Le thésaurus est stocké **par entity**, sous `$SANDBOX/workspace/<entity>/` :
 
 ```
-$SANDBOX/agent/thesaurus/global.org           ← Scope = global (always present once
-                                                 the sandbox has at least one ✅ mapping)
-$SANDBOX/agent/thesaurus/<client-alpha>.org   ← Scope = client-alpha (created on demand,
-$SANDBOX/agent/thesaurus/<client-beta>.org      one shard per distinct non-global Scope
-                                                 ever used — see "Scope derivation")
+$SANDBOX/workspace/Apache/thesaurus.org    ← toutes les données Apache
+$SANDBOX/workspace/eviden/thesaurus.org    ← toutes les données eviden
+$SANDBOX/workspace/<C>/thesaurus.org       ← une entity = un fichier complet
 ```
 
-**Why sharding, not a single file:** on a multi-client sandbox, a lookup for an import
-scoped to `client-alpha` only ever needs `global.org` + `client-alpha.org` — it never
-needs to read `client-beta.org`, `client-gamma.org`, etc. Reading cost per import
-becomes proportional to **one Scope's volume**, not the sandbox's total accumulated
-volume across every client ever imported. This directly addresses the read-cost
-concern in the original refactor analysis (large sandboxes, hundreds of imports).
+Chaque fichier entity contient ses propres sections `* Aliases`, `* Pending`,
+`* Out-of-scope`, et `* Conflicts` — **aucun partage cross-entity**.
 
-**Which shard(s) to read for a given import**, with `C` = this import's Scope
-(resolved per "Scope derivation" below):
-```
-Always read: $SANDBOX/agent/thesaurus/global.org (if present)
-If C != "global": also read $SANDBOX/agent/thesaurus/<C>.org (if present)
-Never read any other <other-client>.org shard.
-```
-If neither file exists yet → no thesaurus hit is possible, proceed to Phase 1.3/KB
-lookup as if no thesaurus existed (same as today's "thesaurus.org absent" case).
+**Pourquoi pas de global :** les mappings OID/RFC (`SHA256 → hachage`) sont
+déjà résolus par l'extension sandbox `CBOM-oid-registry.yml` (Phase -0.1) avant
+même que le thésaurus soit consulté. Le thésaurus ne contient que des décisions
+contextuelles (interprétatives) qui sont par définition entity-specific.
 
-**`* Pending`, `* Out-of-scope`, and `* Conflicts` tables** (see "Thesaurus format"
-below) live **only in `global.org`**, never duplicated per shard — these tables are
-not Scope-partitioned data (a `* Conflicts` row already carries its own `Scope` column
-for the rare case of a same-scope mismatch; `* Pending`/`* Out-of-scope` are inherently
-sandbox-wide bookkeeping, not per-client data worth sharding). Only the two `* Aliases`
-tables are actually split across shards.
+**Quel fichier lire pour un import** avec `C` = Scope de cet import :
+```
+Lire : $SANDBOX/workspace/<C>/thesaurus.org (si présent)
+Ne jamais lire le thésaurus d'une autre entity.
+```
+Si le fichier n'existe pas → aucune entrée thésaurus disponible,
+continuer vers Phase 1.3/KB lookup.
+
+**`* Pending`, `* Out-of-scope`, `* Conflicts`** vivent dans le même fichier
+entity (`workspace/<C>/thesaurus.org`). Aucune section sandbox-wide.
+
+**Compat descendante :** si `$SANDBOX/agent/thesaurus/<C>.org` existe et
+`workspace/<C>/thesaurus.org` absent → utiliser le fichier legacy (migration
+automatique déclenchée par la webapp au premier accès). Ne jamais créer de
+nouveaux fichiers sous `agent/thesaurus/`.
 
 **Each shard file's own header:**
 ```org
@@ -1658,26 +1657,19 @@ purely additive.
 
 When building the alignment table (Phase 3), **check the thesaurus first** for every
 term in the raw inventory. In practice this means: for steps 1–2 (Aliases), only the
-two shards already loaded in memory (`global.org` + `<C>.org` if `C != global`, per
-"Thesaurus storage layout" above) are consulted — never a shard for a different
-client. Steps 0/3/4 (Conflicts/Out-of-scope/Pending) always look in `global.org` only,
-since those tables are never sharded.
+le fichier entity `workspace/<C>/thesaurus.org` (WEB-027) — jamais le thésaurus
+d'une autre entity. Toutes les sections vivent dans ce fichier unique :
 
 ```
-For each project term T, with C = current import's Scope (resolved per "Scope derivation" above):
-  0. Look up T in global.org → Conflicts (Scope = C or global) : hit (unresolved) → block,
-                                                        re-raise ⚠️ CONFLICT to engineer
-  1. Look up T in <C>.org → Aliases type_element, then in global.org → Aliases type_element
-     (fallback) : hit → check KB hash (see "KB hash tracking & revalidation" above);
-       identical → apply ✅, skip KB lookup; different → downgrade to ⚠️ à reconfirmer
-  2. Look up T in <C>.org → Aliases slot values, then in global.org → Aliases slot values
-     (fallback) : hit → same KB hash check as step 1
-  3. Look up T in global.org → Out-of-scope        : hit → mark ⬜, skip KB lookup
-  4. Look up T in global.org → Pending              : hit → re-raise ⚠️ to engineer
-  5. Not in thesaurus (neither <C>.org nor global.org) → proceed with KB lookup (Phase 3 standard flow)
+Pour chaque terme T, C = Scope de cet import :
+  0. workspace/<C>/thesaurus.org → Conflicts     : hit non résolu → bloquer, remontée ingénieur
+  1. workspace/<C>/thesaurus.org → Aliases type_element
+     : hit → vérifier KB hash; identique → appliquer ✅; différent → ⚠️ à reconfirmer
+  2. workspace/<C>/thesaurus.org → Aliases slot values  : idem
+  3. workspace/<C>/thesaurus.org → Out-of-scope  : hit → marquer ⬜, skip KB lookup
+  4. workspace/<C>/thesaurus.org → Pending       : hit → re-lever ⚠️ (eca__ask_user)
+  5. Absent → KB lookup standard (Phase 3)
 ```
-(When `C = global`, steps 1–2 simply read `global.org` once — there is no separate
-`<C>.org` to consult, no behaviour change from a non-sharded lookup.)
 
 > **Scope resolution order (steps 1–2):** an exact match on the current import's
 > context `C` (its own shard) always wins over a `global` row for the same term —
@@ -2020,9 +2012,10 @@ For each ❓ term, present the following to the engineer:
 **After each engineer decision** (❓ resolved or ⚠️ confirmed/rejected), write the
 result **immediately** — do not wait for Phase 6 — into the shard matching the current
 import's Scope `C`:
-- `* Aliases` writes go to `$SANDBOX/agent/thesaurus/<C>.org` (or `global.org` if `C = global`)
-- `* Pending`, `* Out-of-scope`, `* Conflicts` writes always go to `$SANDBOX/agent/thesaurus/global.org`
-  regardless of `C` (these tables are never sharded — see "Thesaurus storage layout")
+- Toutes les écritures (Aliases, Pending, Out-of-scope, Conflicts) vont dans
+  `$SANDBOX/workspace/<C>/thesaurus.org` (WEB-027 — entity-scoped, jamais cross-entity).
+- Créer le fichier si absent (voir "Thesaurus creation" ci-dessous).
+- Ne jamais écrire dans `agent/thesaurus/` pour de nouveaux imports.
 
 This ensures the thesaurus is always up to date, even if the session is interrupted
 before Phase 6 completes.
@@ -2031,12 +2024,12 @@ before Phase 6 completes.
 
 | Engineer decision | Thesaurus action |
 |---|---|
-| ❓ resolved → ✅ (type_element chosen) | Append to `* Aliases — type_element` in the shard for the current import's Scope (`<C>.org`, or `global.org` if `C = global`) — **unless a row with the same `(term, Scope)` already has a different mapping (checked against that same shard) → append to `* Conflicts` in `global.org` instead (see Deduplication rule below)** |
+| ❓ resolved → ✅ (type_element chosen) | Append to `* Aliases — type_element` dans `workspace/<C>/thesaurus.org` — sauf si `(term, Scope=C)` existe déjà avec un mapping différent → ajouter à `* Conflicts` dans le même fichier (voir Deduplication rule) |
 | ❓ resolved → ✅ (slot value chosen) | Append to `* Aliases — slot values` in the shard for the current Scope — **same conflict check as above** |
-| ⚠️ confirmed → ✅ | Move from `* Pending` (in `global.org`) to `* Aliases` in the shard for the current Scope — **same conflict check as above** |
-| ⚠️ rejected → ⬜ | Move from `* Pending` to `* Out-of-scope terms` (both in `global.org`) |
-| ❓ unresolvable → ⬜ (engineer: "exclude") | Append to `* Out-of-scope terms` (`global.org`) |
-| New ⚠️ (first time seen) | Append to `* Pending` (`global.org`) |
+| ⚠️ confirmed → ✅ | Déplacer de `* Pending` vers `* Aliases` — dans `workspace/<C>/thesaurus.org` — même conflict check |
+| ⚠️ rejected → ⬜ | Déplacer de `* Pending` vers `* Out-of-scope` — dans `workspace/<C>/thesaurus.org` |
+| ❓ unresolvable → ⬜ | Ajouter à `* Out-of-scope` dans `workspace/<C>/thesaurus.org` |
+| New ⚠️ (first time seen) | Ajouter à `* Pending` dans `workspace/<C>/thesaurus.org` |
 | Term already in `* Conflicts` at the current Scope (unresolved), re-encountered | Do not touch any `* Aliases` shard — re-raise for arbitration (see "Conflict resolution") |
 
 #### Write format per section
@@ -2078,14 +2071,10 @@ before Phase 6 completes.
 
 #### Thesaurus creation (first import)
 
-If `$SANDBOX/agent/thesaurus/` does not yet exist (and no legacy `thesaurus.org`
-either — see "Legacy monolithic thesaurus.org" above) → create
-`agent/thesaurus/global.org` using the global shard format defined above (Thesaurus
-format), with `* Aliases — type_element`, `* Aliases — slot values`, `* Pending`,
-`* Out-of-scope terms`, and `* Conflicts` all empty (headers only, no example rows).
-If the current import's Scope `C` is not `global`, also create `agent/thesaurus/<C>.org`
-using the client-shard format (only the two `* Aliases` tables). Then append the first
-resolved entry under the appropriate section/shard.
+Si `$SANDBOX/workspace/<C>/thesaurus.org` n'existe pas encore → le créer avec
+les 4 sections vides (`* Aliases — type_element`, `* Aliases — slot values`,
+`* Pending`, `* Out-of-scope terms`, `* Conflicts`). Ne jamais créer de fichier
+sous `agent/thesaurus/` pour un nouveau sandbox.
 
 > ⚠️ **Deduplication rule:** before appending any entry, check whether the pair
 > `(project term, Scope)` already exists in the target shard's `* Aliases —
