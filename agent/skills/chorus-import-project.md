@@ -478,6 +478,11 @@ Niveau 3 — Entity (promotion explicite uniquement)
 
 **Règles d'écriture à l'import :**
 - ✅ certaine (depuis CBOM-oid-registry, fiabilité certaine/haute) → **Niveau 2** (projet JSON)
+- ✅ certaine (depuis signal structurel du document source — CBOM `primitive`/`cryptoFunctions`/
+  `description`, champ XML, etc.) → **Niveau 2** (projet JSON) — **⛔ jamais Niveau 3 Aliases**,
+  même si le terme figure dans Niveau 3 Pending. Le signal structurel est spécifique à CE document ;
+  un autre projet de la même entity peut utiliser le même terme dans un contexte différent.
+  Le Pending Niveau 3 reste intact comme filet de sécurité entity-wide.
 - ✅ confirmée par l'ingénieur en session → **Niveau 2** (projet JSON) — sauf si l'ingénieur dit
   explicitement "valide pour tous les projets <C>" → **Niveau 3** (entity org)
 - ⚠️ `_a_confirmer` newly seen → **Niveau 3 Pending** (entity org) — les Pending sont entity-scoped
