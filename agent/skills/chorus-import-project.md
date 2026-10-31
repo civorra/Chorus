@@ -1692,6 +1692,13 @@ thesaurus, not a substitute.
 
 ## Phase 2 — Raw Inventory of Project Elements
 
+> **⛔ WEB-029 — Phase 2 = inventaire brut UNIQUEMENT.**
+> Ne jamais lire de fichier `<slug>.org`, `thesaurus.org` ou tout autre fichier KB
+> pendant cette phase. L'inventaire ne fait que scanner le document source et lister
+> les éléments bruts. Tout lookup KB est **strictement réservé à Phase 3** (lazy
+> loading au premier besoin de l'agent concerné). Lire un KB ici reconstitue
+> l'anti-pattern pré-WEB-029 (149K tokens dès Phase 2).
+
 ### Keepalive — block-based inventory (intra-phase token refresh)
 
 **Before starting the inventory**, if the source is a filesystem file, call:
