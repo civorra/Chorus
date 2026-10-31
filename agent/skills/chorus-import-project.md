@@ -1800,7 +1800,7 @@ Read eca__read_file:
 terms = all distinct terms extracted from the inventory
 Print: "[Phase 3] Inventory loaded — <len(terms)> distinct terms to align"
 
-BLOCK_SIZE = 10   # terms per partial write (WEB-029 — reduced from 20)
+BLOCK_SIZE = 40   # terms per partial write (lazy loading = light context → large blocks safe)
 
 loaded_agents = {}   # slug → terminology reference (lazy — loaded on demand)
 block_num  = 1
