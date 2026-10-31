@@ -1681,6 +1681,21 @@ not `global`. No manual creation is required.
 
 ### 1.3 Previous alignment decisions
 
+> **⛔ WEB-027 — Skip this section entirely if `workspace/<C>/thesaurus.org` exists.**
+>
+> The thesaurus (Niveau 3 entity, read in Phase 1.2b) already captures every
+> cross-import decision that should be reused:
+> - Promoted Aliases (Niveau 3) → already loaded ✅
+> - Pending → already loaded ✅
+> - Niveau 2 decisions that were **not** promoted → must **not** be reproduced
+>   (the engineer deliberately kept them project-scoped).
+>
+> Reading a previous `import-report-NNN.org` here would violate WEB-027 by
+> silently re-applying Niveau 2 decisions across project boundaries.
+>
+> **Only proceed with Phase 1.3 if** `workspace/<C>/thesaurus.org` is absent
+> (pre-WEB-027 sandbox with no thesaurus yet — legacy fallback only).
+
 If `$WORKSPACE/import-report-*.org` exists (`$WORKSPACE` = `$SANDBOX/workspace/`),
 read the **latest report** as a secondary memory source — complementary to the
 thesaurus, not a substitute.
