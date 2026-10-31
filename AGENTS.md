@@ -185,4 +185,9 @@ status: IN_PROGRESS
 | `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
 
 > **Sub-skills** — internal support files, no direct user trigger. Hidden from `skills` / `skills details` unless `--all` is passed:
-> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md`
+> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md`
+>
+> `chorus-import-extract.md` — ENG-030: document extraction pipelines (PDF/Excel/Word) extracted from `chorus-import-project.md`
+> to keep the main skill ≤ 2000 lines for CBOM imports. Loaded via `eca__skill("chorus-import-extract")` from Phase 0
+> of `chorus-import-project` **only when source is a document file** (PDF/DOCX/XLSX/CSV). Never loaded for structured
+> sources (JSON/CycloneDX/XML) — Phase -0.1 handles those directly.
