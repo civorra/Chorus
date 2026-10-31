@@ -2039,6 +2039,16 @@ eca__ask_user({
 - **Never call `eca__ask_user` in a loop** — one call per `_a_confirmer` item.
 - **`"" return` in sub-agent**: Obvious tier → apply default silently. Ambiguous → keep
   `_a_confirmer: 1`, never promote to `✅`.
+- **⛔ KB gap ≠ `_a_confirmer`** — if a `type_element` is recognised (the algorithm
+  is known) but the KB simply does not cover it yet (e.g. Argon2id, ANSSI-PA-079
+  angle mort), classify as **`gap` only** — never as `_a_confirmer`. A `_a_confirmer`
+  means "the term has competing valid KB interpretations". A gap means "the KB has no
+  coverage for this algorithm at all — no alignment decision is possible until the KB
+  is extended". Mixing the two produces non-deterministic counts across re-imports.
+  Correct classification:
+  - Term known + KB covers it + interpretation uncertain → `_a_confirmer`
+  - Term known + KB does NOT cover it → `gap` (document in `_import.gaps`, not in `_a_confirmer`)
+  - Term unknown (not identifiable) → `❓` or `hors_perimetre`
 
 ### Immediate thesaurus update after each resolution
 
