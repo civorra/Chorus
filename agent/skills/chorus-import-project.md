@@ -2600,6 +2600,7 @@ non-`global` client context — see "Scope derivation", Phase 1.2b — created i
 ```org
 #+TITLE: Import report — <source> — <date>
 #+STATUS: draft
+#+SOURCE: <path to source file — exact value of _import.source, e.g. workspace/eviden/sources/import-NNN/cbom.cdx.json>
 
 * Source
   File    : <path or "inline">
