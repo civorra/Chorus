@@ -1869,18 +1869,20 @@ If all counts are zero:
 
 ### Post-import — optional KB harvest (secondary)
 
-After consolidation, optionally suggest a harvest if `global.org` has accumulated
-enough promotable aliases (≥ 20 promotable, or ≥ 100 total aliases, or ≥ 15 imports
-since last harvest — heuristic, non-blocking). Display:
+Read `global.org` header `#+LAST_HARVEST:` and count:
+- `N_promotable` = ✅ Aliases rows in `global.org` not yet present in any `<slug>.org`
+- `N_total` = total rows in `global.org` `* Aliases` sections (client shards excluded)
+- `N_since` = distinct source-import refs in `global.org` newer than `#+LAST_HARVEST`
+
+If **any** threshold crossed (N_promotable ≥ 20, or N_total ≥ 100, or N_since ≥ 15),
+display — otherwise skip silently:
 
 ```
 💡 KB harvest recommended: chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus/global.org
-   (see chorus-feed.md § Mode C for thresholds and Phase C1 Scope guard)
+   Reason: <list of thresholds crossed>
 ```
 
-⛔ Never auto-invoke — harvesting is explicit. Only `global.org` is ever harvested
-(client shards are never harvest candidates). See `chorus-feed.md § Mode C` for
-the full protocol (thresholds, `#+LAST_HARVEST` header, purge mechanism).
+⛔ Never auto-invoke. Only `global.org` is ever harvested (client shards: never).
 
 ### Phase 6-BATCH — Summary Report (batch mode only)
 
