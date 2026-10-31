@@ -1374,6 +1374,47 @@ Ne jamais lire le thésaurus d'une autre entity.
 **`* Pending`, `* Out-of-scope`, `* Conflicts`** vivent dans le fichier entity
 (`workspace/<C>/thesaurus.org`). Jamais au Niveau 2 (projet JSON).
 
+#### Format JSON — Niveau 2 (`<projId>.thesaurus.json`)
+
+⛔ **Noms de clés stricts** — la webapp (`chorus/thesaurus.js`) lit ce fichier directement.
+Ne jamais inventer d'autres noms de clés (`project_term`, `kb_type_element`, etc.).
+
+```json
+{
+  "_meta": {
+    "sandbox": "<sandbox-name>",
+    "entity": "<C>",
+    "proj_id": "<projId>",
+    "created": "YYYY-MM-DD",
+    "updated": "YYYY-MM-DD"
+  },
+  "aliases_type_element": [
+    {
+      "term":          "<project term>",
+      "type_element":  "<KB type_element>",
+      "confidence":    "certaine | confirmée",
+      "source_import": "<import-report-NNN>"
+    }
+  ],
+  "aliases_slot_values": [
+    {
+      "term":          "<project term>",
+      "slot":          "<KB slot>",
+      "value":         "<KB value>",
+      "confidence":    "certaine | confirmée",
+      "source_import": "<import-report-NNN>"
+    }
+  ],
+  "out_of_scope": [
+    { "term": "<project term>", "reason": "<raison>" }
+  ]
+}
+```
+
+> `pending` n'existe pas au Niveau 2 — les Pending sont toujours en Niveau 3 entity org.
+> `proj_id` dans `_meta` doit correspondre exactement au stem du fichier JSON produit
+> (ex : `project-import-1793433323491` pour `project-import-1793433323491.json`).
+
 **Compat descendante :** si `$SANDBOX/agent/thesaurus/<C>.org` existe et
 `workspace/<C>/thesaurus.org` absent → utiliser le fichier legacy (migration
 automatique déclenchée par la webapp au premier accès). Ne jamais créer de
