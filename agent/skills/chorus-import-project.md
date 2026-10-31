@@ -1150,8 +1150,8 @@ This serves two purposes:
    keeping the IDE token active from the very start.
 
 Use this inventory to:
-- Confirm the list of `<slug>.org` files to read in 1.2
-- Know which `rules/<slug>/` directories exist (for the keepalive calls in 1.2)
+- Record the list of agent slugs (for lazy loading in Phase 3 — do NOT read slug.org here)
+- Know which `rules/<slug>/` directories exist (noted for Phase 3 lazy loading)
 - Detect the sandbox thesaurus (WEB-027) :
   `$SANDBOX/workspace/<C>/thesaurus.org` (layout WEB-027, prioritaire)
   **ou** `$SANDBOX/agent/thesaurus/<C>.org` (legacy pre-WEB-027, compat descendante)
@@ -1178,62 +1178,9 @@ Read `$SANDBOX/agent/chorus/index.org`:
 > and Phase 1.1 (`index.org`): slug names, their positions, and rule directories.
 > No `eca__read_file` calls for `<slug>.org` happen here.
 
-When a `<slug>.org` is loaded in Phase 3 (first time that agent is needed), apply
-this two-step sequence:
-
-1. **Read** `$SANDBOX/agent/chorus/<slug>.org` and extract:
-
-| KB Section | What we extract |
-|---|---|
-| `Ontologie` | Domain concepts, synonyms, relationships (e.g. "entrait" = horizontal truss beam) |
-| `Catalogue des Frames` | Exact types (`type_element`), mandatory slots per type |
-| `Dictionnaire des slots` | Canonical names, value types, units, allowed domains |
-| `Dictionnaire des slots` — `Derived:` annotation | Slots computed at runtime via `_NEEDED` — **not required** in project JSON |
-| `Dictionnaire des slots` — `Frame ref` / `→` annotation | Inter-frame link slots — Phase 3.5 processes them; `*_ref` fields are optional |
-| `Dictionnaire des slots` — `Triggers X on Y (_AFTER)` annotation | Forward propagation — informational only; no impact on JSON content |
-
-2. **Immediately after** (no thinking between the two calls): read the directory tree `$SANDBOX/rules/<slug>/`
-   to list the rule files for this agent.
-
-> **Why the immediate tool call:** reading a dense KB file can trigger a long thinking
-> cycle. Reading the directory tree right after each read resets the token TTL and
-> produces a useful rules inventory at no extra cost.
-
-Build an internal **terminology reference** for this slug:
-```
-concept_kb        → type_element / slot_kb       unit_kb     domain          flags
-───────────────────────────────────────────────────────────────────────────────────
-montant porteur   → montant_porteur              —           —               —
-lisse              → lisse_basse / lisse_haute   —           to clarify      —
-classe résistance → classe_bois                 —           C14/C16/C18/C24 —
-épaisseur isolant → epaisseur_mm                mm          positive int    —
-conductivité λ    → classe_conductivite         —           "031"/"035"     —
-hauteur libre     → hauteur_libre_m             m           decimal         —
-section           → section_bois                —           "BxH"           —
-épaisseur totale  → epaisseur_totale_mm         mm          positive int    DERIVED (_NEEDED)
-```
-
-> **`DERIVED` flag:** slots annotated `Derived:` in the KB org are computed at
-> runtime by a `_NEEDED` coderef in Feed.pm.  Mark them with a `DERIVED` flag in
-> the internal reference so Phase 4 never reports their absence as a gap.
-> A `DERIVED` slot that IS present in the project file takes precedence over the
-> computed value — include it in the JSON normally.
-
-> **`type_element` — canonical name guard:** when loading a `<slug>.org` in Phase 3,
-> verify that the element type slot is named **`type_element`** in the
-> `Dictionnaire des slots`. Then, immediately after reading the directory tree of
-> `$SANDBOX/rules/<slug>/`, read one representative `.yml` file and verify that its
-> `FIND`/`CHERCHER` block uses `attribut: type_element` (not `element_type`, `type`,
-> `kind`, or any variant).
-> If a mismatch is found → **stop and report** before producing any JSON:
-> ```
-> ⛔ Slot name mismatch detected:
->    KB org uses '<found_org_name>' / YAML uses 'attribut: <found_yaml_name>'
->    The import JSON would use "type_element" → all elements silently invisible to the pipeline.
->    Fix: rename to `type_element` in the KB org (Slot dictionary), all YAML rules,
->    and any existing project JSON files before proceeding.
->    (See chorus-feed.md § Naming Conventions and chorus-engine-yaml.md § YAML Rules checklist)
-> ```
+⛔ **PHASE 1.2 ENDS HERE.** Do not read any `<slug>.org` file now.
+The slug loading protocol (2-step read sequence, terminology reference, type_element guard)
+executes **in Phase 3** — see `### Block-based alignment protocol` § lazy KB loading.
 
 ### 1.2b Sandbox thesaurus (highest priority source)
 
