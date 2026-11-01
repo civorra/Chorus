@@ -216,13 +216,41 @@ Count headings (`#`, `##`, …, or `Table N`/`Figure N` style markers) in
 
 ### 2.3 Détection de cellules concaténées sans séparateur (borderless flattening)
 
-Heuristic for pattern T1 (silent flattening): scan for runs of **≥ 4
-consecutive short lines** (each ≤ 3 non-whitespace characters, e.g. `X`,
-`-`, `O`, a bare digit) occurring within 15 lines of a `Table N`/`Tableau N`
-heading, with **no** `|` pipe character anywhere in that span. `⚠️` (not
-`❌` by default — this heuristic has a real false-positive risk on short
-list items; escalate to `❌` only under `--strict` when combined with a
-confirmed table-count mismatch from §2.2 on the same `Table N`).
+Two independent sub-heuristics, both `⚠️` by default:
+
+**§2.3a — Standard pattern (normative documents with `Table N` labels):**
+Scan for runs of **≥ 4 consecutive short lines** (each ≤ 3 non-whitespace
+characters, e.g. `X`, `-`, `O`, a bare digit) occurring within 15 lines of
+a `Table N`/`Tableau N` heading, with **no** `|` pipe character anywhere in
+that span. `⚠️` (false-positive risk on short list items; escalate to `❌`
+under `--strict` only when combined with a confirmed table-count mismatch
+from §2.2 on the same `Table N`).
+
+**§2.3b — Unlabelled numeric table (CCTP / commercial documents):**
+Scan the full output independently of any `Table N` proximity for a
+**`=== PAGE N ===` block** that simultaneously satisfies **all three**
+conditions:
+1. Contains **≥ 5 consecutive non-empty lines** with **no** `|` pipe
+   character and no `#` heading marker.
+2. At least **60 %** of those lines match the pattern of an isolated
+   dimensional value: `^\s*\d[\d\s]*(\s*(mm|cm|m|kg|N|%))?\s*$` — i.e.
+   a number optionally followed by a unit, possibly with spacing artifacts
+   from `pdfminer` layout analysis (e.g. `1 350`, `60`, `1 490`).
+3. The page does **not** already contain a pipe table block covering
+   the same content (no `| --- |` separator within the same page block).
+
+`⚠️` on match. Report: page number, number of matching lines, sample values.
+Escalate to `❌` under `--strict`.
+
+> **Rationale (incident 01-PMR, 2026-11-01):** the dimensional table
+> GAINE/PYLONE (Largeur/Profondeur/Ht Fosse) in an Etna France CCTP was
+> completely flattened — each cell on its own line, column structure lost.
+> §2.3a missed it because (a) no `Table N` label, (b) values like `1 350`
+> exceed the 3-char threshold. §2.3b covers this class of document.
+>
+> **False-positive guard:** condition 2 (≥ 60 % numeric lines) distinguishes
+> a flattened dimensional table from a normal bulleted list, which typically
+> contains only 0–1 numeric lines in a 5-line run.
 
 ### 2.4 Détection de colonnes mono-caractère empilées (rotated-header pattern)
 
