@@ -20,10 +20,49 @@
 
 ---
 
-## Phase 0-bis — Task planning
+## Phase 0-bis — Task planning + checkpoint detection
 
-> **Run this before Phase 0.** Call `eca__task` once to plan the full session.
-> This gives the webapp terminal a live checklist (☐⏳☑) updated as phases progress.
+> **Run this before Phase 0.** Two steps : checkpoint detection first, then task planning.
+
+### Step 0-bis.1 — Checkpoint detection (resume guard)
+
+**Before planning tasks**, check whether a previous session was interrupted mid-serialization:
+
+```bash
+ls $SANDBOX/.strengthen-checkpoint.json
+```
+
+| Result | Action |
+|---|---|
+| **Absent** | Proceed to task planning normally — fresh run. |
+| **Present** | Display the checkpoint summary (see below), then ask the operator. |
+
+If the checkpoint file is present, read it and display:
+
+```
+⚠️  Interrupted strengthen session detected — $SANDBOX/.strengthen-checkpoint.json
+
+  Sandbox   : <sandbox>
+  Started   : <timestamp>
+  Gaps      : <total_gaps> gap(s) classified (Bucket B: N · C: N · A: N)
+  Status    : Phase 4.5 serialization was interrupted before completion.
+
+  Options:
+    [default] Resume  — skip Phases 0–4, serialize directly from checkpoint → Phase 4.5
+    Restart   — delete checkpoint and run from Phase 0 (full re-analysis)
+```
+
+Call `eca__ask_user` with options `["Reprendre depuis Phase 4.5", "Recommencer depuis Phase 0"]`.
+
+- **Reprendre** → read the checkpoint JSON into memory as the `gaps[]` array and all
+  metadata fields, then jump directly to Phase 4.5 (skip task planning's Phase 0–4 tasks,
+  add only `{ subject: "Phase 4.5 — Serialize JSON (reprise)" }` to the task list).
+- **Recommencer** → delete `.strengthen-checkpoint.json`, proceed to task planning below.
+
+### Step 0-bis.2 — Task planning
+
+Call `eca__task` once to plan the full session.
+This gives the webapp terminal a live checklist (☐⏳☑) updated as phases progress.
 
 ```
 eca__task(op="plan", tasks=[
@@ -33,6 +72,7 @@ eca__task(op="plan", tasks=[
   { subject: "Phase 3 — Read KB sections",         description: "Agent org files for implicated rules" },
   { subject: "Phase 4 — Gap report",               description: "Produce structured text report" },
   { subject: "Phase 4-checkpoint",                 description: "Interactive hypothesis validation" },
+  { subject: "Phase 4.5-pre — Write checkpoint",   description: "Write .strengthen-checkpoint.json (resume guard)" },
   { subject: "Phase 4.5 — Serialize JSON",         description: "Write .last-strengthen-report.json" },
   { subject: "Phase 5 — Enrichment roadmap",       description: "Bucket A/B/C + corpus-correctif" },
 ])
@@ -488,12 +528,50 @@ eca__ask_user(
 )
 ```
 
-**OUI (or freeform confirmation):** set `checkpoint_validated = true`, proceed to Phase 4.5.
+**OUI (or freeform confirmation):** set `checkpoint_validated = true`, proceed to Phase 4.5-pre.
 
 **NON + corrections:**
 - Parse corrections from the freeform response (e.g. "Gap #2 : hypothesis should be…").
 - Update the in-memory `gaps[]` array (do NOT re-run Phases 2–3).
-- Summarise changes applied. Set `checkpoint_validated = true`. Proceed to Phase 4.5.
+- Summarise changes applied. Set `checkpoint_validated = true`. Proceed to Phase 4.5-pre.
+
+---
+
+## Phase 4.5-pre — Write resume checkpoint
+
+> **Run immediately after Phase 4-checkpoint OUI, before Phase 4.5.**
+> This is the anti-timeout safety net: if Phase 4.5 (JSON serialization) is
+> interrupted by a session timeout, the operator can resume from this checkpoint
+> instead of restarting the full analysis from Phase 0.
+
+Write `$SANDBOX/.strengthen-checkpoint.json` using `eca__write_file`:
+
+```json
+{
+  "sandbox":              "<sandbox-name>",
+  "started":              "<ISO 8601 — timestamp of the current strengthen run>",
+  "status":               "pending_serialization",
+  "checkpoint_validated": true,
+  "total_gaps":           N,
+  "summary": { "bucket_b": N, "bucket_c": N, "bucket_a": N, ... },
+  "gaps":         [ ... ],
+  "project_bugs": [ ... ],
+  "kb_hash":   "<verbatim content of agent/.kb-hash>",
+  "proj_hash": "<sha256sum project-*.json | sha256sum>"
+}
+```
+
+> ⚠️ This file has the **same structure** as `.last-strengthen-report.json` plus
+> `"status": "pending_serialization"`. Phase 4.5 writes the final file and then
+> deletes this checkpoint.
+
+Print confirmation:
+```
+[chorus-strengthen] ✅ Checkpoint écrit → .strengthen-checkpoint.json
+                       (reprise possible si Phase 4.5 est interrompue)
+```
+
+Then proceed to Phase 4.5.
 
 ---
 
@@ -594,6 +672,22 @@ cat $SANDBOX/agent/.kb-hash   →  copy the full content into "kb_hash"
 > or reconstruct it from memory/earlier conversation context — a one-line
 > slip silently misattributes every subsequent hash↔filename pairing,
 > undetectable by inspection, and breaks the webapp's stale-detection.
+
+---
+
+After writing `.last-strengthen-report.json` successfully, **delete the checkpoint**:
+
+```
+eca__shell_command("rm -f $SANDBOX/.strengthen-checkpoint.json")
+```
+
+Print:
+```
+[chorus-strengthen] ✅ .last-strengthen-report.json écrit — checkpoint supprimé.
+```
+
+> If `eca__write_file` fails (disk full, permission error, etc.), do NOT delete the
+> checkpoint — it is the only copy of the gap data. Report the error and stop.
 
 ---
 
