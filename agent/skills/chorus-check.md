@@ -333,6 +333,9 @@ Run, for every agent's rules directory, before writing any infrastructure file:
 # Rules that can write a failing verdict (grep for the "NO"/"NON" literal commonly
 # used in a result slot) but never push to _rule_trace:
 for f in $SANDBOX/rules/*/*.yml; do
+  # Infrastructure rules (board-publication, termination) are exempt from _rule_trace —
+  # they produce no conformity verdict and have no corpus_ref to trace.
+  basename "$f" | grep -qE "publication.board|R99|termination" && continue
   grep -qE "rule_trace" "$f" || echo "MISSING _rule_trace: $f"
 done
 
@@ -606,8 +609,8 @@ Run, for every agent's rules directory, before writing any infrastructure file:
 for f in $SANDBOX/rules/*/*.yml; do
   flag=$(grep -oP "BOARD->\{?\K\w+(?=\}?\s*=|'\s*,)" "$f" | head -1)
   [ -z "$flag" ] && continue
-  grep -qE "EXCEPTION:.*defined \\\$SELF->BOARD->\{?$flag\}?|CONDITION:.*defined \\\$SELF->BOARD->\{?$flag\}?" "$f" \
-    || echo "⚠️  $f — publishes BOARD flag '$flag' but EXCEPTION/CONDITION never guards on it"
+  grep -qE "EXCEPTION:.*defined \\\$SELF->BOARD->\{?$flag\}?|(CONDITION:|PREMISSES:).*defined \\\$SELF->BOARD->\{?$flag\}?" "$f" \
+    || echo "⚠️  $f — publishes BOARD flag '$flag' but EXCEPTION/CONDITION/PREMISSES never guards on it"
 done
 ```
 
@@ -748,7 +751,8 @@ for f in $SANDBOX/rules/*/*.yml; do
   board_count=$(grep -oE "BOARD->\{[a-z_]+\}" "$f" | sort -u | wc -l)
   [ "$board_count" -lt 2 ] && continue   # single BOARD read — not a multi-flag gate
   # Check for CONDITION: line in the same YAML block
-  grep -q "^CONDITION:" "$f" || echo "⚠️  $f — reads $board_count BOARD flags but has no CONDITION gate"
+  grep -qE "^CONDITION:|^PREMISSES:" "$f" \
+    || echo "⚠️  $f — reads $board_count BOARD flags but has no CONDITION/PREMISSES gate"
 done
 ```
 
