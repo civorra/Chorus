@@ -175,7 +175,9 @@ def probe_claude(api_key):
 Print the selected mode to stderr before proceeding to Phase 0.1.
 
 > ⚠️ **Explicit flags always take precedence.**
-> `--auto`, `--hybrid` and `--images` bypass Phase 0.0 entirely — no probe, no key check.
+> `--auto`, `--hybrid` and `--images` bypass Phase 0.0 (no mode negotiation), but each
+> performs its own **pre-flight key check at module level** — absence → `sys.exit(1)` immediately,
+> presence → `_probe_claude()` validates the key before any PDF processing starts.
 > Phase 0.0 is only entered when the user provides no mode flag.
 
 ## Phase 0 — Resolve inputs
@@ -1681,13 +1683,43 @@ DPI         = 150
 MAX_RETRIES = 4
 API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 API_URL     = "https://api.anthropic.com/v1/messages"
+
+# ── Pre-flight API key check (explicit --hybrid: no silent fallback) ───────
 if not API_KEY:
-    print("[chorus-pdf] ⚠️  ANTHROPIC_API_KEY absent — hybrid mode cannot call Claude vision; "
-          "figures will fail at API call time. Re-run without --hybrid for text-only fallback.",
+    print("⛔ [chorus-pdf] ANTHROPIC_API_KEY not set — --hybrid requires Claude vision.\n"
+          "   Set ANTHROPIC_API_KEY (see ~/.config/anthropic/api_key) or omit --hybrid\n"
+          "   to use automatic text-only fallback.",
           file=sys.stderr)
-else:
-    print("[chorus-pdf] ANTHROPIC_API_KEY detected — Claude vision will be used for cropped figures.",
+    sys.exit(1)
+
+def _probe_claude(api_key):
+    """Validate the API key with a minimal 1-token request before any PDF processing.
+    Returns True if the key is valid (or throttled). Returns False on 401/403 or network error.
+    """
+    import json, urllib.request, urllib.error
+    payload = {"model": "claude-haiku-4-5", "max_tokens": 1,
+               "messages": [{"role": "user", "content": "ping"}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    try:
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(payload).encode(), headers=headers, method="POST"
+        )
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except urllib.error.HTTPError as e:
+        return e.code in (429, 529)   # throttled → key is valid
+    except Exception:
+        return False
+
+print("[chorus-pdf] ANTHROPIC_API_KEY set — probing Claude availability …", file=sys.stderr)
+if not _probe_claude(API_KEY):
+    print("⛔ [chorus-pdf] ANTHROPIC_API_KEY is invalid or API unreachable — --hybrid aborted.\n"
+          "   Verify your key at https://console.anthropic.com or check network connectivity.",
           file=sys.stderr)
+    sys.exit(1)
+print("[chorus-pdf] ANTHROPIC_API_KEY ✅ — Claude available, hybrid mode activated.", file=sys.stderr)
 
 FIGURE_PROMPT = """You are a technical document extraction engine.
 Describe this figure extracted from a normative PDF document.
@@ -2272,13 +2304,43 @@ DPI         = 150
 MAX_RETRIES = 4
 API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 API_URL     = "https://api.anthropic.com/v1/messages"
+
+# ── Pre-flight API key check (explicit --auto: no silent fallback) ─────────
 if not API_KEY:
-    print("[chorus-pdf] ⚠️  ANTHROPIC_API_KEY absent — auto mode cannot call Claude vision "
-          "for figure pages; script will abort at startup check below.",
+    print("⛔ [chorus-pdf] ANTHROPIC_API_KEY not set — --auto requires Claude vision.\n"
+          "   Set ANTHROPIC_API_KEY (see ~/.config/anthropic/api_key) or omit --auto\n"
+          "   to use automatic text-only fallback.",
           file=sys.stderr)
-else:
-    print("[chorus-pdf] ANTHROPIC_API_KEY detected — Claude vision will be used for figure pages.",
+    sys.exit(1)
+
+def _probe_claude(api_key):
+    """Validate the API key with a minimal 1-token request before any PDF processing.
+    Returns True if the key is valid (or throttled). Returns False on 401/403 or network error.
+    """
+    import json, urllib.request, urllib.error
+    payload = {"model": "claude-haiku-4-5", "max_tokens": 1,
+               "messages": [{"role": "user", "content": "ping"}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    try:
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(payload).encode(), headers=headers, method="POST"
+        )
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except urllib.error.HTTPError as e:
+        return e.code in (429, 529)
+    except Exception:
+        return False
+
+print("[chorus-pdf] ANTHROPIC_API_KEY set — probing Claude availability …", file=sys.stderr)
+if not _probe_claude(API_KEY):
+    print("⛔ [chorus-pdf] ANTHROPIC_API_KEY is invalid or API unreachable — --auto aborted.\n"
+          "   Verify your key at https://console.anthropic.com or check network connectivity.",
           file=sys.stderr)
+    sys.exit(1)
+print("[chorus-pdf] ANTHROPIC_API_KEY ✅ — Claude available, auto mode activated.", file=sys.stderr)
 
 PROMPT = """<verbatim vision extraction prompt — see Phase 2>"""
 
@@ -2530,13 +2592,42 @@ def _log_environment():
 
 _log_environment()
 
+# ── Pre-flight API key check (explicit --images: no silent fallback) ───────
 if not API_KEY:
-    print("[chorus-pdf] ⚠️  ANTHROPIC_API_KEY absent — images mode cannot call Claude vision; "
-          "script will abort at startup check below.",
+    print("⛔ [chorus-pdf] ANTHROPIC_API_KEY not set — --images requires Claude vision.\n"
+          "   Set ANTHROPIC_API_KEY (see ~/.config/anthropic/api_key) or omit --images\n"
+          "   to use automatic text-only fallback.",
           file=sys.stderr)
-else:
-    print("[chorus-pdf] ANTHROPIC_API_KEY detected — Claude vision will be used for all pages.",
+    sys.exit(1)
+
+def _probe_claude(api_key):
+    """Validate the API key with a minimal 1-token request before any PDF processing.
+    Returns True if the key is valid (or throttled). Returns False on 401/403 or network error.
+    """
+    import json, urllib.request, urllib.error
+    payload = {"model": "claude-haiku-4-5", "max_tokens": 1,
+               "messages": [{"role": "user", "content": "ping"}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    try:
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(payload).encode(), headers=headers, method="POST"
+        )
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except urllib.error.HTTPError as e:
+        return e.code in (429, 529)
+    except Exception:
+        return False
+
+print("[chorus-pdf] ANTHROPIC_API_KEY set — probing Claude availability …", file=sys.stderr)
+if not _probe_claude(API_KEY):
+    print("⛔ [chorus-pdf] ANTHROPIC_API_KEY is invalid or API unreachable — --images aborted.\n"
+          "   Verify your key at https://console.anthropic.com or check network connectivity.",
           file=sys.stderr)
+    sys.exit(1)
+print("[chorus-pdf] ANTHROPIC_API_KEY ✅ — Claude available, images mode activated.", file=sys.stderr)
 
 PROMPT = """<verbatim vision extraction prompt — see Phase 2>"""
 
