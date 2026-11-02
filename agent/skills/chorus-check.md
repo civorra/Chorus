@@ -333,11 +333,15 @@ Run, for every agent's rules directory, before writing any infrastructure file:
 # Rules that can write a failing verdict (grep for the "NO"/"NON" literal commonly
 # used in a result slot) but never push to _rule_trace:
 for f in $SANDBOX/rules/*/*.yml; do
-  # Infrastructure rules (board-publication, termination) are exempt from _rule_trace —
-  # they produce no conformity verdict and have no corpus_ref to trace.
-  basename "$f" | grep -qE "publication.board|R99|termination" && continue
+  # Termination rules carry the universal ^TERMINAL: key — they produce no
+  # per-element conformity verdict and are exempt from the _rule_trace requirement.
+  # Detection is structural (^TERMINAL: keyword), never by rule name or numbering.
+  grep -q "^TERMINAL:" "$f" && continue
   grep -qE "rule_trace" "$f" || echo "MISSING _rule_trace: $f"
 done
+# Note: pure BOARD-publishing rules (those that only write $SELF->BOARD->{...}
+# and produce no per-element verdict) are NOT exempt — they must still push
+# _rule_trace with corpus_ref: 'pipeline' so their firing is visible in --explain.
 
 # Rules whose ACTION sets a result slot to a failing value but never writes a
 # non_conformity_motif / motif_non_conformite in the same file:
