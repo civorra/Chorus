@@ -1115,25 +1115,30 @@ into how agent 1's targeting slot is actually wired; it must be told
 explicitly, not left to infer.
 
 > ⛔ **Intra-agent firing order trap (Mode B — new rule within an existing agent):**
-> When a new rule R has `not defined Frame.slot_X` in its PREMISSES (causing R to
-> fire **before** the BOARD-publishing rule, which itself requires `slot_X` to be
-> defined), any BOARD slot published by that BOARD-publishing rule is **not yet
-> available** when R fires. Do NOT read `$SELF->BOARD->{slot}` in R's PREMISSES
-> for slots published by a rule that fires after R — use the Frame slot directly
+> When a new rule R has `not defined Frame.slot_X` in its `FIND:`/`CONDITION:`
+> (causing R to fire **before** the BOARD-publishing rule, which itself requires
+> `slot_X` to be defined in its own `FIND:`/`CONDITION:`), any BOARD slot published
+> by that BOARD-publishing rule is **not yet available** when R fires. Do NOT read
+> `$SELF->BOARD->{slot}` in R's `FIND:`/`CONDITION:` for slots published by a rule
+> that fires after R — use the Frame slot directly
 > (`Frame.slot` dot-notation, or `$frame->get('slot')`).
 >
-> **How to detect:** if R's PREMISSES include `not defined Frame.slot_X` AND
-> the BOARD-publishing rule's own PREMISSES include `defined Frame.slot_X`,
-> then R fires strictly before that publisher — every BOARD slot it publishes
-> is unavailable to R and must be read from the Frame instead.
+> ⚠️ Note: `PREMISES:`/`PREMISSES:` is a native `Chorus::Engine` metadata key used
+> as a `reorder()` hint — it is **not** a guard/condition key. Guards are expressed
+> via `FIND:`/`CHERCHER:` and `CONDITION:`/`EXCEPTION:` only.
+>
+> **How to detect:** if R's `FIND:`/`CONDITION:` include `not defined Frame.slot_X`
+> AND the BOARD-publishing rule's own `FIND:`/`CONDITION:` include
+> `defined Frame.slot_X`, then R fires strictly before that publisher — every BOARD
+> slot it publishes is unavailable to R and must be read from the Frame instead.
 >
 > **Incident:** `R09-duplex-triplex` (agent-classification, Mode B corpus/003) had
-> `not defined batiment.famille_batiment` → fires before R08-publication-board
-> (which requires `defined batiment.famille_batiment`). R09 incorrectly read
-> `$SELF->BOARD->{version_arr_applicable}` (published by R08, unavailable) and
-> `$SELF->BOARD->{besoin_classification}` (a Frame slot, never on BOARD at all)
-> instead of `batiment.version_arr_applicable` and
-> `batiment.besoin_classification eq 'OUI'`. The rule silently never fired.
+> `not defined batiment.famille_batiment` in its `FIND:` → fires before
+> R08-publication-board (which requires `defined batiment.famille_batiment` in its
+> own `FIND:`). R09 incorrectly read `$SELF->BOARD->{version_arr_applicable}`
+> (published by R08, unavailable) and `$SELF->BOARD->{besoin_classification}`
+> (a Frame slot, never on BOARD at all) instead of `batiment.version_arr_applicable`
+> and `batiment.besoin_classification eq 'OUI'`. The rule silently never fired.
 
 #### Ontology — mandatory `** Aliases` section
 
