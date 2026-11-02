@@ -175,19 +175,23 @@ For each source in <source…>:
     # Invoke conversion skill — instruct it to skip its own README.org Phase 4.1
     # (this algorithm records the file itself, see Step 4 below)
     ext = source file extension
+    # Destination directory for converted files: workspace/<client>/sources/
+    # (never corpus/ — project documents are not normative corpus entries)
+    output_dir = $SANDBOX/workspace/<client>/sources/   # <client> = current scope
+
     if ext == .pdf:
-      Call: chorus-pdf <sandbox> <source> --auto   [skip-readme-update]
+      Call: chorus-pdf <sandbox> <source> --auto --output-dir <output_dir>   [skip-readme-update]
     elif ext == .docx:
-      Call: chorus-word <sandbox> <source>          [skip-readme-update]
+      Call: chorus-word <sandbox> <source> --output-dir <output_dir>          [skip-readme-update]
     elif ext in (.xlsx, .csv):
-      Call: chorus-excel <sandbox> <source>         [skip-readme-update]
+      Call: chorus-excel <sandbox> <source> --output-dir <output_dir>         [skip-readme-update]
     elif ext in (.xml, .html, .htm):
-      Call: chorus-xml <sandbox> <source>           [skip-readme-update]
+      Call: chorus-xml <sandbox> <source> --output-dir <output_dir>           [skip-readme-update]
 
     Wait for skill to complete (expected exit code 0)
 
-    # Auto-detect converted file
-    candidates = glob(<sandbox>/corpus/[0-9][0-9][0-9]-*-{text,content,vision}.{txt,md})
+    # Auto-detect converted file — look in output_dir (NOT corpus/)
+    candidates = glob(<output_dir>/*-{text,content,vision}.{txt,md})
     converted_path = max(candidates, key=mtime)  # newest file
 
     # Replace source with converted file for subsequent phases

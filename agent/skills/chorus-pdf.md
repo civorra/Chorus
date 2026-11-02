@@ -1,6 +1,6 @@
 # Skill — chorus-pdf
 
-> Trigger: `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch]`
+> Trigger: `chorus-pdf <sandbox-name> <file.pdf> [--out <slug>] [--auto] [--hybrid] [--images] [--batch] [--output-dir <path>]`
 > Agent: `architect`
 >
 > `<sandbox-name>`: name of the sandbox directory under `$SANDBOXES/`
@@ -203,7 +203,11 @@ If no PDF found → warn and exit cleanly (not an error).
 
 ### 0.3 Resolve the output filename
 
-Determine the next available corpus number:
+Two modes depending on whether `--output-dir <path>` is provided:
+
+#### 0.3a — Standalone mode (default, no `--output-dir`)
+
+Output goes to `$SANDBOX/corpus/` with a sequential NNN prefix:
 
 ```
 existing = glob("$SANDBOX/corpus/[0-9][0-9][0-9]-*.*")
@@ -212,6 +216,42 @@ next_num = last_num + 1   (formatted as %03d)
 ```
 
 > ⚠️ In `--batch` mode, increment `next_num` for each PDF processed in sequence.
+
+Output filename: `$SANDBOX/corpus/<next_num>-<slug>.<ext>`
+
+Example:
+```
+Input   : corpus/002-uk-approved-doc-a-2013.pdf
+Default : corpus/003-uk-approved-doc-a-2013-text.md
+--auto  : corpus/003-uk-approved-doc-a-2013-vision.md
+--images: corpus/003-uk-approved-doc-a-2013-vision.md
+```
+
+#### 0.3b — Import context mode (`--output-dir <path>` provided)
+
+Used when `chorus-pdf` is invoked by `chorus-import-project` to convert a project
+document. The caller passes the target directory explicitly (e.g.
+`workspace/<client>/sources/`). In this mode:
+
+- **No NNN prefix** — the output file is named `<slug>.<ext>` directly (project
+  documents are not corpus entries and must not pollute the `corpus/` numbering sequence)
+- **No README.org update** — Phase 4.1 is skipped entirely (the caller handles
+  the import report itself)
+- Output directory is created if it does not exist
+
+Output filename: `<--output-dir>/<slug>.<ext>`
+
+Example:
+```
+Input        : workspace/Mairie-Acme/sources/import-17935/plan.pdf
+--output-dir : workspace/Mairie-Acme/sources/
+Output       : workspace/Mairie-Acme/sources/plan-text.md
+```
+
+> ⚠️ `--output-dir` and `--batch` are mutually exclusive — abort with an error if
+> both are provided.
+
+#### 0.3c — Derive slug and extension (both modes)
 
 Derive the slug and extension based on mode:
 
@@ -225,17 +265,6 @@ Derive the slug and extension based on mode:
 - If `--out <slug>` provided → use that slug as-is (suffix already included)
 - Otherwise → strip leading `NNN-` prefix and `.pdf` extension from the input filename,
   then append the mode suffix
-
-Output filename: `$SANDBOX/corpus/<next_num>-<slug>.<ext>`
-
-Example:
-```
-Input  : corpus/002-uk-approved-doc-a-2013.pdf
-
-Default : corpus/003-uk-approved-doc-a-2013-text.md
---auto  : corpus/003-uk-approved-doc-a-2013-vision.md
---images: corpus/003-uk-approved-doc-a-2013-vision.md
-```
 
 ## Phase 1 — PDF assessment
 
