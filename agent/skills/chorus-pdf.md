@@ -2932,6 +2932,60 @@ pdftotext -layout -f <page> -l <page> <pdf> -
 > See also `chorus-markdown.md` §2.3/§2.4, which references this procedure
 > directly as the recommended triage step for any `⚠️`/`❌` row it reports.
 
+## Phase 3.5 — ⛔ Vérification de fidélité (`chorus-markdown`) — OBLIGATOIRE
+
+> ⛔ **Cette phase est NON OPTIONNELLE et s'applique sans exception :**
+> invocation directe par l'utilisateur, lancement depuis la webapp, skill
+> appelant (`chorus-import-project` auto-conversion, etc.) — **peu importe
+> le contexte, `chorus-markdown` DOIT être lancé immédiatement après la fin
+> du script d'extraction, avant de passer à Phase 4.**
+>
+> Ne jamais retourner le contrôle à l'utilisateur sans avoir exécuté cette étape.
+>
+> **Pourquoi :** les défauts d'extraction (tableaux aplatis, tableaux manquants,
+> artefacts d'encodage) ne sont PAS visibles dans les logs du script de Phase 3 —
+> ils ne se manifestent que sur le `.md` produit, comparé à la source.
+> `chorus-markdown` est le seul filet de sécurité indépendant entre l'extraction
+> et `chorus-feed` / `chorus-import-project`. Son omission invalide la chaîne de
+> contrôle qualité.
+
+Immédiatement après la fin du script d'extraction, lancer :
+
+```
+chorus-markdown <sandbox> <source.pdf> <output.md> --report
+```
+
+Exemples selon contexte :
+```bash
+# Sortie standard (corpus/)
+chorus-markdown 01-PMR corpus/003-doc.pdf corpus/003-doc-vision.md --report
+
+# Sortie dans workspace/ (--output-dir ou appel import)
+chorus-markdown 01-PMR workspace/Leclerc/sources/PC39.pdf workspace/Leclerc/PC39-vision.md --report
+```
+
+**Règles d'application :**
+
+- `--report` est **toujours inclus** — il produit
+  `workspace/reports/markdown-check-<slug>.md` avec le détail des anomalies.
+- La vérification est **non-bloquante par défaut** (exit 0 même avec `❌`) —
+  elle ne stoppe pas le flux sauf si `--strict` est explicitement ajouté.
+- En mode `--batch` : lancer `chorus-markdown` sur **chaque** fichier produit
+  dans la boucle, pas seulement sur le dernier.
+- En mode `--output-dir` (invoqué par `chorus-import-project`) : le rapport
+  est écrit dans `<output-dir>/../reports/` si `workspace/reports/` n'existe
+  pas encore — `chorus-markdown` crée le dossier automatiquement.
+
+**Seuil de ratio mots spécifique au mode hybrid :**
+Le seuil §2.6 de `chorus-markdown` est calibré pour le mode texte (≤ 1.30).
+En mode hybrid, les descriptions Claude vision ajoutent des mots absents du
+texte source — un ratio jusqu'à **1.80 est normal et attendu**. Si le ratio
+dépasse 1.30 mais reste < 1.80, signaler explicitement à l'utilisateur :
+> `ℹ️  Ratio mots 1.62 — normal en mode hybrid (descriptions vision Claude incluses)`
+Ne pas traiter ce cas comme un ❌.
+
+**Le résultat de `chorus-markdown` est intégré au rapport final Phase 4.2.**
+
 ## Phase 4 — Update sandbox metadata
 
 ### 4.1 Update `README.org`
@@ -2977,6 +3031,10 @@ kept for traceability.
    Table rows: <N>
    Size     : <N> chars
 
+   chorus-markdown : ✅ toutes les vérifications passent
+                  (ou) ⚠️  N avertissement(s) — voir workspace/reports/markdown-check-<slug>.md
+                  (ou) ❌  N contrôle(s) échoué(s) — voir workspace/reports/markdown-check-<slug>.md
+
    Next step: chorus-feed <sandbox-name> corpus/<NNN>-<slug>-text.md
               (or: corpus/<NNN>-<slug>-vision.md)
 ```
@@ -3014,26 +3072,13 @@ The `pdftotext` output can be kept for diff/audit purposes.
 
 ### Post-processing — fidelity check (`chorus-markdown`)
 
-After every extraction (single file or each file in a `--batch` run), invoke
-`chorus-markdown` on the produced output before handing it to `chorus-feed`:
-
-```
-chorus-markdown <sandbox> <source.pdf> <output.md> --report
-```
-
-- `--report` is recommended by default: this adds a source-independent
-  cross-check (Table-heading count vs. pipe-tables actually produced —
-  directly targeting the audit [#J] § T3 "silent gap" finding — word-count
-  ratio, residual encoding artefacts, `[FORMULA: ...]` placeholder presence
-  per § "Formula strategy" above, and XREF orphan detection).
-- `--strict` is optional: use it only when the result feeds an automated
-  pipeline with no human review step before `chorus-feed`.
-- This invocation is **non-blocking by default** — a `⚠️`/`❌` row in the
-  report does not stop the workflow unless `--strict` is passed.
-- Complements, does not replace, the manual §1.4g checklist and the
-  per-page §"Table strategy" confidence thresholds above — `chorus-markdown`
-  operates on the finished `.md` file, after generation, as a second,
-  independent fidelity signal.
+> ⛔ **Cette section a été remplacée par Phase 3.5 — OBLIGATOIRE.**
+> `chorus-markdown` n'est plus une étape optionnelle de "post-processing" :
+> elle fait partie du flux principal et doit être exécutée **avant** Phase 4,
+> immédiatement après la fin du script d'extraction.
+>
+> → Voir **§ Phase 3.5** pour les instructions complètes, les règles batch,
+>   et la note sur le seuil de ratio mots pour le mode hybrid (≤ 1.80 attendu).
 
 ## Quick Reference — Naming Conventions
 
