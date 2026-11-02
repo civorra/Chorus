@@ -1114,6 +1114,27 @@ safeguard. No sub-agent processing agent N in isolation has full visibility
 into how agent 1's targeting slot is actually wired; it must be told
 explicitly, not left to infer.
 
+> ⛔ **Intra-agent firing order trap (Mode B — new rule within an existing agent):**
+> When a new rule R has `not defined Frame.slot_X` in its PREMISSES (causing R to
+> fire **before** the BOARD-publishing rule, which itself requires `slot_X` to be
+> defined), any BOARD slot published by that BOARD-publishing rule is **not yet
+> available** when R fires. Do NOT read `$SELF->BOARD->{slot}` in R's PREMISSES
+> for slots published by a rule that fires after R — use the Frame slot directly
+> (`Frame.slot` dot-notation, or `$frame->get('slot')`).
+>
+> **How to detect:** if R's PREMISSES include `not defined Frame.slot_X` AND
+> the BOARD-publishing rule's own PREMISSES include `defined Frame.slot_X`,
+> then R fires strictly before that publisher — every BOARD slot it publishes
+> is unavailable to R and must be read from the Frame instead.
+>
+> **Incident:** `R09-duplex-triplex` (agent-classification, Mode B corpus/003) had
+> `not defined batiment.famille_batiment` → fires before R08-publication-board
+> (which requires `defined batiment.famille_batiment`). R09 incorrectly read
+> `$SELF->BOARD->{version_arr_applicable}` (published by R08, unavailable) and
+> `$SELF->BOARD->{besoin_classification}` (a Frame slot, never on BOARD at all)
+> instead of `batiment.version_arr_applicable` and
+> `batiment.besoin_classification eq 'OUI'`. The rule silently never fired.
+
 #### Ontology — mandatory `** Aliases` section
 
 Every `<slug>.org` file **must include** a `** Aliases` section inside the `* Ontologie`
@@ -2563,6 +2584,16 @@ Update the `Integrated corpus` table in `index.org`.
 - Add required helpers to `Helpers.pm`
 - Verify that new slots do not conflict with those
   of other agents (Slot dictionary of the index)
+- ⛔ **BOARD publication completeness check:** for every new rule that reads
+  `$SELF->BOARD->{slot}` in its PREMISSES or EFFET, verify that the upstream
+  BOARD-publishing rule (typically `R08-publication-board` or equivalent) actually
+  publishes this slot in its EFFET. If the slot is absent, **add it immediately
+  in this same Mode B session** — do not defer to a later pass. A BOARD read on
+  an unpublished slot evaluates silently to `undef`, producing no error and no
+  warning, but systematically wrong verdicts (or rules that never fire).
+  **Incident:** `R11-parements-1F2F-2019` (agent-facade, Mode B corpus/007) read
+  `$SELF->BOARD->{type_batiment}` as a fallback, but R08-publication-board had never
+  been updated to publish `type_batiment` — the fallback was always `undef`.
 
 **New domain case:**
 - Apply Mode A (Phases 1 to 5.5) on the fragment only
