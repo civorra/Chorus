@@ -613,8 +613,8 @@ Run, for every agent's rules directory, before writing any infrastructure file:
 for f in $SANDBOX/rules/*/*.yml; do
   flag=$(grep -oP "BOARD->\{?\K\w+(?=\}?\s*=|'\s*,)" "$f" | head -1)
   [ -z "$flag" ] && continue
-  grep -qE "EXCEPTION:.*defined \\\$SELF->BOARD->\{?$flag\}?|(CONDITION:|PREMISSES:).*defined \\\$SELF->BOARD->\{?$flag\}?" "$f" \
-    || echo "⚠️  $f — publishes BOARD flag '$flag' but EXCEPTION/CONDITION/PREMISSES never guards on it"
+  grep -qE "EXCEPTION:.*defined \\\$SELF->BOARD->\{?$flag\}?|CONDITION:.*defined \\\$SELF->BOARD->\{?$flag\}?" "$f" \
+    || echo "⚠️  $f — publishes BOARD flag '$flag' but EXCEPTION/CONDITION never guards on it"
 done
 ```
 
@@ -624,6 +624,15 @@ done
   || (<original aggregation condition>)` to the `EXCEPTION` (or the inverse
   polarity for `CONDITION`), so the rule becomes permanently inert once it has
   published its flag once. Do this **before** generating any infrastructure
+- **⚠️ False positive — sandbox-specific DSL:** if the sandbox uses a custom
+  DSL pre-processor that transpiles `PREMISSES:` list items into `return 0 unless`
+  guards injected into `EFFET` (e.g. `DSL.pm` in generated agent lib), a rule
+  may guard correctly against BOARD re-firing via `PREMISSES:` yet still be flagged
+  here because the check only scans `CONDITION:` / `EXCEPTION:` keys.
+  **Fix:** add a native `EXCEPTION: defined $SELF->BOARD->{<flag>}` alongside the
+  `PREMISSES:` guard so both the DSL path and this checker are satisfied.
+  Do NOT modify this grep to recognise `PREMISSES:` — it is Engine metadata
+  (reorder hint), not a native guard key; equivalence is DSL-layer only.
   file — regenerate `agent/.kb-hash` afterward (the YAML content changed).
 - Re-run the scan after fixing to confirm zero remaining matches.
 
@@ -755,12 +764,17 @@ for f in $SANDBOX/rules/*/*.yml; do
   board_count=$(grep -oE "BOARD->\{[a-z_]+\}" "$f" | sort -u | wc -l)
   [ "$board_count" -lt 2 ] && continue   # single BOARD read — not a multi-flag gate
   # Check for CONDITION: line in the same YAML block
-  grep -qE "^CONDITION:|^PREMISSES:" "$f" \
-    || echo "⚠️  $f — reads $board_count BOARD flags but has no CONDITION/PREMISSES gate"
+  grep -q "^CONDITION:" "$f" || echo "⚠️  $f — reads $board_count BOARD flags but has no CONDITION gate"
 done
 ```
 
 - **No matches** → all multi-BOARD-flag readers have a `CONDITION` → proceed.
+- **⚠️ False positive — sandbox-specific DSL:** same as Step 5i — if the sandbox
+  transpiles `PREMISSES:` into guards via a custom DSL layer, multi-BOARD gate
+  conditions may live in `PREMISSES:` rather than `CONDITION:`, triggering this
+  warning. **Fix:** add a native `CONDITION:` key alongside `PREMISSES:` for
+  multi-BOARD gate rules. Do NOT add `PREMISSES:` to the grep — `PREMISSES:` is
+  Engine-native metadata (`reorder()` hint), not a guard key.
 - **Matches found** → for each flagged rule: add a `CONDITION:` clause checking
   `defined $SELF->BOARD->{flagA} && defined $SELF->BOARD->{flagB} ...` for each
   flag the ACTION reads (see `chorus-engine-yaml.md § Multi-BOARD gate rule must
