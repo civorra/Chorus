@@ -2815,7 +2815,7 @@ Capture stderr for progress reporting. Exit code 0 = success.
 ### 3.2 Validate the output
 
 ```bash
-python3 - "$SANDBOX/corpus/<NNN>-<slug>-vision.txt" <<'EOF'
+python3 - "$SANDBOX/corpus/<NNN>-<slug>-vision.md" <<'EOF'
 import sys, re
 
 path = sys.argv[1]

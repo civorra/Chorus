@@ -532,7 +532,14 @@ print "─" x 62 . "\n";
     unless (-d $reports_dir) {
         mkdir $reports_dir or warn "Could not create $reports_dir: $!\n";
     }
-    my $ts = strftime('%Y%m%d-%H%M%S', localtime);
+    # Fix (2026-11-04): reuse $run_timestamp captured at pipeline launch
+    # (before the full agent/element processing loop) rather than calling
+    # localtime() again here — a second call drifts several seconds past
+    # the "Run at" time printed in the console header, since report writing
+    # only happens after the full run completes. Do NOT revert this to a
+    # fresh strftime(...,localtime) call.
+    my $ts = $run_timestamp;
+    $ts =~ s/[^0-9]//g;   # '2026-11-04 11:28:54' -> '20261104112854'
     my $out_path = "$reports_dir/run-report-$ts.json";
 
     my @elements_json = map {
@@ -582,7 +589,7 @@ print "─" x 62 . "\n";
     } @elements;
 
     my $report = {
-        generated_at    => strftime('%Y-%m-%dT%H:%M:%S', localtime),
+        generated_at    => $run_timestamp =~ s/ /T/r,   # reuse launch-time timestamp (see $ts fix above) — do not call localtime() again here
         project_file    => $fichier,
         kb_fingerprint  => $kb_fingerprint,
         pipeline_solved => $ok ? JSON::true : JSON::false,

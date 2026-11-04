@@ -15,8 +15,8 @@
 >
 > Output format depends on mode and format:
 > - Hybrid mode (default when API key available + XLSX): `corpus/<NNN>-<slug>-vision.md` — openpyxl tables + Claude vision on images/charts
-> - Text mode (fallback — no API key + XLSX): `corpus/<NNN>-<slug>-text.txt` — Markdown pipe tables, image/chart placeholders
-> - CSV mode (auto-detected on `.csv` extension): `corpus/<NNN>-<slug>-text.txt` — Markdown pipe table
+> - Text mode (fallback — no API key + XLSX): `corpus/<NNN>-<slug>-text.md` — Markdown pipe tables, image/chart placeholders
+> - CSV mode (auto-detected on `.csv` extension): `corpus/<NNN>-<slug>-text.md` — Markdown pipe table
 >
 > This skill must be run **before** `chorus-feed` when the corpus contains `.xlsx` or `.csv` files.
 > `chorus-feed` then takes the output file as its corpus input.
@@ -24,6 +24,11 @@
 > ⚠️ **Run `chorus-excel` before `chorus-import-project`** when the source project documents
 > include `.xlsx` or `.csv` files — `chorus-import-project`'s built-in Excel handler is
 > minimal (tab-separated dump). `chorus-excel` preserves structure, merges, images and charts.
+>
+> ⛔ **`chorus-markdown` fidelity check is NON-OPTIONAL** (see § Post-processing
+> below) — run automatically immediately after extraction, in every mode
+> (text/CSV/hybrid/batch) and every calling context (direct, webapp, auto-invoked
+> by `chorus-import-project`). Mirrors `chorus-pdf.md` § Phase 3.5 exactly.
 
 
 ## ⛔ Strict sandbox isolation
@@ -45,8 +50,8 @@ capability:
 | Mode | Flag | Engine | API key | Images | Charts | Tables | Output |
 |------|------|--------|---------|--------|--------|--------|--------|
 | **Hybrid** (**default**) | *(none — auto-detected)* | openpyxl + Claude vision | ✅ `ANTHROPIC_API_KEY` | ✅ described | ✅ via LibreOffice (graceful fallback) | ✅ Markdown pipe | `<slug>-vision.md` |
-| **Text** (fallback) | *(none — no API key)* | openpyxl only | ❌ not required | `[IMAGE — not extracted]` | `[CHART — not extracted]` | ✅ Markdown pipe | `<slug>-text.txt` |
-| **CSV** | auto-detected on `.csv` | `csv.reader` | — | N/A | N/A | ✅ Markdown pipe | `<slug>-text.txt` |
+| **Text** (fallback) | *(none — no API key)* | openpyxl only | ❌ not required | `[IMAGE — not extracted]` | `[CHART — not extracted]` | ✅ Markdown pipe | `<slug>-text.md` |
+| **CSV** | auto-detected on `.csv` | `csv.reader` | — | N/A | N/A | ✅ Markdown pipe | `<slug>-text.md` |
 | **Batch** | `--batch` | process all `*.xlsx`/`*.csv` in `corpus/` | per-file | per-file | per-file | ✅ | idem per file |
 
 **Choosing a mode:**
@@ -191,8 +196,8 @@ Derive the slug and extension based on mode:
 | Mode | Suffix | Extension | Rationale |
 |------|--------|-----------|-----------|
 | Hybrid (default) | `-vision` | `.md` | openpyxl tables + Claude vision on images/charts |
-| Text (fallback) | `-text` | `.txt` | Markdown tables only — image/chart placeholders |
-| CSV | `-text` | `.txt` | Markdown pipe table — no binary content |
+| Text (fallback) | `-text` | `.md` | Markdown tables only — image/chart placeholders |
+| CSV | `-text` | `.md` | Markdown pipe table — no binary content |
 
 - If `--out <slug>` provided → use that slug as-is (suffix already included)
 - Otherwise → strip leading `NNN-` prefix and file extension from the input filename,
@@ -205,10 +210,10 @@ Example:
 Input  : corpus/002-devis-isolation.xlsx
 
 Default (hybrid) : corpus/003-devis-isolation-vision.md
-text mode        : corpus/003-devis-isolation-text.txt
+text mode        : corpus/003-devis-isolation-text.md
 
 Input  : corpus/002-elements-structure.csv
-CSV mode         : corpus/003-elements-structure-text.txt
+CSV mode         : corpus/003-elements-structure-text.md
 ```
 
 
@@ -489,7 +494,7 @@ if __name__ == "__main__":
 ### Script template — Text mode (XLSX without API key)
 
 Uses `openpyxl` only. No API key, no network. Images and charts produce placeholders.
-Output: `<NNN>-<slug>-text.txt`
+Output: `<NNN>-<slug>-text.md`
 
 ```python
 #!/usr/bin/env python3
@@ -1317,7 +1322,7 @@ if placeholders > 0:
     print(f"ℹ️  {placeholders} element(s) not extracted — set ANTHROPIC_API_KEY and rerun")
 ```
 
-Run this validation snippet on `$SANDBOX/corpus/<NNN>-<slug>-vision.md` (or `-text.txt`).
+Run this validation snippet on `$SANDBOX/corpus/<NNN>-<slug>-vision.md` (or `-text.md`).
 
 ### 3.3 Failure handling
 
@@ -1335,6 +1340,62 @@ Run this validation snippet on `$SANDBOX/corpus/<NNN>-<slug>-vision.md` (or `-te
 | `ws.max_row` is very large | Excel stores phantom rows | The script skips empty rows — output should be correct |
 | EMF/WMF image — skipped | Unsupported format | Re-export the image as PNG in Excel before processing |
 | CSV: garbled characters | Wrong encoding | Add `encoding='latin-1'` or `encoding='cp1252'` in the reader |
+
+
+## Phase 3.5 — ⛔ Vérification de fidélité (`chorus-markdown`) — OBLIGATOIRE
+
+> ⛔ **Cette phase est NON OPTIONNELLE et s'applique sans exception :**
+> invocation directe par l'utilisateur, lancement depuis la webapp, skill
+> appelant (`chorus-import-project` auto-conversion, etc.) — **peu importe
+> le contexte, `chorus-markdown` DOIT être lancé immédiatement après la fin
+> du script d'extraction (Phase 3), avant de passer à Phase 4.**
+>
+> Ne jamais retourner le contrôle à l'utilisateur sans avoir exécuté cette étape.
+>
+> **Pourquoi :** les défauts d'extraction (tableaux aplatis, tableaux manquants,
+> artefacts d'encodage, images/graphiques non décrits) ne sont PAS visibles dans
+> les logs du script de Phase 3 ou dans la validation structurelle de §3.2 — ils
+> ne se manifestent que sur le `.md` produit, comparé à la source. `chorus-markdown`
+> est le seul filet de sécurité indépendant entre l'extraction et `chorus-feed` /
+> `chorus-import-project`. Son omission invalide la chaîne de contrôle qualité
+> (même exigence, même rationale que `chorus-pdf.md` § Phase 3.5 et
+> `chorus-word.md` § Phase 3.5 — alignement symétrique entre les trois skills
+> d'extraction de documents).
+
+Immédiatement après la fin du script d'extraction (Phase 3.1-3.2), lancer :
+
+```
+chorus-markdown <sandbox> <source.xlsx|source.csv> <output.md> --report
+```
+
+Exemples selon contexte :
+```bash
+# Sortie standard (corpus/)
+chorus-markdown 01-PMR corpus/002-devis-isolation.xlsx corpus/003-devis-isolation-vision.md --report
+
+# Sortie dans workspace/ (--output-dir ou appel import)
+chorus-markdown 01-PMR workspace/Leclerc/sources/devis.xlsx workspace/Leclerc/devis-vision.md --report
+```
+
+**Règles d'application :**
+
+- `--report` est **toujours inclus** — il produit
+  `workspace/reports/markdown-check-<slug>.md` avec le détail des anomalies.
+- La vérification est **non-bloquante par défaut** (exit 0 même avec `❌`) —
+  elle ne stoppe pas le flux sauf si `--strict` est explicitement ajouté.
+- En mode `--batch` : lancer `chorus-markdown` sur **chaque** fichier produit
+  dans la boucle, pas seulement sur le dernier.
+- En mode `--output-dir` (invoqué par `chorus-import-project`) : le rapport
+  est écrit dans `<output-dir>/../reports/` si `workspace/reports/` n'existe
+  pas encore — `chorus-markdown` crée le dossier automatiquement.
+- En mode **text/CSV fallback** (`-text.md`, pas de Claude vision) : la
+  vérification s'applique de la même façon ; les placeholders
+  `not extracted` comptent normalement comme gaps `⚠️`/`❌` côté
+  `chorus-markdown` (pas d'exemption). Particulièrement pertinent pour XLSX :
+  le contrôle de comptage de tableaux de `chorus-markdown` se compare au
+  nombre réel de feuilles/tables `openpyxl` natives.
+
+**Le résultat de `chorus-markdown` est intégré au rapport final §4.2.**
 
 
 ## Phase 4 — Update sandbox metadata
@@ -1358,9 +1419,9 @@ Run this validation snippet on `$SANDBOX/corpus/<NNN>-<slug>-vision.md` (or `-te
 Add a row for the new file in the `Corpus` table:
 
 ```org
-| <NNN> | corpus/<NNN>-<slug>-text.txt   | openpyxl from <source.xlsx> (text mode)    | <date> |
+| <NNN> | corpus/<NNN>-<slug>-text.md    | openpyxl from <source.xlsx> (text mode)    | <date> |
 | <NNN> | corpus/<NNN>-<slug>-vision.md  | openpyxl+vision from <source.xlsx>          | <date> |
-| <NNN> | corpus/<NNN>-<slug>-text.txt   | csv.reader from <source.csv>                | <date> |
+| <NNN> | corpus/<NNN>-<slug>-text.md    | csv.reader from <source.csv>                | <date> |
 ```
 
 Do **not** remove the original `.xlsx` or `.csv` — keep it in `corpus/` for traceability.
@@ -1371,16 +1432,17 @@ Do **not** remove the original `.xlsx` or `.csv` — keep it in `corpus/` for tr
 ✅ chorus-excel completed
    Mode     : hybrid  (or: text | csv)
    Source   : corpus/<source.xlsx>  (<N> sheet(s))
-   Output   : corpus/<NNN>-<slug>-vision.md   (or: -text.txt)
+   Output   : corpus/<NNN>-<slug>-vision.md   (or: -text.md)
    Sheets   : <N>
    Tables   : <N> Markdown pipe tables
    Images   : <N> described via Claude vision  (or: <N> placeholders)
    Charts   : <N> described via LibreOffice+Claude  (or: <N> placeholders)
    XREF     : <N> identifier(s) cross-referenced  [hybrid only]
    Size     : <N> chars
+   chorus-markdown : ✅ toutes les vérifications passent  (or: ⚠️/❌ N anomalie(s) — voir workspace/reports/markdown-check-<slug>.md)
 
    Next step: chorus-feed <sandbox-name> corpus/<NNN>-<slug>-vision.md
-              (or: corpus/<NNN>-<slug>-text.txt)
+              (or: corpus/<NNN>-<slug>-text.md)
 ```
 
 
@@ -1399,44 +1461,29 @@ chorus-excel  <sandbox> corpus/002-devis-isolation.xlsx
 
 # XLSX without API key — text mode fallback
 chorus-excel  <sandbox> corpus/002-devis-isolation.xlsx
-→ corpus/003-devis-isolation-text.txt
+→ corpus/003-devis-isolation-text.md
 
 # CSV file — always text mode
 chorus-excel  <sandbox> corpus/002-elements-structure.csv
-→ corpus/003-elements-structure-text.txt
+→ corpus/003-elements-structure-text.md
 
 # Process specific sheet only
 chorus-excel  <sandbox> corpus/002-devis-isolation.xlsx --sheet Calculs
-→ corpus/003-devis-isolation-text.txt   (single-sheet extract)
+→ corpus/003-devis-isolation-text.md   (single-sheet extract)
 
 # Then in all cases:
 chorus-feed <sandbox> corpus/003-devis-isolation-vision.md
-            (or: corpus/003-devis-isolation-text.txt)
+            (or: corpus/003-devis-isolation-text.md)
 
 # For project import — preferred over chorus-import-project's built-in handler:
 chorus-excel        <sandbox> corpus/source.xlsx
 chorus-import-project <sandbox> corpus/<NNN>-source-vision.md
 ```
 
-### Post-processing — fidelity check (`chorus-markdown`)
-
-After every extraction (single file, `--sheet`-scoped, or each file in a
-multi-file corpus), invoke `chorus-markdown` before handing the output to
-`chorus-feed` or `chorus-import-project`:
-
-```
-chorus-markdown <sandbox> <source.xlsx|source.csv> <output.md> --report
-```
-
-- Particularly relevant for XLSX: `chorus-markdown`'s table-count control
-  (§2.2) compares non-empty cell/sheet counts from `openpyxl` against the
-  Markdown pipe tables actually produced — catches silently dropped sheets
-  or truncated ranges that `chorus-excel`'s own merged-cell logic does not
-  self-check against.
-- `--report` recommended by default; `--strict` only for fully automated
-  pipelines with no human review before `chorus-feed`.
-- Non-blocking unless `--strict` is passed — a `⚠️`/`❌` row does not stop
-  the workflow by itself.
+> See § Phase 3.5 above for the full, non-optional `chorus-markdown`
+> invocation procedure (table-count cross-check against `openpyxl` native
+> sheet/cell counts, `--batch` looping, `--output-dir` report location,
+> text/CSV-mode placeholder handling).
 
 ### Why `chorus-excel` vs. `chorus-import-project`'s built-in Excel handler
 
@@ -1471,7 +1518,7 @@ chorus-markdown <sandbox> <source.xlsx|source.csv> <output.md> --report
 | Artifact | Convention | Example |
 |----------|-----------|---------|
 | Extraction script | `agent/extract-excel-<slug>.py` | `agent/extract-excel-devis-isolation.py` |
-| CSV / text mode output | `corpus/<NNN>-<slug>-text.txt` | `corpus/003-devis-isolation-text.txt` |
+| CSV / text mode output | `corpus/<NNN>-<slug>-text.md` | `corpus/003-devis-isolation-text.md` |
 | Hybrid mode output | `corpus/<NNN>-<slug>-vision.md` | `corpus/003-devis-isolation-vision.md` |
 | Original XLSX/CSV | kept as-is in `corpus/` | `corpus/002-devis-isolation.xlsx` |
 
