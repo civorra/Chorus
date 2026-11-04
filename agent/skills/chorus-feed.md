@@ -2363,6 +2363,7 @@ After processing, update checkpoint:
   "new_rules_this_pass": R,
   "suggested_next_file": "<NNN-slug.md>|null",
   "deferred_unchanged_passes": U,
+  "families_closed_this_pass": F,
   "unresolved_deferred_notes": [
     {"item": "<short id/section ref>", "reason": "<why genuinely non-codifiable this pass>"}
   ]
@@ -2402,6 +2403,16 @@ After processing, update checkpoint:
 >   Deferred backlog here — only items this pass actively investigated and
 >   explicitly reconfirmed non-codifiable (mirrors the detail already given
 >   in `next_action`'s free text, structured for UI consumption).
+> - **`families_closed_this_pass`** (int): count of distinct families/
+>   components this pass moved from Deferred to Integrated/Promoted —
+>   Simple-tier batched closures (Phase B1.5) **and** the single Complex-tier
+>   closure, if any, all counted together. Distinct from `new_rules_this_pass`:
+>   a pass batching 4 Simple families (no new rule needed for any of them)
+>   plus 1 Complex family (1 new rule) reports `new_rules_this_pass: 1` but
+>   `families_closed_this_pass: 5` — the gap between the two numbers is itself
+>   informative (large gap = productive Simple-family batching happened;
+>   `families_closed_this_pass == new_rules_this_pass` = no batching this
+>   pass, one family needed one rule).
 
 Determine next state:
 
@@ -2453,6 +2464,7 @@ If `status: "converged"`:
   "new_rules_this_pass": 0,
   "suggested_next_file": "<NNN-slug.md>|null",
   "deferred_unchanged_passes": 0,
+  "families_closed_this_pass": 0,
   "unresolved_deferred_notes": []
 }
 ```
@@ -2461,10 +2473,11 @@ If `status: "converged"`:
 - `files_mode_a_pending`: files not yet initialized (Mode A). In `presplit` mode, each maps to one agent.
 - `files_mode_b_pending`: files whose agent has residual Deferred after Mode A.
 - `new_rules_this_pass` / `suggested_next_file` / `deferred_unchanged_passes` /
-  `unresolved_deferred_notes`: structured counterparts to `next_action`'s free
-  text — see Step 4 for the exact computation of each. Written on every
-  `waiting`/`stopped_max_passes`/`converged` checkpoint update, not only on
-  the very first one shown above as a shape reference.
+  `families_closed_this_pass` / `unresolved_deferred_notes`: structured
+  counterparts to `next_action`'s free text — see Step 4 for the exact
+  computation of each. Written on every `waiting`/`stopped_max_passes`/
+  `converged` checkpoint update, not only on the very first one shown above
+  as a shape reference.
 
 > **Webapp integration (WEB-004):** poll `$SANDBOX/.chorus-unattended-state.json`
 > every 2s via `/api/sandbox/:id/unattended-state`. Progress bar =
@@ -2623,6 +2636,50 @@ Classify each rule/prescription from the new corpus into **3 categories**:
 | **Refinement** | Concerns a Frame and slots already known | Add rule to an existing agent |
 | **Extension** | Concerns new slots of a known Frame | Extend existing agent KB + new YAML rules |
 | **New domain** | Concerns Frames or concepts absent from the KB | Create a new agent |
+
+### Phase B1.5 — Per-family batching within a single Mode B pass
+
+> ⚠️ **Why this phase exists.** `$ENGINE/AGENTS.md § Incremental generation`
+> caps artefact generation at **1 file (`<slug>.org` / `Helpers.pm`) per
+> operation — "these require dense reasoning"**. Applied naively, this was
+> being read as "1 *family*/component-group per Mode B pass", regardless of
+> how simple that family actually was. On a corpus with many small, no-rule
+> families (e.g. CC Part 3's ~44 SAR families, many of which turn out to
+> need **no dedicated rule** — single-component, no levelling matrix,
+> dependencies already covered generically), this produced an unnecessarily
+> slow convergence (~2% coverage per pass observed on sandbox 06-CC-3.1.5,
+> requiring dozens of `--unattended` passes for a single corpus file).
+> `$ENGINE/AGENTS.md`'s cap is about **artefact density per write**, not
+> about family count — this phase clarifies that a single write to
+> `<slug>.org`/`Helpers.pm` MAY cover several families in the same pass,
+> as long as each family individually required little or no new reasoning.
+
+**Before applying Phase B3, classify every family/component this pass could
+plausibly address (not just the first one encountered) into exactly one of:**
+
+| Tier | Criterion | Per-pass handling |
+|---|---|---|
+| **Simple** | No levelling/dependency matrix of its own (single-component family, e.g. `ADV_ARC`); OR fully covered by an already-codified generic mechanism (e.g. `agent-general-model`'s `R04-dependency-satisfied`); OR the only finding is "re-checked, no new rule needed, assumption removed" | **Batch freely** — process as many Simple families as found relevant in the corpus fragment under analysis, within the same pass, same `<slug>.org`/`Helpers.pm` write |
+| **Complex** | Has its own levelling/hierarchy matrix (e.g. `ADV_TDS.1-.6`, Table 14 p.227); OR requires a new Helper function encoding non-trivial domain logic; OR its correct codification depends on cross-referencing multiple corpus tables/sections | **1 per pass** — the existing `$ENGINE/AGENTS.md` cap applies at full strength: do not combine two Complex families in the same pass, even if both are addressed in this session |
+
+> **Mixed pass allowed:** a single pass MAY close several Simple families
+> **and** one Complex family in the same `<slug>.org`/`Helpers.pm` write —
+> the cap is "at most 1 Complex family", not "at most 1 family total".
+
+**Required per-pass disclosure** (feeds `next_action` / structured checkpoint
+fields, see § Mode D Step 4): the end-of-pass summary must explicitly state,
+per family addressed this pass, which tier it was classified into and why —
+mirroring the ADV_ARC vs. ADV_TDS distinction already given as a worked
+example above. Do not silently batch Simple families without naming them
+individually in `unresolved_deferred_notes`/`next_action` — the operator
+needs to see which families were closed as a batch of trivial items vs.
+which single Complex family consumed the pass's "dense reasoning" budget.
+
+> ⚠️ **Do not relax this for Complex families to "go faster".** The 1-per-pass
+> cap on Complex families exists precisely because rushing a levelling-matrix
+> or multi-table cross-reference family is what produces wrong/incomplete
+> rules downstream — this phase only removes the *unnecessary* slowdown on
+> trivial families, it does not loosen quality control on genuinely dense ones.
 
 ### Phase B2 — Save the new corpus
 
