@@ -2359,9 +2359,49 @@ After processing, update checkpoint:
   "deferred_s": DS,
   "deferred_c": DC,
   "last_update": "<ISO8601>",
-  "next_action": "chorus-feed <sandbox> --unattended"
+  "next_action": "chorus-feed <sandbox> --unattended",
+  "new_rules_this_pass": R,
+  "suggested_next_file": "<NNN-slug.md>|null",
+  "deferred_unchanged_passes": U,
+  "unresolved_deferred_notes": [
+    {"item": "<short id/section ref>", "reason": "<why genuinely non-codifiable this pass>"}
+  ]
 }
 ```
+
+> ⚠️ **Structured fields (added alongside `next_action`, not replacing it)** —
+> `next_action` remains a free-text summary for humans/ECA reading the
+> checkpoint directly; the fields below exist so the webapp can render
+> conditional UI (badges, stagnation warnings, priority target) **without
+> parsing free text**, which would be fragile against LLM phrasing drift
+> across sessions. Compute each as follows:
+>
+> - **`new_rules_this_pass`** (int): count of new `rules/<agent>/R<NN>-*.yml`
+>   files created *during this pass only* (compare `rules/` tree before/after
+>   this session's Mode A/B pass — not a cumulative sandbox-wide count).
+>   `0` if this pass only closed/reconfirmed Deferred items without adding a rule.
+> - **`suggested_next_file`** (string or `null`): the single file this session
+>   recommends targeting next, following the same precedence as Step 3 (Mode A
+>   pending first, else Mode B pending) — but informed by this pass's findings
+>   (e.g. "the only remaining Mode B file carries the bulk of the backlog").
+>   `null` if `files_mode_a_pending` and `files_mode_b_pending` are both empty
+>   (i.e. converged or stopped_max_passes with no further file to target).
+> - **`deferred_unchanged_passes`** (int): read the previous checkpoint's
+>   `deferred_s`/`deferred_c` **before** overwriting it this Step. If
+>   `(this pass's DS + DC) == (previous checkpoint's deferred_s + deferred_c)`
+>   → increment the previous checkpoint's `deferred_unchanged_passes` by 1;
+>   otherwise reset to `0`. Absent on the very first checkpoint (treat as `0`).
+>   This is a **stagnation signal**: N consecutive passes with no reduction in
+>   total Deferred count despite rules/notes being added, usually meaning the
+>   remaining Deferred backlog needs content from another not-yet-enriched
+>   agent/corpus file (as opposed to being simply unworked).
+> - **`unresolved_deferred_notes`** (array, may be empty): one entry per
+>   Deferred item this pass **specifically attempted** to close and could not,
+>   with a short human-readable reason (e.g. "requires agent-sfr content,
+>   not available from Part 1 alone"). Do not enumerate the entire residual
+>   Deferred backlog here — only items this pass actively investigated and
+>   explicitly reconfirmed non-codifiable (mirrors the detail already given
+>   in `next_action`'s free text, structured for UI consumption).
 
 Determine next state:
 
@@ -2409,19 +2449,38 @@ If `status: "converged"`:
   "oos_reclassified": [{"section": "§3.2", "from": "⛔ OOS", "to": "⏭ Deferred"}],
   "last_update": "<ISO8601>",
   "converged": false,
-  "next_action": "chorus-feed <sandbox> --unattended"
+  "next_action": "chorus-feed <sandbox> --unattended",
+  "new_rules_this_pass": 0,
+  "suggested_next_file": "<NNN-slug.md>|null",
+  "deferred_unchanged_passes": 0,
+  "unresolved_deferred_notes": []
 }
 ```
 
 - `phase`: `"A"` while `files_mode_a_pending` is non-empty; `"B"` once Phase A is complete.
 - `files_mode_a_pending`: files not yet initialized (Mode A). In `presplit` mode, each maps to one agent.
 - `files_mode_b_pending`: files whose agent has residual Deferred after Mode A.
+- `new_rules_this_pass` / `suggested_next_file` / `deferred_unchanged_passes` /
+  `unresolved_deferred_notes`: structured counterparts to `next_action`'s free
+  text — see Step 4 for the exact computation of each. Written on every
+  `waiting`/`stopped_max_passes`/`converged` checkpoint update, not only on
+  the very first one shown above as a shape reference.
 
 > **Webapp integration (WEB-004):** poll `$SANDBOX/.chorus-unattended-state.json`
 > every 2s via `/api/sandbox/:id/unattended-state`. Progress bar =
 > `passes_done / max_passes * 100`. Cancel by writing `status: "cancelled"`.
 > The checkpoint replaces the complex real-time SSE originally planned for
 > WEB-004 Phase 1 — same UX, less code.
+>
+> **Structured fields consumption (added alongside `next_action`):** the
+> webapp's "Confirmer → Feed" button renders conditional UI from
+> `new_rules_this_pass` (badge, e.g. "+1 règle"), `deferred_unchanged_passes`
+> (stagnation warning past a threshold, e.g. ≥2), and `suggested_next_file`
+> (explicit "→ cible : <file>" label) — all without parsing `next_action`'s
+> free text, which remains reserved for the ECA session prompt context (human/
+> LLM-readable summary, not meant for UI regex matching). Keep both in sync:
+> any future field renamed/removed here must be mirrored in the webapp's
+> `readFeedStatus()` (`chorus/scanner.js` and `server/routes/scan.js`).
 
 ### Final report (`$SANDBOX/agent/autofeed-report-<NNN>.md`)
 
