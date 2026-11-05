@@ -249,6 +249,14 @@ block in `<project.json>`:
   "date":              "YYYY-MM-DD",
   "report":            "workspace/<...>/audit-import-NNN.md",
   "gaps_comblables":   N,
+  "gaps_comblables_detail": [
+    {
+      "element":       "<element_id>",
+      "slot":          "<slot_name> (Frame <frame_type_if_new>)",
+      "valeur":        "<valeur extractible du document source>",
+      "justification": "<pourquoi/où cette valeur a été trouvée dans la source>"
+    }
+  ],
   "gaps_partiels":     N,
   "gaps_absents":      N,
   "gaps_mapping":      N,
@@ -259,6 +267,16 @@ block in `<project.json>`:
 
 Field source (from Phase 3 classification table):
 - `gaps_comblables`   = count of ✅ Comblable entries
+- `gaps_comblables_detail` = **one array entry per ✅ Comblable row** from the Phase 3
+  classification table — `element` (element_id), `slot` (slot name, with the target
+  Frame type in parentheses when the correction requires creating a new Frame rather
+  than filling an existing slot), `valeur` (the extractable value, as found in source),
+  `justification` (short explanation of where/how the value was found). This array is
+  what lets the webapp (`chorus-web.js`) render a per-project explanatory text next to
+  the `✅ Patch (N)` button instead of a bare count — **always populate it**, even when
+  `gaps_comblables` is 0 (empty array in that case). Never omit this field: a
+  `gaps_comblables > 0` with no matching `gaps_comblables_detail` entries is the single
+  most common cause of "the Patch button has no explanation" incidents.
 - `gaps_partiels`     = count of ⚠️ Extraction partielle entries
 - `gaps_absents`      = count of ❌ Structurellement absent entries
 - `gaps_mapping`      = count of 🔄 Mapping à confirmer entries **+** 🔴 Incohérence KB /
@@ -317,6 +335,7 @@ unconditional and has already run earlier in this same invocation):
 ```json
 "_audit": {
   ...existing fields...,
+  "gaps_comblables_detail":  [],
   "patch_applied":          true,
   "patches_applied":        N,
   "gaps_comblables_applied": N,
@@ -328,6 +347,10 @@ Field rules:
 - `patch_applied` **must be a boolean `true`** — the webapp scanner reads this field to update the badge state.
 - `patches_applied` and `gaps_comblables_applied` are informational integer counts (same value N).
 - `patch_date` is the date of this `--patch` run (not the original audit date).
+- `gaps_comblables_detail` **must be cleared to `[]`** once all its entries have been
+  applied — the entries it previously listed are no longer pending corrections, they
+  are now part of the patched `elements`. If a future re-audit finds new comblable gaps,
+  Phase 3.5 repopulates this array from scratch on that later run.
 - All other existing `_audit` fields are **preserved unchanged** — never overwrite the original audit metadata.
 
 Write the patched JSON back to `<project.json>` (overwrite).
