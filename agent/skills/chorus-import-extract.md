@@ -4,7 +4,7 @@
 > sources (PDF, DOCX, XLSX/CSV) that require preprocessing before semantic alignment.
 > **Not loaded for structured JSON/CycloneDX/XML sources** (Phase -0.1 handles those).
 >
-> Trigger: loaded via `eca__skill("chorus-import-extract")` from Phase 0 of
+> Trigger: loaded via `eca__read_file` on `$ENGINE/agent/skills/chorus-import-extract.md` from Phase 0 of
 > `chorus-import-project` when `source_format` ∉ {JSON, CycloneDX, XML structuré}.
 
 

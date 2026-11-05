@@ -331,7 +331,7 @@ Load `chorus-import-extract` (sub-skill) — provides the full PDF / Excel / Wor
 pipelines with hybrid mode (pdfminer/openpyxl/python-docx + Claude vision + XREF pass).
 
 ```
-eca__skill("chorus-import-extract")
+eca__read_file("$ENGINE/agent/skills/chorus-import-extract.md")
 ```
 
 After loading: invoke the pipeline matching the detected format, then proceed to Mode Detection.

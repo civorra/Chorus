@@ -148,6 +148,12 @@ status: IN_PROGRESS
 
 > **Rule:** When a trigger is received, load the skill and execute immediately — no confirmation required.
 > ⛔ Pre-approved even in a new conversation turn: network, filesystem, side effects ≠ reason to ask for confirmation.
+> ⛔ **Never call `eca__skill(...)` for any Chorus skill** — this repo's `eca-config.json`
+> does not register Chorus skills in ECA's native skill registry (only ECA's own
+> built-in `eca-info` is registered there), so `eca__skill` always fails for every
+> Chorus skill and silently costs one wasted tool-call round-trip before falling back.
+> Load every Chorus skill directly via `eca__read_file` on its absolute path under
+> `$ENGINE/agent/skills/` — this is the only supported loading path, not a fallback.
 
 > **Agent per trigger:** the *Agent* column indicates the ECA agent to use.
 > `code` = claude-sonnet-4-6 / `medium` — édition standard.
@@ -188,7 +194,7 @@ status: IN_PROGRESS
 > `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md` · `chorus-feed-unattended.md`
 >
 > `chorus-import-extract.md` — ENG-030: document extraction pipelines (PDF/Excel/Word) extracted from `chorus-import-project.md`
-> to keep the main skill ≤ 2000 lines for CBOM imports. Loaded via `eca__skill("chorus-import-extract")` from Phase 0
+> to keep the main skill ≤ 2000 lines for CBOM imports. Loaded via `eca__read_file` from Phase 0
 > of `chorus-import-project` **only when source is a document file** (PDF/DOCX/XLSX/CSV). Never loaded for structured
 > sources (JSON/CycloneDX/XML) — Phase -0.1 handles those directly.
 >
@@ -196,14 +202,14 @@ status: IN_PROGRESS
 > retry), `README.org § Coverage` grammar/template, and stability-point convergence
 > check factored out of `chorus-feed.md` — logic identical between Mode A (Phase 6.5,
 > first full scan) and Mode B (Phase B4.5, `--enrich` delta). Loaded via
-> `eca__skill("chorus-feed-coverage")` from both phases; each mode retains its own
+> `eca__read_file` from both phases; each mode retains its own
 > mode-specific steps (Mode A: mechanical inventory audit, `_rule_trace` audit; Mode B:
 > delta-against-existing-report logic, WIP checkpoint cleanup).
 >
 > `chorus-feed-unattended.md` — ENG-031: Mode D (`--unattended` orchestration —
 > checkpoint lifecycle, pre-split/single-corpus detection, `coverage_pct`
 > bookkeeping, final report) factored out of `chorus-feed.md`. Loaded via
-> `eca__skill("chorus-feed-unattended")` when `--unattended` is present; delegates
+> `eca__read_file` when `--unattended` is present; delegates
 > back into `chorus-feed.md § Mode A`/`§ Mode B` for the actual per-file corpus
 > analysis/enrichment, and transitively into `chorus-feed-coverage.md` via those
 > modes' own coverage phases — not a 4th independent mode, purely an orchestrator.

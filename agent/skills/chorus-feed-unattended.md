@@ -14,8 +14,8 @@
 > checkpoint lifecycle (read/write `.chorus-unattended-state.json`), file
 > selection, `coverage_pct` bookkeeping, and the final report.
 >
-> Trigger: loaded via `eca__skill("chorus-feed-unattended")` from `chorus-feed.md`
-> when `chorus-feed <sandbox-name> --unattended [--corpus-dir <path>] [--max-passes N]`
+> Trigger: loaded via `eca__read_file` on `$ENGINE/agent/skills/chorus-feed-unattended.md`
+> from `chorus-feed.md` when `chorus-feed <sandbox-name> --unattended [--corpus-dir <path>] [--max-passes N]`
 > is the invoking command (see `chorus-feed.md § Mode Selection`).
 
 > **One session = one file.** Each invocation processes exactly one corpus

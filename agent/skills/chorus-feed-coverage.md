@@ -12,7 +12,7 @@
 > checkpoint cleanup for Mode B) and call into this sub-skill only for the shared core
 > below.
 >
-> Trigger: loaded via `eca__skill("chorus-feed-coverage")` from:
+> Trigger: loaded via `eca__read_file` on `$ENGINE/agent/skills/chorus-feed-coverage.md` from:
 > - `chorus-feed.md § Phase 6.5 Step 2` (Mode A, first full classification)
 > - `chorus-feed.md § Phase B4.5 Step 2` (Mode B, re-classification of the
 >   `⏭ Deferred` / `🧮 Helper-source pending` backlog plus any newly discovered section)

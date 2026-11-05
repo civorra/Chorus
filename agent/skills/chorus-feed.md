@@ -1875,7 +1875,7 @@ must contain.)
 > (`README.org § Coverage` grammar + template), and Step 4b/4b-checkpoint
 > (stability point convergence check + interactive validation) are now factored
 > into a shared sub-skill — identical logic for Mode A and Mode B (`--enrich`).**
-> Load `eca__skill("chorus-feed-coverage")` now and apply it in full (classify
+> Load `eca__read_file("$ENGINE/agent/skills/chorus-feed-coverage.md")` now and apply it in full (classify
 > every section from Step 1/1b/1c/1d/1e above, write/append the `README.org`
 > block, then run the convergence check) before continuing to Step 4 below.
 
@@ -1907,7 +1907,7 @@ remains.
 
 The full orchestration logic (prerequisites check, checkpoint lifecycle,
 pre-split/single-corpus detection, `coverage_pct` bookkeeping, final report)
-is factored into a dedicated sub-skill — load `eca__skill("chorus-feed-unattended")`
+is factored into a dedicated sub-skill — load `eca__read_file("$ENGINE/agent/skills/chorus-feed-unattended.md")`
 now and apply it in full. It delegates back into `§ Mode A`/`§ Mode B` above
 for the actual per-file corpus analysis/enrichment, and into
 `chorus-feed-coverage.md` (via Mode A's own Phase 6.5 / Mode B's own
@@ -2161,7 +2161,7 @@ run a full Phase 6.5 scan first, then proceed.
 **Step 2 — Classify what this `--enrich` pass processed**
 
 For each section in the `⏭ Deferred` list, reuse the shared classification
-protocol: load `eca__skill("chorus-feed-coverage")` and apply its Step 2a/2b/2c
+protocol: load `eca__read_file("$ENGINE/agent/skills/chorus-feed-coverage.md")` and apply its Step 2a/2b/2c
 (too-ambiguous retry included — its Mode B note covers the "retry-note is the
 starting point" nuance specific to `--enrich`) to decide, per section:
 
