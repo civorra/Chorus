@@ -638,6 +638,81 @@ ACTION: "$SELF->BOARD->{phase_done} = 1;"
 > 19 `EXCEPTION` blocks. See `chorus-check.md § Step 5i` for the full writeup
 > and the mechanical scan now guarding against recurrence.
 
+### ⛔ Pitfall — multi-line `EXCEPTION`/`CONDITION` must be a single expression (wrap in `do {}`)
+
+> `Chorus::Engine::codeRule()` compiles a rule's `EXCEPTION` field into
+> **exactly one Perl statement**: `return if <EXCEPTION_TEXT>;` (symmetrically,
+> `CONDITION` becomes `return unless <CONDITION_TEXT>;`). If the YAML
+> `EXCEPTION`/`CONDITION` block spans multiple logical Perl statements — most
+> commonly an intermediate `my @var = ...;` assignment on its own line,
+> followed by the real boolean test on subsequent lines — **only the FIRST
+> statement is ever actually guarded**. Perl parses `return if my @var = grep
+> {...}` as the complete guarded expression (the assignment's own truthiness,
+> which is simply "is @var non-empty?" — almost always true), and every
+> following line becomes an orphaned, unguarded statement whose result is
+> silently discarded.
+
+```yaml
+# ⛔ WRONG — the assignment line is the ONLY thing `return if` actually tests;
+# the real boolean test below it is evaluated but discarded, every time:
+EXCEPTION: |
+  my @targets = grep { ($_->{type_element} // '') eq 'evaluation_class' }
+                Chorus::Frame::fmatch(slot => 'type_element');
+  scalar(@targets) == 0
+  || scalar(grep { !defined $_->get('_verdict_processed') } @targets) > 0
+
+# ✅ CORRECT — wrap the whole computation in `do { ... }`, whose own
+# last-expression-returns-value semantics make it a single statement:
+EXCEPTION: |
+  do {
+    my @targets = grep { ($_->{type_element} // '') eq 'evaluation_class' }
+                  Chorus::Frame::fmatch(slot => 'type_element');
+    scalar(@targets) == 0
+    || scalar(grep { !defined $_->get('_verdict_processed') } @targets) > 0
+  }
+```
+
+- **Symptom:** a Perl warning `Useless use of numeric gt (>) in void context`
+  (or similar "useless use of X in void context" for whichever comparison/
+  expression sits on the orphaned line) printed once per rule load — easy to
+  miss among dozens of harmless `redefined`-style warnings on a multi-agent
+  pipeline. The rule itself never crashes and never reports an error — it
+  simply never fires its intended guard logic.
+- **For a `TERMINAL: solved`/`failed` rule specifically**, this is catastrophic:
+  the termination condition can never become false (the bogus "guard" — the
+  bare assignment — is true as soon as the target Frame set is non-empty,
+  regardless of whether every Frame has actually been processed), so the rule
+  silently refuses to ever `return if` *correctly* and its `ACTION`/`TERMINAL`
+  never fires — the whole pipeline loops until `Chorus::Expert`'s
+  `_MAX_ITER` ceiling, reported as `process() reached max iterations without
+  SOLVED or FAILED`, with every downstream agent showing "LOOPING" every
+  cycle with no visible progress.
+- **Rule of thumb:** any `EXCEPTION`/`CONDITION` body that needs an
+  intermediate variable before its final boolean test **must** be wrapped in
+  a single `do { ... }` block, with the boolean test as the block's last
+  expression. Never leave a leading `my $var = ...;` (or any other complete
+  statement) as a bare top-level line before the real test — only the first
+  statement in a multi-line `EXCEPTION`/`CONDITION` is ever actually guarded.
+- `chorus-feed` should author multi-line `EXCEPTION`/`CONDITION` bodies with
+  this `do {}` wrapper from the start whenever more than one logical
+  statement is needed — do not rely on a later `chorus-check`/manual-review
+  pass to catch it; unlike the missing-guard pitfall above, this failure mode
+  produces **no loadRules() warning that names the rule** (only a generic,
+  easy-to-miss Perl `void context` warning at compile time), making it
+  significantly harder to retrofit-detect mechanically.
+
+> **Incident:** sandbox `06-CC-3.1.5`, `R11-pipeline-termination.yml`
+> (`agent-ate-ava-aco`) — the rule's `EXCEPTION` started with
+> `my @targets = grep {...};` as its own line, followed by the real
+> `scalar(@targets) == 0 || scalar(grep {...}) > 0` test. Every project file
+> containing at least one `evaluation_class` Frame (`project-cross.json`,
+> `project-edges.json`, `project-rules-iso.json`) hung at
+> `Chorus::Expert`'s 200-iteration ceiling — `TERMINAL: solved` never fired
+> despite every `evaluation_class` Frame genuinely reaching
+> `_verdict_processed = 1`. Fixed by wrapping the EXCEPTION body in `do {}`
+> (2026-11-06) — see `.last-fix-history.json § engine_infra_fix_detail` in
+> that sandbox for the full investigation writeup.
+
 ### Loading Order
 
 `loadRules($dir)` loads `*.yml` files in **alphabetical order** → name files `R01-`, `R02-`, etc.
