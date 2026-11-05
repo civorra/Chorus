@@ -185,9 +185,17 @@ status: IN_PROGRESS
 | `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
 
 > **Sub-skills** — internal support files, no direct user trigger. Hidden from `skills` / `skills details` unless `--all` is passed:
-> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md`
+> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md`
 >
 > `chorus-import-extract.md` — ENG-030: document extraction pipelines (PDF/Excel/Word) extracted from `chorus-import-project.md`
 > to keep the main skill ≤ 2000 lines for CBOM imports. Loaded via `eca__skill("chorus-import-extract")` from Phase 0
 > of `chorus-import-project` **only when source is a document file** (PDF/DOCX/XLSX/CSV). Never loaded for structured
 > sources (JSON/CycloneDX/XML) — Phase -0.1 handles those directly.
+>
+> `chorus-feed-coverage.md` — ENG-031: coverage classification protocol (too-ambiguous
+> retry), `README.org § Coverage` grammar/template, and stability-point convergence
+> check factored out of `chorus-feed.md` — logic identical between Mode A (Phase 6.5,
+> first full scan) and Mode B (Phase B4.5, `--enrich` delta). Loaded via
+> `eca__skill("chorus-feed-coverage")` from both phases; each mode retains its own
+> mode-specific steps (Mode A: mechanical inventory audit, `_rule_trace` audit; Mode B:
+> delta-against-existing-report logic, WIP checkpoint cleanup).
