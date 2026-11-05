@@ -185,7 +185,7 @@ status: IN_PROGRESS
 | `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
 
 > **Sub-skills** — internal support files, no direct user trigger. Hidden from `skills` / `skills details` unless `--all` is passed:
-> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md`
+> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md` · `chorus-feed-unattended.md`
 >
 > `chorus-import-extract.md` — ENG-030: document extraction pipelines (PDF/Excel/Word) extracted from `chorus-import-project.md`
 > to keep the main skill ≤ 2000 lines for CBOM imports. Loaded via `eca__skill("chorus-import-extract")` from Phase 0
@@ -199,3 +199,11 @@ status: IN_PROGRESS
 > `eca__skill("chorus-feed-coverage")` from both phases; each mode retains its own
 > mode-specific steps (Mode A: mechanical inventory audit, `_rule_trace` audit; Mode B:
 > delta-against-existing-report logic, WIP checkpoint cleanup).
+>
+> `chorus-feed-unattended.md` — ENG-031: Mode D (`--unattended` orchestration —
+> checkpoint lifecycle, pre-split/single-corpus detection, `coverage_pct`
+> bookkeeping, final report) factored out of `chorus-feed.md`. Loaded via
+> `eca__skill("chorus-feed-unattended")` when `--unattended` is present; delegates
+> back into `chorus-feed.md § Mode A`/`§ Mode B` for the actual per-file corpus
+> analysis/enrichment, and transitively into `chorus-feed-coverage.md` via those
+> modes' own coverage phases — not a 4th independent mode, purely an orchestrator.
