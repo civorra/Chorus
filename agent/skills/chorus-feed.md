@@ -1,6 +1,6 @@
 # Skill — chorus-feed
 
-> Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich] [--harvest-aliases <import-report.org>]`
+> Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich]`
 > Trigger: `chorus-feed <sandbox-name> --unattended [--corpus-dir <path>] [--max-passes N]`
 > Agent: `architect`
 >
@@ -15,15 +15,6 @@
 >              (confirmed) and `CORPUS-DIRECTIVES.md` must exist in `$SANDBOX/`.
 > `--corpus-dir <path>`: directory containing pre-split `.md` files (default: `$SANDBOX/corpus/`)
 > `--max-passes N`: absolute loop ceiling (default: `2 × number of corpus files`)
-> `--harvest-aliases <global.org|import-report.org>`: activates Mode C — integrates
->              confirmed ✅ mappings into the KB `** Aliases` sections. Accepts either
->              `$SANDBOX/agent/thesaurus/global.org` (recommended — harvests all
->              confirmed sandbox-wide aliases and **purges** them from the global shard
->              once promoted; client shards `<client>.org` are never valid harvest
->              sources — see Phase C1 Scope guard) or a single `import-report-NNN.org`
->              (legacy/scoped mode — no purge). A legacy monolithic `thesaurus.org`
->              (pre-sharding) is also accepted. No `<corpus>` argument is needed in
->              this mode.
 >
 > **Single responsibility: enrich knowledge.**
 > This skill never generates infrastructure code (Feed, shell Agent, Expert, run.pl).
@@ -143,7 +134,6 @@ eca__task(op="plan", tasks=[
 
 **Mode B:** same structure, replace Phase 2 subject with `"Phase 2 — KB enrichment"`.
 **Mode D:** one task per corpus file to process + `"Checkpoint state"`.
-**Mode C:** `"Phase C1 — Scope guard"` · `"Phase C2 — Alias harvest"` · `"Phase C3 — Promote + purge"`.
 
 > Skip tasks whose trigger condition is not met (e.g. skip "Phase -1" if corpus is
 > a single-source standard). Use `eca__task(op="delete", ids=[...])` to remove
@@ -159,7 +149,6 @@ The `--enrich` flag is required to activate Mode B.
 |---|---|
 | No `--enrich` flag | **Mode A** — ignore any existing KB in the sandbox |
 | `--enrich` flag present | **Mode B** — read existing KB and enrich |
-| `--harvest-aliases <global.org\|report>` present | **Mode C** — read KB + source (global thesaurus shard or one import report), integrate aliases only, purge source if it is the global shard |
 
 > ⚠ Without `--enrich`, **never** read `agent/chorus/`, existing YAMLs, or
 > any other KB artifact from the sandbox — even if the `<sandbox-name>` directory already exists.
@@ -1179,8 +1168,8 @@ Phase 3 terminology alignment.
 
 > ⚠️ **Empty is valid.** A sandbox whose corpus contains no definition section will have
 > a `** Aliases` table with zero rows. The table header must still be present — its absence
-> is an error. An empty table is a clear signal that `--harvest-aliases` imports will
-> contribute the bulk of real-world terminology.
+> is an error. An empty table is a clear signal that project imports (`chorus-import-project`,
+> thesaurus promotion via the webapp) will contribute the bulk of real-world terminology.
 
 **Aliases from figures — sub-section (hybrid corpus only):**
 
@@ -2346,6 +2335,113 @@ If the processed file still has Deferred after Mode A → add to `files_mode_b_p
 Convergence criterion:
 `Deferred-S = 0 AND Deferred-C = 0 AND CORPUS:unresolved = 0`
 
+### Step 3.5 — Compute `coverage_pct` (mechanical, mandatory)
+
+> ⚠️ **Why this step exists.** Prior to this step's introduction, `coverage_pct`
+> had no defined formula anywhere in this skill — every occurrence below used
+> a bare `X` placeholder, leaving the actual number to the enriching agent's
+> own judgment call each pass. This produced visibly inconsistent results: a
+> pass that mechanically closed 4 entire families (`families_closed_this_pass:
+> 4`, `deferred_s` dropping from 16 to 3) reported a `coverage_pct` gain of
+> only 2 points — the number was an impression, not a measurement, and did not
+> reflect the real progress already visible in the other structured fields
+> (incident: sandbox 06-CC-3.1.5, pass 16). `coverage_pct` MUST now be computed
+> mechanically from counts already produced elsewhere in this same pass —
+> never estimated, never eyeballed, never carried over "by feel" from the
+> previous pass's number.
+>
+> ⚠️ **Incremental, not a full re-scan (cost control — mandatory).** The first
+> version of this step required a full re-read of `README.org § Coverage` on
+> *every* pass to recompute `families_integrated`/`families_deferred`/
+> `families_oos` from scratch. On a sandbox with a large README (many agents,
+> many enrichment passes already recorded), this added a non-trivial amount of
+> extra reading/reasoning on top of an already substantial `--unattended` pass
+> (Mode B enrichment + Phase 6.5 + this step), and correlated with a session
+> ending in a "Error in input stream" backend timeout (incident: sandbox
+> 06-CC-3.1.5, pass 18 — same class of timeout already documented for
+> `chorus-check --summary`+`--explain` combined in one turn, cf.
+> `chorus-web.js` § `openAnalyseFromReport`). The revised procedure below
+> keeps the three family counters **persisted in the checkpoint itself**
+> and updates them incrementally — a full `README.org § Coverage` re-scan
+> is now the **exception**, not the per-pass default.
+
+**Inputs — incremental update, not full re-derivation:**
+
+- Read the **previous checkpoint's** `families_integrated_total` /
+  `families_deferred_total` / `families_oos_total` (new persisted fields —
+  see Step 4's checkpoint shape below). On the very first pass that ever
+  reaches this step (fields absent), fall back once to a full
+  `README.org § Coverage` scan (see "Full re-scan" below) to seed them.
+- For this pass only, determine the **delta** from the agent(s)/section(s)
+  actually touched this pass (already known from Phase B1.5's per-family
+  tier classification and Phase B3's applied changes — no extra reading
+  required beyond what this pass already did):
+  - `+N` to `families_integrated_total` for each family this pass moved from
+    Deferred/unscanned to `✅ Integrated` (this is exactly
+    `families_closed_this_pass`, already computed — reuse it, don't recount).
+  - `-N` to `families_deferred_total` for the same families (one family
+    cannot be both newly-Integrated and still-Deferred after the same pass).
+  - `+N` to `families_deferred_total` (and to the *_total sum, growing the
+    denominator) only if this pass's own corpus reading **discovered** new
+    families not previously listed anywhere in `README.org § Coverage` for
+    the agent(s) touched this pass (e.g. an `≈18 families` estimate refined
+    into an exact higher count for the agent processed this pass) — never
+    for agents/sections this pass did not touch.
+  - `families_oos_total` changes only via Step 0's OOS reclassification
+    (already a mandatory, already-read step — reuse its output, don't
+    re-scan for it here).
+
+**Formula (unchanged):**
+```
+total     = families_integrated_total + families_deferred_total + families_oos_total
+coverage_pct = round(100 × families_integrated_total / total)   (total == 0 → 100)
+```
+
+**Full re-scan — exceptional, not per-pass:**
+
+Only perform a complete `README.org § Coverage` re-read (summing every
+`** ✅ Integrated`/`** ⏭ Deferred`/`** ⛔ Out of scope` sub-heading's detail-table
+row count from scratch, as the original version of this step always did) when:
+- This is the very first pass to reach Step 3.5 (counters not yet persisted), OR
+- The operator explicitly requests a recount (e.g. after manually editing
+  `README.org`, or after suspecting drift between the persisted counters and
+  the file), OR
+- A `deferred_unchanged_passes` stagnation streak (≥ 3) suggests the
+  incremental counters may have drifted from reality and a reset is warranted.
+
+Document which path was taken (`incremental` vs `full re-scan`) in
+`next_action`'s free text alongside the three raw counts.
+
+**Required consistency checks before writing `coverage_pct` to the checkpoint:**
+
+1. **Never silently reuse a stale total** — if this pass took the incremental
+   path, the three `*_total` fields written to the checkpoint are the
+   previous checkpoint's values plus/minus this pass's own delta only, never
+   an untouched copy-paste of the previous value when a delta was computed.
+2. If this pass closed `families_closed_this_pass` families (Phase B1.5), the
+   new `coverage_pct` MUST be strictly greater than the previous checkpoint's
+   value, unless the denominator itself grew this pass (newly-discovered
+   families — document this explicitly in `next_action` if it happens, e.g.
+   "coverage_pct appears to drop because N newly-identified families were
+   added to the denominator this pass, not a regression").
+3. Report the three raw counts (`families_integrated_total`/
+   `families_deferred_total`/`families_oos_total`) in `next_action`'s free
+   text alongside the computed `coverage_pct` — a bare percentage with no
+   visible arithmetic behind it is exactly what this step was introduced to
+   eliminate.
+
+> **Known limitation — `≈N` estimates.** Several `README.org § Coverage`
+> entries use an approximate count (`≈18 families`) for agents whose corpus
+> section has been scanned at class/family-header level but not deep-read
+> component by component (cf. `agent-ape-ace-ase`). Using an approximate
+> number here is intentional and acceptable — the alternative (deep-reading
+> every agent's full component list before the first `coverage_pct` can ever
+> be computed) would defeat the purpose of an incremental, per-pass metric.
+> Once an agent's families are deep-read and its Deferred entry replaced with
+> an exact count, update the persisted `*_total` fields accordingly as part
+> of that pass's normal delta — this is a **refinement of the denominator**,
+> not an error to "fix" by keeping the old estimate.
+
 ### Step 4 — Update checkpoint ("waiting") and evaluate
 
 After processing, update checkpoint:
@@ -2356,6 +2452,9 @@ After processing, update checkpoint:
   "files_done": K,
   "files_pending": N-K,
   "coverage_pct": X,
+  "families_integrated_total": FI,
+  "families_deferred_total": FD,
+  "families_oos_total": FO,
   "deferred_s": DS,
   "deferred_c": DC,
   "last_update": "<ISO8601>",
@@ -2377,6 +2476,17 @@ After processing, update checkpoint:
 > parsing free text**, which would be fragile against LLM phrasing drift
 > across sessions. Compute each as follows:
 >
+> - **`coverage_pct`** (int): **never estimated here** — computed mechanically
+>   per Step 3.5 above (incremental update of the three persisted `*_total`
+>   fields, full re-scan only on the exceptional paths listed there). Do not
+>   recompute its formula redundantly in this step; Step 3.5 already produced
+>   the final value and the three `*_total` fields below before Step 4 begins.
+> - **`families_integrated_total`** / **`families_deferred_total`** /
+>   **`families_oos_total`** (int each): persisted running totals maintained
+>   incrementally by Step 3.5 — write them unchanged from what Step 3.5
+>   computed (previous checkpoint's values ± this pass's delta). Never
+>   recompute them from a fresh full `README.org` scan here "just to be safe"
+>   — that defeats the cost-control purpose of Step 3.5's incremental path.
 > - **`new_rules_this_pass`** (int): count of new `rules/<agent>/R<NN>-*.yml`
 >   files created *during this pass only* (compare `rules/` tree before/after
 >   this session's Mode A/B pass — not a cumulative sandbox-wide count).
@@ -2455,6 +2565,9 @@ If `status: "converged"`:
   "passes_done": P,
   "max_passes": "2N",
   "coverage_pct": X,
+  "families_integrated_total": 0,
+  "families_deferred_total": 0,
+  "families_oos_total": 0,
   "deferred_s": DS,
   "deferred_c": DC,
   "oos_reclassified": [{"section": "§3.2", "from": "⛔ OOS", "to": "⏭ Deferred"}],
@@ -2472,6 +2585,10 @@ If `status: "converged"`:
 - `phase`: `"A"` while `files_mode_a_pending` is non-empty; `"B"` once Phase A is complete.
 - `files_mode_a_pending`: files not yet initialized (Mode A). In `presplit` mode, each maps to one agent.
 - `files_mode_b_pending`: files whose agent has residual Deferred after Mode A.
+- `families_integrated_total` / `families_deferred_total` / `families_oos_total`:
+  persisted running totals behind `coverage_pct` — see Step 3.5 for the
+  incremental-update procedure (full re-scan is the exception, not the
+  per-pass default).
 - `new_rules_this_pass` / `suggested_next_file` / `deferred_unchanged_passes` /
   `families_closed_this_pass` / `unresolved_deferred_notes`: structured
   counterparts to `next_action`'s free text — see Step 4 for the exact
@@ -3047,241 +3164,6 @@ The KB is considered **converged** when ALL of the following are true simultaneo
 | `chorus-stress` | LLM | ❌ No |
 | Reviewing `known-limitation` candidates | Operator | ⚠️ Minimal — one decision per flagged section |
 | `chorus-review-kb --decisions` (expert mode) | Domain expert | ✅ Yes — optional, for certification |
-
-## Mode C — Alias Harvest (`--harvest-aliases <import-report.org>`)
-
-Used **only** when `--harvest-aliases` is present. No `<corpus>` argument is needed.
-The sandbox must exist and contain a KB (at least one `<slug>.org` file).
-
-**Purpose:** promote validated project-side terminology into the KB `** Aliases` tables
-permanently, and **purge it from the thesaurus once promoted** — so a mapping has
-exactly one authoritative source at any time (KB once harvested, thesaurus otherwise).
-Future `chorus-import-project` runs on any sandbox sharing this KB will resolve these
-terms at ✅ confidence without re-deriving them.
-
-**Two accepted sources** (the argument path decides which one applies):
-- `$SANDBOX/agent/thesaurus/global.org` — **recommended**: harvests every `✅ confirmed`
-  row currently in `* Aliases — type_element` and `* Aliases — slot values` of the
-  **global shard only** (see `chorus-import-project.md` § "Thesaurus storage layout —
-  sharded by Scope"). This is the only mode that also **purges** the source
-  (Phase C3.5) — because the global shard is the canonical, mutable memory for
-  sandbox-wide terminology. **Client shards (`agent/thesaurus/<client>.org`) are never
-  a valid harvest source** — passing one is a usage error (see Phase C1 guard below).
-  Legacy sandboxes with a monolithic `agent/thesaurus.org` (pre-sharding) are also
-  accepted as-is; see `chorus-import-project.md` § "Legacy monolithic thesaurus.org".
-- A specific `import-report-NNN.org` — legacy/scoped mode: harvests only the ✅ rows of
-  that one report. **Never purges anything** (an import report is a historical record,
-  not a mutable store) — the corresponding thesaurus entries stay in place. Prefer the
-  `global.org` source unless you specifically need to harvest a single past import
-  that predates the current thesaurus consolidation logic.
-
-### Phase C0 — Read existing KB
-
-Read each `$SANDBOX/agent/chorus/<slug>.org` into memory (Slot dictionary, Catalogue
-des Frames, current `** Aliases` table). Build a fast-lookup map:
-```
-alias_map : { canonical_kb_form → set(known_aliases) }
-```
-
-### Phase C1 — Parse the harvest source
-
-**If the source is `$SANDBOX/agent/thesaurus/global.org`** (or a legacy monolithic
-`agent/thesaurus.org` predating sharding):
-Read `* Aliases — type_element` and `* Aliases — slot values`. Extract every row — in
-the sharded layout, `global.org` by construction only ever contains `Scope = global`
-rows, so no per-row Scope filtering is needed. In the legacy monolithic case, still
-filter on `Scope = global` (a pre-sharding thesaurus may carry mixed-Scope rows in a
-single file — see Scope guard below). By construction, only `✅ confirmed` mappings
-live in these sections (see `chorus-import-project.md` § Deduplication rule — a term
-with a conflicting mapping is diverted to `* Conflicts` and never reaches `* Aliases`).
-For each row, collect:
-```
-(project_term, kb_slot_or_type, kb_value, source_import, thesaurus_row_ref)
-```
-`thesaurus_row_ref` is kept to support the purge in Phase C3.5. **Never read `* Pending`,
-`* Out-of-scope`, or `* Conflicts`** — only confirmed Aliases rows are harvest candidates.
-
-> ⚠️ **Scope guard:** if the harvest source path is a client shard
-> (`agent/thesaurus/<client>.org`, i.e. any file under `agent/thesaurus/` other than
-> `global.org`) → **stop and report a usage error**, do not proceed:
-> ```
-> ⛔ Invalid harvest source: agent/thesaurus/client-alpha.org is a client-scoped shard.
->    Only agent/thesaurus/global.org may be harvested — the normative KB is shared
->    across every client, and a client-specific mapping must never be promoted into it
->    (see chorus-import-project.md § "Thesaurus scoping by context").
->    If some client-alpha.org rows should become sandbox-wide, first use the
->    "Promoting a scoped mapping to global" mechanism (chorus-import-project.md) to
->    move them into global.org as Scope=global rows, then harvest global.org.
-> ```
-> In the legacy monolithic case (single `thesaurus.org`, no sharding yet), rows with a
-> non-`global` `Scope` column value are simply **skipped** (not an error — the file
-> mixes scopes by construction pre-migration): report the count of skipped scoped rows
-> in the Phase C4 summary (`N_scoped_skipped`) so the engineer can decide whether any
-> of them should first be promoted to `global` before a subsequent harvest run.
-
-**If the source is a single `import-report-NNN.org`:**
-Extract the **alignment table** rows where:
-- Confidence column = `✅` (certain)
-- Decision column = confirmed (not rejected, not pending)
-
-For each such row, collect:
-```
-(project_term, kb_slot_or_type, kb_value, source_file)
-```
-
-Ignore rows with `⚠️`, `❓`, `⛔` or `⬜` confidence — only ✅ mappings are harvested.
-
-### Phase C2 — Deduplicate against existing aliases
-
-For each `(project_term, kb_form)` pair:
-- Look up `alias_map[kb_form]`
-- If `project_term` (case-insensitive) **already present** → skip (log: "already known")
-- If **absent** → mark as new
-
-Output:
-```
-N_total  : total ✅ rows in the report
-N_known  : already present in KB aliases
-N_new    : new aliases to integrate
-```
-
-If `N_new == 0` → display "Nothing to harvest — all mappings already known in the KB."
-and stop.
-
-### Phase C3 — Integrate new aliases into KB
-
-For each new alias, locate the correct `<slug>.org` file:
-- Match `kb_slot_or_type` against the `Slot dictionary` and `Catalogue des Frames`
-  of each slug to find the owning agent.
-- Insert the alias row into the `** Aliases` table of that slug's org file:
-
-```org
-| <canonical_kb_form> | <project_term>  | harvested from <source_import> |
-```
-
-If `kb_form` maps to a `type_element` value, also add an `# alias:` comment in the
-`Catalogue des Frames` under the matching Frame:
-```org
-*** montant_porteur
-    # alias: "poteau porteur" — harvested from <source_import>
-```
-
-If no owning slug is found for a mapping → log as unresolved and skip (do **not** purge
-this row from the thesaurus in Phase C3.5 — it stays as evidence pending manual review).
-
-### Phase C3.5 — Purge harvested entries from the source (global shard / legacy monolithic only)
-
-**Skip this phase entirely if the harvest source was a single `import-report-NNN.org`**
-— an import report is an immutable historical record and is never edited.
-
-For every alias successfully integrated into a KB file in Phase C3 (i.e. **excluding**
-rows logged as unresolved):
-- Remove the corresponding row from `* Aliases — type_element` or `* Aliases — slot
-  values` in the source file (`agent/thesaurus/global.org`, or the legacy monolithic
-  `agent/thesaurus.org` if sharding hasn't been adopted yet) using `thesaurus_row_ref`
-  collected in Phase C1.
-- This is the **only** point in the whole pipeline where the global shard shrinks —
-  everywhere else it is append-only or in-place-update-only.
-- Update the `#+UPDATED:` header of the source file.
-- Update the `#+LAST_HARVEST:` header of the source file to today's date — this is the
-  **only** phase in the whole pipeline allowed to write `#+LAST_HARVEST` (used by
-  `chorus-import-project.md § Post-import — optional KB harvest` to compute
-  `imports_since_last_harvest`). Client shards never carry this header and are never
-  touched here.
-
-**Rationale:** once a mapping is promoted to the normative KB, keeping a duplicate
-in the global shard serves no purpose — the thesaurus still takes priority over
-the KB (Phase 1.2b of `chorus-import-project.md`), so an un-purged duplicate would be
-permanently dead weight that never actually gets consulted, while still counting
-against the global shard's size. Purging keeps `global.org` scoped to genuinely
-not-yet-promoted sandbox-wide terminology. Client shards are entirely unaffected by
-harvest, by design (Scope guard, Phase C1) — they have their own, separate growth
-trajectory (see point #5 — Pending/Out-of-scope rotation — for a future, orthogonal
-mitigation).
-
-> ⚠️ Do **not** purge `* Pending`, `* Out-of-scope`, or `* Conflicts` rows here — Mode C
-> only ever reads and purges `* Aliases` sections (and only in the global shard).
-> Unresolved conflicts must go through the "Conflict resolution" flow in
-> `chorus-import-project.md`, never through harvest.
-
-### Phase C4 — Harvest closing
-
-1. Invalidate the KB hash:
-```bash
-rm -f $SANDBOX/agent/.kb-hash
-rm -f $SANDBOX/.last-check-results.json
-```
-
-2. Display a summary:
-
-**When source = `agent/thesaurus/global.org`** (sharded layout — the normal case):
-```
-✅ Alias harvest complete — $SANDBOX
-
-   Source          : agent/thesaurus/global.org (all confirmed Aliases)
-   ✅ rows parsed   : N_total
-   Already known   : N_known (skipped)
-   New aliases     : N_new integrated
-   Purged from global.org : N_new (promoted rows removed)
-   Unresolved (no owning slug) : N_unresolved (kept in global.org for manual review)
-
-   Modified KB files:
-     agent/chorus/<slug1>.org  (+N aliases)
-     agent/chorus/<slug2>.org  (+N aliases)
-
-   global.org now covers M distinct project terms (was M+N_new).
-   Client shards (agent/thesaurus/<client>.org) untouched — not harvest candidates.
-
-   Next chorus-import-project run on this or any other sandbox sharing this KB
-   will resolve these N terms at ✅ confidence without re-asking.
-```
-
-**When source = legacy monolithic `agent/thesaurus.org`** (pre-sharding sandbox):
-```
-✅ Alias harvest complete — $SANDBOX
-
-   Source          : agent/thesaurus.org (legacy monolithic, all confirmed Aliases, Scope=global only)
-   ✅ rows parsed   : N_total (global) — N_scoped_skipped scoped rows ignored (see below)
-   Already known   : N_known (skipped)
-   New aliases     : N_new integrated
-   Purged from thesaurus.org : N_new (promoted rows removed)
-   Unresolved (no owning slug) : N_unresolved (kept in thesaurus for manual review)
-   Scoped (not harvested) : N_scoped_skipped rows — client/context-specific, never
-                             promoted automatically (see "Scope guard", Phase C1)
-
-   Modified KB files:
-     agent/chorus/<slug1>.org  (+N aliases)
-     agent/chorus/<slug2>.org  (+N aliases)
-
-   thesaurus.org now covers M distinct project terms (was M+N_new).
-
-   Next chorus-import-project run on this or any other sandbox sharing this KB
-   will resolve these N terms at ✅ confidence without re-asking.
-```
-
-**When source = a single `import-report-NNN.org`:**
-```
-✅ Alias harvest complete — $SANDBOX
-
-   Report read    : <import-report-NNN.org>
-   ✅ rows parsed  : N_total
-   Already known  : N_known (skipped)
-   New aliases    : N_new integrated
-   Thesaurus      : unchanged (import-report source — no purge)
-
-   Modified KB files:
-     agent/chorus/<slug1>.org  (+N aliases)
-     agent/chorus/<slug2>.org  (+N aliases)
-
-   Next chorus-import-project run on this sandbox will resolve
-   these N terms at ✅ confidence without re-asking.
-```
-
-3. **Do not** regenerate YAML, Helpers.pm, Feed.pm, or any infrastructure file.
-   Mode C modifies only `<slug>.org` files (exclusively the `** Aliases` section) and,
-   when sourced from the global shard (or a legacy monolithic `thesaurus.org`), that
-   source file itself (Phase C3.5 purge only) — never any client shard.
-   The KB hash invalidation ensures `chorus-check` regenerates infrastructure on next run.
 
 | Artifact          | Convention                              | Example                           |
 |-------------------|-----------------------------------------|-----------------------------------|

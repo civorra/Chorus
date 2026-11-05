@@ -594,8 +594,8 @@ Un seul fichier par entity contient toutes les sections (squelette) :
 Every `* Aliases` row records the **`.kb-hash`** in effect at the moment the mapping was
 validated (`KB hash @ validation` column). This is a **read-only comparison mechanism**
 — it never triggers a `.kb-hash` write or invalidation from `chorus-import-project`
-itself (only `chorus-feed --enrich` / `--harvest-aliases` write `.kb-hash`, since only
-they modify `<slug>.org` files).
+itself (only `chorus-feed --enrich` writes `.kb-hash`, since only it modifies
+`<slug>.org` files).
 
 **Why:** a `✅ confirmed` mapping is validated against a specific state of the KB (a
 given slot definition, a given `type_element` semantics). If the KB is later enriched
@@ -850,8 +850,8 @@ raw inventory (Phase 2) against the KB reference (Phase 1.2):
     producing an incomplete or unusable JSON.
 
     Recommended actions (choose one or both):
-      1. Run `chorus-feed --harvest-aliases <previous-import-report.org>`
-         if a validated import report exists for this sandbox.
+      1. Confirm already-validated thesaurus mappings via the webapp's thesaurus tab
+         if prior project imports on this entity resolved similar terms.
       2. Enrich the KB: add aliases to `$SANDBOX/agent/chorus/<slug>.org`
          under `** Aliases` before re-running this import.
 
@@ -1505,6 +1505,46 @@ Print: "[Phase 5] Sources reloaded — <N_elements> elements / <N_terms> aligned
 > files that will persist in `$SANDBOX/agent/` — not from an in-context summary that
 > could have silently compressed some detail.
 
+### Patch replay — preserve prior `--patch` corrections across re-import
+
+> **Why this exists:** `chorus-audit-import --patch` writes manual corrections
+> directly into an existing `project-import-<NNN>.json` (elements tagged
+> `_patched_by: "chorus-audit-import"` / `_patched_date`). A re-import of the
+> same project **regenerates that same JSON from scratch** from the KB + source
+> (per the "Never silently reuse a prior import's alignment decisions verbatim"
+> rule at the top of this skill) — which silently discards those patches, even
+> though they target gaps that are specific to the import/extraction phase, not
+> to anything the KB-driven regeneration would naturally restore.
+
+**Step 1 — Detection (always runs, no flag needed, side-effect-free).**
+If a prior JSON exists at this import's target output path (see "Output JSON
+location" below) and contains one or more elements with `_patched_by:
+"chorus-audit-import"`, collect them into a list: `{element_id, slot, value,
+patch_date}`. If none found, skip the rest of this section silently — nothing
+to preserve, no behaviour change from before this section existed.
+
+**Step 2 — Decide replay vs discard, by context:**
+
+| Context | Flag | Behaviour |
+|---|---|---|
+| Interactive session (engineer present) | *(none)* | **Default — ask.** Print the list of detected prior patches and use `ask_user` to confirm: replay them onto the newly-regenerated JSON, or discard and let the fresh KB-derived values (or absence thereof) stand. |
+| Any context | `--keep-patches` | Replay all detected prior patches onto the new JSON, no prompt. Use when the re-import reason is unrelated to the patched elements (e.g. resolving a thesaurus mapping gap on a different element). |
+| Any context | `--discard-patches` | Drop all detected prior patches, no prompt — the fresh KB-derived regeneration is authoritative. Use when the KB/extension logic has changed specifically for the patched elements (the old patch may now be wrong or redundant). |
+| Sub-agent / batch delegation (no user to prompt) | *(none)* | **Fail-safe default: `--keep-patches`.** Never silently lose a manual correction when nobody is available to confirm. The sub-agent's final summary MUST explicitly state which prior patches were replayed (element_id + slot + value), so the delegating session is aware and can override with `--discard-patches` on a subsequent run if that was wrong. |
+
+**Step 3 — Replay mechanics (when replaying).**
+For each collected patch, locate the corresponding element in the freshly
+regenerated JSON **by `element_id`**:
+- If found and `type_element` is unchanged → re-apply the patched slot/value,
+  preserving the original `_patched_by` / `_patched_date` (do not overwrite
+  `patch_date` — it still reflects when the correction was first established).
+- If the element no longer exists, or its `type_element` changed → **do not**
+  force the patch onto a mismatched element. Report it instead as a
+  `⚠️ Patch orphelin` line in the import report (Phase 6), inviting the
+  engineer to re-run `chorus-audit-import` fresh on this project.
+
+Print: `[Phase 5 — patch replay] <N> prior patch(es) <replayed|discarded> — see import report for detail.`
+
 ### Output JSON location
 
 The produced JSON (`project-import-<NNN>.json` in Single/Merge mode, or one such file
@@ -1876,23 +1916,6 @@ If all counts are zero:
 > au pipeline — le champ `_audit` signale à la webapp que les gaps sont d'origine
 > documentaire et non des lacunes KB, évitant une roadmap d'enrichissement erronée.
 
-### Post-import — optional KB harvest (secondary)
-
-Read `global.org` header `#+LAST_HARVEST:` and count:
-- `N_promotable` = ✅ Aliases rows in `global.org` not yet present in any `<slug>.org`
-- `N_total` = total rows in `global.org` `* Aliases` sections (client shards excluded)
-- `N_since` = distinct source-import refs in `global.org` newer than `#+LAST_HARVEST`
-
-If **any** threshold crossed (N_promotable ≥ 20, or N_total ≥ 100, or N_since ≥ 15),
-display — otherwise skip silently:
-
-```
-💡 KB harvest recommended: chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus/global.org
-   Reason: <list of thresholds crossed>
-```
-
-⛔ Never auto-invoke. Only `global.org` is ever harvested (client shards: never).
-
 ### Phase 6-BATCH — Summary Report (batch mode only)
 
 In addition to the individual reports, create `$WORKSPACE/import-batch-<NNN>.org`
@@ -1942,8 +1965,8 @@ In addition to the individual reports, create `$WORKSPACE/import-batch-<NNN>.org
 > thesaurus, it has been automatically added to the appropriate shard's Aliases
 > section (`global.org`, or the current Scope's `<client>.org`).
 > No manual action required — the thesaurus is the primary persistence mechanism.
-> Use `chorus-feed --harvest-aliases $SANDBOX/agent/thesaurus/global.org` only if you
-> want to promote these mappings to the normative KB for cross-sandbox reuse.
+> Promotion to entity-wide status (Niveau 3) is done explicitly via the webapp's
+> thesaurus tab in the project view — never automated here.
 
 
 ## Phase 7 — Run the Pipeline (optional)
