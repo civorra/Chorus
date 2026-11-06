@@ -20,16 +20,13 @@
 >                    Default when absent: `project-import-<NNN>.json`, written under
 >                    `$WORKSPACE/<client>/` if Scope is non-global, or `$SANDBOX/agent/`.
 > `--batch`        : force batch mode even if a single source is provided
-> `--check-fidelity` : after each auto-conversion of a document source
->                    (PDF/DOCX/XLSX/CSV/XML/HTML — see "Format Detection &
->                    Auto-conversion" below), invoke `chorus-markdown` on the
->                    converted file before proceeding to alignment. Optional,
->                    advisory only (non-blocking — `chorus-markdown` is invoked
->                    without `--strict`): surfaces a fidelity report
->                    (`workspace/reports/markdown-check-<slug>.md`) so the
->                    engineer can sanity-check the alignment input quality
->                    before trusting Phase 3's terminology matches. Off by
->                    default to avoid slowing down routine imports.
+> `--check-fidelity` : after each auto-conversion, run `chorus-markdown` in
+>                    **blocking mode** (`--strict`): exits non-zero on any `❌`
+>                    and halts the import, allowing the engineer to fix the
+>                    extraction before proceeding to alignment.
+>                    Without this flag, `chorus-markdown` still runs automatically
+>                    (non-blocking, `--report` only) — see auto-conversion algorithm
+>                    below. `--check-fidelity` only escalates the severity.
 > `--context <label>` : declares the terminology scope for this import (e.g. a client
 >                    name, a project family, a business domain). Optional — manual
 >                    override only. If absent, the scope is auto-derived from the
@@ -201,12 +198,15 @@ For each source in <source…>:
     source = converted_path
     Print: "[import] Auto-converted <original.ext> → <converted_path>"
 
-    # Optional fidelity check — chorus-markdown (advisory, non-blocking by default)
-    # Only run if --check-fidelity was passed on this invocation.
+    # ⛔ Mandatory fidelity check — chorus-markdown (chorus-pdf.md § Phase 3.5)
+    # Always run, regardless of --check-fidelity. Non-blocking by default (--report only).
+    # --check-fidelity escalates to --strict (blocking on any ❌).
     if --check-fidelity:
+      Call: chorus-markdown <sandbox> <source_original.ext> <converted_path> --report --strict
+      # Blocking: import halts on ❌ — engineer must fix extraction before proceeding.
+    else:
       Call: chorus-markdown <sandbox> <source_original.ext> <converted_path> --report
-      # Non-blocking: report surfaced to the engineer, Phase 3 proceeds regardless
-      # unless the engineer explicitly stops after reviewing a ❌ row.
+      # Non-blocking: report written, Phase 3 proceeds regardless.
 
     # Step 4 — Record the converted file under the dedicated section
     # (NOT under * Corpus — see warning above). Done once per source, here,
