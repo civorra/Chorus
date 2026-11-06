@@ -2093,6 +2093,25 @@ Update the `Integrated corpus` table in `index.org`.
 - If the rule requires a helper: add the helper to `Helpers.pm`
   and update `@EXPORT_OK`
 - Verify idempotence and order of R<NN> files
+- ⛔ **TERMINAL rule CHERCHER update check:** if this agent has a TERMINAL rule
+  (a rule calling `$SELF->solved()` or carrying `TERMINAL: solved`), verify that
+  its `FIND:`/`CHERCHER:` watches a slot written **exclusively by the last rule to
+  fire** — i.e. a slot that no earlier rule writes. If the new Mode B rule R_new
+  overwrites a slot `slot_X` that was previously the last slot written (and that
+  the TERMINAL rule watches), you MUST update the TERMINAL rule's `FIND:`/`CHERCHER:`
+  to watch a slot set only by R_new (or another new last rule), and add `defined
+  $d->get('<new_afa_slot>')` guards to its `CONDITION:` for every new Mode B slot
+  that must be evaluated before termination.
+  **Also update the KB org**: add an explicit ⚠️ note to the `** Contraintes` section
+  specifying the correct CHERCHER slot, so future chorus-check regenerations use the
+  right slot.
+  **Incident:** agent-pilier3 sandbox 03-loi-Sapin-anti-corruption — Mode B added
+  R10–R15 (Reco AFA) which overwrite `controle_interne_conforme` (also set by R07).
+  R09-bilan-global (TERMINAL) watched `controle_interne_conforme` → fired after R07
+  (too early), stopping the pipeline before R10–R15 could run → all Reco AFA slots
+  (`controle_interne_afa_conforme` etc.) never evaluated → 0% conformance despite
+  Reco AFA rules being present. Fix: CHERCHER updated to `controle_interne_afa_conforme`
+  (set exclusively by R14, the new last Reco AFA rule).
 
 **Extension case:**
 - Update `Frame catalog` (new slots)
