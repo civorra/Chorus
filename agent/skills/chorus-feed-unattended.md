@@ -109,13 +109,25 @@ until files exist).
 
 Read `$SANDBOX/.chorus-unattended-state.json` if present.
 
-**If absent** (first run): create checkpoint:
+**If absent** (first run): scan `--corpus-dir` for all supported formats and
+create checkpoint:
 ```json
 { "status": "waiting", "mode": "presplit|single", "phase": "A",
-  "files_mode_a_pending": ["001-slug.md", "002-slug.md", ...],
+  "files_mode_a_pending": ["001-slug.md", "002-loi.txt", "003-reco.pdf", ...],
   "files_mode_b_pending": [],
   "passes_done": 0, "max_passes": 2N }
 ```
+
+**Corpus scan rule (first run):** collect every file in `--corpus-dir` whose
+extension (case-insensitive) is one of: `.md`, `.txt`, `.pdf`, `.docx`,
+`.xlsx`, `.csv`, `.xml`, `.html`, `.htm`. Sort by filename. This list becomes
+`files_mode_a_pending`.
+- `.pdf`/`.docx`/`.xlsx`/`.csv`/`.xml`/`.html`/`.htm` files are listed as-is
+  in the checkpoint; `chorus-feed.md § Document Format Guard` auto-converts
+  them when their turn comes in Step 3.
+- Pre-existing `.md`/`.txt` files are used as-is.
+- Files already converted (e.g. `003-reco-text.md` exists alongside
+  `003-reco.pdf`) → include only the `.md` (skip the source `.pdf`).
 
 **If present**:
 - `status: "converged"` → display convergence summary and exit.
