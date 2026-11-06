@@ -593,6 +593,81 @@ sub _check_guard_coherence {
     }
 }
 
+  # _check_multistatement_guard -- called by loadRules() for each parsed YAML rule.
+  #
+  # Chorus::Engine::codeRule() compiles a rule's EXCEPTION field into exactly
+  # ONE Perl statement: 'return if <EXCEPTION_TEXT>;' (symmetrically, CONDITION
+  # becomes 'return unless <CONDITION_TEXT>;'). If the YAML EXCEPTION/CONDITION
+  # block spans multiple logical Perl statements (most commonly an intermediate
+  # 'my @var = ...;' assignment on its own line, followed by the real boolean
+  # test on subsequent lines), only the FIRST statement is ever actually
+  # guarded -- every following line becomes an orphaned, unguarded statement
+  # whose result is silently discarded. See chorus-engine-yaml.md Pitfall
+  # "multi-line EXCEPTION/CONDITION must be a single expression (wrap in do{})"
+  # for the full writeup and the incident that motivated this check
+  # (sandbox 06-CC-3.1.5, R11-pipeline-termination.yml, 2026-11-06).
+  #
+  # Heuristic: a block is flagged when it contains at least one internal
+  # statement-terminating ';' (i.e. not only a single trailing ';' right
+  # before end-of-string/whitespace) AND is not already wrapped in a
+  # top-level 'do { ... }' block. This cannot be 100% precise (Perl parsing
+  # is undecidable via regex) but mirrors exactly the shape of the real
+  # incident and errs on the side of a loud false positive over a silent miss.
+  #
+  # Emits a warn -- never dies -- so existing pipelines are not broken.
+sub _check_multistatement_guard {
+    my ($rule, $filename) = @_;
+
+    for my $field (qw(EXCEPTION CONDITION)) {
+        my $text = $rule->{$field};
+        next unless defined $text;
+
+        # Normalise: multiple exceptions/conditions can be given as an array
+        # (implicit OR) -- check each independently.
+        my @texts = ref($text) eq 'ARRAY' ? @$text : ($text);
+
+        for my $t (@texts) {
+            next unless defined $t;
+
+            my $trimmed = $t;
+            $trimmed =~ s/^\s+|\s+$//g;
+            next unless length $trimmed;
+
+            # Already wrapped in a single do { ... } block -- safe, skip.
+            next if $trimmed =~ /^do\s*\{/s;
+
+            # Strip a single trailing statement-terminator ';' (and any
+            # trailing whitespace/newline after it) before counting --
+            # a lone trailing ';' is normal Perl style and not itself a sign
+            # of a multi-statement body.
+            (my $body = $trimmed) =~ s/;\s*$//s;
+
+            # If any ';' remains, the block contains at least one internal
+            # statement boundary before the (possibly implicit) final
+            # expression -- the classic "my @x = ...; <real test>" shape.
+            if ($body =~ /;/) {
+                my $rulename = $rule->{REGLE} // $rule->{RULE} // '?';
+                warn sprintf(
+                    "[Chorus::Engine] MULTI-STATEMENT GUARD in rule '%s' (%s)\n" .
+                    "  %-9s spans multiple Perl statements but is not wrapped in do { ... }\n" .
+                    "  Risk: codeRule() compiles %s into a single statement (%s);\n" .
+                    "  only the FIRST statement is ever actually guarded -- the real\n" .
+                    "  boolean test on a later line is evaluated but its result is\n" .
+                    "  silently discarded (Perl 'Useless use of ... in void context').\n" .
+                    "  Suggested fix: wrap the whole computation in do { ... }, with\n" .
+                    "  the boolean test as the block's last expression.\n" .
+                    "  See chorus-engine-yaml.md section 'multi-line EXCEPTION/CONDITION\n" .
+                    "  must be a single expression' for the full writeup.\n",
+                    $rulename, $filename,
+                    $field,
+                    $field,
+                    $field eq 'EXCEPTION' ? "'return if ...;'" : "'return unless ...;'",
+                );
+            }
+        }
+    }
+}
+
 sub loadRules {
     my ( $dir, %opts ) = @_;
 
@@ -616,6 +691,11 @@ sub loadRules {
         # Guard coherence check: warn if EXCEPTION guard slot is not written
         # by this rule's ACTION. See _check_guard_coherence() above.
         _check_guard_coherence($rule_data, $_) if $rule_data;
+
+        # Multi-statement guard check: warn if EXCEPTION/CONDITION spans
+        # multiple Perl statements without a wrapping do {}. See
+        # _check_multistatement_guard() above.
+        _check_multistatement_guard($rule_data, $_) if $rule_data;
 
         my $code = '$SELF->addrule(' . codeRule( $SELF, $rule_data, debug => $debug ) . ');';
 

@@ -713,6 +713,34 @@ EXCEPTION: |
 > (2026-11-06) — see `.last-fix-history.json § engine_infra_fix_detail` in
 > that sandbox for the full investigation writeup.
 
+> **Applies equally to `CONDITION`** — `codeRule()` compiles it into the
+> symmetric single statement `return unless <CONDITION_TEXT>;`, via the exact
+> same `setCondition()`/`join("\n      or ", ...)` mechanism as `EXCEPTION`'s
+> `setException()`. A `CONDITION` block with a bare `my @var = ...;` line
+> followed by the real boolean test suffers the identical silent-discard
+> failure mode. **Does not apply to `ACTION`/`EFFET`**: `setEffect()` joins
+> each statement explicitly with `;\n` (`# ET séquentiel` in `Engine.pm`), so
+> a multi-line `ACTION` is compiled as genuinely sequential Perl statements —
+> no `do {}` wrapper needed there.
+
+> **Mechanical guard (added 2026-11-06, `Chorus::Engine::_check_multistatement_guard()`,
+> called from `loadRules()` alongside the existing `_check_guard_coherence()`):**
+> any `EXCEPTION`/`CONDITION` body containing an internal `;` (i.e. more than
+> just a single optional trailing one) and not already wrapped in a top-level
+> `do { ... }` now emits a `warn` at load time:
+> ```
+> [Chorus::Engine] MULTI-STATEMENT GUARD in rule '<name>' (<file>.yml)
+>   EXCEPTION spans multiple Perl statements but is not wrapped in do { ... }
+>   ...
+> ```
+> This is a regex heuristic (not a true Perl parse), but it mirrors exactly
+> the shape of the real incident and is tuned to zero false positives across
+> the 52 production rules in sandbox `06-CC-3.1.5` (including the now-fixed
+> `R11-pipeline-termination.yml` and every idempotence-guard one-liner). Like
+> `_check_guard_coherence()`, it only `warn`s — it never blocks `loadRules()`.
+> Treat any occurrence of this warning as a build-breaking issue to fix
+> immediately, the same way `GUARD MISMATCH` warnings are treated.
+
 ### Loading Order
 
 `loadRules($dir)` loads `*.yml` files in **alphabetical order** → name files `R01-`, `R02-`, etc.
