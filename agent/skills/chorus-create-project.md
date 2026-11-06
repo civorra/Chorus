@@ -800,6 +800,54 @@ Check:
       won't literally appear in a `filtre` written as `/^FAU_/`, so treat any flagged value
       as a prompt to manually verify against the agent's own `FIND.filtre`, not as a
       definitive verdict.)
+- [ ] ⛔ **Business-slot name cross-check (generic — applies to every non-`type_element`
+      slot, any domain):** for every element in the JSON, cross-check each of its
+      business-data keys (everything except `id`, `type_element`, and any `_*`
+      annotation field) against the `INPUTS` header of the rule(s) whose `CONDITION`/
+      `FIND.filtre` targets that element's `type_element` value — the exact slot names
+      a rule actually reads are listed there, one per line, as transcribed from the KB
+      org's own `Dictionnaire des slots`/`Slot dictionary` table. A JSON key that does
+      not appear in any targeting rule's `INPUTS` list is either (a) a typo/near-miss of
+      a real slot name (the rule silently never sees it, a fixture reads as
+      `(unprocessed)` or resolves via an unrelated rule/branch instead) or (b) a slot
+      genuinely unused by any rule for this type (dead weight, harmless but worth
+      removing). Unlike the `type_element` mismatches above, this class of error does
+      **not** make the pipeline fail visibly — the element still gets processed (just
+      by the wrong branch, or not fully), producing a **silently wrong verdict** that
+      looks superficially plausible until manually traced back to the rule's own
+      `INPUTS` header. This is the single hardest-to-detect fixture bug class; always
+      run this check before trusting any "boundary"/"exactly at minimum" fixture.
+      Quick mechanical check per type:
+      ```bash
+      # List every distinct business-slot key used across all elements of one type_element value...
+      python3 -c "
+      import json
+      d = json.load(open('<fichier.json>'))
+      elements = d if isinstance(d, list) else d.get('elements', d)
+      target_type = '<type_element value>'
+      keys = set()
+      for e in elements:
+          if e.get('type_element') == target_type:
+              keys |= set(e.keys()) - {'id', 'type_element'} - {k for k in e if k.startswith('_')}
+      print('\n'.join(sorted(keys)))
+      "
+      # ...then diff that list against the rule's own INPUTS header (read manually,
+      # or grep the rule file's INPUTS comment block for each key — any JSON key with
+      # zero occurrences in any targeting rule's INPUTS section is suspect):
+      grep -c '<slot_name>' "$SANDBOX/rules/<agent-slug>/"*.yml
+      ```
+      **Incident (2026-11-06, sandbox `06-CC-3.1.5`):** `E-AGD-OK-01`/`I-EVAL-OK-14`
+      carried `ope_secure_settings_described`, `ope_operational_modes_described`, and
+      `ope_misuse_consequences_described` — none of which appear in
+      `R06-agd-ope-content-complete.yml`'s actual 7-slot `INPUTS` list
+      (`ope_secure_interface_usage_described`, `ope_operation_modes_described`, and no
+      `ope_misuse_consequences_described` slot at all; `ope_security_parameters_described`
+      was entirely missing from the fixture). The rule silently treated 2 of its 7
+      required slots as absent → `agd_ope_content_complete='NO'` on a fixture intended
+      as `-OK-`/exactly-at-minimum — initially misclassified as a rule-side
+      "too strict" gap requiring a garde-fou/security-guard decision, when it was in
+      fact a pure slot-naming typo, only found by manually diffing the fixture's keys
+      against R06's own `INPUTS` header line by line.
 - [ ] All types are present in `%SLOTS_REQUIS` of `Feed.pm`
   (or verify in the `Catalogue des Frames` of the KB — equivalent source).
   ⚠️ `%SLOTS_REQUIS` must contain **INPUT-REQUIRED slots only** — the targeting slot plus
