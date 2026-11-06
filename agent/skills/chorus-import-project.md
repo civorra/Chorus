@@ -140,9 +140,9 @@ for subsequent phases.
 
 | Extension | Format | Auto-conversion skill | Output file(s) |
 |---|---|---|---|
-| `.pdf` | PDF | `chorus-pdf <sandbox> <file> --auto` | `<NNN>-<slug>-text.txt` or `-vision.md` |
-| `.docx` | Word | `chorus-word <sandbox> <file>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
-| `.xlsx` / `.csv` | Spreadsheet | `chorus-excel <sandbox> <file>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.pdf` | PDF | `chorus-pdf <sandbox> <file> --auto` | `<NNN>-<slug>-text.md` or `-vision.md` |
+| `.docx` | Word | `chorus-word <sandbox> <file>` | `<NNN>-<slug>-text.md` or `-vision.md` |
+| `.xlsx` / `.csv` | Spreadsheet | `chorus-excel <sandbox> <file>` | `<NNN>-<slug>-text.md` or `-vision.md` |
 | `.xml` / `.html` / `.htm` | XML/HTML | `chorus-xml <sandbox> <file>` | `<NNN>-<slug>-content.md` or `-vision.md` |
 | `.txt` / `.md` / inline | Plain/Markdown | *(none)* | Use as-is |
 
@@ -191,7 +191,10 @@ For each source in <source…>:
     Wait for skill to complete (expected exit code 0)
 
     # Auto-detect converted file — look in output_dir (NOT corpus/)
-    candidates = glob(<output_dir>/*-{text,content,vision}.{txt,md})
+    # All conversion skills produce .md (even text/fallback mode). The .txt
+    # pattern is kept only as a backward-compat fallback for pre-6a0bd99 files.
+    candidates = glob(<output_dir>/*-{text,content,vision}.md)
+                 + glob(<output_dir>/*-{text,content,vision}.txt)  # legacy fallback
     converted_path = max(candidates, key=mtime)  # newest file
 
     # Replace source with converted file for subsequent phases
@@ -240,7 +243,7 @@ chorus-import-project test-05-RGPD corpus/002-norme.pdf
 # Merge mode: mixed formats — each auto-converted separately
 chorus-import-project test-05-RGPD dctp.docx isolations.xlsx norms.txt
 → [auto] dctp.docx → corpus/004-dctp-vision.md (via chorus-word)
-→ [auto] isolations.xlsx → corpus/005-isolations-text.txt (via chorus-excel)
+→ [auto] isolations.xlsx → corpus/005-isolations-text.md (via chorus-excel)
 → [auto] norms.txt → use as-is
 → [merge] Merging 3 sources...
 
