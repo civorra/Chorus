@@ -411,6 +411,29 @@ table**, add it now.  Minimum plan:
 
 > ⚠️ Target elements are **not test elements** — they are structural anchors.
 > They still need valid mandatory slots (from their own KB catalogue entry).
+
+> **Generic pitfall — declared tier/level vs. the set of items that must back it:**
+> when an element declares a tier/level/grade value (any slot whose semantics is
+> "this element claims to satisfy level X"), and a separate rule checks that level
+> against a **set** of other declared items (not a single value) — e.g. "all items
+> required for level X must be present in the declared list/count" — never assign
+> the tier/level value independently from the accompanying set. Read the KB org's
+> normative table (or the catalog Helper's source) for the EXACT list/count of
+> items required at the declared level, and make the set match it exactly for a
+> conforming element — or deliberately omit/shrink the set for a non-conforming
+> one. **Never pick a plausible-looking subset and a plausible-looking level
+> label independently** — the two must be cross-checked against the same
+> normative table before writing the element, or the generated "conforming"
+> element will in fact be rejected by the rule (the rule being correct, the
+> fixture being wrong).
+>
+> **Also applies in reverse** — never write an `_note_calc` annotation asserting
+> a property of an item (e.g. "no dependency/requirement attached to this item")
+> without first confirming it against the catalog Helper's actual source (or its
+> KB org transcription). An annotation that contradicts the catalog is a fixture
+> bug, not a rule bug, and will surface as a false discordance in
+> `chorus-strengthen` — always verify the catalog before writing such a claim,
+> never assert it from memory or prose-level familiarity with the domain.
 > Run the same Phase 2 computation for them (conforming only — no KO variants needed
 > for pure structural anchors unless the target type also has its own rules to test).
 
@@ -453,6 +476,44 @@ direct fallback slot value explicitly in the JSON.
 
 > This ensures the test suite covers both the new pattern (link) and the legacy
 > format (direct slot), confirming backward compatibility of every rule.
+
+---
+
+### Step 1.5-5 — Reference-target elements must carry their own valid content
+
+> **Generic pitfall — applies to any sandbox/domain where one element type is
+> referenced by another via a `*_ref`/`*_refs` link** (e.g. a "base" element
+> pointed to by several dependent elements under test).
+
+When an element is generated **solely to serve as the target of another
+element's `*_ref`/`*_refs`** (Step 1.5-3), it still undergoes its own
+independent rule evaluation — it is a Frame like any other, subject to
+whatever rules apply to its own `type_element`. If that element is given
+only the minimal slot(s) needed for the *referencing* element's rule under
+test, and nothing else, its **own** verdict may come out non-conforming
+by omission — even though its id follows the `-OK-`/conforming naming
+convention, because no rule under test was actually targeting *it*.
+
+**Symptom:** a `chorus-check`/`chorus-strengthen` run reports a discordance
+on a reference-target element whose id signals "conforming" but whose own
+mandatory-content rule(s) never received the slots they require — not
+because any rule is wrong, but because the target element's own content
+was never populated, only the link to it.
+
+**Generation rule:** for every element assigned as a `*_ref`/`*_refs` target
+(Step 1.5-3), after planning the slot(s) relevant to the *referencing*
+element's rule under test, also pre-fill **all slots required by the
+target element's own mandatory-content/completeness rule(s)** (identified
+by reading the target type's own `.yml` rules in `$SANDBOX/rules/<slug>/`)
+with a passing value — unless the target element's own non-conformance is
+itself part of what is being tested (e.g. a dedicated "`*-KO-*` propagates
+to referencing element" case, which should be planned explicitly as such,
+not left as an accidental side effect).
+
+Annotate in `_note_calc`:
+`"_note_calc": "<ref-field> target for <source_id>'s R<NN> test; own mandatory-
+content slots pre-filled to a passing value so this element's independent
+verdict is CONFORME — see chorus-create-project.md § Step 1.5-5"`.
 
 ---
 
