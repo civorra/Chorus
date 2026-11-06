@@ -30,7 +30,10 @@ Before any processing, verify:
 1. `SCOPING.md` exists in `$SANDBOX/` with status `CONFIRMED` or `LOCKED`.
 2. `CORPUS-DIRECTIVES.md` exists in `$SANDBOX/`.
 3. No `.chorus-wip.md` in `$SANDBOX/` (previous operation incomplete — stop and warn).
-4. At least one `.md` file in `--corpus-dir` (default: `$SANDBOX/corpus/`).
+4. At least one supported corpus file in `--corpus-dir` (default: `$SANDBOX/corpus/`):
+   `.md`, `.txt` (used as-is) or `.pdf`/`.docx`/`.xlsx`/`.csv`/`.xml`/`.html`/`.htm`
+   (auto-converted by the corresponding skill before the first Mode A pass).
+   Pure `.pdf`-only or `.txt`-only corpora are valid — do not require a pre-existing `.md`.
 
 If any prerequisite is missing → stop immediately:
 ```

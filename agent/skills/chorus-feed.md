@@ -71,9 +71,9 @@ format is detected, the corresponding conversion skill is invoked automatically.
 
 | Extension | Format | Auto-conversion skill | Extracted file(s) |
 |---|---|---|---|
-| `.pdf` | PDF | `chorus-pdf <sandbox-name> <file.pdf> --auto` | `<NNN>-<slug>-text.txt` or `-vision.md` |
-| `.docx` | Word | `chorus-word <sandbox-name> <file.docx>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
-| `.xlsx` / `.csv` | Spreadsheet | `chorus-excel <sandbox-name> <file>` | `<NNN>-<slug>-text.txt` or `-vision.md` |
+| `.pdf` | PDF | `chorus-pdf <sandbox-name> <file.pdf> --auto` | `<NNN>-<slug>-text.md` or `-vision.md` |
+| `.docx` | Word | `chorus-word <sandbox-name> <file.docx>` | `<NNN>-<slug>-text.md` or `-vision.md` |
+| `.xlsx` / `.csv` | Spreadsheet | `chorus-excel <sandbox-name> <file>` | `<NNN>-<slug>-text.md` or `-vision.md` |
 | `.xml` / `.html` / `.htm` | XML/HTML | `chorus-xml <sandbox-name> <file>` | `<NNN>-<slug>-content.md` or `-vision.md` |
 | `.txt` / `.md` / inline | Plain/Markdown | *(none)* | Use as-is |
 
@@ -83,7 +83,8 @@ format is detected, the corresponding conversion skill is invoked automatically.
 If <corpus> ends in .pdf, .docx, .xlsx, .csv, .xml, .html, .htm (case-insensitive):
   1. Invoke the corresponding skill (chorus-pdf, chorus-word, chorus-excel, or chorus-xml)
   2. Wait for completion (exit code 0 expected)
-  3. Auto-detect the output file: glob corpus/[0-9][0-9][0-9]-*-{text,content,vision}.{txt,md}
+  3. Auto-detect the output file: glob corpus/[0-9][0-9][0-9]-*-{text,content,vision}.md
+     then corpus/[0-9][0-9][0-9]-*-{text,content,vision}.txt (legacy fallback, pre-6a0bd99)
      (newest by mtime if multiple outputs)
   4. Use the extracted file as <corpus> for the remainder of Phase 1+
 
