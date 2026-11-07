@@ -1136,3 +1136,123 @@ Ligne `Bilan` :
 N_nc non-conformité(s) sur M éléments (<X>%) — K élément(s) à confirmer ou non traités.
 ```
 où `N_nc = n_p + n_w(NON_CONFORME)`, `K = n_q + n_u`.
+
+---
+
+## T8 — Structure à deux niveaux (`chorus-complete-report` Phase C4 Step 3)
+
+> Gabarit de restructuration d'un `explain-*.md` appliqué par `chorus-complete-report`
+> après toutes les vérifications croisées. Remplace la structure initiale de
+> `chorus-check --explain` (fiches détaillées d'abord, Synthèse à la fin) par
+> une structure orientée décideur : niveau 1 lisible en une page, niveau 2 en annexe.
+
+### Niveau 1 — En-tête (≤ 1 page hors tableau)
+
+```markdown
+# <titre du rapport>
+Date : <YYYY-MM-DD>
+Pipeline : <SOLVED ✅ | SOLVED — N élément(s) non traité(s) | FAILED ❌>
+Éléments expliqués : N (📋 n_p · ✅ n_v · ⚠️ n_w · ❓ n_q · ⛔ n_u)
+
+---
+
+## Cadrage
+
+**Corpus utilisés :**
+
+| # | Fichier | Agents | Version / Date |
+|---|---|---|---|
+| <NNN> | <fichier> | <agents> | <version ou date corpus> |
+
+**Régime réglementaire KB :** <valeur depuis index.org, si déclarée — sinon omettre>
+**Régime projet déclaré :** <valeur depuis project JSON `regime_reglementaire`, si présente — sinon omettre>
+<si les deux sont présents et différents:>
+> ⚠️ **Écart de régime détecté** — les verdicts ci-dessous sont produits par analogie
+> entre le régime KB (<KB>) et le régime projet (<projet>). Chaque verdict concerné
+> est marqué « par analogie » dans le tableau de synthèse.
+
+**Périmètre couvert :** <types d'éléments pour lesquels au moins une règle existe>
+**Périmètre non couvert :** <types présents dans le project JSON sans règle applicable — → ⛔>
+**Éléments inférés par analogie :** <N, ou "aucun" si 0>
+
+---
+
+## 📚 KB & Project
+
+<bloc canonique Phase E0.c — inchangé>
+
+---
+
+## Synthèse
+
+<tableau Synthèse 5 niveaux — généré par T7, Phase C4 Step 3>
+
+**Bilan :** <ligne Bilan T7>
+
+**Points de décision :**
+<liste numérotée des ❓ et ⚠️ bloquants — un point par ligne, format :>
+<N>. `<id>` — <motif court> → <si X = A : verdict V1 ; si X = B : verdict V2>
+
+---
+```
+
+> Le niveau 1 ne contient aucun paragraphe « Pourquoi cette règle s'applique »,
+> aucune table `_rule_trace`, aucun bloc de vérification croisée.
+> Un décideur lit le niveau 1 seul et sait quels points bloquent.
+
+### Niveau 2 — Annexe (fiches détaillées)
+
+```markdown
+---
+
+## Annexe — Détail par élément
+
+> Les blocs suivants sont produits par `chorus-check --explain` et enrichis par
+> `chorus-complete-report`. Chaque fiche contient : verdict, règle, valeurs lues,
+> chaîne de règles (`_rule_trace`), et vérification croisée source (si applicable).
+
+<fiches détaillées dans l'ordre du project JSON — une par élément de TARGETS>
+```
+
+> Les fiches dont l'incertitude est identique à une autre sont regroupées
+> (C11b) : une fiche mutualisée avec la liste des éléments concernés.
+
+### Gabarit section « Décisions terminologiques » (C4b)
+
+> Inclure cette section si `thesaurus-log-<project-slug>.md` existe
+> **ou** si des décisions ont été enregistrées dans `agent/thesaurus/*.org`
+> depuis le dernier import. Inclure vide (sans entrées) si aucune décision
+> mais que le rapport est enrichi par `chorus-complete-report` — jamais
+> absente après ce skill.
+
+```markdown
+---
+
+## Décisions terminologiques
+
+> Termes validés ou rejetés depuis chorus-web ou lors de l'import.
+> Déjà intégrés dans `agent/thesaurus/<shard>.org`.
+
+| Date | Terme | Action | type_element | slot | Valeur | Shard | Source import |
+|---|---|---|---|---|---|---|---|
+| <YYYY-MM-DD> | `<terme>` | ✅ confirmé / ❌ rejeté | <type> | <slot> | <val> | <shard> | <import-report> |
+
+📒 Journal complet : `thesaurus-log-<project-slug>.md`
+```
+
+> Si aucune décision : remplacer le tableau par `*(aucune décision terminologique enregistrée)*`.
+
+### Règle de restructuration (Phase C4 Step 3)
+
+Lorsque `chorus-complete-report` applique T8 sur un `explain-*.md` existant :
+
+1. **Extraire** tous les blocs `### <id> — <type_element>` (fiches détaillées).
+2. **Conserver intact** le bloc `## 📚 KB & Project`.
+3. **Générer le niveau 1** : titre + statut + Cadrage + KB&Project + Synthèse T7 + Bilan + Points de décision.
+4. **Assembler le niveau 2** : `## Annexe — Détail par élément` + fiches extraites (avec cross-checks déjà patché en Phase C4 Steps 1–2).
+5. **Ajouter la section Décisions terminologiques** après l'Annexe.
+6. **Réécrire le fichier** (après backup — déjà effectué en Phase C4 "Before any write").
+
+> ⚠️ La restructuration remplace l'intégralité du fichier. Ne l'appliquer
+> qu'après que toutes les vérifications croisées (Phase C4 Steps 1–2) sont
+> complètes — jamais à mi-chemin.

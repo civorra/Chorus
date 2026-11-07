@@ -1642,10 +1642,17 @@ are **kept** — they serve as the audit trail for this import and are reference
 
 Once all ❓ items are resolved and critical gaps are filled:
 
+> **`regime_reglementaire` (optionnel) :** avant d'écrire le JSON, proposer à
+> l'ingénieur de déclarer le régime réglementaire du projet (ex. `"habitation"`,
+> `"ERP"`, `"crypto"`, `"CC"` — valeur libre). Ne pas bloquer si absent ou si
+> l'ingénieur passe. Ce champ est lu par `chorus-complete-report` pour générer
+> la section Cadrage et détecter un éventuel écart avec le régime KB (`index.org`).
+
 ```json
 {
   "project": "<nom-project-ingenieur>",
   "description": "Import from <source> — <date> — <N> elements",
+  "regime_reglementaire": "<valeur libre — omis si non renseigné>",
   "_import": {
     "source": "<nom-fichier-ou-inline>",
     "sources": ["<f1>", "<f2>"],

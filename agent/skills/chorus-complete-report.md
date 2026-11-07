@@ -149,6 +149,34 @@ If no candidate resolves → stop:
 `"⛔ source document unresolved — add --source <file> (looked up in workspace/<entity>/sources/)."`
 
 
+## Phase C0.5 — Collect Cadrage context
+
+> Collect the metadata needed to generate the **Cadrage** section (T8 level 1).
+> Run once after Phase C0, before Phase C1.
+
+1. **Corpus list** — read from the `## 📚 KB & Project` block already present in
+   `explain-*.md` (Phase C0 step 3): extract the corpus table rows (NNN, fichier,
+   agents, version/date if present).
+
+2. **Pipeline agents** — from the same block: `**Pipeline :**` line.
+
+3. **Régime réglementaire KB** — read `regime_reglementaire` from `index.org` of the
+   sandbox KB (`$SANDBOX/agent/chorus/index.org`), if declared. Absent → omit silently.
+
+4. **Régime projet déclaré** — read `regime_reglementaire` top-level field from the
+   project JSON (Phase C0 step 1). Absent → omit silently.
+
+5. **Périmètre** — derive from the project JSON:
+   - Covered: `type_element` values for which at least one element has `_rule_trace`
+     or `motif` (i.e. at least one rule fired).
+   - Not covered: `type_element` values where all elements are `(unprocessed)` without
+     trace/motif (→ ⛔ in C1.5).
+
+6. **Éléments inférés par analogie** — count elements whose `_note` or `_a_confirmer`
+   flag contains "analogie" or "analogy". If 0, record "aucun".
+
+Store all collected values for use in Phase C4 Step 3 (T8 Cadrage generation).
+
 ## Phase C1 — Extract target elements
 
 From `explain-<project-slug>-NNN.md`, collect every element block whose title
@@ -658,9 +686,38 @@ may not render).
    - `N_nc = n_p + n_w(NON_CONFORME)`, `K = n_q + n_u`
 
 > ⚠️ This step modifies the **same backup copy** already created in "Before any
-> write" — no second backup is needed. The in-place replacement must use precise
-> anchors (`## Synthèse` heading, `**Bilan :**` line) to avoid touching the
-> per-element blocks above.
+> write" — no second backup is needed. Steps 1–4 use in-place replacement;
+> steps 5–7 perform a full rewrite of the file.
+
+5. **Generate the Cadrage section** using the context collected in Phase C0.5
+   and the T8 template (`chorus-templates.md § T8 — Niveau 1`):
+   - Corpus table, pipeline agents, régime KB and projet (if both present and differ →
+     add the ⚠️ écart de régime warning block; each element in the Synthèse table
+     whose `_note` or `_labels` contains "analogie" gets a `par analogie` marker).
+   - Périmètre couvert / non couvert derived from C0.5 step 5.
+   - Éléments inférés par analogie count from C0.5 step 6.
+
+6. **Restructure `explain-*.md` into the T8 two-level layout**
+   (`chorus-templates.md § T8 — Règle de restructuration`) :
+   a. Extract all `### <id> — <type_element>` detail blocks (level 2 content).
+   b. Keep the `## 📚 KB & Project` block intact.
+   c. Assemble level 1: title + status line + Cadrage + KB&Project + Synthèse T7
+      + Bilan + Points de décision (numbered list of ❓/⚠️ with impact conditionals
+      from C8 — if not yet implemented, leave as `<à compléter>`).
+   d. Assemble level 2: `## Annexe — Détail par élément` heading + extracted blocks
+      (with cross-check blockquotes already in place from Steps 1–2).
+   e. Rewrite the file from scratch with this structure (full overwrite, not patch).
+
+   > ⚠️ Full overwrite — only run after **all** cross-check patches (Steps 1–2)
+   > and all reclassification (Steps 3–4) are complete.
+
+7. **Add `## Décisions terminologiques` section** (C4b) after the Annexe:
+   - If `thesaurus-log-<project-slug>.md` exists → copy its table verbatim.
+   - Otherwise → include an empty section: `*(aucune décision terminologique enregistrée)*`
+   - Use the standard gabarit from `chorus-templates.md § T8 — Gabarit Décisions
+     terminologiques`.
+   - **Never omit this section** after `chorus-complete-report` has run — its presence
+     (even empty) signals that the report is fully processed.
 
 
 ## Phase C5 — Optional standalone verification report
