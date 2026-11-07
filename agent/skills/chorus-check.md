@@ -1618,12 +1618,23 @@ From the elements collected in Phase 6 (or Phase 6-all across all files):
 ```
 TARGETS = { e | element_status(e) == 'NON_CONFORME' }
         ∪ { e | e has "_a_confirmer": 1 in the project JSON }   (if present)
+        ∪ { e | e.statut_conformite == '(unprocessed)'
+                AND e._rule_trace is empty/absent
+                AND e.motif is absent }                          (→ classe ⛔, C3)
 ```
 
 > `_a_confirmer` elements are included because an uncertain terminology mapping
 > (e.g. produced by `chorus-import-project`) can silently produce a NON_CONFORME
 > verdict for reasons unrelated to genuine non-compliance — the reader needs to see
 > both the verdict **and** the mapping uncertainty side by side.
+>
+> `(unprocessed)` elements without any `_rule_trace` or `motif` are included so
+> that the report makes Frame-never-reached cases visible (classe ⛔) — they will
+> be classified by `chorus-complete-report` Phase C1.5 and exposed in the Synthèse
+> table with their probable cause (slot amont absent, see `%OPTIONAL_SLOT_HINTS`
+> in T5). An `(unprocessed)` element that **does** carry a partial `_rule_trace`
+> or `motif` is already included via the `NON_CONFORME` / `_a_confirmer` branch
+> above (or will be classified ❓ by Phase C1.5 if it falls through).
 
 If `TARGETS` is empty → print `[explain] No NON_CONFORME or _a_confirmer element — nothing to explain.` and skip Phases E2–E4 entirely (no file written).
 
@@ -1687,11 +1698,15 @@ For each element `e` in `TARGETS`:
    | 📋 Non-conformité substantielle | The element's data is correctly captured; the rule correctly identifies a genuine gap against the normative requirement (e.g. OP-03: assignment genuinely left uncompleted in an ST). |
    | 🔤 Anomalie de mapping terminologique | The KO verdict stems from a value that is valid in the KB grammar but for a *different* branch/type than the one carrying it (e.g. OP-07: "restricted" valid only for `selection`, misapplied to `assignment`) — likely a `chorus-import-project` alignment error, not a real defect. |
    | ❓ Incertain | Element carries `_a_confirmer: 1` — verdict may change once the ambiguous mapping is resolved by the engineer. |
+   | ⛔ Non traité | Element is `(unprocessed)` with no `_rule_trace` and no `motif` — no rule ever reached this Frame. The report shows the probable cause (missing upstream slot) from `%OPTIONAL_SLOT_HINTS`. `chorus-complete-report` Phase C1.5 will assign the final ⛔ class and expose it in the Synthèse table. |
 
    > This classification is the single most valuable addition of `--explain` over
    > the base compliance report: it separates *"the product genuinely fails this
    > requirement"* from *"the import tooling mis-translated a term"* — two very
    > different actions for the reader (fix the product vs. fix the JSON).
+   > The ⛔ class surfaces a third distinct failure mode: *"the pipeline never even
+   > evaluated this element"* — invisible in the base compliance report where it
+   > appears as a silent `(unprocessed)` line mixed in with conformes/non-conformes.
 
 ### Phase E3 — Per-element explanation block format
 
@@ -1797,8 +1812,8 @@ French corpus (default template):
 ```markdown
 # Explication des non-conformités — <sandbox-name> / <fichier-project ou "--all">
 Date : <YYYY-MM-DD>
-Pipeline : SOLVED ✅ / FAILED ❌
-Éléments expliqués : <N> (📋 <n_subst> substantielle(s) · 🔤 <n_map> mapping · ❓ <n_unc> incertain(s))
+Pipeline : SOLVED ✅ / FAILED ❌  [→ `chorus-complete-report` mettra à jour si n_u > 0]
+Éléments expliqués : <N> (📋 <n_subst> substantielle(s) · 🔤 <n_map> mapping · ❓ <n_unc> incertain(s) · ⛔ <n_unp> non traité(s))
 
 ---
 
@@ -1826,8 +1841,8 @@ English corpus:
 ```markdown
 # Non-Conformity Explanation — <sandbox-name> / <project-file or "--all">
 Date: <YYYY-MM-DD>
-Pipeline: SOLVED ✅ / FAILED ❌
-Elements explained: <N> (📋 <n_subst> substantial · 🔤 <n_map> mapping · ❓ <n_unc> uncertain)
+Pipeline: SOLVED ✅ / FAILED ❌  [→ `chorus-complete-report` will update if n_u > 0]
+Elements explained: <N> (📋 <n_subst> substantial · 🔤 <n_map> mapping · ❓ <n_unc> uncertain · ⛔ <n_unp> unprocessed)
 
 ---
 

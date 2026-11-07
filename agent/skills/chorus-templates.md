@@ -1035,3 +1035,104 @@ for `$e->{statut_conformite}` wherever the base template reads that slot directl
       Corpus : corpus/004-...
       | Section | Artefact |
 ```
+
+---
+
+## T7 — Classification à cinq niveaux (`chorus-complete-report`)
+
+> Référence normative pour `chorus-complete-report` Phase C1.5 (reclassification
+> de tous les éléments) et Phase C4 Step 3 (régénération du tableau Synthèse).
+> Remplace le couple initial `📋`/`❓` produit par `chorus-check --explain`
+> par un système à cinq niveaux reflétant fidèlement la certitude du verdict.
+
+### Table des classes
+
+| Classe | Nom | Critère |
+|---|---|---|
+| 📋 | Non-conformité certaine | `NON_CONFORME` · aucun slot inféré ni hypothèse par défaut |
+| ✅ | Conformité certaine | `CONFORME` · aucun slot inféré ni hypothèse |
+| ⚠️ | Verdict certain sous hypothèse | Verdict établi, mais ≥ 1 slot inféré, patché (`_patch_source`) ou renseigné par défaut non vérifié |
+| ❓ | Verdict incertain | `_a_confirmer: 1` **ou** ambiguïté de `type_element` **ou** `(unprocessed)` avec `_rule_trace`/`motif` partiel |
+| ⛔ | Non traité | `(unprocessed)` **et** aucun `_rule_trace` **et** aucun `motif` — Frame jamais atteinte par le pipeline |
+
+### Mapping `_a_confirmer` → classe
+
+- `_a_confirmer: 1` **et** ≥ 1 slot décisionnel absent → **❓**
+- `_a_confirmer: 1` **et** tous les slots présents **et** ≥ 1 inféré/patché → **⚠️**
+
+### Notation verdict+classe dans le tableau de synthèse
+
+Le tableau de synthèse affiche le verdict courant **en plus** de la classe,
+séparés par une espace : `CONFORME ✅`, `CONFORME ❓`, `NON_CONFORME 📋`,
+`NON_CONFORME ⚠️`, `(unprocessed) ⛔`.
+
+> Cette notation distingue au premier regard l'incertitude sur un résultat
+> favorable (`CONFORME ❓`) de celle sur un résultat défavorable
+> (`NON_CONFORME ⚠️`) sans lire les fiches de détail.
+
+### Algorithme de reclassification (Phase C1.5 de `chorus-complete-report`)
+
+Pour chaque élément `$e` du project JSON (tous les éléments, pas seulement les ❓) :
+
+```
+stat         = $e.statut_conformite   // '(unprocessed)'
+has_trace    = ($e._rule_trace is non-empty array)
+has_motif    = ($e.motif is defined)
+a_confirmer  = ($e._a_confirmer == 1)
+has_inferred = ($e._note =~ /hypothèse|inféré|default|patch/i)   # heuristique
+```
+
+Règles d'attribution (premières applicables, dans l'ordre) :
+
+| Condition | Classe |
+|---|---|
+| `stat == '(unprocessed)'` **et** NOT `has_trace` **et** NOT `has_motif` | **⛔** |
+| `stat == '(unprocessed)'` **et** (`has_trace` **ou** `has_motif`) | **❓** |
+| `a_confirmer` **et** ≥ 1 slot décisionnel absent | **❓** |
+| `a_confirmer` **et** tous slots présents **et** `has_inferred` | **⚠️** |
+| `stat == 'NON_CONFORME'` **et** `has_inferred` | **📋** si verdict non affecté par l'hypothèse · **⚠️** sinon |
+| `stat == 'NON_CONFORME'` **et** NOT `has_inferred` | **📋** |
+| `stat == 'CONFORME'` **et** `has_inferred` | **⚠️** |
+| `stat == 'CONFORME'` **et** NOT `has_inferred` | **✅** |
+
+> `has_inferred` est une heuristique sur le champ `_note` — affiner par sandbox
+> si les notes utilisent d'autres marqueurs (ex. `assumed`, `par défaut`,
+> `structurellement absent`). Ne pas durcir au point de produire des faux positifs.
+
+### Colonnes du tableau de synthèse (Phase C4 Step 3)
+
+| Colonne | Contenu |
+|---|---|
+| Élément | `id` du project JSON |
+| Classe | emoji 5 niveaux (mis à jour après cross-check) |
+| Verdict | `"stat classe"` ex. `CONFORME ✅`, `NON_CONFORME 📋` |
+| Motif court | depuis `motif` ou dernière entrée `_rule_trace` |
+| Action recommandée | `Corriger le produit` / `Valider avec l'ingénieur` / `Compléter les données` |
+
+> **Colonnes conditionnelles** (uniquement si `type_corpus` les définit dans
+> `index.org`) : `Chemin` (par défaut / option / non déterminé) · `Bloquant`
+> (oui / non). Absentes si le corpus ne définit pas ce concept.
+
+### Compteurs du rapport (Phase C4 Step 3)
+
+Recalculer mécaniquement depuis le tableau de synthèse finalisé :
+
+```
+n_p = count(📋)   n_v = count(✅)   n_w = count(⚠️)   n_q = count(❓)   n_u = count(⛔)
+N   = n_p + n_v + n_w + n_q + n_u
+```
+
+Ligne `Éléments expliqués` :
+```
+Éléments expliqués : N (📋 n_p · ✅ n_v · ⚠️ n_w · ❓ n_q · ⛔ n_u)
+```
+
+Ligne `Pipeline` :
+- `n_u == 0` → `Pipeline : SOLVED ✅`
+- `n_u > 0`  → `Pipeline : SOLVED — n_u élément(s) non traité(s)`
+
+Ligne `Bilan` :
+```
+N_nc non-conformité(s) sur M éléments (<X>%) — K élément(s) à confirmer ou non traités.
+```
+où `N_nc = n_p + n_w(NON_CONFORME)`, `K = n_q + n_u`.

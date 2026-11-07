@@ -226,8 +226,32 @@ For each target element, record:
 >     explain-<project-slug>-<slug>.md. Trace banner inserted (ℹ️ Rien à
 >     vérifier) — nothing else patched.
 > ```
-> Then end the skill.
+> However, **still run Phase C1.5** (reclassify all elements using T7) and
+> **Phase C4 Step 3** (regenerate the Synthèse table and header counters) before
+> ending — reclassification and counter consistency apply even when no element
+> requires cross-checking.
 
+
+## Phase C1.5 — Reclassify all elements (5-level classification)
+
+> **Applies to all elements of the project JSON, not just the ❓ targets from
+> Phase C1.** Run before any per-element cross-check so that the final Synthèse
+> table (Phase C4 Step 3) reflects both the initial reclassification and the
+> cross-check outcomes. See `chorus-templates.md § T7` for the full algorithm,
+> class definitions, and mapping `_a_confirmer → classe`.
+
+For each element in the project JSON (loaded via Phase C0 step 1) :
+
+1. Apply the T7 reclassification algorithm (`chorus-templates.md § T7`).
+2. Record `{ id, type_element, stat, classe, verdict_label }` for Synthèse use.
+   - `verdict_label` = `"$stat $classe"` (e.g. `"CONFORME ✅"`, `"NON_CONFORME 📋"`)
+3. For elements collected as cross-check targets in Phase C1, store the initial
+   class — it may be upgraded by Phase C3 findings (e.g. `❓ → 🏷️` when a
+   mistyping is detected, `❓ → ✅` once a source limitation is confirmed).
+
+> ⚠️ This reclassification is **provisional** until Phase C3 cross-checks are
+> complete. Do not write the Synthèse table until Phase C4 Step 3 — after all
+> per-element patches.
 
 ## Phase C2 — Confirm the source document
 
@@ -601,6 +625,43 @@ may not render).
    never re-evaluates compliance, only documents the *reliability* of the
    uncertain inputs behind it.
 
+### Step 3 — Regenerate Synthèse table and header counters in `explain-*.md` (C1b)
+
+> **Run after all per-element cross-check patches (Steps 1 and 2 above).**
+> This step updates every element's classification to reflect both Phase C1.5
+> reclassification and any class upgrades from the cross-checks (e.g. `❓ → 🏷️`).
+> The Synthèse table is thus always consistent with the individual element blocks.
+
+1. **Finalize classes.** For each element, determine the final class:
+   - If a cross-check block was added in Step 1, upgrade the class using the
+     cross-check outcome: `🏷️` (mistyping) or `⚖️` (verdict logic defect) take
+     priority over the initial `❓`; `✅ Source limitation` or `❓ Still unresolved`
+     leave the class from Phase C1.5 unchanged.
+   - Otherwise use the class from Phase C1.5 as-is.
+
+2. **Regenerate the `## Synthèse` table in `explain-*.md`** (replace in-place,
+   between the `## Synthèse` heading and the `**Bilan :**` line):
+   - Columns: `Élément` · `Classe` · `Verdict` · `Motif court` · `Action recommandée`
+     (see `chorus-templates.md § T7 — Colonnes du tableau de synthèse`)
+   - `Classe` = final 5-level class emoji
+   - `Verdict` = `verdict_label` from Phase C1.5 (e.g. `CONFORME ✅`)
+   - `Motif court` and `Action recommandée`: carry forward from the existing table
+
+3. **Regenerate the header counters** (replace the `Éléments expliqués :` line
+   and the `Pipeline :` line in the report header):
+   - Count from the finalized Synthèse table (see `chorus-templates.md § T7 — Compteurs`)
+   - Format: `Éléments expliqués : N (📋 n_p · ✅ n_v · ⚠️ n_w · ❓ n_q · ⛔ n_u)`
+   - `n_u > 0` → change `Pipeline : SOLVED ✅` to `Pipeline : SOLVED — n_u élément(s) non traité(s)`
+
+4. **Regenerate the `**Bilan :**` line**:
+   - `N_nc non-conformité(s) sur M éléments (<X>%) — K élément(s) à confirmer ou non traités.`
+   - `N_nc = n_p + n_w(NON_CONFORME)`, `K = n_q + n_u`
+
+> ⚠️ This step modifies the **same backup copy** already created in "Before any
+> write" — no second backup is needed. The in-place replacement must use precise
+> anchors (`## Synthèse` heading, `**Bilan :**` line) to avoid touching the
+> per-element blocks above.
+
 
 ## Phase C5 — Optional standalone verification report
 
@@ -635,6 +696,12 @@ Print a short summary to the conversation (not written to any file):
     ❓ Still unresolved             : n3
     🏷️ Mistyped at import           : n4
     ⚖️ Verdict logic defect         : n5
+  5-level classification (all elements) :
+    📋 Non-conformités certaines  : n_p
+    ✅ Conformités certaines       : n_v
+    ⚠️  Verdicts sous hypothèse    : n_w
+    ❓ Verdicts incertains         : n_q
+    ⛔ Non traités                 : n_u
   Reports patched : workspace/<entity>/reports/explain-<project-slug>-<slug>.md
                     workspace/<entity>/reports/synthese-<project-slug>-<slug>.md  (if present)
   Backups : agent/.backups/*.bak-<timestamp>
