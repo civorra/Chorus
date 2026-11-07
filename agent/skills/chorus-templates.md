@@ -1101,6 +1101,8 @@ Règles d'attribution (premières applicables, dans l'ordre) :
 
 ### Colonnes du tableau de synthèse (Phase C4 Step 3)
 
+Colonnes **toujours présentes** :
+
 | Colonne | Contenu |
 |---|---|
 | Élément | `id` du project JSON |
@@ -1109,9 +1111,17 @@ Règles d'attribution (premières applicables, dans l'ordre) :
 | Motif court | depuis `motif` ou dernière entrée `_rule_trace` |
 | Action recommandée | `Corriger le produit` / `Valider avec l'ingénieur` / `Compléter les données` |
 
-> **Colonnes conditionnelles** (uniquement si `type_corpus` les définit dans
-> `index.org`) : `Chemin` (par défaut / option / non déterminé) · `Bloquant`
-> (oui / non). Absentes si le corpus ne définit pas ce concept.
+Colonnes **conditionnelles** (C9) — présentes uniquement si `index.org` déclare
+un champ `chemin_par_defaut` ou `impact_path` sur les types d'éléments :
+
+| Colonne | Contenu | Valeurs |
+|---|---|---|
+| Chemin | usage de l'élément dans le produit | `par défaut` / `option` / `non déterminé` |
+| Bloquant | NON_CONFORME sur chemin par défaut | `oui` / `non` / `—` |
+
+> **Règle :** si `index.org` ne déclare pas ces champs → colonnes absentes du tableau,
+> jamais vides. La valeur `non déterminé` n'est utilisée que quand le champ est déclaré
+> mais la source ne précise pas l'usage — jamais par défaut sans déclaration explicite.
 
 ### Compteurs du rapport (Phase C4 Step 3)
 
@@ -1256,3 +1266,79 @@ Lorsque `chorus-complete-report` applique T8 sur un `explain-*.md` existant :
 > ⚠️ La restructuration remplace l'intégralité du fichier. Ne l'appliquer
 > qu'après que toutes les vérifications croisées (Phase C4 Steps 1–2) sont
 > complètes — jamais à mi-chemin.
+
+---
+
+## T9 — Synthèse par groupe (C10)
+
+> Ajoutée par `chorus-complete-report` Phase C4 Step 3 après le tableau Synthèse T7,
+> uniquement si `index.org` du sandbox déclare des groupes de types
+> (section `** Groupes`, `** Families`, `** Categories`, ou équivalent).
+> **Absente si aucun groupe n'est déclaré** — ne jamais générer de section vide.
+
+### Lecture des groupes depuis `index.org` (Phase C0.5)
+
+```
+groups = []
+Pour chaque entrée de type groupe dans $SANDBOX/agent/chorus/index.org :
+  groups.append({
+    name:  <nom du groupe tel que déclaré>,
+    types: [<type_element_1>, <type_element_2>, ...]
+  })
+```
+
+Si `groups` est vide → section absente. Les noms et membres des groupes
+viennent exclusivement de `index.org` — jamais hardcodés dans le skill.
+
+### Gabarit
+
+```markdown
+---
+
+## Synthèse par groupe
+
+<répéter pour chaque groupe de `groups` :>
+
+### <Nom du groupe>
+
+| Élément | Classe | Verdict | Motif court |
+|---|---|---|---|
+| <id> | 📋/✅/⚠️/❓/⛔ | <stat> <classe> | <motif court> |
+
+**Groupe :** <n_nc> non-conformité(s) sur <n_total> éléments (<X>%)
+```
+
+---
+
+## T10 — Gabarit « Pourquoi cette règle s'applique » (C11)
+
+> Remplace la prose libre du bloc `**Pourquoi cette règle s'applique :**`
+> de `chorus-check` Phase E3 par un gabarit structuré à 3 champs.
+> Réduit la verbosité et élimine les répétitions entre éléments similaires.
+
+### Template (FR)
+
+```markdown
+**Pourquoi cette règle s'applique :**
+- **Règle :** `<rule_id>` — <description d'une ligne issue du commentaire YAML ou de la KB org>
+- **Condition déclenchante :** `<FIND.attribut> = <FIND.filtre>` — <pourquoi ce filtre est satisfait par cet élément>
+- **Résultat :** <ce que la règle a publié ou conclu, en une phrase>
+```
+
+### Template (EN)
+
+```markdown
+**Why this rule applies:**
+- **Rule:** `<rule_id>` — <one-line description from YAML comment or KB org>
+- **Triggering condition:** `<FIND.attribut> = <FIND.filtre>` — <why this filter matches this element>
+- **Outcome:** <what the rule published or concluded, in one sentence>
+```
+
+> **Règle de remplissage :**
+> - `rule_id` : dernière entrée de `_rule_trace` dont le `corpus_ref` n'est pas un agrégateur
+> - `FIND.attribut`/`FIND.filtre` : lus depuis le fichier YAML de la règle
+> - `Résultat` : valeur publiée sur le slot de verdict (ex. `conforme = NON_CONFORME`)
+>
+> **Ne jamais remplacer ce gabarit par de la prose libre** — la structure fixe permet
+> à `chorus-complete-report` de détecter et dédoublonner les fiches dont la condition
+> déclenchante et le résultat sont identiques (C11b).

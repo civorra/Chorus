@@ -1744,8 +1744,13 @@ French corpus (default template):
 | <slot_b> | <valeur> |
 
 **Pourquoi cette règle s'applique :**
-<one or two sentences: which FIND.filtre condition matched, contrasted with the
-nearest sibling rule's filtre that did NOT match>
+- **Règle :** `<rule_id>` — <description d'une ligne issue du commentaire YAML ou de la KB org>
+- **Condition déclenchante :** `<FIND.attribut> = <FIND.filtre>` — <pourquoi ce filtre est satisfait par cet élément>
+- **Résultat :** <ce que la règle a publié ou conclu>
+
+> ⚠️ Utiliser le gabarit T10 (`chorus-templates.md § T10`) — ne pas remplacer par
+> de la prose libre. La structure fixe permet à `chorus-complete-report` de détecter
+> les fiches à incertitude identique (C11b) et de les dédoublonner en annexe.
 
 <if class == 🔤 mapping:>
 **⚠️ Anomalie de mapping suspectée :** la valeur `<value>` est valide dans le
@@ -1789,8 +1794,13 @@ English corpus:
 | <slot_b> | <value> |
 
 **Why this rule applies:**
-<one or two sentences: which FIND filtre condition matched, contrasted with the
-nearest sibling rule's filtre that did NOT match>
+- **Rule:** `<rule_id>` — <one-line description from YAML comment or KB org>
+- **Triggering condition:** `<FIND.attribut> = <FIND.filtre>` — <why this filter matches this element>
+- **Outcome:** <what the rule published or concluded>
+
+> ⚠️ Use the T10 template (`chorus-templates.md § T10`) — do not replace with
+> free-form prose. The fixed structure allows `chorus-complete-report` to detect
+> identical-uncertainty fiches (C11b) and deduplicate them in the annexe.
 
 <if class == 🔤 mapping:>
 **⚠️ Suspected mapping anomaly:** the value `<value>` is valid in the KB

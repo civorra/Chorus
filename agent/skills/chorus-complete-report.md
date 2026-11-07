@@ -456,6 +456,41 @@ If this investigation confirms a verdict-logic defect, classify as
 merely because the answer requires reading a rule file; reading rule files
 when relevant to the question is explicitly within this skill's scope.
 
+### Step 4.5 — Compute impact conditional for ❓ and ⚠️ elements (C8)
+
+> Run **after** Step 3 (cross-check outcome) for every element classified ❓ or ⚠️
+> after Phase C1.5. Produces the "si X = A → verdict V1 ; si X = B → verdict V2"
+> statement included in the fiche détaillée and in the Points de décision (T8 level 1).
+
+For each ❓/⚠️ element `e` :
+
+1. Identify the **decisive uncertain slot(s)** : from `_a_confirmer` note, from
+   `HYPOTHESIS_LIST` (Phase 2.6 of `chorus-audit-import`, if available), or from
+   the cross-check outcome (Step 4).
+2. For each uncertain slot `s`, determine the two branches :
+   - Branch A : if `s` is confirmed as the current value (or hypothesis holds) →
+     what is the verdict? (read from current `statut_conformite`)
+   - Branch B : if `s` is corrected/changed → what would the verdict be?
+     (derive from the rule's threshold logic — read `rules/<slug>/<rule>.yml` FIND
+     condition; do not invent).
+3. Record as :
+   ```
+   impact = {
+     id:        e.id,
+     slot:      s,
+     branch_a:  "si <s> = <value_A> → <verdict_A>",
+     branch_b:  "si <s> = <value_B> → <verdict_B>",
+     direction: "favorable|défavorable|neutre"
+                # favorable  = branch_b resolves to CONFORME
+                # défavorable = branch_b resolves to NON_CONFORME
+                # neutre      = verdict unchanged regardless of branch
+   }
+   ```
+4. If the rule logic cannot be derived without ambiguity → record `direction: "indéterminé"`
+   and state so explicitly in the fiche. Never invent a direction.
+
+Store `IMPACT_LIST` → used in Phase C4 Step 3 (Points de décision + Bilan fourchette).
+
 ### Step 4 — Classify the outcome
 
 | Classification | Meaning |
@@ -681,12 +716,37 @@ may not render).
    - Format: `Éléments expliqués : N (📋 n_p · ✅ n_v · ⚠️ n_w · ❓ n_q · ⛔ n_u)`
    - `n_u > 0` → change `Pipeline : SOLVED ✅` to `Pipeline : SOLVED — n_u élément(s) non traité(s)`
 
-4. **Regenerate the `**Bilan :**` line**:
-   - `N_nc non-conformité(s) sur M éléments (<X>%) — K élément(s) à confirmer ou non traités.`
+4. **Regenerate the `**Bilan :**` line** with fourchette (C8) :
+   - Ligne principale : `N_nc non-conformité(s) sur M éléments (<X>%) — K élément(s) à confirmer ou non traités.`
    - `N_nc = n_p + n_w(NON_CONFORME)`, `K = n_q + n_u`
+   - **Fourchette** (si `IMPACT_LIST` non vide) : ajouter sur la ligne suivante :
+     ```
+     Fourchette : min N_min non-conformité(s) (si tous les points ❓/⚠️ se résolvent favorablement)
+                  max N_max non-conformité(s) (si tous se résolvent défavorablement)
+     ```
+     où `N_min = n_p` (seuls les 📋 certains restent), `N_max = n_p + count(IMPACT_LIST where direction == "défavorable")`.
+     Si aucun élément dans `IMPACT_LIST` → omettre la fourchette.
+
+4b. **Générer la liste « Points de décision »** (niveau 1 T8, C8) :
+    - Pour chaque entrée de `IMPACT_LIST` where `direction != "neutre"` :
+      `<N>. \`<id>\` — <motif court> → <branch_a> ; <branch_b>`
+    - Si `IMPACT_LIST` est vide → omettre la section Points de décision.
+
+4c. **Ajouter les colonnes Chemin/Bloquant si déclarées** (C9) :
+    - Lire `index.org` : si les types d'éléments déclarent `chemin_par_defaut` ou
+      `impact_path` → ajouter colonnes `Chemin` et `Bloquant` au tableau Synthèse T7.
+    - `Bloquant = "oui"` si l'élément est `NON_CONFORME 📋` ou `NON_CONFORME ⚠️`
+      **et** `Chemin = "par défaut"`. `"non"` sinon. `"—"` si Chemin = "non déterminé".
+    - Si non déclaré dans `index.org` → colonnes absentes.
+
+4d. **Générer la section Synthèse par groupe** (C10) :
+    - Lire `groups` collectés en Phase C0.5.
+    - Si `groups` non vide → générer section `## Synthèse par groupe` via gabarit T9
+      (`chorus-templates.md § T9`), placée après le tableau Synthèse T7 dans le niveau 1.
+    - Si `groups` vide → section absente.
 
 > ⚠️ This step modifies the **same backup copy** already created in "Before any
-> write" — no second backup is needed. Steps 1–4 use in-place replacement;
+> write" — no second backup is needed. Steps 1–4d use in-place replacement;
 > steps 5–7 perform a full rewrite of the file.
 
 5. **Generate the Cadrage section** using the context collected in Phase C0.5
@@ -706,6 +766,12 @@ may not render).
       from C8 — if not yet implemented, leave as `<à compléter>`).
    d. Assemble level 2: `## Annexe — Détail par élément` heading + extracted blocks
       (with cross-check blockquotes already in place from Steps 1–2).
+      **Deduplication C11b:** before assembling, group blocks whose T10 structured
+      template fields (`Condition déclenchante` + `Résultat`) are identical. For each
+      group of N > 1 identical blocks: generate one mutualized fiche with heading
+      `### Groupe — <short motif> (N éléments : <id1>, <id2>, …)` and a single detail
+      block. The N entries remain distinct in the level-1 Synthèse table — only the
+      annexe fiche is deduplicated.
    e. Rewrite the file from scratch with this structure (full overwrite, not patch).
 
    > ⚠️ Full overwrite — only run after **all** cross-check patches (Steps 1–2)
