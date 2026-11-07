@@ -1260,6 +1260,31 @@ Points to watch:
   | 001 | corpus/001-xxx.txt   | all (initialization)|
 ```
 
+> ⛔ **Checklist de livraison `index.org` — vérifier AVANT de passer à la Phase 5 :**
+>
+> Les sections suivantes doivent toutes être présentes dans `agent/chorus/index.org`.
+> Elles sont lues par d'autres skills (`chorus-check`, `chorus-create-project`,
+> `chorus-strengthen`, `chorus-review-kb`…) — leur absence cause des erreurs silencieuses
+> ou des messages d'alerte dans les rapports générés ultérieurement.
+>
+> **Obligatoires (toujours) :**
+> - [ ] `#+TITLE` et `#+CORPUS_LANG` — headers du fichier
+> - [ ] `* Pipeline global` — table agents (Pos / Module Perl / Slug / KB / Statut)
+> - [ ] `* Integrated corpus` — table corpus intégrés (Num / Fichier / Agents affected)
+> - [ ] `* BOARD slots` — slots inter-agents (clé / écrit par / lu par / type)
+>
+> **Conditionnelles (ajouter si applicable) :**
+> - [ ] `* Slot ownership` — si plusieurs agents écrivent des slots partagés
+>       → lu par `chorus-strengthen` pour l'analyse des discordances cross
+> - [ ] `* Normalisations` — si des valeurs projet nécessitent une transformation
+>       → lu par `chorus-create-project` pour les projets synthétiques
+> - [ ] `#+MIN_COVERAGE` — si le seuil de couverture KB doit être personnalisé
+>       → lu par `chorus-review-kb` (défaut : 80 % si absent)
+>
+> **Règle anti-oubli :** si `index.org` a été enrichi au-delà du template ci-dessus
+> (sections supplémentaires, renommages…), re-vérifier que les sections obligatoires
+> sont toujours présentes — les enrichissements n'exonèrent pas des obligations.
+
 ### Phase 5 — Generate YAML files
 
 > **Language rule:** use English keywords by default (`RULE`, `FIND`, `ACTION`, `PREMISES`).
