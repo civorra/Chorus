@@ -2055,6 +2055,18 @@ session ends, the KB may be partially consistent:
 2. Read each `agent/chorus/<slug>.org` → Slot dictionary, Rule catalog
 3. Read existing YAML files → already codified rules
 
+> ⛔ **Pre-flight check `index.org` — Mode B :**
+> Avant d'aller plus loin, vérifier que `index.org` contient les sections
+> obligatoires produites par Mode A. Si l'une manque, **stopper et corriger** :
+>
+> - [ ] `* Pipeline global` (ou `* Pipeline`) — requis pour lire les agents
+> - [ ] `* Integrated corpus` — requis pour l'ajout de la nouvelle ligne en Phase B2
+> - [ ] `* BOARD slots` — requis pour `chorus-check` / `chorus-templates`
+>
+> Si une section est absente → c'est que Mode A était incomplet.
+> Corriger `index.org` manuellement avant de poursuivre Mode B.
+> Ne jamais laisser Mode B s'exécuter sur un `index.org` incomplet.
+
 ### Phase B1 — Analyze the new corpus
 
 Classify each rule/prescription from the new corpus into **3 categories**:
