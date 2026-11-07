@@ -1235,6 +1235,12 @@ Points to watch:
 
 ### Phase 4 — Create `agent/chorus/index.org`
 
+> ⛔ **`* Integrated corpus` — OBLIGATOIRE dans `index.org` :**
+> La section `* Integrated corpus` doit être présente et remplie à la fin de cette phase.
+> Elle est lue par `chorus-check --summary` pour construire le recap KB.
+> Son absence produit `ℹ️ Table corpus non disponible` dans tous les rapports synthèse.
+> Ne jamais terminer la Phase 4 sans avoir écrit cette section.
+
 ```org
 #+TITLE: Pipeline — <sandbox-name>
 
@@ -2081,7 +2087,12 @@ which single Complex family consumed the pass's "dense reasoning" budget.
 ### Phase B2 — Save the new corpus
 
 Number incrementally: `corpus/002-<slug-source>.txt`, `003-...`
-Update the `Integrated corpus` table in `index.org`.
+
+> ⛔ **Mise à jour `* Integrated corpus` dans `index.org` — OBLIGATOIRE :**
+> Ajouter une ligne dans la table `* Integrated corpus` de `agent/chorus/index.org`
+> pour le corpus venant d'être intégré (Num, Fichier, Agents concernés).
+> Cette table est lue par `chorus-check --summary` — son oubli produit
+> `ℹ️ Table corpus non disponible` dans tous les rapports synthèse du sandbox.
 
 ### Phase B3 — Apply changes
 
