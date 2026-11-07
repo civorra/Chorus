@@ -1040,6 +1040,39 @@ Explicitly document every conversion:
 | `45/145` / `45×145` / `45x145` | → `"45x145"` | `section_bois` |
 | `C 24` / `classe C24` / `C24 EN338` | → `"C24"` | `classe_bois` |
 
+### Type_element disambiguation — keyword-first rule (C7)
+
+> **Before** presenting ❓ `type_element` items to the engineer, attempt automatic
+> resolution using keywords from the element's description text. This reduces
+> interactive interrupts for unambiguous cases without removing engineer control.
+
+For each ❓ alignment row where the ambiguity concerns `type_element` (multiple
+candidates — not a slot value ambiguity) :
+
+1. Extract the **description text** : source term (`_labels.type_element` or raw
+   inventory text) + surrounding context from the inventory block.
+2. Load the **keyword fingerprint** for each candidate `type_element` from
+   `$SANDBOX/agent/chorus/<slug>.org` — `** Aliases` section + Frame description.
+3. Score each candidate : count *exclusive* keywords (present in that candidate's
+   fingerprint but absent from all others) found in the description text.
+4. Apply the disambiguation rule :
+
+   | Score result | Action |
+   |---|---|
+   | One candidate has exclusive keyword(s) in description | Resolve to that candidate at ✅ certain — log `"auto-resolved via keyword: '<kw>' exclusive to <type>"` |
+   | Multiple candidates share matching keywords equally | Keep ❓ — present both to engineer with evidence (see below) |
+   | No candidate has any matching keyword | Keep ❓ — present without keyword hint |
+
+5. For auto-resolved items : set confidence ✅ certain, record the resolution in the
+   alignment block, and proceed — no `eca__ask_user` call needed.
+6. For remaining ❓ items : present to engineer as below, enriched with the keyword
+   evidence found (even if inconclusive) so they can decide more quickly.
+
+> ⚠️ **Never** apply this rule to `type_element` values already at ✅ certain.
+> Never auto-resolve to a type absent from this sandbox's KB.
+> If the description matches two candidates with equal keyword evidence, the engineer
+> always has the final word — do not force a resolution.
+
 ### Resolving Ambiguities
 
 For each ❓ term, present the following to the engineer:

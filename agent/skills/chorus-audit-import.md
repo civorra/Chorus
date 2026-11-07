@@ -155,6 +155,64 @@ If `--kb` is active, for each slot value found:
 - Flag any mismatch as **🔴 Incohérence KB**
 
 
+## Phase 2.5 — Mistyping Detection (C5)
+
+> Detect elements whose `type_element` as assigned at import time likely conflicts
+> with their actual nature as described in the source document.
+> **Never auto-corrects** — produces a `🏷️ Mistyping suspecté` entry for engineer review only.
+
+For each element `e` in the project JSON :
+
+1. Build a **description text** : `e._labels.type_element` (source term) + any `_note`
+   field on the element.
+2. Load the **keyword fingerprint** for `e.type_element` from the KB org file
+   (`$SANDBOX/agent/chorus/<slug>.org` — `** Aliases` section + `Catalogue des Frames`
+   description). These keywords define what an element of this type *should* describe.
+3. Load keyword fingerprints for all **other** `type_element` values in the same KB.
+4. If the description contains keywords from another type's fingerprint that are
+   **absent** from the assigned type's fingerprint → record:
+   ```
+   MISTYPING_LIST.append({
+     id:            e.id,
+     assigned_type: e.type_element,
+     candidate:     <type whose keywords matched>,
+     evidence:      <keyword(s) found>,
+     confidence:    "likely"    # exclusive keyword (not shared with assigned type)
+                  | "possible"  # shared keyword, more characteristic of candidate
+   })
+   ```
+
+> ⚠️ Heuristic only. Never report when description matches both types equally well —
+> silence is preferable to a false positive. Only report when evidence clearly points
+> away from the assigned type.
+
+Build `MISTYPING_LIST` → used in Phase 3 Mistyping section and Phase 3.5 `_audit`.
+
+
+## Phase 2.6 — Per-element Frame slot requirements (C6)
+
+> For each element, list slots required by its Frame target that are absent from
+> the project JSON, with the default value used (if any) and a "hypothèse" flag.
+> This surfaces the data that triggers ⚠️ in `chorus-complete-report` Phase C1.5.
+
+For each element `e` in the project JSON :
+
+1. Read the Frame definition for `e.type_element` from
+   `$SANDBOX/agent/chorus/<slug>.org` § Catalogue des Frames → `Slots d'entrée` table.
+2. For each required slot `s`:
+   - If `e[s]` is present and not `_a_confirmer` → skip.
+   - If `e[s]` is absent → record `{id, slot, reason: "absent", default_used: null}`.
+   - If `e[s]` is present but `e._note` or the import alignment file marks it
+     "hypothèse", "inféré", "par défaut", or "assumed" → record
+     `{id, slot, reason: "hypothèse", default_used: e[s]}`.
+3. Build `HYPOTHESIS_LIST` → used in Phase 3 gap analysis column and Phase 3.5.
+
+> This phase reads the consolidated alignment file
+> (`$SANDBOX/agent/.import-alignment-<NNN>.org`) produced by `chorus-import-project`
+> Phase 3, if present, to determine which values were marked as hypotheses during import.
+> If the file is absent (standalone audit), derive from `_note` fields only.
+
+
 ## Phase 3 — Gap Classification Table
 
 Assemble the full audit report. Produce one row per gap/confirm entry.
@@ -169,6 +227,7 @@ Assemble the full audit report. Produce one row per gap/confirm entry.
 | Mapping à confirmer | 🔄 | Uncertain mapping from import | Engineer decision required |
 | Frame manquante | 🚫 | Frame type documented in source but not imported | Create Frame / re-import |
 | Incohérence KB | 🔴 | Value outside KB-allowed domain | Correct value or enrich KB |
+| Mistyping suspecté | 🏷️ | `type_element` assigned likely wrong — description keywords point to a different type | Retype element (or re-import with corrected thesaurus mapping) |
 
 ### Output format
 
@@ -180,18 +239,32 @@ Import coverage: <couverture_kb from JSON>
 
 ### Gap analysis
 
-| Element | Slot | Class | Found value / Note | Action |
-|---|---|---|---|---|
-| BAT-A | nb_niveaux | ❌ | Not mentioned in §5.1 (families only) | Manual entry |
-| FAC-3B-bois | C_plus_D_m | ⚠️ | §5.4.1.1: 130 cm = regulatory minimum, not measured value | Extract full PDF |
-| FAC-3B-bois | jonction_plancher_conforme | ⚠️ | IT249 slots absent — source covers pages 17-18 only | Extract pages 1-16 |
-| ... | | | | |
+| Element | Slot | Class | Found value / Note | Hypothèse / défaut | Action |
+|---|---|---|---|---|---|
+| BAT-A | nb_niveaux | ❌ | Not mentioned in §5.1 (families only) | — | Manual entry |
+| EL-01 | exposant_public | ✅ | 65537 — RFC 8017 §A.1.1 default | hypothèse | Confirm with project |
+| FAC-3B-bois | C_plus_D_m | ⚠️ | §5.4.1.1: 130 cm = regulatory minimum, not measured | — | Extract full PDF |
+| FAC-3B-bois | jonction_plancher_conforme | ⚠️ | IT249 slots absent — source covers pages 17-18 only | — | Extract pages 1-16 |
+| ... | | | | | |
+
+> **Colonne « Hypothèse / défaut » :** renseignée depuis `HYPOTHESIS_LIST` (Phase 2.6).
+> Les lignes marquées `hypothèse` déclencheront la classe ⚠️ dans
+> `chorus-complete-report` Phase C1.5. Les lignes sans hypothèse restent `—`.
 
 ### Mapping review
 
 | Element | Slot | Current value | Source term | Class | Action |
 |---|---|---|---|---|---|
 | FAC-3B-bois | classement_europeen_facade | D-s3-d0 | "D-S2-d0" (§5.3.1) | 🔄 | Confirm: D-S2,d0 = regulatory minimum ≠ product classification |
+| ... | | | | | |
+
+### Mistyping suspects
+
+> Generated from `MISTYPING_LIST` (Phase 2.5). Empty section → no mistyping detected.
+
+| Element | type_element assigné | Candidat suggéré | Évidence | Confiance | Action |
+|---|---|---|---|---|---|
+| <id> | <type_assigné> | <candidat> | `"<keyword>"` exclusif au candidat | likely / possible | Retype + re-import si confirmé |
 | ... | | | | | |
 
 ### Missing Frame types
@@ -207,7 +280,8 @@ Import coverage: <couverture_kb from JSON>
 1. [⚠️] Extract missing PDF pages (pages 1–16) → re-run `chorus-import-project` for classification slots
 2. [🚫] Add `paroi_enveloppe_logement` Frame manually to JSON (value: EI30, families 2 & 3)
 3. [🔄] Confirm `classement_europeen_facade` mapping with engineer
-4. [❌] Accept as out-of-scope: escalier, paroi_separative, bloc_porte_paliere, cellier_cave
+4. [🏷️] Review mistyping suspects above — retype + re-import if confirmed
+5. [❌] Accept as out-of-scope: escalier, paroi_separative, bloc_porte_paliere, cellier_cave
 
 ### Summary
 
@@ -219,6 +293,8 @@ Import coverage: <couverture_kb from JSON>
 | 🔄 Mapping à confirmer | N |
 | 🚫 Frame manquante | N |
 | 🔴 Incohérence KB | N |
+| 🏷️ Mistyping suspecté | N |
+| ⚠️ Hypothèse / défaut utilisé | N |
 
 Estimated coverage after corrections: <X>%
 ```
@@ -261,6 +337,8 @@ block in `<project.json>`:
   "gaps_absents":      N,
   "gaps_mapping":      N,
   "frames_manquantes": N,
+  "mistyping_suspects": N,
+  "hypothesis_count":  N,
   "patch_applied":     false
 }
 ```
@@ -283,6 +361,11 @@ Field source (from Phase 3 classification table):
                         décision de périmètre entries not yet resolved (any residual
                         gap requiring an engineer decision, not mechanically patchable)
 - `frames_manquantes` = count of 🚫 Frame manquante entries
+- `mistyping_suspects`= count of 🏷️ Mistyping suspecté entries from Phase 2.5
+                        (`MISTYPING_LIST`). 0 if no mistyping detected.
+- `hypothesis_count`  = count of elements from Phase 2.6 (`HYPOTHESIS_LIST`) carrying
+                        at least one slot marked "hypothèse" or "default" — these will
+                        trigger class ⚠️ in `chorus-complete-report` Phase C1.5.
 - `patch_applied`     = `false` on a report-only run (Phase 4 not executed).
   Only Phase 4.3 (actual `--patch` application) may set this to `true`.
 
