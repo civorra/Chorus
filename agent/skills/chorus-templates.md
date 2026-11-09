@@ -972,6 +972,16 @@ for `$e->{statut_conformite}` wherever the base template reads that slot directl
 >    C'est la seule façon pour `corpus-inventory.py` de relier une entrée Coverage à son fichier source.
 > 3. Le contenu détaillé sous chaque `**` doit être une **table org** `| col | col |`.
 >    De la prose libre est ignorée par le parser — elle n'apparaît pas en foldable lines dans la webapp.
+>
+> ⛔ **Vérification obligatoire après écriture** — exécuter immédiatement après tout
+> `eca__write_file` / `eca__edit_file` sur `README.org` (voir
+> `chorus-feed-coverage.md § Step 3c — Grammar self-check`) :
+> ```bash
+> grep -n "^\*\* " $SANDBOX/README.org
+> ```
+> Toute ligne ne commençant pas par `** ✅ Integrated`, `** ⏭ Deferred`,
+> `** ⛔ Out of scope`, `** 🧮`, `** 🔍`, `** ⚠️` ou `** Next step`
+> → **STOP, réécrire avant de continuer**.
 
 ### Template complet (à copier-coller, remplacer les `<…>`)
 

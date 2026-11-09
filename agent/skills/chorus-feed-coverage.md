@@ -256,6 +256,57 @@ to the ⏭ Deferred list with:
 
 > ⚠️ **Delegation:** load `chorus-templates.md § T6` and paste it verbatim into the sub-agent prompt.
 
+## Step 3c — Grammar self-check (mandatory — run immediately after every Coverage write)
+
+> ⛔ **Non-negotiable gate — do not skip, do not defer.** This step takes < 1 second
+> and is the only reliable protection against the known sub-agent deviation
+> (prose/bullet format instead of org-mode tables — see grammar contract above).
+> A Coverage block written in prose format is **silently invisible** in `chorus-web`;
+> no error is raised, the data simply never appears. This check catches the problem
+> at creation time, not after a user reports missing data.
+
+After writing or updating the `* Coverage` block in `README.org`, execute:
+
+```bash
+grep -n "^\*\* " $SANDBOX/README.org
+```
+
+**Every line returned MUST match one of these exact patterns:**
+
+| Allowed prefix | Usage |
+|---|---|
+| `** ✅ Integrated` | Integrated entries |
+| `** ⏭ Deferred` | Deferred entries |
+| `** ⛔ Out of scope` | Out-of-scope entries |
+| `** 🧮 Helper-source pending` | Helper-source audit (omit if N=0) |
+| `** 🔍 UNSCANNED` | Corpus inventory gap (omit if N=0) |
+| `** ⚠️ CORPUS: unresolved` | Unresolved CORPUS: headers (omit if N=0) |
+| `** Next step` | Mandatory closing block |
+
+**If any other pattern appears** (e.g. `** Coverage — agent-X (Mode A, …)`,
+`** Résumé`, `** Rules generated`, any free-form `**` heading) **→ STOP:**
+
+```
+⛔ Grammar check FAILED — non-conformant ** heading(s) found:
+  <paste the offending grep lines here>
+
+Action required: rewrite the offending entries using the T6 template
+(org-mode tables under each ** heading, NOT prose/bullet lists).
+Do NOT proceed to the convergence check until this is resolved.
+```
+
+Rewrite using `eca__edit_file` to replace the non-conformant entries with
+the correct format from `chorus-templates.md § T6`, then re-run the grep
+command to confirm all lines are now conformant before proceeding.
+
+> **Why sub-agents fail this check:** a sub-agent that did not receive T6
+> verbatim in its delegation prompt will typically produce structurally valid
+> org content — correct rule counts, correct Deferred reasons — but wrapped in
+> a prose `* Coverage — <agent> (Mode A pass, <date>)` section with bullet
+> lists (`- Rules generated: N`) instead of `** ✅ Integrated` org-table
+> entries. The content is correct; only the grammar is wrong. This check
+> detects that specific pattern in < 1 second.
+
 ## Convergence check (stability point)
 
 After writing/updating `README.org` and displaying the report/delta summary to the
