@@ -1180,9 +1180,9 @@ before Phase 6 completes.
 
 | Engineer decision | Thesaurus action |
 |---|---|
-| ❓ resolved → ✅ (type_element chosen) | Append to `* Aliases — type_element` dans `workspace/<C>/thesaurus.org` — sauf si `(term, Scope=C)` existe déjà avec un mapping différent → ajouter à `* Conflicts` dans le même fichier (voir Deduplication rule) |
-| ❓ resolved → ✅ (slot value chosen) | Append to `* Aliases — slot values` in the shard for the current Scope — **same conflict check as above** |
-| ⚠️ confirmed → ✅ | Déplacer de `* Pending` vers `* Aliases` — dans `workspace/<C>/thesaurus.org` — même conflict check |
+| ❓ resolved → ✅ (type_element chosen) | Écrire dans `workspace/<C>/<projId>.thesaurus.json` section `aliases_type_element` **(Niveau 2 — projet uniquement)**. ⛔ Jamais dans `workspace/<C>/thesaurus.org` Aliases — la promotion Niveau 3 est réservée à l'utilisateur via 🏢 Promouvoir dans la webapp (WEB-027). Conflict check : si `(term, source_import)` existe déjà en Niveau 2 avec mapping différent → ajouter à `* Conflicts` dans `workspace/<C>/thesaurus.org`. |
+| ❓ resolved → ✅ (slot value chosen) | Écrire dans `workspace/<C>/<projId>.thesaurus.json` section `aliases_slot_values` **(Niveau 2 — projet uniquement)**. Même règle — ⛔ jamais dans `thesaurus.org` Aliases. |
+| ⚠️ confirmed → ✅ | Supprimer de `* Pending` dans `workspace/<C>/thesaurus.org` + écrire dans `workspace/<C>/<projId>.thesaurus.json` section correspondante **(Niveau 2 uniquement)**. ⛔ Jamais dans `thesaurus.org` Aliases — même conflict check. |
 | ⚠️ rejected → ⬜ | Déplacer de `* Pending` vers `* Out-of-scope` — dans `workspace/<C>/thesaurus.org` |
 | ❓ unresolvable → ⬜ | Ajouter à `* Out-of-scope` dans `workspace/<C>/thesaurus.org` |
 | New ⚠️ (first time seen) | Ajouter à `* Pending` dans `workspace/<C>/thesaurus.org` |
@@ -1190,15 +1190,27 @@ before Phase 6 completes.
 
 #### Write format per section
 
-**Alias confirmed (type_element):**
-```org
-| <project term> | <KB type_element> | ✅ confirmed | import-report-<NNN> | <kb_hash8 or —> | <Scope: global or context-label> |
+**Alias confirmed (type_element ou slot value) — Niveau 2 (JSON projet) :**
+
+Les alignements confirmés (certains ou validés en session) sont écrits dans
+`workspace/<C>/<projId>.thesaurus.json` au format JSON existant :
+
+```json
+{
+  "term": "<project term>",
+  "type_element": "<KB type_element>",
+  "confidence": "certaine",
+  "source_import": "import-report-<NNN>"
+}
 ```
 
-**Alias confirmed (slot value):**
-```org
-| <project term> | <KB slot> | <KB value> | ✅ confirmed | import-report-<NNN> | <kb_hash8 or —> | <Scope: global or context-label> |
-```
+(pour `aliases_slot_values` : champs `term`, `slot`, `value`, `confidence`, `source_import`)
+
+⛔ **Le format org-row `| term | type_element | ✅ confirmed | ... |` ne doit plus être
+utilisé pour les Aliases dans `thesaurus.org`** — il est réservé à une éventuelle
+entrée déposée manuellement par l'ingénieur hors session ECA (cas exceptionnel).
+La promotion vers `thesaurus.org` Aliases est exclusivement réalisée par la webapp
+(bouton 🏢 Promouvoir) — confidence `✅ entity-promoted (validated via chorus-web DATE)`.
 
 **New pending entry:**
 ```org
@@ -1854,10 +1866,11 @@ For each alignment produced in this import (C = Scope, projId = JSON output file
        qui n'apportent rien au-delà de ce que le registre fait déjà.
 
   ✅ confirmée par l'ingénieur en session (avec décision explicite) :
-    → Si décision universelle pour l'entity ("valide pour tous les projets <C>") :
-        Écrire en Niveau 3 (workspace/<C>/thesaurus.org), section * Aliases
-    → Sinon (décision produit-spécifique — défaut) :
-        Écrire en Niveau 2 (workspace/<C>/<projId>.thesaurus.json)
+    → Écrire en Niveau 2 (workspace/<C>/<projId>.thesaurus.json) uniquement
+    → ⛔ Jamais en Niveau 3 (thesaurus.org Aliases) : la promotion Entity est
+       réservée à l'utilisateur via 🏢 Promouvoir dans la webapp (WEB-027).
+       L'ingénieur ECA ne décide jamais de la portée entity d'un terme — seul
+       l'utilisateur peut faire ce choix délibéré.
     → Même conflict check que ci-dessus
 
   ⚠️ newly seen (no prior record):
@@ -1868,7 +1881,6 @@ For each alignment produced in this import (C = Scope, projId = JSON output file
 
   ⚠️ confirmed by engineer in this session:
     → Supprimer de Niveau 3 * Pending + écrire en Niveau 2 * aliases_type_element
-      (sauf décision entity-wide → Niveau 3 * Aliases)
     → Record source import + date
 
   ⬜ out-of-scope (confirmed by engineer):
@@ -1899,7 +1911,7 @@ consolidation pass (`global.org`, and `<C>.org` if applicable) with today's date
    🏢 Niveau 3 (entity) : workspace/<C>/thesaurus.org
       ⚠️  N new pending entries
       ⬜ N out-of-scope added
-      🔄 N pending → confirmed (promu Niveau 3 par l'ingénieur)
+      ℹ️  Promotion Niveau 3 : via webapp uniquement (🏢 Promouvoir)
 ```
 
 If nothing changed (all terms already in thesaurus) → display silently:

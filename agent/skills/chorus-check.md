@@ -1583,13 +1583,13 @@ inserted verbatim after the document's own title/date/status lines).
 
 French corpus (default template):
 ```markdown
-## 📚 KB & Project
+## 📚 Référentiel & Projet
 
-**Pipeline :** <N> agents : <slug1> → <slug2> → … → <slugN>
+**Référentiel :** <N> modules : <slug1> → <slug2> → … → <slugN>
 
-| Corpus | Fichier | Agents concernés |
+| Corpus | Fichier | Domaines couverts |
 |---|---|---|
-| <NNN> | <fichier> | <agents, résumé court> |
+| <NNN> | <fichier> | <domaines, résumé court> |
 | ... | | |
 
 **Project :** <project> — <description tronquée>
@@ -1598,13 +1598,13 @@ French corpus (default template):
 
 English corpus:
 ```markdown
-## 📚 KB & Project
+## 📚 Reference & Project
 
-**Pipeline:** <N> agents: <slug1> → <slug2> → … → <slugN>
+**Reference:** <N> modules: <slug1> → <slug2> → … → <slugN>
 
-| Corpus | File | Agents involved |
+| Corpus | File | Domains covered |
 |---|---|---|
-| <NNN> | <file> | <agents, short summary> |
+| <NNN> | <file> | <domains, short summary> |
 | ... | | |
 
 **Project:** <name> — <truncated description>
@@ -1717,10 +1717,10 @@ French corpus (default template):
 ```markdown
 ### <id> — <type_element>  [<classe: 📋 substantielle | 🔤 mapping | ❓ incertain>]
 
-**Verdict :** <verdict_slot> = KO
-**Motif (run.pl) :** "<motif_* verbatim string>"
+**Verdict :** ❌ Non conforme
+**Motif :** "<motif_* verbatim string>"
 
-**Règle appliquée :** `rules/<slug>/<R0N-rule-name>.yml`  (agent `<Nom>`, position <N>)
+**Règle appliquée :** `rules/<slug>/<R0N-rule-name>.yml`  (module `<Nom>`, position <N>)
 **Référence normative :** §<N> para <M> — <one-line summary of the requirement>
 <if e._rule_trace has more than one entry — chaîne complète de traçabilité:>
 **Chaîne de règles (`_rule_trace`) :**
@@ -1754,7 +1754,7 @@ French corpus (default template):
 
 <if class == 🔤 mapping:>
 **⚠️ Anomalie de mapping suspectée :** la valeur `<value>` est valide dans le
-référentiel KB, mais uniquement pour `<other branch>` (règle
+référentiel, mais uniquement pour `<other branch>` (règle
 `<sibling-rule-name>.yml`, §<N> para <M>) — non pour `<this element's branch>`.
 Vérifier le terme source d'origine (`<project term>`, cf. thesaurus.org / import-report)
 avant de considérer cet élément comme réellement non conforme.
@@ -1767,10 +1767,10 @@ English corpus:
 ```markdown
 ### <id> — <type_element>  [<class: 📋 substantial | 🔤 mapping | ❓ uncertain>]
 
-**Verdict:** <verdict_slot> = KO
-**Reason (run.pl):** "<motif_* verbatim string>"
+**Verdict:** ❌ Non-compliant
+**Reason:** "<motif_* verbatim string>"
 
-**Rule applied:** `rules/<slug>/<R0N-rule-name>.yml`  (agent `<Name>`, position <N>)
+**Rule applied:** `rules/<slug>/<R0N-rule-name>.yml`  (module `<Name>`, position <N>)
 **Normative reference:** §<N> para <M> — <one-line summary of the requirement>
 <if e._rule_trace has more than one entry — full traceability chain:>
 **Rule chain (`_rule_trace`):**
@@ -1803,7 +1803,7 @@ English corpus:
 > identical-uncertainty fiches (C11b) and deduplicate them in the annexe.
 
 <if class == 🔤 mapping:>
-**⚠️ Suspected mapping anomaly:** the value `<value>` is valid in the KB
+**⚠️ Suspected mapping anomaly:** the value `<value>` is valid in the
 reference, but only for `<other branch>` (rule `<sibling-rule-name>.yml`,
 §<N> para <M>) — not for `<this element's branch>`. Verify the original source
 term (`<project term>`, see thesaurus.org / import-report) before treating this
@@ -1822,7 +1822,7 @@ French corpus (default template):
 ```markdown
 # Explication des non-conformités — <sandbox-name> / <fichier-project ou "--all">
 Date : <YYYY-MM-DD>
-Pipeline : SOLVED ✅ / FAILED ❌  [→ `chorus-complete-report` mettra à jour si n_u > 0]
+Analyse : RÉSOLU ✅ / ÉCHEC ❌  [→ `chorus-complete-report` mettra à jour si n_u > 0]
 Éléments expliqués : <N> (📋 <n_subst> substantielle(s) · 🔤 <n_map> mapping · ❓ <n_unc> incertain(s) · ⛔ <n_unp> non traité(s))
 
 ---
@@ -1851,7 +1851,7 @@ English corpus:
 ```markdown
 # Non-Conformity Explanation — <sandbox-name> / <project-file or "--all">
 Date: <YYYY-MM-DD>
-Pipeline: SOLVED ✅ / FAILED ❌  [→ `chorus-complete-report` will update if n_u > 0]
+Analysis: RESOLVED ✅ / FAILED ❌  [→ `chorus-complete-report` will update if n_u > 0]
 Elements explained: <N> (📋 <n_subst> substantial · 🔤 <n_map> mapping · ❓ <n_unc> uncertain · ⛔ <n_unp> unprocessed)
 
 ---
@@ -1993,7 +1993,7 @@ French corpus (default template):
 
 **Dossier :** <fichier-project>
 **Date :** <YYYY-MM-DD>
-**Statut du pipeline :** SOLVED ✅ / FAILED ❌
+**Statut de l'analyse :** RÉSOLU ✅ / ÉCHEC ❌
 
 ---
 
@@ -2021,7 +2021,7 @@ French corpus (default template):
 
 | Réf. | Domaine | Motif | Référence normative |
 |---|---|---|---|
-| <id> | <agent/domaine> | <motif court, 1 ligne> | §<N> |
+| <id> | <domaine> | <motif court, 1 ligne> | §<N> |
 | ... | | | |
 
 <if n_subst == 0:>
@@ -2053,8 +2053,8 @@ Aucun élément à confirmer.
 "<n_subst> point(s) substantiel(s) à corriger avant soumission. <n_map>
 anomalie(s) de mapping à lever avec l'équipe d'import — leur résolution
 porterait le taux de conformité de <taux>% à <taux_reel>%.
-<Next step: chorus-strengthen <sandbox-name> si des règles sont jugées trop
-strictes/permissives, ou correction directe du document project sinon.>"
+<Next step: chorus-strengthen <sandbox-name> si les critères semblent trop
+stricts/permissifs, ou correction directe du document sinon.>"
 
 ---
 *Document généré automatiquement par `chorus-check --summary` — voir
@@ -2068,7 +2068,7 @@ English corpus:
 
 **File:** <project-file>
 **Date:** <YYYY-MM-DD>
-**Pipeline status:** SOLVED ✅ / FAILED ❌
+**Analysis status:** RESOLVED ✅ / FAILED ❌
 
 ---
 
@@ -2096,7 +2096,7 @@ English corpus:
 
 | Ref. | Domain | Reason | Normative reference |
 |---|---|---|---|
-| <id> | <agent/domain> | <short reason, 1 line> | §<N> |
+| <id> | <domain> | <short reason, 1 line> | §<N> |
 | ... | | | |
 
 <if n_subst == 0:>
@@ -2128,8 +2128,8 @@ No element to confirm.
 "<n_subst> substantial point(s) to correct before submission. <n_map>
 mapping anomaly/ies to resolve with the import team — resolving them would
 raise the compliance rate from <taux>% to <taux_reel>%.
-<Next step: chorus-strengthen <sandbox-name> if rules are judged too
-strict/permissive, or direct correction of the project document otherwise.>"
+<Next step: chorus-strengthen <sandbox-name> if the validation criteria seem too
+strict/permissive, or direct correction of the document otherwise.>"
 
 ---
 *Document automatically generated by `chorus-check --summary` — see

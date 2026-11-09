@@ -106,7 +106,7 @@ The project-slug is `basename(project_file)` without `.json`.
 
 ### Step 3 — Extract KB & Project context
 
-From the `explain-*.md` header (`## 📚 KB & Project` block), read the **Origin**
+From the `explain-*.md` header (`## 📚 Référentiel & Projet` / `## 📚 Reference & Project` block), read the **Origin**
 line — confirms the project file and original source document reference.
 
 ### Step 3b — Detect `$REPORT_LANG` of the existing report (mandatory)
@@ -121,7 +121,7 @@ line — confirms the project file and original source document reference.
 >
 > Detect directly from the report's own header, which is unambiguous and
 > already resolved:
-> - `## 📚 KB & Project` (English) vs `## 📚 KB & Projet` (French) in `explain-*.md`
+> - `## 📚 Reference & Project` (English) vs `## 📚 Référentiel & Projet` (French) in `explain-*.md`
 > - if `synthese-*.md` is being patched instead/also, use the same detection
 >   on its paired `explain-*.md` — never detect independently per file, the
 >   pair always shares one `$REPORT_LANG`.
@@ -158,7 +158,7 @@ If no candidate resolves → stop:
    `explain-*.md` (Phase C0 step 3): extract the corpus table rows (NNN, fichier,
    agents, version/date if present).
 
-2. **Pipeline agents** — from the same block: `**Pipeline :**` line.
+2. **Modules d'analyse** — from the same block: `**Référentiel :**` (FR) / `**Reference:**` (EN) line.
 
 3. **Régime réglementaire KB** — read `regime_reglementaire` from `index.org` of the
    sandbox KB (`$SANDBOX/agent/chorus/index.org`), if declared. Absent → omit silently.
@@ -212,8 +212,8 @@ For each target element, record:
 > indefinitely with no visual difference between the two states). Still
 > follow the "Before any write" backup step below before touching the file.
 >
-> Detect `$REPORT_LANG` the same way as Step 3b (`## 📚 KB & Project` vs
-> `## 📚 KB & Projet` in the report header) before choosing which banner to
+> Detect `$REPORT_LANG` the same way as Step 3b (`## 📚 Reference & Project` vs
+> `## 📚 Référentiel & Projet` in the report header) before choosing which banner to
 > insert — never default to French.
 >
 > Insert (French, `$REPORT_LANG = fr`):
@@ -714,7 +714,7 @@ may not render).
    and the `Pipeline :` line in the report header):
    - Count from the finalized Synthèse table (see `chorus-templates.md § T7 — Compteurs`)
    - Format: `Éléments expliqués : N (📋 n_p · ✅ n_v · ⚠️ n_w · ❓ n_q · ⛔ n_u)`
-   - `n_u > 0` → change `Pipeline : SOLVED ✅` to `Pipeline : SOLVED — n_u élément(s) non traité(s)`
+   - `n_u > 0` → change `Analyse : RÉSOLU ✅` / `Analysis: RESOLVED ✅` to `Analyse : RÉSOLU — n_u élément(s) non traité(s)` / `Analysis: RESOLVED — n_u element(s) unprocessed`
 
 4. **Regenerate the `**Bilan :**` line** with fourchette (C8) :
    - Ligne principale : `N_nc non-conformité(s) sur M éléments (<X>%) — K élément(s) à confirmer ou non traités.`
