@@ -90,6 +90,26 @@ sub load_projet {
         push @frames, Chorus::Frame->new(%$elem);
     }
 
+    # Post-load: resolve *_ref slots (string ID -> Frame object).
+    # Required for inter-Frame links declared in the project JSON
+    # (work_ref, repertoire_ref, transferee_ref, etc.).
+    # Without this pass, $f->get('work_ref') returns a string like
+    # "PO-01-literary-work" instead of the Frame object — any rule that
+    # calls ->get() on it crashes with "Can't locate method via package".
+    # ⛔ Always use $f->set() (not $f->{slot} = ...) to keep %REPOSITORY consistent.
+    {
+        my %frame_by_id = map { $_->{id} => $_ } @frames;
+        for my $f (@frames) {
+            for my $slot_name (grep { /_ref$/ } keys %$f) {
+                my $val = $f->{$slot_name};
+                next unless defined $val && !ref($val);
+                if (exists $frame_by_id{$val}) {
+                    $f->set($slot_name, $frame_by_id{$val});
+                }
+            }
+        }
+    }
+
     return @frames;
 }
 
@@ -194,31 +214,61 @@ If `Helpers.pm` absent for this agent → omit the `use ... ::Helpers` block and
 
 ---
 
-## T3 — Termination rule (pure Perl addrule)
-<!-- TEMPLATE: T3 v2026-10-11 — pure Perl addrule, not a standalone file -->
+## T3 — Termination rule (mandatory)
+<!-- TEMPLATE: T3 v2026-10-11 — pure Perl addrule or YAML rule, not a standalone file -->
 
-Use when global termination is needed (e.g. verifying that ALL Frames have their status set).
-Add **after** `loadRules()` in the termination agent's `build()`.
+> ⛔ **MANDATORY for every pipeline.**
+> `Chorus::Expert::process()` terminates **only** on `BOARD->{SOLVED}`, `BOARD->{FAILED}`,
+> or `max_iter` reached. It does **NOT** stop automatically when no rules fire — without an
+> explicit termination mechanism every pipeline runs until `max_iter`, regardless of whether
+> all slots have been computed. Use either the pure Perl `addrule` pattern below (added in
+> the last agent's `build()`) or the equivalent YAML rule variant.
+
+**Option A — Pure Perl `addrule` (added after `loadRules()` in the last agent's `build()`):**
 
 ```perl
 $agent->addrule(
-    _ID    => 'terminer',
+    _ID    => 'global-termination',
     _SCOPE => {
-        p => sub { [ Chorus::Frame::fmatch(slot => '<slot_ciblage>') ] },
+        # Target a slot written by the last substantive rule of this agent
+        e => sub { [ Chorus::Frame::fmatch(slot => '<last_agent_output_slot>') ] },
     },
     _APPLY => sub {
         my %opts = @_;
-        # Test global — ne pas utiliser cut()/last() ici sauf intention explicite
-        my @sans = grep { !defined $_->{statut} }
-                   Chorus::Frame::fmatch(slot => '<slot_ciblage>');
-        if (@sans == 0) {
-            $agent->solved();   # $agent captured as closure — correct
-            return 1;
-        }
-        return;
+        # Verify all BOARD pipeline gates are set (agents upstream are done)
+        return unless $SELF->BOARD->{'<pipeline_done_1>'}
+                   && $SELF->BOARD->{'<pipeline_done_2>'};
+        # Idempotence guard
+        return if $SELF->BOARD->{'pipeline_solved'};
+        $SELF->BOARD->{'pipeline_solved'} = 1;
+        $agent->solved();   # $agent captured as closure — correct
+        return 1;
     },
 );
 ```
+
+**Option B — YAML rule (R-last file in the last agent's rules dir, e.g. `R99-global-termination.yml`):**
+
+```yaml
+RULE: global-termination
+
+FIND:
+  e:
+    attribut: <last_agent_output_slot>
+
+CONDITION: |
+  $SELF->BOARD->{'<pipeline_done_1>'} &&
+  $SELF->BOARD->{'<pipeline_done_2>'} &&
+  !$SELF->BOARD->{'pipeline_solved'}
+
+ACTION: |
+  $SELF->BOARD->{'pipeline_solved'} = 1;
+  $SELF->solved();
+  1
+```
+
+> `$SELF->solved()` works in YAML ACTION blocks (unlike pure Perl `addrule` where only the
+> `$agent` closure works — see note below). Both patterns are equivalent at runtime.
 
 **Flow controls available in `_APPLY` (pure Perl `addrule`):**
 - `$agent->cut()`        → exits the current scope → next rule (same agent)

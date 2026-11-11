@@ -456,6 +456,26 @@ FIND:
   > threshold, slot presence guaranteed at Feed time). Use `CONDITION` for anything that depends
   > on slots written by other rules during the inference cycle.
 
+> ⛔ **`filtre` MUST be a Perl string expression — never a YAML mapping.**
+> A `filtre:` written as a YAML sub-mapping (key: value pairs) is parsed as a **hashref**
+> by the YAML loader and compiled to `grep { HASH(0x...) } fmatch(...)` — a constant truthy
+> value that matches every Frame. No syntax error is raised; the rule silently ignores the filter.
+> ```yaml
+> # ⛔ WRONG — filtre as YAML mapping → HASH(0x...) in grep, filters nothing
+> FIND:
+>   e:
+>     attribut: type_element
+>     filtre:
+>       type_element: use_of_work
+>       besoin_permitted_use: 1
+>
+> # ✅ CORRECT — filtre as a quoted Perl string on $_
+> FIND:
+>   e:
+>     attribut: type_element
+>     filtre: '$_->{type_element} eq "use_of_work" && $_->{besoin_permitted_use}'
+> ```
+
 > ⛔ **`$f` is not defined inside `filtre`** — `$f` (or any scope variable) only exists inside `ACTION`/`EFFET`, after `my $f = $opts{f}` is executed by `_APPLY`. Using `$f->` in a `filtre` expression causes `Global symbol "$f" requires explicit package name` at rule compilation time.
 > ```yaml
 > # ⛔ WRONG — $f not in scope here
@@ -748,6 +768,29 @@ EXCEPTION: |
 Multiple directories = multiple `loadRules()` calls.
 
 ### PREMISES — for reorder()
+
+> ⛔ **`PREMISES` values MUST be simple Perl identifiers (slot names) — never natural language.**
+> `loadRules()` compiles each PREMISES list item as a **bare Perl hash key**:
+> `_PREMISSES => { item1 => 'Y', item2 => 'Y' }`.
+> A multi-word phrase like `"protection_pipeline_done is set on BOARD by agent-scope R05"`
+> produces `Bareword "is" not allowed` / `syntax error` at eval time — silent rule load failure,
+> that rule is simply skipped with a warning.
+>
+> **⛔ WRONG — natural language descriptions (bareword compile error):**
+> ```yaml
+> PREMISES:
+>   - protection_pipeline_done is set on BOARD by agent-scope R05
+>   - this rule gates the entire agent-permitted-use processing
+> ```
+> **✅ CORRECT — simple slot names only (or omit PREMISES entirely):**
+> ```yaml
+> PREMISES:
+>   - protection_pipeline_done
+>   - besoin_permitted_use
+> ```
+> **Preferred when no `reorder()` is needed: omit `PREMISES` entirely.**
+> `PREMISES` is metadata for `reorder()` only — `applyrules()` ignores it at runtime.
+> Write the actual prerequisite logic in `CONDITION`, not in `PREMISES`.
 
 ```perl
 sub sort_by_interest {
@@ -1465,7 +1508,66 @@ across the full tree before falling back to _DEFAULT.
       meaning the rule would never compute and write the actual `_VALUE`. Keep `$var->{slot}` in
       EXCEPTION guards; use `$var->get('slot')` everywhere else.
       → Full decision table: `chorus-engine-yaml.md § CONDITION vs EXCEPTION`
-- [ ] Use `|` (block scalar) for multi-line `ACTION`, never `>`
+- [ ] ⛔ **Use `|` (literal block scalar) for multi-line `ACTION`, never `>`.**
+      `ACTION: >` (folded scalar) collapses **all newlines to spaces** before eval. A comment
+      on its own line followed by an `if` statement becomes a single line:
+      `# comment if (condition) {` — the entire `if` is now commented out. No syntax error;
+      the rule silently does nothing. The resulting runtime error is `syntax error near "} if"`
+      or a missing closing brace — far removed from the actual cause.
+      ```yaml
+      # ⛔ WRONG — > folds newlines; comment swallows the if statement
+      ACTION: >
+        my $x = $e->get('price');
+        # Floor check: price <= 0 → skip
+        if ($x > 0) { $e->set('result', 'OK') }
+        1
+      # ✅ CORRECT — | preserves newlines; comment stays on its own line
+      ACTION: |
+        my $x = $e->get('price');
+        # Floor check: price <= 0 -> skip
+        if ($x > 0) { $e->set('result', 'OK') }
+        1
+      ```
+- [ ] ⛔ **Never `use Module::Name qw(...)` inside `ACTION`/`EFFET`.**
+      `use` is a **compile-time directive** — it runs at Perl parse time, not eval time.
+      Inside a YAML `ACTION` block (which is `eval`'d at runtime by `loadRules`), `use`
+      causes `Bareword "use" not allowed` or silently fails. Inject helpers via typeglob
+      in the Agent's `build()` BEFORE `loadRules()` — they are then available to all rules
+      of that agent at eval time. See § Multi-Specialty Architecture above.
+      ```yaml
+      # ⛔ WRONG — use inside ACTION: compile-time statement in runtime eval
+      ACTION: |
+        use MyAgent::Helpers qw(compute_fee);
+        my $fee = compute_fee($e->get('price'));
+      # ✅ CORRECT — helper injected in Agent.pm build() before loadRules()
+      ACTION: |
+        my $fee = compute_fee($e->get('price'));   # available via typeglob
+      ```
+- [ ] ⛔ **One rule per YAML file. Never use `---` document separator in a rule file.**
+      `Chorus::Engine::loadRules()` calls `YAML::LoadFile()` which reads **only the first
+      YAML document** from each file. Any rule after a `---` separator is **silently ignored**
+      — no error, no warning, no trace. The missing rules are discovered only at runtime
+      when Frames they should process remain unprocessed.
+      Rule naming convention: `R01-<slug>.yml`, `R02-<slug>.yml` — one file per rule,
+      alphabetical order = load order.
+- [ ] ⛔ **Pipeline-done rules: use `fmatch(slot => '<agent_output_slot>')`, not `fmatch(slot => 'type_element')`.**
+      A pipeline-done gate that uses `fmatch(slot => 'type_element')` to check that all
+      Frames are processed will find **every** Frame type in the sandbox (use_of_work,
+      collective_management_organisation, remuneration_obligation, etc.) and check them
+      all for `protection_status` — which only protected_object Frames ever receive.
+      The gate never fires. Use the agent's own output slot instead:
+      ```yaml
+      # ⛔ WRONG — finds all 7 Frame types; non-protected ones never get protection_status
+      ACTION: |
+        my @all = fmatch(slot => 'type_element');
+        return 0 if grep { !defined $_->{protection_status} } @all;
+        $SELF->BOARD->{'protection_pipeline_done'} = 1; 1
+      # ✅ CORRECT — only finds protected_object Frames (the ones R01 classified)
+      ACTION: |
+        my @protected = fmatch(slot => 'object_type');   # set by R01 on protected_objects only
+        return 0 if grep { !defined $_->{protection_status} } @protected;
+        $SELF->BOARD->{'protection_pipeline_done'} = 1; 1
+      ```
 - [ ] Name files `R01-`, `R02-` to control loading order
 - [ ] `filtre` in `FIND` to narrow scope **before** `_APPLY`
 
@@ -1515,6 +1617,7 @@ across the full tree before falling back to _DEFAULT.
       $agent->loadRules("$base/rules/mon-agent");
       ```
       Without this: `Undefined subroutine &Chorus::Engine::mon_helper`.
+      ⛔ **Never put `use MyAgent::Helpers` inside a YAML `ACTION` block** — see YAML Rules checklist above.
 
 ---
 

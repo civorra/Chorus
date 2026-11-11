@@ -1500,7 +1500,13 @@ YAML Checklist:
 - [ ] ⛔ **`$f->{slot} = val` in ACTION** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
 - [ ] ⛔ **CONDITION too restrictive on `type_element`** → silently excludes Frames of other types — prefer testing slot presence → `chorus-engine §5`
 - [ ] ⛔ **Conditional ACTION without `else`** → returns `1` even when nothing modified → infinite loop at scale — always `return 1` inside the `if`, `0` as fallback → `chorus-engine §5`
-- [ ] Use `|` (block scalar) for multi-line `ACTION` — never `>`
+- [ ] ⛔ **Use `|` (literal block scalar) for multi-line `ACTION` — never `>`.** `>` folds newlines to spaces: a `# comment` line followed by an `if` statement on the next line becomes a single line after folding — `# comment if (condition) {` — the `if` is now part of the comment and silently never executes. See `chorus-engine-yaml.md` checklist for the full pattern and correct example.
+- [ ] ⛔ **One rule per YAML file. Never use `---` document separator.** `Chorus::Engine::loadRules()` calls `YAML::LoadFile()` which reads only the **first** YAML document. Any rule after `---` is silently ignored — no error, no warning.
+- [ ] ⛔ **`PREMISES` values must be simple Perl identifiers (slot names) — never natural language descriptions.** `loadRules()` compiles PREMISES list items as bare hash keys in Perl. A phrase like `"gate is set on BOARD by agent-scope R05"` causes `Bareword "is" not allowed` / `syntax error` at eval time — that rule is skipped. When no `reorder()` is planned, **omit `PREMISES` entirely** (preferred).
+- [ ] ⛔ **Never `use Module::Name qw(...)` inside `ACTION`.** `use` is compile-time — invalid in runtime `eval`. The Helper must be injected via typeglob in Agent.pm `build()` before `loadRules()`.
+- [ ] ⛔ **`filtre:` must be a Perl string, never a YAML mapping.** A `filtre:` written as `filtre:\n  slot: value` is parsed as a hashref and compiled to `grep { HASH(0x...) }` — a constant truthy that matches all Frames without filtering. See `chorus-engine-yaml.md § FIND` for correct format.
+- [ ] ⛔ **Pipeline-done rules: use `fmatch(slot => '<agent_output_slot>')`, not `fmatch(slot => 'type_element')`.** `fmatch(type_element)` finds every Frame type in the sandbox; non-domain Frames will never get the agent's output slot → the pipeline-done gate never fires. Use the slot that this agent exclusively writes (e.g. `fmatch(slot => 'object_type')` for the protection agent).
+- [ ] ⛔ **Every agent with a pipeline-done BOARD gate MUST have a catch-all default rule** that sets the verdict slot on any Frame that matched no other rule. Without it, Frames matching no limitation/authorization rule remain unprocessed → the pipeline-done condition (`!grep { !defined $_{verdict} }`) is never satisfied → `permitted_use_pipeline_done` never set → all downstream agents blocked forever. The catch-all fires last (highest `R-NN` number) with `CONDITION: !defined $e->{<verdict_slot>}`.
 - [ ] Files named `R<NN>-<slug>.yml` (alphabetical = **load order only** — not firing order)
 - [ ] ⛔ **Cross-rule slot dependency without CONDITION guard** → silent wrong verdict:
       if rule Rxx reads a slot written by another rule in the same agent, it **must** guard
@@ -1522,7 +1528,7 @@ YAML Checklist:
   a bounded-wait counter (Step 5e of `chorus-check.md` catches the runtime bug; this check
   catches the missing KB documentation that prevents `chorus-create-project` from generating
   correct test data).*
-- [ ] If `PREMISES` present: consistent with the KB `Slot dictionary`
+- [ ] ⛔ **If `PREMISES` present: values must be simple slot name identifiers only** — natural language descriptions cause Perl bareword errors at `loadRules()` eval time. When no `reorder()` is planned, **omit `PREMISES` entirely** (preferred). See `chorus-engine-yaml.md § PREMISES` for the full rule and correct/incorrect examples.
 
 ### Phase 5.5 — Generate Perl Helpers
 
