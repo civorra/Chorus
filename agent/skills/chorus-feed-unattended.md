@@ -417,6 +417,61 @@ If `status: "converged"`:
    Report: $SANDBOX/agent/autofeed-report-<NNN>.md
 ```
 
+### Step 5.5 — Audit `_rule_trace` coverage (convergence + stopped_max_passes only)
+
+> **Triggered only when** `status` is `converged` or `stopped_max_passes` —
+> not on intermediate `waiting` checkpoints.
+>
+> **Rationale (ENG-037):** rules generated before the `_rule_trace` traceability
+> convention was introduced do not publish to that slot. This gap is otherwise
+> only discovered at the next explicit `chorus-check --all` (Steps 5b–5l) — too
+> late for the operator. This step surfaces it immediately at convergence, while
+> the sandbox context is still active.
+>
+> **Why not automatic:** `chorus-feed --enrich` modifies the KB. Auto-triggering
+> risks reopening stabilised passes or creating an infinite loop. Operator must
+> confirm manually after reading the report.
+
+Run the audit (read-only, no sub-agent):
+
+```bash
+# List YAML rule files whose ACTION block does not publish _rule_trace
+missing_files=$(find "$SANDBOX/rules" -name "*.yml" -exec grep -L "_rule_trace" {} \; 2>/dev/null)
+n_missing=$(echo "$missing_files" | grep -c "\.yml" 2>/dev/null || echo 0)
+```
+
+**If `n_missing == 0`** → add to the final report (silent ✅):
+```markdown
+- `_rule_trace` coverage : ✅ all rules publish traceability
+```
+
+**If `n_missing > 0`** → display inline AND add to the final report:
+
+```
+⚠️  Traçabilité incomplète — N règle(s) YAML sans _rule_trace
+    Fichiers :
+      rules/agent-X/R04-nom.yml
+      rules/agent-Y/R07-nom.yml
+      ...
+    Impact   : run.pl n'affichera pas les références §corpus pour ces éléments.
+               La webapp ne peut pas lier les verdicts aux articles du corpus.
+    Action   : chorus-feed <sandbox-name> --enrich
+```
+
+Include in the final report under a dedicated section:
+```markdown
+## ⚠️ Traçabilité incomplète — action requise
+
+N règle(s) YAML ne publient pas `_rule_trace` dans leur bloc `ACTION` :
+
+| Fichier | Agent |
+|---|---|
+| `rules/agent-X/R04-nom.yml` | agent-X |
+| ... | ... |
+
+**Action :** `chorus-feed <sandbox-name> --enrich`
+```
+
 ### Checkpoint JSON structure (reference)
 
 ```json
@@ -491,6 +546,7 @@ Written at convergence or `stopped_max_passes`. Contains:
 - `⛔ OOS` definitive list
 - OOS reclassified to Deferred (Step 0)
 - CORPUS:unresolved residuals
+- **`_rule_trace` coverage** — ✅ all covered, or ⚠️ N rules missing + `chorus-feed --enrich` recommendation (see Step 5.5)
 - **"Corpus extensions suggested"** section (if any `external-norm` Deferred):
 
 ```markdown
