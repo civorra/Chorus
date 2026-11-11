@@ -118,6 +118,33 @@ create checkpoint:
   "passes_done": 0, "max_passes": 2N }
 ```
 
+**⛔ Corpus scan guard (first run — presplit mode):** before collecting files,
+check for mixed-content in `--corpus-dir`:
+
+```
+IF mode == "presplit":
+  raw_files   = [f for f in corpus/*.md if first_5_lines(f) contains "# ORIGINAL:"
+                 OR (filename matches /\d{3}-[^/]+-text\.md$/ AND no "# AGENT:" header)]
+  agent_files = [f for f in corpus/*.md if first_5_lines(f) contains "# AGENT:"]
+
+  IF raw_files AND agent_files coexist in corpus/ (not in corpus/raw/):
+    ⛔ STOP — do not create checkpoint, do not process any file.
+    Display:
+      "⛔ corpus/ contains both raw extraction files and agent split files:
+         Raw   : <list raw_files>
+         Agent : <list agent_files>
+       Run `chorus-corpus-scoping <sandbox> --split` to isolate raw files
+       into corpus/raw/ before relaunching chorus-feed --unattended."
+    EXIT (non-zero).
+
+  ELSE IF raw_files AND NOT agent_files:
+    ⚠️  Warn: "Pre-split agent files not found — falling back to single-corpus mode."
+    mode = "single"   (re-evaluate Step 0.5 result)
+```
+
+> This guard fires **only when no checkpoint exists** (first run). On resume,
+> the checkpoint's `files_mode_a_pending` list is authoritative — no re-scan.
+
 **Corpus scan rule (first run):** collect every file in `--corpus-dir` whose
 extension (case-insensitive) is one of: `.md`, `.txt`, `.pdf`, `.docx`,
 `.xlsx`, `.csv`, `.xml`, `.html`, `.htm`. Sort by filename. This list becomes
@@ -128,6 +155,10 @@ extension (case-insensitive) is one of: `.md`, `.txt`, `.pdf`, `.docx`,
 - Pre-existing `.md`/`.txt` files are used as-is.
 - Files already converted (e.g. `003-reco-text.md` exists alongside
   `003-reco.pdf`) → include only the `.md` (skip the source `.pdf`).
+- **`presplit` mode — additional filter:** after the guard above passes,
+  collect **only** files whose `# AGENT:` header slug matches an entry in
+  `SCOPING.md ## Agents` table. Files without `# AGENT:` header are excluded
+  from `files_mode_a_pending` even if they remain in `corpus/`.
 
 **If present**:
 - `status: "converged"` → display convergence summary and exit.

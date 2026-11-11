@@ -318,6 +318,39 @@ Written at the sandbox root: `sandboxes/<sandbox-name>/SCOPING.md`.
 > original normalized corpus `.md` file(s) in `$SANDBOX/corpus/`. Never modifies
 > the original corpus files — only creates new derived files alongside them.
 
+### Step 0 — Raw file isolation (corpus/ layout guard)
+
+> **Purpose:** prevent raw extraction files from being processed as agent corpus
+> files by `chorus-feed`. This step runs **before any section is read or classified**.
+
+Scan `$SANDBOX/corpus/` for `.md` files. Identify two categories:
+
+| Category | Pattern | Action |
+|---|---|---|
+| **Raw extractions** | Contains `# ORIGINAL:` header OR filename matches `NNN-*-text.md` and has no `# AGENT:` header | → move to `corpus/raw/` |
+| **Agent files** | Contains `# AGENT:` header | → keep in `corpus/` |
+| **Out-of-scope marker** | Contains `# OUT-OF-SCOPE CORPUS SECTIONS` | → keep in `corpus/` |
+
+**Procedure:**
+
+1. For each `.md` in `$SANDBOX/corpus/` (non-recursive — do not scan subdirs):
+   - Open file, read first 5 lines.
+   - If first lines contain `# ORIGINAL:` → **raw extraction** → move to `corpus/raw/`.
+   - Else if filename matches `/\d{3}-[^/]+-text\.md$/` and no `# AGENT:` header found → **raw extraction** → move to `corpus/raw/`.
+   - Else → leave in place.
+
+2. If any files were moved:
+   - Create `corpus/raw/` if absent.
+   - Update the `# SPLIT FROM:` headers in all agent files in `corpus/`: replace `corpus/NNN-` with `corpus/raw/NNN-` for each moved file.
+   - Append a note to SCOPING.md `## Corpus pre-split complete` section:
+     `Raw extractions archived to corpus/raw/: <list of moved filenames>`
+
+3. If `corpus/raw/` already exists and contains files → skip (idempotent).
+
+> **⚠️ This step is mandatory and silent** — no user prompt. If a file cannot be
+> classified (no `# ORIGINAL:` and no `# AGENT:` header), leave it in place and
+> log a warning: `[corpus-scoping] Unclassified file kept in corpus/: <filename>`.
+
 ### Step 1 — Build section inventory
 
 Re-read the corpus `.md` file(s) identified in `## Corpus reviewed` (SCOPING.md).
