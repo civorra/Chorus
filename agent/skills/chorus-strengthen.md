@@ -583,6 +583,26 @@ Then proceed to Phase 4.5.
 
 > **This step is mandatory** — it enables `chorus-fix` and the webapp Tests tab
 > to consume the gap report without re-parsing the text output.
+
+> ⛔ **FIELD NAMES ARE SNAKE_CASE — strict contract with `scanner.js`**
+> The webapp (`chorus/scanner.js § readLastStrengthenReport`) reads this file
+> using **exact snake_case keys**. Any camelCase drift silently returns 0 and
+> the webapp displays "✅ 0 gap KB" regardless of actual gaps found.
+>
+> | ✅ Correct | ❌ Wrong (silent failure) |
+> |---|---|
+> | `total_gaps` | `totalGaps` |
+> | `project_bugs` | `projectBugs` |
+> | `bucket_b` / `bucket_c` / `bucket_a` | `bucketB` / `bucketC` / `bucketA` |
+> | `gap_type` | `gapType` |
+> | `rule_file` | `ruleFile` |
+> | `element_id` | `elementId` |
+> | `corpus_ref` | `corpusRef` |
+>
+> **Verification before writing:** scan your JSON for any camelCase key — if found,
+> convert to snake_case before `eca__write_file`. The webapp has a defensive
+> camelCase fallback (ENG-037-bis) but that fallback is a safety net, not a contract.
+> Always generate snake_case as primary output.
 >
 > Write immediately after displaying the text report. Do not skip even if no
 > gaps were found (write with `total_gaps: 0` and an empty `gaps[]` array —
