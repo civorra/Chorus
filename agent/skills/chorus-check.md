@@ -2391,6 +2391,7 @@ when the KB has not changed since the last `chorus-check --all`.
   "kb_hash": "<content of $SANDBOX/agent/.kb-hash — verbatim, mechanically copied, see guard above>",
   "proj_hash": "<sha256sum $SANDBOX/project-*.json | awk '{print \$1}' | sha256sum | awk '{print \$1}'>",
   "timestamp": "<ISO-8601 UTC>",
+  "rule_trace_gaps": N,
   "files": [
     {
       "file": "project-rules-iso.json",
@@ -2410,12 +2411,20 @@ when the KB has not changed since the last `chorus-check --all`.
   ],
   "overall_discordances": N,
   "overall_total": N,
+  "rule_trace_gaps": N,
   "converged": true
 }
 ```
 
 - `disc_detail` and `unproc_detail` may be empty arrays when counts are 0.
 - `converged`: `true` only when all files are SOLVED, 0 discordances, 0 unprocessed.
+- `rule_trace_gaps`: count of YAML rule files in `$SANDBOX/rules/` whose `ACTION` block
+  does not publish `_rule_trace` (ENG-037). Computed once after the sub-agent loop using
+  Steps 5b–5l output or a direct grep scan:
+  ```bash
+  rule_trace_gaps=$(find "$SANDBOX/rules" -name "*.yml" -exec grep -L "_rule_trace" {} \; 2>/dev/null | wc -l)
+  ```
+  `0` = all rules publish traceability. Read by the webapp to display a badge on step ①.
 - This file is **never committed** (local artefact, like `.kb-hash`).
 - It is **invalidated** (deleted) by `chorus-feed` at the end of each run,
   alongside `.kb-hash`.

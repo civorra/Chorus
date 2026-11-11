@@ -440,6 +440,20 @@ missing_files=$(find "$SANDBOX/rules" -name "*.yml" -exec grep -L "_rule_trace" 
 n_missing=$(echo "$missing_files" | grep -c "\.yml" 2>/dev/null || echo 0)
 ```
 
+After computing `n_missing`, **write it into the checkpoint** so the webapp can
+display the badge immediately (without waiting for `chorus-check --all`):
+
+```python
+# Patch .chorus-unattended-state.json — add rule_trace_gaps field
+import json, os
+state_path = os.path.join(SANDBOX, '.chorus-unattended-state.json')
+with open(state_path) as f:
+    state = json.load(f)
+state['rule_trace_gaps'] = n_missing
+with open(state_path, 'w') as f:
+    json.dump(state, f, indent=2, ensure_ascii=False)
+```
+
 **If `n_missing == 0`** → add to the final report (silent ✅):
 ```markdown
 - `_rule_trace` coverage : ✅ all rules publish traceability
