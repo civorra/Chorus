@@ -393,28 +393,57 @@ After processing, update checkpoint:
 >   `families_closed_this_pass == new_rules_this_pass` = no batching this
 >   pass, one family needed one rule).
 
-Determine next state:
+Determine next state — **evaluate in this exact order** (SP1/SP2 take priority over `passes_done`):
 
-| Condition | Next state | Action |
+> ⚠️ **ENG-035 — Order is mandatory.** The SP1/SP2 convergence check MUST be evaluated
+> BEFORE `passes_done ≥ max_passes`. Inverting the order causes a confirmed SP1 run to
+> emit `stopped_max_passes` instead of `converged` when both conditions are true simultaneously
+> (i.e. convergence is reached on the final allowed pass).
+
+| Priority | Condition | Next state |
 |---|---|---|
-| All files done AND Deferred-S=0 AND Deferred-C=0 AND CORPUS:unresolved=0 | `converged` | Write final report, display ✅ |
-| All files done AND Deferred remain | Re-run Mode B on Deferred files (if < max_passes) OR `stopped_max_passes` | |
-| Files still pending | Process next file (Mode A) next session | |
-| `passes_done ≥ max_passes` | `stopped_max_passes` | Write report, signal incomplete |
+| **1 — SP2** | `deferred_c == 0` AND `deferred_s == 0` AND `new_rules_this_pass == 0` AND `families_oos_total` unchanged for ≥ 2 passes | `converged` (SP2) |
+| **2 — SP1** | `deferred_c == 0` AND `new_rules_this_pass == 0` AND `deferred_unchanged_passes ≥ 1` | `converged` (SP1) |
+| **3 — files pending** | `files_mode_a_pending` or `files_mode_b_pending` non-empty | `waiting` — process next file next session |
+| **4 — max_passes** | `passes_done ≥ max_passes` AND neither SP1 nor SP2 met | `stopped_max_passes` |
+| **5 — default** | None of the above | `waiting` — continue |
+
+> **SP1 note:** when `deferred_s > 0` at SP1, the remaining Deferred-S items are
+> structurally non-codifiable (confirmed non-encodable from static project data).
+> `converged: true` is correct — further passes cannot close them. Recommend
+> `chorus-review-kb` in the final report (Step 5).
 
 ### Step 5 — Display end-of-session message
 
+**Intermediate pass (status: "waiting"):**
 ```
 ✅ Pass P/MAX done — <NNN-slug.md> (Mode A|B)
    Coverage: X% · Deferred-S: DS · Deferred-C: DC · CORPUS:unresolved: U
    Next: chorus-feed <sandbox> --unattended
 ```
 
-If `status: "converged"`:
+**Convergence SP2 — KB complète (status: "converged", deferred_s == 0):**
 ```
-✅ Unattended run complete — full corpus coverage reached.
-   Passes: P · Files: N · Final coverage: X%
-   Report: $SANDBOX/agent/autofeed-report-<NNN>.md
+✅ KB complète — SP2 atteint.
+   Couverture maximale atteinte. Passes: P · Fichiers: N · Couverture finale: X%
+   Rapport : $SANDBOX/agent/autofeed-report-<NNN>.md
+```
+
+**Convergence SP1 — KB stable, Deferred-S non-encodables (status: "converged", deferred_s > 0):**
+```
+✅ KB stable — SP1 atteint.
+   DS section(s) structurellement non-encodables restent en ⏭-S (voir autofeed-report).
+   Passes: P · Fichiers: N · Couverture finale: X%
+   Recommandé : chorus-review-kb <sandbox>
+   Rapport : $SANDBOX/agent/autofeed-report-<NNN>.md
+```
+
+**Arrêt sur limite (status: "stopped_max_passes", ni SP1 ni SP2 atteint) :**
+```
+⚠️ Limite max_passes atteinte avant convergence.
+   Deferred-C: DC encore présents (déblocables). Passes effectuées : P/MAX.
+   Relancer : chorus-feed <sandbox> --unattended  (ou augmenter --max-passes)
+   Rapport : $SANDBOX/agent/autofeed-report-<NNN>.md
 ```
 
 ### Step 5.5 — Audit `_rule_trace` coverage (convergence + stopped_max_passes only)
