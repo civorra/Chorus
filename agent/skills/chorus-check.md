@@ -345,10 +345,11 @@ done
 
 # Rules whose ACTION sets a result slot to a failing or uncertain value but never
 # writes non_conformity_motif / motif_non_conformite in the same file.
-# Patterns covered:
+# Patterns covered (engine-level generics only — do NOT add domain-specific
+# verdict strings such as 'ecl_required', 'conditional', 'insufficient_data'
+# here; those are sandbox-domain values, not engine conventions):
 #   - Classic failing verdicts : 'NO' / 'NON' / 'NON_CONFORME'
-#   - Uncertain/conditional    : '_a_confirmer', 'ecl_required', 'conditional'
-#   - Placeholder statuses     : 'insufficient_data' (or any domain equivalent)
+#   - Cross-sandbox uncertain  : '_a_confirmer'  (engine convention, all sandboxes)
 # Note: aggregate rules that forward a sub-rule's motif via
 #   $e->set('non_conformity_motif', $e->get('motif_<aspect>'))
 #   are correctly caught as "covered" because they write non_conformity_motif.
@@ -360,12 +361,7 @@ for f in $SANDBOX/rules/*/*.yml; do
 |'NON_CONFORME'\
 |\"NON_CONFORME\"\
 |'_a_confirmer'\
-|\"_a_confirmer\"\
-|'ecl_required'\
-|\"ecl_required\"\
-|'conditional'\
-|\"conditional\"\
-|'insufficient_data'" "$f"; then
+|\"_a_confirmer\"" "$f"; then
     grep -qE "non_conformity_motif|motif_non_conformite" "$f" || echo "MISSING motif: $f"
   fi
 done
@@ -376,10 +372,15 @@ done
 The exact regex matters less than the principle: **every rule file that can
 produce a failing or uncertain verdict must also appear in both scans' "no match" case.**
 
-> **ENG-038 (2026-11-11):** extended from `'NO'`/`'NON'` only to also cover
-> `_a_confirmer`, `ecl_required`, `conditional`, `insufficient_data` —
-> patterns that silence the MOTIF column in the webapp just as effectively
-> as a missing motif on a classic NON_CONFORME verdict.)
+> **⚠️ Domain-specific verdict strings** (e.g. `ecl_required`, `conditional`,
+> `insufficient_data`, or any sandbox-specific partial/conditional value) are
+> **not** listed here — they are not engine conventions. The engineer must
+> extend this grep with the sandbox's own verdict vocabulary when known
+> (e.g. by grepping `rules/` for all distinct string values set on verdict slots).
+>
+> **ENG-038 (2026-11-11):** extended from `'NO'`/`'NON'` to also cover
+> `_a_confirmer` (cross-sandbox engine convention). Domain-specific conditional
+> verdicts removed from the generic pattern — see note above.)
 
 - **No matches (all rules covered)** → proceed to Phase 2.
 - **Matches found** → for each flagged file:

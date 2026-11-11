@@ -1234,11 +1234,9 @@ across the full tree before falling back to _DEFAULT.
       | Verdict value set by rule | Requires `non_conformity_motif` ? |
       |---|---|
       | `'NO'` / `'NON'` / `'NON_CONFORME'` | ✅ yes — already covered above |
-      | `'_a_confirmer'` | ✅ yes — uncertain verdict, motif explains what data is missing |
-      | `'ecl_required'` | ✅ yes — motif explains which ECL route and which CMO to contact |
-      | `'conditional'` | ✅ yes — motif explains what condition must be met before use |
-      | `'insufficient_data'` or similar | ✅ yes — motif explains which slot is missing |
-      | `'YES'` / `'CONFORME'` / `'NA'` | ❌ no — positive / not-applicable verdicts |
+      | `'_a_confirmer'` | ✅ yes — cross-sandbox engine convention; motif explains what data is missing |
+      | Any domain-specific partial/conditional string (e.g. `'ecl_required'`, `'conditional'`, `'insufficient_data'` in a copyright sandbox) | ✅ yes — domain values, not engine conventions; the engineer must add `non_conformity_motif` for each |
+      | `'YES'` / `'CONFORME'` / `'OUI'` / `'NA'` / `1` | ❌ no — positive / not-applicable verdicts |
 
       **Aggregate rules** (rules that collect sub-rule verdicts into a final slot)
       must also set `non_conformity_motif` when their aggregate verdict is not
