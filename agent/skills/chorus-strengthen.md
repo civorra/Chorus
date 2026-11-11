@@ -340,7 +340,11 @@ For each discordant element (expected ≠ actual) **not in `uncertain_ids`** and
 
 For each element, identify:
 - The element `id` and `type_element`
-- The expected result (from `_resultats_attendus` in the JSON, or from the ID naming convention)
+- The expected result — priority order:
+  1. `expected_verdict` field in the project JSON (set by `chorus-create-project` — ENG-036;
+     covers elements without `-OK-`/`-KO-` in the id: boundary BELOW/ABOVE, PROT/PD suffix, etc.)
+  2. `_resultats_attendus` field in the JSON (legacy convention)
+  3. ID naming convention: `-OK-` → CONFORME, `-KO-` → NON_CONFORME
 - The actual result (from the pipeline output)
 - The rule that fired (if any) — visible in the pipeline output as `raison_non_conformite`
 - The project file it belongs to (`project-rules-iso`, `project-edges`, `project-cross`, `project-scale`)

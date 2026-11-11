@@ -347,7 +347,7 @@ Document BOARD inter-agent keys in `index.org`.
 
 ```perl
 #!/usr/bin/env perl
-# TEMPLATE: T5 v2026-10-11  (chorus-templates.md — do not edit this generated file)
+# TEMPLATE: T5 v2026-11-11  (chorus-templates.md — do not edit this generated file)
 use strict;
 use warnings;
 use utf8;   # decode UTF-8 literals in this source file (❌✅⚠️█░─ + accented corpus terms)
@@ -463,6 +463,9 @@ my $n_non_traite   = 0;
 my $n_incertain    = 0;   # elements flagged _a_confirmer: 1 in the project JSON —
                           # distinct from Unprocessed: these DID get a verdict,
                           # but the terminology mapping behind it is uncertain.
+my $n_discordances = 0;   # elements where expected_verdict (from -OK-/-KO- id
+                          # convention, set by chorus-create-project) differs from
+                          # the pipeline's actual verdict. Read by webapp + chorus-strengthen.
 
 for my $e (@elements) {
     my $id   = $e->{id}   // '?';
@@ -473,6 +476,17 @@ for my $e (@elements) {
     elsif ($stat eq 'NON_CONFORME') { $n_non_conforme++ }
     else                            { $n_non_traite++ }
     $n_incertain++ if $e->{_a_confirmer};
+
+    # Discordance: compare expected_verdict (if present) with actual verdict.
+    # expected_verdict is set by chorus-create-project on -OK-/-KO- elements.
+    # Uses $stat (statut_conformite) normalised: public_domain/protected → CONFORME.
+    # NOT_CHECKED is excluded (intentionally out-of-scope, not a test case).
+    if (defined $e->{expected_verdict} && $stat ne 'NOT_CHECKED' && $stat ne '(unprocessed)') {
+        my $actual = ($stat =~ /^CONFORME|^protected$|^public_domain$/) ? 'CONFORME'
+                   : ($stat eq 'NON_CONFORME') ? 'NON_CONFORME'
+                   : undef;
+        $n_discordances++ if defined $actual && $e->{expected_verdict} ne $actual;
+    }
 
     my $flag = $e->{_a_confirmer}      ? '❓'
              : $stat eq 'CONFORME'     ? '✅'
@@ -563,6 +577,7 @@ printf "  Conformes      : %d / %d  (%d%%)\n", $n_conforme,     $n_total, $taux;
 printf "  Non conformes  : %d / %d\n",          $n_non_conforme, $n_total;
 printf "  Unprocessed    : %d / %d\n",           $n_non_traite,   $n_total;
 printf "  Incertain (❓) : %d / %d  (terminology mapping to confirm — see chorus-complete-report)\n", $n_incertain, $n_total;
+printf "  Discordances   : %d\n",                 $n_discordances;
 printf "  [%s]  %d%%\n", $barre, $taux;
 printf "  Pipeline       : %s\n", $ok ? 'SOLVED ✅' : 'FAILED/TIMEOUT ❌';
 print "─" x 62 . "\n";
@@ -618,6 +633,7 @@ print "─" x 62 . "\n";
             type_element  => $e->{type_element} // $e->{type},
             verdict       => $stringify_ref->(exists &verdict_of ? verdict_of($e) : ($e->{statut_conformite} // '(unprocessed)')),
             a_confirmer   => $e->{_a_confirmer} ? JSON::true : JSON::false,
+            (defined $e->{expected_verdict} ? (expected_verdict => $e->{expected_verdict}) : ()),
             # Traceability — populated only if at least one rule that fired on
             # this element published to _rule_trace (see chorus-engine-yaml.md
             # § Rule Documentation Standard). Cumulative arrayref of
@@ -648,6 +664,7 @@ print "─" x 62 . "\n";
         n_non_conforme  => $n_non_conforme,
         n_non_traite    => $n_non_traite,
         n_incertain     => $n_incertain,
+        n_discordances  => $n_discordances,
         taux_conformite => $taux,
         elements        => \@elements_json,
     };

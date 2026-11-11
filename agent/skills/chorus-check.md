@@ -2264,9 +2264,21 @@ YOUR TASKS:
    - NON_CONFORME : count of NON_CONFORME elements
    - UNPROCESSED  : count of elements tagged "(unprocessed)" in output
    - DISCORDANCES : elements whose actual result differs from the expected result
-       • id contains "-OK-" or "-ok-" → expected CONFORME
-       • id contains "-KO-" or "-ko-" → expected NON_CONFORME
-       Also check "_resultats_attendus" in the JSON if present.
+       Priority order for the expected verdict of each element:
+       1. `expected_verdict` field in the project JSON (set by chorus-create-project — ENG-036)
+          — covers elements whose id does NOT follow -OK-/-KO- (e.g. boundary BELOW/ABOVE,
+          PROT/PD suffix, _note_calc-derived). Read by loading the project JSON alongside
+          the run output:
+          ```python
+          import json
+          proj = json.load(open('<SANDBOX>/<FILE>'))
+          ev_map = {e['id']: e.get('expected_verdict') for e in proj.get('elements', proj if isinstance(proj, list) else [])}
+          ```
+       2. Fallback when `expected_verdict` absent:
+          • id contains "-OK-" or "-ok-" → expected CONFORME
+          • id contains "-KO-" or "-ko-" → expected NON_CONFORME
+       3. Also check "_resultats_attendus" in the JSON if present (legacy convention).
+       An element with no expected verdict from any source → not counted as a discordance.
        ⚠️ **`_expected_uncertain` filter:** before counting a discordance, read the
        element's `_expected_uncertain` field in the JSON. If `true`, **skip it entirely**
        — do not count it as a discordance, do not list it in DISC_DETAIL.

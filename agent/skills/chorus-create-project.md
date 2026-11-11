@@ -716,6 +716,20 @@ For each type, include in order:
 5. Optional slots relevant to the rules being exercised
 6. ⛔ Do not include system slots (`_*`), nor slots set and computed by the agents
    (results, statuses, qualifications) — these slots are computed by the pipeline, not supplied in the project JSON
+7. **`expected_verdict`** — mandatory on every element that has a testable verdict intention:
+   - `id` contains `-OK-` (case-insensitive) → `"expected_verdict": "CONFORME"`
+   - `id` contains `-KO-` (case-insensitive) → `"expected_verdict": "NON_CONFORME"`
+   - For elements without `-OK-`/`-KO-` in the id (reference objects, boundary
+     elements with BELOW/EXACT/ABOVE/PROT/PD suffixes), derive from `_note_calc`:
+     - mentions `protected`, `CONFORME`, `AUTHORIZED`, `APPLIES` (without "NOT")
+       → `"expected_verdict": "CONFORME"`
+     - mentions `public_domain`, `NON_CONFORME`, `EXPIRED`, `NOT AUTHORIZED`,
+       `DOES NOT APPLY` → `"expected_verdict": "NON_CONFORME"`
+     - Ambiguous or reference-only elements (no derivable verdict) → omit `expected_verdict`
+   > **Why:** `run.pl` (T5) and the webapp calculate `n_discordances` from
+   > `expected_verdict`. Without this field, `chorus-check --all` always reports
+   > 0 discordances regardless of real gaps → `chorus-strengthen` cannot classify
+   > any gap. (ENG-036)
 
 > **`*_ref` are OPTIONAL** — Feed.pm never requires them; rules use the Option A
 > fallback when absent.  Backward-compat elements (Step 1.5-4) intentionally omit `*_ref`
