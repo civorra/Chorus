@@ -603,8 +603,13 @@ print "─" x 62 . "\n";
     # the "Run at" time printed in the console header, since report writing
     # only happens after the full run completes. Do NOT revert this to a
     # fresh strftime(...,localtime) call.
-    my $ts = $run_timestamp;
-    $ts =~ s/[^0-9]//g;   # '2026-11-04 11:28:54' -> '20261104112854'
+    # Produce YYYYMMDD-HHMMSS format so scanner.js can link this run-report
+    # to its explain-*.md / synthese-*.md siblings via the shared timestamp.
+    # The scanner regex /-(\d{8}-\d{6})\.json$/ requires the hyphen between
+    # date and time parts — without it linking silently fails and explain/
+    # synthese appear as detached entries in the Aperçu tab (ENG-039).
+    (my $ts = $run_timestamp) =~ s/[^0-9]//g;  # strip separators: '20261104112854'
+    substr($ts, 8, 0) = '-';                     # insert hyphen:    '20261104-112854'
     my $out_path = "$reports_dir/run-report-$ts.json";
 
     my @elements_json = map {
