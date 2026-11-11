@@ -343,10 +343,29 @@ done
 # and produce no per-element verdict) are NOT exempt — they must still push
 # _rule_trace with corpus_ref: 'pipeline' so their firing is visible in --explain.
 
-# Rules whose ACTION sets a result slot to a failing value but never writes a
-# non_conformity_motif / motif_non_conformite in the same file:
+# Rules whose ACTION sets a result slot to a failing or uncertain value but never
+# writes non_conformity_motif / motif_non_conformite in the same file.
+# Patterns covered:
+#   - Classic failing verdicts : 'NO' / 'NON' / 'NON_CONFORME'
+#   - Uncertain/conditional    : '_a_confirmer', 'ecl_required', 'conditional'
+#   - Placeholder statuses     : 'insufficient_data' (or any domain equivalent)
+# Note: aggregate rules that forward a sub-rule's motif via
+#   $e->set('non_conformity_motif', $e->get('motif_<aspect>'))
+#   are correctly caught as "covered" because they write non_conformity_motif.
 for f in $SANDBOX/rules/*/*.yml; do
-  if grep -qE "set\('[a-z_]+_ok', 'NO'\)|set\(\"[a-z_]+_ok\", \"NO\"\)|'NON'" "$f"; then
+  if grep -qE \
+    "set\('[a-z_]+_ok',\s*'NO'\)\
+|set\(\"[a-z_]+_ok\",\s*\"NO\"\)\
+|'NON'\b\
+|'NON_CONFORME'\
+|\"NON_CONFORME\"\
+|'_a_confirmer'\
+|\"_a_confirmer\"\
+|'ecl_required'\
+|\"ecl_required\"\
+|'conditional'\
+|\"conditional\"\
+|'insufficient_data'" "$f"; then
     grep -qE "non_conformity_motif|motif_non_conformite" "$f" || echo "MISSING motif: $f"
   fi
 done
@@ -355,7 +374,12 @@ done
 (Adapt the grep patterns to the sandbox's actual verdict-slot naming convention —
 `_ok`/`YES`/`NO` for an English corpus, `_conforme`/`OUI`/`NON` for a French one.
 The exact regex matters less than the principle: **every rule file that can
-produce a failing verdict must also appear in both scans' "no match" case.**)
+produce a failing or uncertain verdict must also appear in both scans' "no match" case.**
+
+> **ENG-038 (2026-11-11):** extended from `'NO'`/`'NON'` only to also cover
+> `_a_confirmer`, `ecl_required`, `conditional`, `insufficient_data` —
+> patterns that silence the MOTIF column in the webapp just as effectively
+> as a missing motif on a classic NON_CONFORME verdict.)
 
 - **No matches (all rules covered)** → proceed to Phase 2.
 - **Matches found** → for each flagged file:
@@ -1389,9 +1413,22 @@ If **NOT CONVERGED** → recommend:
 
 ### 6.3 — Patch `.last-check-results.json` (single-project upsert)
 
+> **This step runs only when `$fichier-project` is a synthetic test project
+> located directly at `$SANDBOX/` root** — i.e. its resolved path matches
+> `$SANDBOX/project-*.json` or `$SANDBOX/project-test-*.json`.
+> It does **NOT** apply to production import projects located under
+> `workspace/<entity>/` (e.g. `workspace/EU/project-import-*.json`).
+> Those projects have their own run-report under `workspace/<entity>/reports/`
+> and are not part of the convergence-badge tracking shown in the Tests tab.
+>
+> **ENG-038 (2026-11-11):** restriction clarified — previously the step header
+> only said "not in `--all` mode", which was ambiguous for per-entity import
+> projects. Rule: if `dirname($fichier-project) != $SANDBOX`, skip Phase 6.3.
+>
 > **This step runs after every single-project `chorus-check` invocation**
-> (Phase 6A or 6B) — not in `--all` mode (Phase 6-all.6 writes the file
-> wholesale for all projects; this step is redundant there).
+> (Phase 6A or 6B) on a root-level test project — not in `--all` mode
+> (Phase 6-all.6 writes the file wholesale for all projects; this step is
+> redundant there).
 >
 > **Purpose:** keep the webapp Tests-tab convergence badges accurate after
 > a single-project run, without requiring a full `--all` cycle.

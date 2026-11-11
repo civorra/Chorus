@@ -1223,6 +1223,40 @@ across the full tree before falling back to _DEFAULT.
       entry — see `chorus-templates.md` T5) is a safety net, not a substitute for this
       checklist item: a rule-authored motif can state the actual numeric values
       involved, which a generic fallback never can.
+
+- [ ] ⛔ **ENG-038 — `non_conformity_motif` is required on UNCERTAIN and CONDITIONAL
+      verdicts too**, not only on classic `NO`/`NON_CONFORME` failing verdicts.
+      The webapp's `elementMotif()` function reads `non_conformity_motif` (and
+      `motif_*` fields as a fallback) — it does **not** read `authorization_basis`
+      or `raison_non_conformite`. Any rule that sets a verdict the webapp renders as
+      non-green without also writing `non_conformity_motif` will show a blank MOTIF
+      column in the report view. **Applies to:**
+      | Verdict value set by rule | Requires `non_conformity_motif` ? |
+      |---|---|
+      | `'NO'` / `'NON'` / `'NON_CONFORME'` | ✅ yes — already covered above |
+      | `'_a_confirmer'` | ✅ yes — uncertain verdict, motif explains what data is missing |
+      | `'ecl_required'` | ✅ yes — motif explains which ECL route and which CMO to contact |
+      | `'conditional'` | ✅ yes — motif explains what condition must be met before use |
+      | `'insufficient_data'` or similar | ✅ yes — motif explains which slot is missing |
+      | `'YES'` / `'CONFORME'` / `'NA'` | ❌ no — positive / not-applicable verdicts |
+
+      **Aggregate rules** (rules that collect sub-rule verdicts into a final slot)
+      must also set `non_conformity_motif` when their aggregate verdict is not
+      CONFORME. The canonical pattern is to forward the sub-rule's specific motif:
+      ```perl
+      # In the aggregate ACTION, after computing $verdict:
+      unless ($verdict eq 'CONFORME') {
+        # Option A: forward the most specific sub-motif already set
+        my ($mk) = grep { defined $e->get($_) } @motif_slot_names;
+        $e->set('non_conformity_motif', $mk ? $e->get($mk) : "Issues in: " . join(', ', @failing_slots));
+        # Option B: alias an existing motif_<aspect> slot (simpler when only one sub-rule)
+        $e->set('non_conformity_motif', $e->get('motif_transfer_valid'))
+          unless $e->get('non_conformity_motif');
+      }
+      ```
+      Domain-specific `motif_<aspect>` fields (e.g. `motif_governance`,
+      `motif_transfer_valid`) are still useful as detailed per-aspect explanations —
+      they complement `non_conformity_motif`, they do not replace it.
 - [ ] **CORPUS line traceable** — `CORPUS:` references the exact standard article (§N) that
       justifies the rule. This line is **mandatory and must be resolved before the session ends**:
       - ✅ `# CORPUS: §4.2 — NF DTU 31.2 — Porteur intermédiaire` — fully resolved, preferred form.
