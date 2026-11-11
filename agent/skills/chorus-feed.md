@@ -1595,6 +1595,25 @@ sub <helper2> {
   `chorus-check` does a full `use ... qw(...)` to make them available
   in the namespace before `loadRules()`.
 - **`Source corpus` comment** on each helper — traceability to the standard.
+- ⛔ **ENG-032 — Mandatory qualified naming: every sub MUST be prefixed `<slug>_`.**
+  The `Chorus::Engine` typeglob namespace is shared across ALL agents in the sandbox;
+  an unqualified name that collides with another agent's Helper is overwritten silently
+  at `build()` time, with no error and no warning (see `chorus-engine-yaml.md §
+  Pitfall — Helper namespace collision via glob-aliasing`). The slug prefix is derived
+  from the agent's rules directory basename (hyphens → underscores).
+  ```perl
+  # ⛔ WRONG — collision-prone
+  sub family_completion_status { ... }
+  our @EXPORT_OK = qw(family_completion_status);
+
+  # ✅ CORRECT — slug-prefixed (slug = adv_agd_alc for rules/agent-adv-agd-alc/)
+  sub adv_agd_alc_family_completion_status { ... }
+  our @EXPORT_OK = qw(adv_agd_alc_family_completion_status);
+  ```
+  Every YAML `ACTION` that calls this Helper must use the prefixed name.
+  When generating a new `Helpers.pm` during `chorus-feed --enrich`, always
+  prefix every sub — even if the name seems unique today (another agent added
+  later in the same passe could introduce the collision without warning).
 - **⚠️ Org KB parity — mandatory:** after writing `Helpers.pm`, immediately
   update (or write for the first time) the `Perl Helpers` section of
   `agent/chorus/<slug>.org` with the **exact same numeric values and defaults**.

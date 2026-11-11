@@ -761,6 +761,55 @@ EXCEPTION: |
 > Treat any occurrence of this warning as a build-breaking issue to fix
 > immediately, the same way `GUARD MISMATCH` warnings are treated.
 
+### ⛔ Pitfall — Helper namespace collision via glob-aliasing (`Chorus::Engine`)
+
+Each `AgentXxx.pm` injects its Helpers into the shared `Chorus::Engine` package:
+```perl
+{ no strict 'refs'; *{'Chorus::Engine::my_helper'} = \&my_helper; }
+```
+This design is **intentional** — any agent can expose functions to YAML rules without
+modifying `Chorus::Engine.pm`. However, Perl overwrites a typeglob silently: if two
+agents both inject a function under the same name, the second agent's closure **replaces**
+the first's with no warning. The displaced agent then calls the wrong closure — one that
+references internal data structures (lookup tables, `%FAMILY_MAP`) from the other agent —
+producing silently wrong verdicts and an undiagnosable `process() reached max iterations`
+stall (identical symptom to a broken `TERMINAL: solved` rule, with no stack trace and
+no warning pointing to the collision).
+
+**Rule — ENG-032 (option 2):** every Helper function name MUST be **prefixed with the
+agent slug** to guarantee global uniqueness across the whole sandbox:
+
+```
+⛔  WRONG : class_family_completion_status($class_type, $e)
+✅  CORRECT: adv_agd_alc_family_completion_status($class_type, $e)
+            ^^^^^^^^^^^^^^^^^^ agent slug prefix
+```
+
+The prefix is derived mechanically from the agent's directory slug (the base name of its
+`rules/<slug>/` directory, with hyphens replaced by underscores). No other agent will ever
+define a function with the same prefix — uniqueness is structural, not relying on review.
+
+**Checklist** (see `### ✅ Multi-Specialty Architecture` below):
+- Every sub in `Helpers.pm` is prefixed `<slug>_`.
+- The corresponding YAML `ACTION` calls match — `<slug>_my_helper(...)`.
+- `chorus-check` Step 5m (pre-Phase 2) scans for unqualified names shared between agents.
+
+> **Incident:** sandbox `06-CC-3.1.5` (2026-11-06) — `chorus-feed --enrich` Gap #2
+> added `class_family_completion_status()` independently to two agents in the same
+> pass. The second agent's closure silently replaced the first's; every
+> `evaluation_class` Frame in the displaced agent received a spurious `(\@pending=[],
+> \@failed=[])` verdict, stalling `Chorus::Expert` at `_MAX_ITER`. Retrospective fix:
+> renamed to `adv_agd_alc_family_completion_status()` and
+> `ate_ava_aco_family_completion_status()`.
+
+> **No mechanical guard exists in the engine** for this failure class (unlike
+> `_check_multistatement_guard()` / `_check_guard_coherence()` which catch YAML rule
+> bugs at `loadRules()` time — see pitfall above). Prevention is entirely at the
+> authoring / generation level (option 2) and at the pre-build scan level (option 3
+> via Step 5m in `chorus-check.md`).
+
+---
+
 ### Loading Order
 
 `loadRules($dir)` loads `*.yml` files in **alphabetical order** → name files `R01-`, `R02-`, etc.
@@ -1650,6 +1699,22 @@ across the full tree before falling back to _DEFAULT.
       ```
       Without this: `Undefined subroutine &Chorus::Engine::mon_helper`.
       ⛔ **Never put `use MyAgent::Helpers` inside a YAML `ACTION` block** — see YAML Rules checklist above.
+- [ ] ⛔ **ENG-032 — Every Helper sub name MUST be prefixed with the agent slug**
+      (`<slug>_<name>`, hyphens → underscores). The `Chorus::Engine` typeglob namespace
+      is shared across ALL agents in the sandbox — a name collision silently overwrites
+      the first agent's closure with no warning, producing wrong verdicts and an
+      undiagnosable `max iterations` stall (see pitfall above).
+      ```perl
+      # ⛔ WRONG — collision-prone: any other agent could define the same name
+      sub class_family_completion_status { ... }
+      *{'Chorus::Engine::class_family_completion_status'} = \&class_family_completion_status;
+
+      # ✅ CORRECT — slug-prefixed, structurally unique across the sandbox
+      sub adv_agd_alc_family_completion_status { ... }
+      *{'Chorus::Engine::adv_agd_alc_family_completion_status'} = \&adv_agd_alc_family_completion_status;
+      ```
+      The corresponding YAML `ACTION` calls must match the prefixed name exactly.
+      `chorus-check` Step 5m enforces this mechanically before any infrastructure generation.
 
 ---
 

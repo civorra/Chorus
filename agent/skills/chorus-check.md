@@ -827,6 +827,55 @@ Guard mismatches, if any, will have already been reported to STDERR by
 `Chorus::Engine::loadRules()` during the previous pipeline run.
 Do not duplicate that check here — proceed to Phase 2.
 
+### Step 5m — Helper qualified-name collision scan (mandatory, before Phase 2)
+
+> ⚠️ **Why this is mandatory, not optional:** `Chorus::Engine` is a single shared
+> typeglob namespace for the entire sandbox. If two agents define a Helper with the
+> same name, the second agent's `build()` call silently overwrites the first's closure
+> — no crash, no warning, no `loadRules()` error. The displaced agent calls the wrong
+> function and produces silently incorrect verdicts, leading to a `process() reached
+> max iterations` stall that is **structurally indistinguishable** from a broken
+> `TERMINAL: solved` rule (see `chorus-engine-yaml.md § Pitfall — Helper namespace
+> collision via glob-aliasing`). The only protection is a pre-build scan.
+
+Run, for every `Helpers.pm` in the sandbox, before writing any infrastructure file:
+
+```bash
+# 1. Collect all sub names exported from each Helpers.pm, tagged by agent slug.
+#    Slug = basename of the rules/<slug>/ directory for this agent.
+for pm in $SANDBOX/lib/*/Agent/*/Helpers.pm $SANDBOX/lib/*/Agent/*/*/Helpers.pm 2>/dev/null; do
+  # Derive agent slug from the directory path (last component before Helpers.pm)
+  slug=$(basename $(dirname "$pm"))
+  grep -oP '^sub \K\w+' "$pm" | while read fn; do
+    echo "$fn $slug $pm"
+  done
+done | sort > /tmp/helper-names.txt
+
+# 2. Flag any sub name appearing under more than one agent slug.
+awk '{print $1}' /tmp/helper-names.txt | sort | uniq -d | while read dup; do
+  echo "⚠️  HELPER COLLISION '$dup':"
+  grep "^$dup " /tmp/helper-names.txt | awk '{print "    " $2 " → " $3}'
+done
+```
+
+- **No output** → all Helper names are unique across agents → proceed to Phase 2.
+- **Output found** → one or more name collisions detected. For each collision:
+  - Is the name already prefixed with an agent slug? If not → rename it to
+    `<slug>_<name>` in the `Helpers.pm` file (sub declaration **and** typeglob line)
+    and update every YAML `ACTION` in that agent's `rules/<slug>/` that calls it.
+  - If two agents legitimately share identical logic → extract to a common module
+    (e.g. `lib/<Namespace>/SharedHelpers.pm`) with a unique sub name, or qualify
+    each per-agent copy with its own slug prefix.
+  - After renaming, re-run the scan to confirm zero remaining collisions.
+  - Regenerate `agent/.kb-hash` if any `.yml` rule was edited (the call site changed).
+- **ENG-032 (option 2 — authoring convention):** every new Helper written by
+  `chorus-feed` Phase 5.5 or manually must carry a `<slug>_` prefix from the start —
+  this scan is a safety net for the generation layer, not a substitute for it.
+
+> **Incident:** `agent/org/incidents-log.org § cc314-10` *(to be added — incident
+> `06-CC-3.1.5` 2026-11-06, `class_family_completion_status` collision between
+> `agent-adv-agd-alc` and `agent-ate-ava-aco` after `chorus-feed --enrich` Gap #2)*
+
 ---
 
 ## ⚠️ Language Rule — All Generated Perl Files
@@ -1649,6 +1698,43 @@ English corpus:
 **Origin:** <Import — document: ... (converted to ...) | synthetic project>
 ```
 
+### Phase E0.d — Thesaurus shard pre-load *(--explain only)*
+
+> Run once after Phase E0.c, before Phase E3. Builds a lookup map so each
+> `_a_confirmer` element section (Phase E3) can show the thesaurus status of
+> its uncertain import mappings without re-reading org files per element.
+> Non-blocking: if no thesaurus shard exists, the map is empty and Phase E3
+> emits "Not in thesaurus" for all `_labels` entries.
+
+**Shards to read (in order — later entries override earlier for the same term):**
+1. `$SANDBOX/agent/thesaurus/global.org` — always, if present
+2. `$SANDBOX/agent/thesaurus/<entity>.org` — entity-specific (`$ENTITY` from
+   the `$WORKSPACE`/`$ENTITY` derivation at the top of this document), if present
+
+**Tables to parse in each shard:**
+- `* Aliases — type_element` → columns: Project term · KB type_element · Confidence · Source import
+- `* Aliases — slot values`  → columns: Project term · KB slot · KB value · Confidence · Source import
+- `* Pending — to confirm on next import of this entity` → same columns (confidence = ⏳ Pending)
+
+**Lookup map structure:**
+```
+thesaurus_map[project_term_normalized] = {
+  kb_slot:    <"KB type_element" column, or "KB slot" column>,
+  kb_value:   <same as kb_slot for type_element entries; "KB value" for slot-value entries>,
+  confidence: <verbatim confidence cell, e.g. "✅ confirmed (validated via chorus-web 2026-11-11)"
+               or "⏳ pending">,
+  source:     <"Source import" column>,
+}
+```
+where `project_term_normalized = project_term.strip().toLowerCase()`.
+
+**Lookup call in Phase E3:**
+```
+thesaurus_lookup(label_value) = thesaurus_map[label_value.strip().toLowerCase()] ?? null
+```
+
+---
+
 ### Phase E1 — Select elements to explain
 
 From the elements collected in Phase 6 (or Phase 6-all across all files):
@@ -1799,6 +1885,26 @@ avant de considérer cet élément comme réellement non conforme.
 
 <if _a_confirmer present:>
 **❓ Élément marqué à confirmer :** <note field from the project JSON>
+
+<if _a_confirmer present AND e._labels non vide — ENG-019:>
+**🗂️ État des alignements thésaurus** *(`agent/thesaurus/<shard>.org`)*
+
+> Pour chaque terme source (`_labels`) utilisé lors de l'import, statut dans le
+> thésaurus consolidé du sandbox.
+
+| Terme projet (`_labels`) | Slot KB → valeur | Statut thésaurus |
+|---|---|---|
+<for each (slot_kb, project_term) in e._labels — lookup via thesaurus_map from Phase E0.d:>
+| `<project_term>` | `<kb_slot>` → `<kb_value>` | <confidence verbatim, e.g. ✅ confirmé · ⏳ en attente · — absent du thésaurus> |
+<end for>
+
+> <Résumé une ligne selon les cas :>
+> — Tous les termes confirmés → "Tous les alignements import validés — le flag `_a_confirmer`
+>   reflète une incertitude d'import levée. Peut être considéré comme résolu."
+> — Certains en attente → "⚠️ N terme(s) encore en attente de validation — relancer
+>   `chorus-import-project` après résolution dans l'onglet Thésaurus."
+> — Aucun dans le thésaurus → "Aucun alignement enregistré — termes appliqués de façon
+>   heuristique à l'import."
 ```
 
 English corpus:
@@ -1849,6 +1955,25 @@ element as genuinely non-compliant.
 
 <if _a_confirmer present:>
 **❓ Element marked to confirm:** <note field from the project JSON>
+
+<if _a_confirmer present AND e._labels non-empty — ENG-019:>
+**🗂️ Thesaurus alignment status** *(from `agent/thesaurus/<shard>.org`)*
+
+> Status of each source term (`_labels`) used at import time, as recorded in
+> the sandbox's consolidated thesaurus.
+
+| Project term (`_labels`) | KB slot → value | Thesaurus status |
+|---|---|---|
+<for each (slot_kb, project_term) in e._labels — lookup via thesaurus_map from Phase E0.d:>
+| `<project_term>` | `<kb_slot>` → `<kb_value>` | <confidence verbatim, e.g. ✅ confirmed · ⏳ pending · — not in thesaurus> |
+<end for>
+
+> <One-line summary depending on outcome:>
+> — All confirmed → "All import alignments validated — the `_a_confirmer` flag
+>   reflects an original import uncertainty that has since been resolved."
+> — Some pending → "⚠️ N term(s) still pending validation — re-run
+>   `chorus-import-project` after resolving pending entries in the Thesaurus tab."
+> — None in thesaurus → "No recorded alignment — terms applied heuristically at import."
 ```
 
 ### Phase E4 — Assemble and write the explanation file
