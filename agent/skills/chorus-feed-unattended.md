@@ -515,6 +515,60 @@ N règle(s) YAML ne publient pas `_rule_trace` dans leur bloc `ACTION` :
 **Action :** `chorus-feed <sandbox-name> --enrich`
 ```
 
+### Step 5.6 — README.org convergence update (ENG-040)
+
+> **Triggered only at `converged` status** (SP1 or SP2) — not on `waiting`,
+> `stopped_max_passes`, or `cancelled`.
+>
+> **Rationale:** the `--unattended` orchestrator writes `.chorus-unattended-state.json`
+> and `autofeed-report-<NNN>.md` at convergence, but never updates `README.org`.
+> Without this step, the README retains a stale `** Next step` block that still calls
+> `chorus-feed ... --unattended`, and the final pass has no session note — leaving
+> the sandbox apparently mid-run when it is in fact fully stabilised.
+> (Incident: sandbox `02a-EU-copyright`, pass 16, 2026-11-12 — see ENG-040.)
+>
+> **Non-optional:** both writes below must complete before displaying the convergence
+> summary to the operator. If either `eca__edit_file` call fails (e.g. README not
+> found, permission error), surface the error explicitly — do not silently skip.
+
+**Write 1 — Session note** (append to `* Session notes` in `README.org`):
+
+Use `eca__edit_file` to append to the last session note line:
+
+```
+  - <YYYY-MM-DD> :: Pass <passes_done> (Mode B) — corpus/<last_file_processed> —
+    Deferred-S confirmation. <new_rules_this_pass> new rules. <deferred_s> Deferred-S
+    confirmed <(list of unresolved_deferred_notes slugs if ≤ 5, else "see autofeed-report")>.
+    Coverage <prev_coverage_pct>%→<coverage_pct>% (<families_integrated_total>/<total_families>).
+    files_mode_b_pending: []. ✅ **STABILITY POINT SP<1|2> ATTEINT** — Deferred-C=0,
+    Deferred-S=<deferred_s>, Coverage=<coverage_pct>% (<families_integrated_total>/<total_families>),
+    <total_rules> règles YAML, rule_trace_gaps=<rule_trace_gaps>.
+    Recommandé : chorus-review-kb <sandbox>.
+```
+
+Where `<last_file_processed>` = the last file removed from `files_mode_b_pending`
+(available from the previous pass's checkpoint), and `<total_rules>` = count of
+all `.yml` files under `$SANDBOX/rules/`.
+
+**Write 2 — Next step** (replace `** Next step #+BEGIN_EXAMPLE` block in `README.org`):
+
+```org
+** Next step
+   #+BEGIN_EXAMPLE
+   # ✅ SP<1|2> ATTEINT — <YYYY-MM-DD> (pass <passes_done>)
+   # Deferred-C : 0 — all items closed
+   # Deferred-S : <deferred_s> — structurally non-encodable (confirmed definitive)
+   # Coverage finale : <coverage_pct>% (<families_integrated_total>/<total_families>)
+   # files_mode_b_pending : [] — tous corpus traités
+   # Recommended : chorus-review-kb <sandbox>
+   #+END_EXAMPLE
+```
+
+After both writes, run `emacsclient --eval '(with-current-buffer (find-file-noselect
+"$SANDBOX/README.org") (revert-buffer t t))'` if Emacs is open.
+
+---
+
 ### Checkpoint JSON structure (reference)
 
 ```json
