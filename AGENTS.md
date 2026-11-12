@@ -129,6 +129,44 @@ status: IN_PROGRESS
 - Never run `git add agent/` as a bulk command — always use `git add agent/skills/` and `git add agent/org/` explicitly.
 - `git add -A` or `git add .` are forbidden without prior verification of staged content.
 
+## KB org ↔ YAML sync
+
+> **Context (ENG-041):** the `.org` agent files under `$SANDBOX/agent/chorus/` are the
+> canonical source of truth for every rule. Four modification vectors can silently
+> desynchronise the YAML rules from their `.org` definition:
+>
+> | Vector | Triggered by | Updates `.org`? |
+> |---|---|---|
+> | V1 — `chorus-feed` Mode A/B | corpus ingestion / `--enrich` | ✅ yes — only skill that keeps sync by design |
+> | V2 — `chorus-check` Phase 1.5 | `chorus-check` (Steps 5b–5i) | ❌ no |
+> | V3 — `chorus-fix` Bucket B | `chorus-fix` | ❌ no (single-responsibility by design) |
+> | V4 — Direct edit | any manual or ECA edit of a `.yml` | ❌ no |
+
+**Rule — mandatory for V4 (direct YAML edits):**
+
+Whenever ECA directly writes or modifies a file matching `rules/<slug>/*.yml` in a
+sandbox — outside of a `chorus-feed` or `chorus-fix` invocation — it **must** update
+the corresponding Rule Catalog entry in `agent/chorus/<slug>.org` in the same
+conversation turn, before ending the response.
+
+The update must reflect:
+- **CONDITION / EXCEPTION** changes (new guard, threshold adjustment, alias added)
+- **New output slots** written by the rule's ACTION (add to Outgoing table + Slot dictionary)
+- **Behavioural changes** on edge/error cases (update Constraints & Pitfalls if affected)
+- **New rule files** added to `rules/<slug>/` (add row to Rule Catalog table)
+
+> ⛔ **Never** commit a `.yml` change without a matching `.org` update in the same
+> commit (or the immediately preceding one in the same session).
+> Detection: `agent/.kb-hash` will be extended (ENG-041) to track YAML hashes
+> alongside `.org` hashes — a mismatch will produce a warning in `chorus-check` Phase 0.
+
+**Rule — advisory for V2/V3 (`chorus-check` Phase 1.5 / `chorus-fix`):**
+
+When running `chorus-check` or `chorus-fix` and observing that YAML files were
+patched (Steps 5b–5i fixups, or Bucket B patches), surface a summary of which
+rules were modified and prompt the operator to review the corresponding `.org`
+entries — these skills do not update `.org` automatically.
+
 ## Markdown → PDF conversion
 
 - Always use `$ENGINE/scripts/md2pdf.py` to convert a Markdown (`.md`) file to PDF.
@@ -185,7 +223,7 @@ status: IN_PROGRESS
 | `chorus-audit-import <sandbox-name> <projet.json> [--patch] [--source <file.md>] [--kb]` | command | `./agent/skills/chorus-audit-import.md` — audits an imported project JSON against its source document(s): classifies each gap (✅ comblable · ⚠️ extraction partielle · ❌ structurellement absent · 🔄 mapping à confirmer · 🚫 frame manquante · 🔴 incohérence KB), identifies missing Frame types, and optionally patches the JSON. ⛔ **audit automatique NON OPTIONAL** — runs automatically at the end of every `chorus-import-project` (autonomous mode, report only — `--patch` always explicit). | `code` |
 | `chorus-complete-report <sandbox-name> <projet-slug> [--source <file>]` | command | `./agent/skills/chorus-complete-report.md` — cross-checks every `❓ incertain`/`_a_confirmer` element left by a prior `chorus-check --explain`/`--summary` run directly against the original source document (any format), classifies each as ✅ genuine source limitation / 🛠️ pipeline artefact / ❓ still unresolved, and patches the existing `explain-*`/`synthese-*` reports (+ HTML/PDF regeneration) — never re-runs the compliance pipeline, never changes a verdict. Run after `chorus-check --explain --summary`. | `architect` |
 | `chorus-markdown <sandbox> <source> <output.md> [--strict] [--report]` | command | `./agent/skills/chorus-markdown.md` — validates that a Markdown/text file produced by a conversion or alignment skill (`chorus-pdf`, `chorus-word`, `chorus-excel`, `chorus-import-project`) is faithful to its source document: section completeness, table syntactic validity + count vs. source, borderless-table/rotated-header flattening heuristics, formula placeholder presence + ambiguous-exponent heuristic, word-count ratio, residual encoding artefacts, XREF orphan detection. `--strict`: blocks the pipeline (non-zero exit) on any `❌`. `--report`: writes `workspace/reports/markdown-check-<slug>.md`. Never modifies `<output.md>` — detection and reporting only. | `code` |
-| Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./agent/skills/chorus-engine-yaml.md`)* | `code` |
+| Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./agent/skills/chorus-engine-yaml.md`)* **⚠️ KB org sync required — see § "KB org ↔ YAML sync" below** | `code` |
 | `cpan-release` | command | `./agent/skills/cpan-release.md` *(local — not distributed in the CPAN package)* | `code` |
 | `git-ctx` | command | *(no skill — call `git__git_branch` + `git__git_status` + `git__git_log` on this repository)* | `fast` |
 | `skills [--all]` | meta | `eca__directory_tree ./agent/skills/` → name + status `✅` loaded / `○` available. Without `--all`: sub-skills are hidden (see list below). | `fast` |
