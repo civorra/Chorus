@@ -651,12 +651,12 @@ done
   published its flag once. Do this **before** generating any infrastructure
   file — regenerate `agent/.kb-hash` afterward (the YAML content changed).
 
-> ⛔ **`PREMISSES:` n'a aucune sémantique d'exécution — `applyrules()` l'ignore
-> complètement.** Toute logique de garde (y compris "ne pas refirer si le flag
-> BOARD est déjà posé") DOIT être dans `CONDITION:` ou `EXCEPTION:`. Une règle
-> qui se reposerait sur `PREMISSES:` comme condition implicite est silencieusement
-> brisée : elle refirerait à chaque cycle sans aucun avertissement. Ne jamais
-> traiter un avertissement de ce step comme un "faux positif PREMISSES".
+> ⛔ **`PREMISSES:` has zero runtime semantics — `applyrules()` ignores it
+> completely.** All guard logic (including "do not re-fire once the BOARD flag
+> is set") MUST be expressed in `CONDITION:` or `EXCEPTION:`. A rule that relies
+> on `PREMISSES:` as an implicit guard is silently broken: it re-fires every
+> cycle with no warning. Never treat a warning from this step as a
+> "PREMISSES false positive".
 - Re-run the scan after fixing to confirm zero remaining matches.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-06`
