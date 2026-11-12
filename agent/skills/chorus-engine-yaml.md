@@ -36,6 +36,20 @@ my @r = fmatch(slot => 'couleur', from => \@subset);      # restricted search sp
 > ⛔ A Frame is only visible to `fmatch` if its slot was registered via `$f->set('slot', val)`.
 > Direct assignment `$f->{slot} = val` bypasses registration → `fmatch` returns 0 Frames → **silent pipeline break**.
 
+> ⛔ **Never dereference `fmatch()` as an arrayref** — `fmatch()` returns a **list**,
+> not a list reference. Using `@{ fmatch(...) }` or `@{ fmatch(...) // [] }` forces
+> `fmatch()` into **scalar context** (via the `//` operator or the `@{}` deref
+> expectation), which returns the **count** of matching Frames as an integer (e.g. `53`).
+> `@{ 53 }` then crashes with `Can't use string ("53") as an ARRAY ref`. Use `fmatch()`
+> in list context directly — as the argument to `grep`, `map`, or a plain list assignment.
+> ```perl
+> # ⛔ WRONG — fmatch() forced into scalar context → returns count → crash
+> my @pending = grep { !defined $_->{ok} } @{ fmatch(slot => 'type_element') // [] };
+>
+> # ✅ CORRECT — fmatch() in list context, as argument to grep
+> my @pending = grep { !defined $_->{ok} } fmatch(slot => 'type_element');
+> ```
+
 ### Reading and writing slots
 
 ```perl
@@ -474,6 +488,39 @@ FIND:
 >   e:
 >     attribut: type_element
 >     filtre: '$_->{type_element} eq "use_of_work" && $_->{besoin_permitted_use}'
+> ```
+
+> ⛔ **Never use `return` inside `filtre`** — `filtre` is compiled as the
+> predicate of a `grep {}` block. In Perl, `return` inside a `grep {}` does **not**
+> skip the current element — it **exits the entire enclosing `_SCOPE` closure**,
+> returning a scalar (`0`) instead of an arrayref. The engine then does
+> `@{ 0 }` → crash, or silently produces an empty scope set. Use a pure boolean
+> expression instead.
+> ```yaml
+> # ⛔ WRONG — `return 0` exits the scope closure, not just the grep predicate
+>     filtre: |
+>       return 0 unless $SELF->BOARD->{rights_established};
+>       $_->{rightholder_category} eq 'performer'
+>
+> # ✅ CORRECT — pure boolean expression
+>     filtre: |
+>       ($SELF->BOARD && $SELF->BOARD->{rights_established})
+>       && $_->{rightholder_category} eq 'performer'
+> ```
+
+> ⛔ **`$SELF->BOARD->{flag}` requires a null-check in `filtre` (and in `CONDITION`)**
+> — `$SELF->BOARD` is `undef` during the first engine cycles, before any agent has
+> published a BOARD slot. A bare `$SELF->BOARD->{flag}` dereference crashes with
+> `Can't use an undefined value as a HASH reference`. Always guard with
+> `($SELF->BOARD && $SELF->BOARD->{flag})`, or use `($SELF->BOARD->{flag} // 0)` only
+> after confirming BOARD is always initialized before this rule can fire (via a
+> `CONDITION: defined $SELF->BOARD->{upstream_flag}` on the same rule).
+> ```yaml
+> # ⛔ WRONG — crashes if BOARD not yet initialized
+>     filtre: '$SELF->BOARD->{rights_established} && $_->{act_type} eq "broadcast"'
+>
+> # ✅ CORRECT — null-safe
+>     filtre: '($SELF->BOARD && $SELF->BOARD->{rights_established}) && $_->{act_type} eq "broadcast"'
 > ```
 
 > ⛔ **`$f` is not defined inside `filtre`** — `$f` (or any scope variable) only exists inside `ACTION`/`EFFET`, after `my $f = $opts{f}` is executed by `_APPLY`. Using `$f->` in a `filtre` expression causes `Global symbol "$f" requires explicit package name` at rule compilation time.
