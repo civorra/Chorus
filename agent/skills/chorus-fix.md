@@ -220,6 +220,37 @@ conforming element as non-conforming.
 **Normal mode:** write the patched YAML using `eca__edit_file`.
 Record the applied patch in the closure report (Phase 4).
 
+### 1.4a — KB org sync (mandatory after each applied patch — ENG-041)
+
+> ⛔ **Never skip this step.** `chorus-fix` does not update `.org` files automatically
+> (single-responsibility design), but leaving the Rule Catalog stale after a Bucket B patch
+> creates a silent desync that `chorus-check` Phase 0 will flag as a ⚠️ warning on the
+> next run. Fixing it in the same session keeps the sandbox in a consistent state.
+
+For each patch successfully applied in Step 1.4 (normal mode only — skip in `--dry-run`):
+
+1. Read `$SANDBOX/agent/chorus/<agent_slug>.org`.
+2. Find the Rule Catalog row whose `Rule` or file column matches `<rule_file>`.
+3. Update the row's **Intent** column to reflect the nature of the change:
+   - Threshold relaxation/tightening → append the new value, e.g. `*(threshold: N→M)*`
+   - CONDITION widening/narrowing → note the added/removed guard clause
+   - EXCEPTION pattern change → describe the new non-blocking condition
+   - filtre → CONDITION migration → note the slot moved from FIND to CONDITION
+4. If the patch affects a **Constraints & Pitfalls** entry for this rule → update that
+   section too (new threshold, new edge case, new known limitation).
+5. Write the updated `.org` via `eca__edit_file`.
+
+Display a one-line confirmation per `.org` updated:
+```
+  🔄 .org updated: agent/chorus/<slug>.org — Rule Catalog row <rule_file> (Gap #N)
+```
+
+> **Scope:** only update what the patch directly changed. Do not rewrite the entire
+> Rule Catalog entry — a minimal, targeted edit is sufficient and safer.
+> If the Rule Catalog entry is absent (rule not yet documented) → add a new row
+> at the end of the Rule Catalog table with the rule filename, corpus ref from
+> the gap report, and a one-line intent description.
+
 ---
 
 ## Phase 2 — Bucket C: corpus-correctif.txt

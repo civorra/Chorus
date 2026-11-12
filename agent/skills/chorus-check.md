@@ -118,16 +118,56 @@ Compare the current KB hash against the stored one:
 # ⚠️ Path-independent: cd into the directory first so sha256sum records
 # bare filenames, never the $SANDBOX absolute path — a sandbox rename must
 # never invalidate this hash (see Phase 5.5 for the full rationale).
-(cd $SANDBOX/agent/chorus && sha256sum *.org) > /tmp/kb-hash-current
+(cd $SANDBOX/agent/chorus && sha256sum *.org) > /tmp/kb-hash-org-current
+
+# ENG-041 — YAML hash section: record per-rule-file hashes alongside org hashes.
+# Use relative paths (rules/<slug>/<file>.yml) for path-independence.
+(find $SANDBOX/rules -name "*.yml" | sort | \
+  xargs sha256sum | sed "s|$SANDBOX/||") > /tmp/kb-hash-yaml-current
+
+# Combine into a single current snapshot (org section + YAML section)
+cp /tmp/kb-hash-org-current /tmp/kb-hash-current
+echo "# rules" >> /tmp/kb-hash-current
+cat /tmp/kb-hash-yaml-current >> /tmp/kb-hash-current
 ```
 
 - `$SANDBOX/agent/.kb-hash` **absent** → predates hash tracking → **FULL PATH**
 - `$SANDBOX/agent/.kb-hash` matches (`diff -q /tmp/kb-hash-current $SANDBOX/agent/.kb-hash`
-  — both now path-independent, so this is a reliable byte-for-byte comparison
-  regardless of any sandbox rename) AND `$SANDBOX/agent/.template-hash` matches
+  — both path-independent, reliable byte-for-byte comparison regardless of sandbox
+  rename) AND `$SANDBOX/agent/.template-hash` matches
   → **FAST PATH**: go directly to Phase 6. Do not load `chorus-engine.md`,
   do not read `index.org`, do not read agent KBs, do not generate anything.
-- `$SANDBOX/agent/.kb-hash` **differs** → KB enriched → **FULL PATH** (silent, no prompt)
+- `$SANDBOX/agent/.kb-hash` **differs**:
+  - Determine *which section* changed before choosing the action:
+
+    ```bash
+    # Extract org section of stored hash (lines before "# rules" marker)
+    grep -B9999 "^# rules" $SANDBOX/agent/.kb-hash | grep -v "^# rules" \
+      > /tmp/kb-hash-org-stored 2>/dev/null || cp $SANDBOX/agent/.kb-hash /tmp/kb-hash-org-stored
+
+    # Compare org sections only
+    diff -q /tmp/kb-hash-org-current /tmp/kb-hash-org-stored
+    ```
+
+  - **Org section changed** (KB enriched by `chorus-feed`) → **FULL PATH** (silent, no
+    prompt — this is the normal enrichment case).
+  - **Org section unchanged, YAML section changed** → **FULL PATH** + ⚠️ desync warning:
+    ```
+    ⚠️  KB org ↔ YAML desync detected (ENG-041)
+        .org files are unchanged, but YAML rule files have changed since the last
+        .kb-hash snapshot. This indicates that chorus-fix Bucket B, chorus-check
+        Phase 1.5 fixup, or a direct YAML edit modified rules without updating the
+        corresponding Rule Catalog entries in agent/chorus/<slug>.org.
+
+        Modified rule files:
+          <diff output of YAML section — list of changed .yml files>
+
+        Action required: review and update the Rule Catalog in agent/chorus/<slug>.org
+        for every modified rule before this run completes — see AGENTS.md § KB org ↔ YAML sync.
+    ```
+    Proceed with FULL PATH regeneration regardless (the infrastructure may be stale).
+  - **Pre-ENG-041 format** (no `# rules` marker in stored `.kb-hash`): treat as org-section
+    mismatch → FULL PATH silently (Phase 5.5 will write the new extended format).
   > **⚠️ One-time migration note (commit 23ac4b8, 2026-10-28):** `.kb-hash` files generated
   > before this commit stored **absolute paths** (`sha256sum $SANDBOX/agent/chorus/*.org`).
   > The current formula stores **bare filenames** (`cd … && sha256sum *.org`). The first
@@ -1111,7 +1151,7 @@ Once all infrastructure files have been generated successfully, record two
 fingerprints so that the next `chorus-check` can detect staleness on both dimensions:
 
 ```bash
-# 1. KB hash — tracks changes to the KB org content
+# 1. KB org hash — tracks changes to the KB org content
 # ⛔ Path-independent by construction: cd into the directory first so
 # sha256sum records bare filenames (e.g. "agent-fau.org"), never the
 # $SANDBOX absolute path. A sandbox folder rename changes nothing in this
@@ -1122,7 +1162,16 @@ fingerprints so that the next `chorus-check` can detect staleness on both dimens
 # regeneration with no actual KB change.
 (cd $SANDBOX/agent/chorus && sha256sum *.org) > $SANDBOX/agent/.kb-hash
 
-# 2. Template hash — tracks changes to the infrastructure templates
+# 2. YAML rules hash — tracks changes to the YAML rule files (ENG-041)
+# ⛔ Path-independent: use relative paths (rules/<slug>/<file>.yml) via sed.
+# The "# rules" marker separates the two sections; Phase 0 uses it to
+# distinguish org-section changes (KB enriched) from YAML-section changes
+# (desync — rules modified without .org update).
+echo "# rules" >> $SANDBOX/agent/.kb-hash
+(find $SANDBOX/rules -name "*.yml" | sort | \
+  xargs sha256sum | sed "s|$SANDBOX/||") >> $SANDBOX/agent/.kb-hash
+
+# 3. Template hash — tracks changes to the infrastructure templates
 sha256sum "$ENGINE/agent/skills/chorus-templates.md" > $SANDBOX/agent/.template-hash
 ```
 
@@ -1138,10 +1187,12 @@ next infrastructure regeneration.
 
 | State | `.kb-hash` | `.template-hash` | Action |
 |---|---|---|---|
-| Both current | ✅ match | ✅ match | **FAST PATH** — skip generation entirely |
-| KB changed | ❌ differs | any | **FULL PATH** — KB enriched, regenerate silently (no user prompt) |
+| Both current | ✅ match (org + YAML) | ✅ match | **FAST PATH** — skip generation entirely |
+| KB org changed | ❌ org section differs | any | **FULL PATH** — KB enriched, regenerate silently (no user prompt) |
+| YAML changed, org stable | ❌ YAML section differs | any | **FULL PATH** + ⚠️ **desync warning** (ENG-041) — YAML rules modified without `.org` update |
 | Template changed, KB stable | ✅ match | ❌ differs | **FULL PATH** — template updated; **display a summary to the user** before regenerating (unlike KB changes, a template change is an external dependency update invisible from the sandbox — the user must be aware) |
 | `.kb-hash` absent | — | — | **FULL PATH** — predates hash tracking |
+| `.kb-hash` pre-ENG-041 format | no `# rules` marker | any | **FULL PATH** — old format, Phase 5.5 rewrites with YAML section |
 | `.template-hash` absent | ✅ match | — | **FULL PATH** — predates template tracking; regenerate once to establish baseline |
 
 > ⚠️ **Template staleness display (template-changed case only):** before regenerating,

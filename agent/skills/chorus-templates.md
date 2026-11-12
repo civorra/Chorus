@@ -10,9 +10,26 @@
 > ⛔ **Template version tracking — `.template-hash` (see `chorus-check.md` Phase 5.5)**
 > The SHA-256 fingerprint of this file is written to `$SANDBOX/agent/.template-hash`
 > whenever `chorus-check` regenerates infrastructure. This is **distinct** from
-> `.kb-hash` (which tracks KB org content): `.template-hash` going stale signals that
-> a template was updated since the sandbox was last generated — the sandbox infrastructure
-> may embed an obsolete or buggy template regardless of KB state.
+> `.kb-hash` (which tracks KB org content AND YAML rule content — see below):
+> `.template-hash` going stale signals that a template was updated since the sandbox
+> was last generated — the sandbox infrastructure may embed an obsolete or buggy
+> template regardless of KB state.
+
+> **`.kb-hash` format (ENG-041 — extended):** `chorus-check` Phase 5.5 writes two sections
+> into `agent/.kb-hash` separated by a `# rules` marker:
+> ```
+> <sha256>  agent-protection-scope.org       ← bare filename, path-independent
+> <sha256>  agent-permitted-use.org
+> ...
+> # rules
+> <sha256>  rules/agent-protection-scope/R01-object-type-assignment.yml
+> <sha256>  rules/agent-protection-scope/R02-rightholder-category.yml
+> ...
+> ```
+> Phase 0 uses the `# rules` marker to distinguish two desync cases:
+> - **Org section changed** → KB enriched by `chorus-feed` (normal, silent FULL PATH)
+> - **YAML section changed, org section unchanged** → rules modified without `.org` update
+>   (desync — ⚠️ warning surfaced, operator must review Rule Catalog alignment)
 >
 > Each template T1–T5 below carries a `# TEMPLATE: T<N> v<YYYY-MM-DD>` comment that
 > `chorus-check` copies verbatim into the generated file (`Feed.pm`, `Agent/*.pm`,
