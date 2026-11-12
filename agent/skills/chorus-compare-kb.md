@@ -1,6 +1,6 @@
 # Skill — chorus-compare-kb
 
-> Trigger: `chorus-compare-kb <sandbox-A> <sandbox-B> [--step <0|1|2|3|4|5|W>] [--thesaurus <file>] [--out <matrix-file>] [--no-witness]`
+> Trigger: `chorus-compare-kb <sandbox-A> <sandbox-B> [--step <0|1|2|3|4|5|W>] [--thesaurus <file>] [--out <matrix-file>] [--no-witness] [--report [--report-lang fr|en] [--report-out <file>]]`
 > Agent: `architect`
 >
 > `<sandbox-A>` and `<sandbox-B>`: two Chorus sandboxes with a stable KB each
@@ -18,6 +18,10 @@
 > - `--thesaurus <file>`: reuse an existing cross-sandbox thesaurus (skips Phase 2 construction).
 > - `--out <matrix-file>`: write the output matrix to a custom path (default: see Phase OUT).
 > - `--no-witness`: skip Phase W (witness test loop) even if both KBs are stable.
+> - `--report`: after Phase OUT, generate a legally-focused comparison report (see `## Option --report`).
+>   Can be combined with any `--step` option; if `matrix-compare.org` already exists, runs report generation only.
+> - `--report-lang fr|en`: language of the `--report` output. Overrides auto-detection (default: `fr`).
+> - `--report-out <file>`: custom output path for the report (default: `$COMPARE/rapport-comparatif-<A>-vs-<B>.md`).
 >
 > Prerequisites:
 > - `chorus-feed <sandbox-A>` and `chorus-feed <sandbox-B>` must have been run.
@@ -681,6 +685,179 @@ Write `$COMPARE/matrix-compare.org` (or `--out` path if specified).
 ```
 
 Delete `.compare-wip.md` on successful completion.
+
+---
+
+## Option --report — Legal comparison report for external readers
+
+> **Trigger:** `chorus-compare-kb <A> <B> --report [--report-lang fr|en] [--report-out <file>]`
+>
+> **Prerequisite:** `$COMPARE/matrix-compare.org` must exist (run `chorus-compare-kb` without
+> `--report` first, or combine both in a single invocation).
+>
+> **Purpose:** transform the technical divergence matrix into a legally-focused comparison
+> document readable by legal professionals with no knowledge of Chorus internals.
+> All Chorus-specific vocabulary is replaced by legal language (see substitution table below).
+> The report never mentions: sandbox, KB, pipeline, agent, rule, slot, YAML, Feed,
+> `Deferred`, `converged`, `corpus`, `run.pl`, or any other Chorus technical term.
+
+### R.1 — Term substitution table
+
+| Chorus term | Legal report equivalent |
+|---|---|
+| sandbox A / B | *cadre normatif A / B* (e.g. "droit européen du droit d'auteur" / "droit finlandais du droit d'auteur") |
+| KB / knowledge base | *référentiel d'analyse* (never mentioned directly) |
+| rule / YAML rule | *disposition analysée* / *obligation* / *droit* / *exception* |
+| agent | *domaine thématique* (e.g. "droits patrimoniaux", "exceptions", "gestion collective") |
+| slot | *critère* / *paramètre* / *condition* |
+| corpus / corpus ref | *texte de référence* / *article* (cite the actual article number) |
+| kb-gap | *non couvert dans le périmètre de la présente analyse* |
+| legal-divergence | *divergence substantielle* |
+| equivalent | *dispositions équivalentes* |
+| Deferred-S | *disposition procédurale ou comportementale hors périmètre* |
+| structural gap | *domaine présent dans un seul référentiel* |
+| A_stricter / B_stricter | *exigence plus stricte en [droit A/B]* |
+| scope_different | *champs d'application distincts* |
+| granularity_different | *degré de précision différent* |
+| llm-assisted | *issu de l'analyse automatisée — à confirmer* |
+| human-validated | *(aucune mention — résultat intégré directement)* |
+| deterministic | *(aucune mention — résultat intégré directement)* |
+| uncertain | *point nécessitant une analyse juridique complémentaire* |
+| witness confirmed | *divergence confirmée par test comparatif* |
+| threshold | *seuil* / *délai* / *plafond* (avec valeur et unité en clair) |
+
+### R.2 — Agent-to-theme mapping
+
+For each sandbox, map agent slugs to legal domain labels:
+
+| Agent slug (02a — EU) | Legal theme label |
+|---|---|
+| `agent-exclusive-rights` | Droits patrimoniaux et durées de protection |
+| `agent-exceptions` | Exceptions et limitations |
+| `agent-digital-services` | Services numériques et obligations des plateformes |
+| `agent-collective-management` | Gestion collective des droits |
+| `agent-author-performer-rights` | Droits des auteurs et artistes-interprètes |
+
+| Agent slug (02b — FI) | Legal theme label |
+|---|---|
+| `agent-protection-scope` | Périmètre de la protection |
+| `agent-permitted-use` | Utilisations autorisées |
+| `agent-financial-rights` | Droits financiers (rémunération, droit de suite) |
+| `agent-rights-transfer` | Cession et transfert de droits |
+| `agent-collective-management` | Gestion collective des droits |
+
+> For other sandbox pairs: derive theme labels from the agent KB org `* Domain` section —
+> use the first sentence, stripped of Chorus vocabulary. Never use the agent slug as-is.
+
+### R.3 — Report structure
+
+Write the report section by section in this order:
+
+```markdown
+# Analyse comparative — [Titre cadre normatif A] × [Titre cadre normatif B]
+
+**Date :** <ISO date>
+**Périmètre :** <brief one-line scope from matrix header>
+**Note méthodologique :** <two sentences — what was compared, how, and what is out of scope>
+
+---
+
+## 1. Résumé exécutif
+
+<3–5 bullet points: overall picture, number of equivalences, major divergences,
+ notable gaps. No technical terms. Written for a decision-maker.>
+
+---
+
+## 2. Dispositions équivalentes
+
+> Les obligations suivantes sont couvertes de manière équivalente dans les deux
+> référentiels — elles n'appellent pas d'analyse complémentaire.
+
+<Grouped by legal theme. For each group, one paragraph naming the concept and
+ its legal basis in both texts (article numbers). No rule IDs, no agent names.>
+
+---
+
+## 3. Divergences substantielles
+
+> Les points suivants révèlent une différence de fond entre les deux référentiels.
+> Chaque fiche indique la nature de la divergence et son impact pratique.
+
+<One "fiche" per divergence:>
+
+### [Thème] — [Concept en langage clair]
+
+| | [Cadre normatif A] | [Cadre normatif B] |
+|---|---|---|
+| Texte de référence | Art. X Dir. Y | Art. Z Loi W |
+| Obligation / condition | <plain language> | <plain language> |
+| Seuil / paramètre | <value + unit> | <value + unit> |
+
+**Nature de la divergence :** <A stricter / B stricter / champs d'application distincts>
+**Impact pratique :** <one sentence for a legal professional>
+**Statut :** ✅ confirmé / ⚠️ à confirmer
+
+---
+
+## 4. Dispositions sans équivalent
+
+### 4.1 — Présentes dans [cadre A] uniquement
+
+<List by theme. For each: concept name, article reference, one-line description.
+ Note if this is a confirmed legal absence or an analysis coverage gap.>
+
+### 4.2 — Présentes dans [cadre B] uniquement
+
+<Same format.>
+
+---
+
+## 5. Points nécessitant une analyse juridique complémentaire
+
+<Items with status uncertain, low confidence, or helpers-opaque.
+ Present as a numbered list with: concept, reason for uncertainty, suggested action.>
+
+---
+
+## Annexe — Périmètre de l'analyse et limites
+
+**Textes analysés :**
+- [Cadre A] : <list of normative sources from corpus>
+- [Cadre B] : <list of normative sources from corpus>
+
+**Hors périmètre de la présente analyse :**
+<Paraphrase the Deferred-S items in legal language:
+ "Les dispositions suivantes n'ont pas été intégrées dans l'analyse formelle,
+ car elles relèvent d'obligations comportementales ou procédurales dont
+ la vérification requiert une appréciation au cas par cas :">
+<Bullet list of Deferred-S items — article + one-line description, no Chorus terms.>
+
+**Méthode :** <two sentences: deterministic threshold comparison + LLM-assisted
+ concept alignment, without mentioning Chorus, KB, or rules.>
+```
+
+### R.4 — Output
+
+Write the report to `$COMPARE/rapport-comparatif-<A>-vs-<B>.md`
+(or `--report-out` path if specified).
+
+Then convert to PDF:
+```bash
+python3 $ENGINE/scripts/md2pdf.py \
+  $COMPARE/rapport-comparatif-<A>-vs-<B>.md \
+  $COMPARE/rapport-comparatif-<A>-vs-<B>.pdf
+```
+
+Display on completion:
+```
+📄 Rapport juridique comparatif généré :
+   MD  → $COMPARE/rapport-comparatif-<A>-vs-<B>.md
+   PDF → $COMPARE/rapport-comparatif-<A>-vs-<B>.pdf
+
+   Sections : 1 résumé · N équivalences · N divergences · N sans équivalent · N incertains
+   Prochaine étape : relire la section 5 (points à confirmer) avec un juriste.
+```
 
 ---
 
