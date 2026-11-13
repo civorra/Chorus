@@ -840,7 +840,7 @@ The script prints the exact `nohup` command to copy-paste, then exits with code 
 [chorus-pdf]   → 31 pages, 12 with figures, 18 figure(s) total
 [chorus-pdf] ⚠️  18 figures detected — estimated time ~9–13 min (threshold: 15).
 [chorus-pdf]    Run with nohup to avoid a 10-min IDE timeout:
-[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup python3 /path/to/agent/extract-pdf-<slug>.py > corpus/<NNN>-<slug>-vision.md.log 2>&1 &
+[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup claude-python /path/to/agent/extract-pdf-<slug>.py > corpus/<NNN>-<slug>-vision.md.log 2>&1 &
 ```
 
 The threshold constant `NOHUP_THRESHOLD = 15` is defined at the top of the script
@@ -2127,7 +2127,7 @@ def main():
             f"~{n_figs * 30 // 60}–{n_figs * 45 // 60} min "
             f"(threshold: {NOHUP_THRESHOLD}).\n"
             f"[chorus-pdf]    Run with nohup to avoid a 10-min IDE timeout:\n"
-            f"[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup python3 {os.path.abspath(__file__)} "
+            f"[chorus-pdf]    CHORUS_PDF_FORCE=1 nohup claude-python {os.path.abspath(__file__)} "
             f"> {OUTPUT_PATH}.log 2>&1 &",
             file=sys.stderr
         )
@@ -2807,8 +2807,13 @@ or constrain it.
 ### 3.1 Execute the script
 
 ```bash
-python3 "$SANDBOX/agent/extract-pdf-<slug>.py"
+claude-python "$SANDBOX/agent/extract-pdf-<slug>.py"
 ```
+
+> `claude-python` est le wrapper qui injecte `ANTHROPIC_API_KEY` **uniquement** pour les
+> scripts de conversion (`extract-pdf-*`), que l'on soit sur l'hôte ou dans le container
+> Docker (`/usr/local/bin/claude-python`). Sans lui, `probe_claude()` retourne `False` et
+> le mode text est sélectionné même si la clé est disponible.
 
 Capture stderr for progress reporting. Exit code 0 = success.
 
@@ -3121,7 +3126,7 @@ The `pdftotext` output can be kept for diff/audit purposes.
 → The layout analysis detected ≥ 16 figures. The script aborted before any API call.
   Copy the `nohup` command printed to stderr and run it in a terminal:
   ```bash
-  nohup python3 $SANDBOX/agent/extract-pdf-<slug>.py > $SANDBOX/corpus/<NNN>-<slug>-vision.md.log 2>&1 &
+  CHORUS_PDF_FORCE=1 nohup claude-python $SANDBOX/agent/extract-pdf-<slug>.py > $SANDBOX/corpus/<NNN>-<slug>-vision.md.log 2>&1 &
   tail -f $SANDBOX/corpus/<NNN>-<slug>-vision.md.log
   ```
   The threshold `NOHUP_THRESHOLD = 15` can be raised in the script header if your
