@@ -112,9 +112,24 @@ Its goal: activate `--hybrid` automatically if Claude is available.
 ### 0.0.1 Check API key presence
 
 ```python
+# Résolution de la clé — 3 sources dans l'ordre de priorité :
+#   1. Variable d'env ANTHROPIC_API_KEY (hôte via claude-python, ou API-key mode)
+#   2. Secret Docker  /run/secrets/anthropic_api_key  (container chorus-web)
+#   3. Fichier hôte   ~/.config/anthropic/api_key     (dev local)
+import os
+from pathlib import Path
+
 API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 if not API_KEY:
-    # No key → stay in text mode, skip probe
+    for _kf in ["/run/secrets/anthropic_api_key",
+                str(Path.home() / ".config/anthropic/api_key")]:
+        if Path(_kf).exists():
+            API_KEY = Path(_kf).read_text().strip()
+            if API_KEY:
+                break
+
+if not API_KEY:
+    # No key found anywhere → stay in text mode, skip probe
     mode = "text"
     print("[chorus-pdf] No ANTHROPIC_API_KEY — text mode.", file=sys.stderr)
 ```
@@ -545,38 +560,58 @@ A page is flagged `borderless_table_suspect = True` when `has_table` is
 a numeric-density pattern consistent with a data matrix:
 
 ```python
-def detect_borderless_table(texts, page_width):
-    """Detect a likely borderless (whitespace-aligned) table on a page where
-    the vector-line heuristic (has_table) found nothing.
+import re as _re
 
-    Signal: a high proportion of very short text blocks (<=3 chars, mostly
-    numeric or single tokens like class/family codes) clustered into
-    repeating X-bands across the page width — typical of a matrix flattened
-    into single-cell text boxes with no drawn borders.
+# Pattern d'annonce textuelle explicite d'un tableau (ENG-043 — détection duale)
+_TABLEAU_ANNONCE = _re.compile(
+    r'tableau\s+ci[- ]dessous|tableau\s+suivant|tableau\s+ci[- ]après'
+    r'|le\s+tableau\s+(?:suivant\s+)?(?:indique|récapitule|présente|montre'
+    r'|répertorie|ci[- ]dessous)',
+    _re.IGNORECASE
+)
 
-    Returns True if the page likely contains an undetected borderless table.
+def detect_borderless_table(texts, page_width, page_text=""):
+    """Detect a likely borderless (whitespace-aligned) table — dual heuristic.
+
+    Two independent signals combined with OR (ENG-043):
+
+    Signal 1 — explicit text announcement:
+        "Le tableau ci-dessous indique…", "le tableau suivant récapitule…", etc.
+        Covers text-content tables (long cell values) that the X-band heuristic
+        misses (validated on sandbox 03b pages 28, 29, 31, 36, 38).
+
+    Signal 2 — X-band numeric density (original §1.4d heuristic):
+        Many short text blocks (≤3 chars) clustering into repeating X-bands.
+        Covers numeric/code matrices without textual announcement (page 24).
+
+    Returns (bool, reason_str) — reason is "text_announcement" | "x_band_numeric"
+    | None.
     """
+    # Signal 1 — text announcement
+    if page_text and _TABLEAU_ANNONCE.search(page_text):
+        return True, "text_announcement"
+
+    # Signal 2 — X-band numeric density
     if not texts:
-        return False
-
+        return False, None
     short_blocks = [(t, x0, x1) for (t, y, x0, x1) in texts if len(t.strip()) <= 3]
-    if len(short_blocks) < 15:          # too few short blocks to be a matrix
-        return False
-
-    # Cluster short-block x0 into bands (same column reused across many rows)
+    if len(short_blocks) < 15:
+        return False, None
     from collections import defaultdict
     bands = defaultdict(int)
     for _, x0, _ in short_blocks:
-        band = round(x0 / 15) * 15      # snap to 15pt bands
-        bands[band] += 1
-
-    # A real matrix reuses the same handful of X-bands many times (one per
-    # numeric column); scattered/unique X positions suggest ordinary prose.
+        bands[round(x0 / 15) * 15] += 1
     repeated_bands = [b for b, count in bands.items() if count >= 5]
-    return len(repeated_bands) >= 3      # at least 3 recurring numeric columns
+    if len(repeated_bands) >= 3:
+        return True, "x_band_numeric"
+    return False, None
 ```
 
-Store `borderless_table_suspect` in the `analyse_pages()` per-page result
+> ⚠️ **Signature modifiée (ENG-043)** : la fonction retourne désormais `(bool, reason)`
+> au lieu de `bool`. Mettre à jour tous les appels dans `analyse_pages()` :
+> `borderless_table_suspect, borderless_reason = detect_borderless_table(texts, page_width, page_text)`
+
+Store `borderless_table_suspect` and `borderless_reason` in the `analyse_pages()` per-page result
 dict, alongside `has_table` and `rotated_header_suspect`.
 
 **Fallback — `pdftotext -layout` reconstruction (same principle as §1.4c):**
