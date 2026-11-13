@@ -1470,7 +1470,12 @@ def detect_and_tag_formulas(text):
 def call_claude_with_retry(payload, headers, label, timeout=300):
     """Execute a Claude API call with exponential backoff (MAX_RETRIES attempts).
     Returns the text content of Claude's first response block.
-    Raises RuntimeError on non-retryable HTTP errors.
+    Raises RuntimeError on non-retryable errors.
+
+    Retryable conditions:
+      - HTTP 429 / 529 (rate-limit / overload)
+      - urllib.error.URLError (network-level: timeout, connection reset, DNS)
+    Non-retryable: all other HTTP errors (4xx/5xx except 429/529).
     """
     for attempt in range(MAX_RETRIES):
         req = urllib.request.Request(
@@ -1490,6 +1495,16 @@ def call_claude_with_retry(payload, headers, label, timeout=300):
                 time.sleep(wait)
             else:
                 raise RuntimeError(f"HTTP {e.code} on {label}: {body[:500]}")
+        except urllib.error.URLError as e:
+            # Network-level error (timeout, connection reset, DNS failure…)
+            # Always retryable — transient infrastructure issue.
+            if attempt < MAX_RETRIES - 1:
+                wait = 10 * (2 ** attempt)
+                print(f"  URLError ({e.reason}) on {label} — retrying in {wait}s ...",
+                      file=sys.stderr)
+                time.sleep(wait)
+            else:
+                raise RuntimeError(f"URLError on {label} after {MAX_RETRIES} attempts: {e.reason}")
 ```
 
 ### Script template — Text mode (no flag + Claude unavailable, or forced text mode)
