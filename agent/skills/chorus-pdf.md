@@ -39,9 +39,9 @@ capability:
 
 | Mode | Flag | Engine | API key | Figures | Tables (vector) | Output |
 |------|------|--------|---------|---------|-----------------|--------|
-| **Hybrid** (**default**) | *(none — auto-detected)* | `pdfminer` for text on ALL pages + Claude vision on cropped figures only | ✅ `ANTHROPIC_API_KEY` | ✅ described (precise crop) | ✅ `pdfplumber` — Markdown pipe table | `<slug>-vision.md` |
+| **Auto** (**default**) | *(none — auto-detected)* | `pdfminer` on text pages + vision LLM on figure pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (targeted) | ⚠️ not reconstructed | `<slug>-vision.md` |
+| **Hybrid** | `--hybrid` | `pdfminer` for text on ALL pages + Claude vision on cropped figures only | ✅ `ANTHROPIC_API_KEY` | ✅ described (precise crop) | ✅ `pdfplumber` — Markdown pipe table | `<slug>-vision.md` |
 | **Text** (fallback) | *(none — no API key)* | `pdfminer.six` | ❌ not required | `[FIGURE — not extracted]` placeholder | ✅ `pdfplumber` — Markdown pipe table | `<slug>-text.md` |
-| **Auto** | `--auto` | `pdfminer` on text pages + vision LLM on figure pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (targeted) | ⚠️ not reconstructed | `<slug>-vision.md` |
 | **Images** | `--images` | `pdftoppm` 150 DPI + vision LLM on all pages | ✅ `ANTHROPIC_API_KEY` | ✅ described (exhaustive) | ⚠️ not reconstructed | `<slug>-vision.md` |
 
 **Choosing a mode:**
@@ -49,14 +49,14 @@ capability:
 ```
 No flag provided
   → Phase 0.0 auto-detects ANTHROPIC_API_KEY and probes Claude
-  → if key valid   : --hybrid activated automatically  ← DEFAULT
+  → if key valid   : --auto activated automatically  ← DEFAULT
   → if key absent or invalid : text mode (fallback)
 
 API key available, document has mixed pages (text + embedded figures)
-  → (default — hybrid activated automatically)
+  → (default — auto activated automatically)
 
-API key available, document is text-only or text-dominant (no embedded figures)
-  → --auto   ← faster, fewer API calls
+API key available, document requires maximum fidelity on figures (precise crop per LTFigure)
+  → --hybrid   ← higher quality on figure-dense normative standards (DTU, EC5, NF EN…)
 
 API key available, document is mostly diagrams or scanned
   → --images
@@ -65,8 +65,10 @@ No API key available
   → (default text mode — forced fallback)
 ```
 
-> **`--hybrid` is the recommended mode** for building/structural standards
-> (Approved Document A, DTU, EC5, NF EN…) when an API key is available.
+> **`--auto` is the default mode** when an API key is available — uses `pypdf` page
+> classification to send only pages with embedded images to Claude vision, avoiding
+> false positives from decorative vector elements (`LTFigure`) detected by pdfminer.
+> Use `--hybrid` when maximum figure fidelity is required (precise bbox crop per figure).
 
 > ⛔ **Known blind spot — rotated-header matrix tables** (cross-reference /
 > dependency matrices with column headers printed one character per line,
@@ -182,10 +184,10 @@ def probe_claude(api_key):
 | `ANTHROPIC_API_KEY` | Probe result | Mode activated | Message |
 |---|---|---|---|
 | absent | — | text | `No ANTHROPIC_API_KEY — text mode.` |
-| present | ✅ valid | **hybrid** | `ANTHROPIC_API_KEY detected — Claude available ✅ — hybrid mode activated.` |
+| present | ✅ valid | **auto** | `ANTHROPIC_API_KEY detected — Claude available ✅ — auto mode activated.` |
 | present | ❌ invalid (401/403) | text | `ANTHROPIC_API_KEY set but key is invalid (HTTP 4xx) — falling back to text mode.` |
 | present | ❌ unreachable | text | `Claude unreachable (network error) — falling back to text mode.` |
-| present | ⚠️ throttled (429/529) | **hybrid** | `ANTHROPIC_API_KEY detected — Claude available (throttled) ✅ — hybrid mode activated.` |
+| present | ⚠️ throttled (429/529) | **auto** | `ANTHROPIC_API_KEY detected — Claude available (throttled) ✅ — auto mode activated.` |
 
 Print the selected mode to stderr before proceeding to Phase 0.1.
 
@@ -854,7 +856,14 @@ this section shipped, that control can be escalated from informational to
 a real `⚠️`/`❌` severity in a future `chorus-markdown` revision, since the
 placeholder now actually exists to be checked.
 
-## Phase 1.5 — nohup gate (hybrid mode only)
+## Phase 1.5 — nohup gate (hybrid mode only — not applicable to --auto)
+
+> ℹ️ **`--auto` mode has no nohup gate.** In `--auto`, the unit of work is a
+> **chunk of 5 pages** (~30s per chunk), not one API call per figure. Even for
+> a 108-page document fully classified as vision (22 chunks), the total time
+> is ~11 min — well below the 10-min IDE timeout per individual call.
+> No gate is needed because no single API call takes more than ~60s.
+> The nohup gate below applies **only** when `--hybrid` is used.
 
 After the layout analysis (`analyse_pages`), the script knows the **exact number of
 `LTFigure` elements** to send to Claude. Each figure = 1 API call ≈ 30 s average.
@@ -2918,6 +2927,38 @@ Report the sanity check results to the user before proceeding.
 | Figures described but values wrong | Dense diagram | Increase `DPI = 200` in script header; keep `CHUNK_SIZE = 3` |
 | Text mode: garbled multi-column | pdfminer layout | Normal on very complex layouts — use `--auto` instead |
 | Auto mode: page miscategorised | `pypdf` image detection | Force individual pages to vision by adjusting text threshold in `classify_pages` |
+| Auto mode: `chorus-markdown` §2.2 ❌ "malformed table" — separator-first | Claude vision generates table without header row (`\|---\|` as first line, col count ≠ data rows) | Run `pdftotext -layout -f <page> -l <page> <pdf>` to get real column count; regenerate separator with that count. See § "Auto mode — separator-first table fix" below. |
+
+### Auto mode — separator-first table fix
+
+**⛔ Known blind spot — `--auto` mode only:** Claude vision occasionally generates
+Markdown tables **without a header row**, starting directly with a separator line
+(`| --- | --- | ... |`) whose column count does not match the data rows below it.
+
+**Symptom in `chorus-markdown` §2.2:** `❌ N malformed table(s)` where the detection
+uses `block[0]` as reference — if `block[0]` is a separator with M cols and data rows
+have N≠M cols, the table is flagged.
+
+**Why it happens:** Claude infers table structure visually from the PDF page image.
+When the header row is visually merged, rotated, or ambiguous, Claude may omit it and
+start directly with a separator, then produce data rows with the correct (larger) column
+count.
+
+**Fix procedure:**
+1. Identify the affected page(s) from the `chorus-markdown` report.
+2. Run `pdftotext -layout -f <page> -l <page> <pdf> -` → count columns in the source.
+3. The data rows' column count is the correct target (they reflect what Claude extracted).
+4. Regenerate the separator with the target count:
+   ```python
+   target = Counter(r.count('|') - 1 for r in data_rows).most_common(1)[0][0]
+   new_sep = '| ' + ' | '.join(['---'] * target) + ' |'
+   ```
+5. Re-run `chorus-markdown` to confirm ✅.
+
+> ⚠️ **This defect is specific to `--auto` mode** — in `--hybrid` mode, tables are
+> reconstructed by pdfplumber from vector lines, which always produces a proper
+> header + separator structure. If separator-first tables are frequent in a document,
+> consider switching to `--hybrid`.
 
 ## Cross-tool comparison — standard triage procedure for suspect pages
 
@@ -3031,13 +3072,18 @@ chorus-markdown 01-PMR workspace/Leclerc/sources/PC39.pdf workspace/Leclerc/PC39
   est écrit dans `<output-dir>/../reports/` si `workspace/reports/` n'existe
   pas encore — `chorus-markdown` crée le dossier automatiquement.
 
-**Seuil de ratio mots spécifique au mode hybrid :**
-Le seuil §2.6 de `chorus-markdown` est calibré pour le mode texte (≤ 1.30).
-En mode hybrid, les descriptions Claude vision ajoutent des mots absents du
-texte source — un ratio jusqu'à **1.80 est normal et attendu**. Si le ratio
-dépasse 1.30 mais reste < 1.80, signaler explicitement à l'utilisateur :
-> `ℹ️  Ratio mots 1.62 — normal en mode hybrid (descriptions vision Claude incluses)`
-Ne pas traiter ce cas comme un ❌.
+**Seuil de ratio mots spécifique au mode — trois cas :**
+
+| Mode | Seuil normal | Explication |
+|---|---|---|
+| `--hybrid` | ≤ **1.80** | pdfminer texte + descriptions Claude vision séparées par figure → mots ajoutés |
+| `--auto` pages mixtes | ≤ **1.80** | même logique : pages vision apportent des descriptions supplémentaires |
+| `--auto` all-pages vision | ≤ **1.50** | Claude reconstruit le texte depuis les images — pas de descriptions de figures *en plus* du texte, ratio proche de 1.0 ; léger surplus lié à la reformulation Claude |
+
+Si le ratio dépasse 1.30 mais reste dans la plage normale du mode utilisé, signaler explicitement à l'utilisateur :
+> `ℹ️  Ratio mots 1.62 — normal en mode hybrid/auto (descriptions vision Claude incluses)`
+> `ℹ️  Ratio mots 1.34 — normal en mode auto all-pages (Claude reconstruit le texte depuis les images)`
+Ne pas traiter ces cas comme un ❌.
 
 **Le résultat de `chorus-markdown` est intégré au rapport final Phase 4.2.**
 

@@ -205,6 +205,15 @@ Count headings (`#`, `##`, …, or `Table N`/`Figure N` style markers) in
   `|---|---|` separator line) in `<output.md>`: verify column count is
   consistent across all rows of that block. `❌` on mismatch (malformed
   table — a conversion artifact, not a source defect).
+  > ⚠️ **Separator-first tables (`--auto` mode blind spot):** Claude vision
+  > occasionally generates tables **without a header row**, starting directly
+  > with the separator `|---|...|`. The detection logic uses `block[0]` as
+  > reference — if `block[0]` is a separator with M cols and data rows have
+  > N≠M cols, the table is correctly flagged `❌`. Fix: use `pdftotext -layout
+  > -f <page> -l <page> <pdf>` to verify the real column count; regenerate
+  > the separator with the data rows' majority column count. See
+  > `chorus-pdf.md § "Auto mode — separator-first table fix"` for the full
+  > repair procedure.
 - **Table-count mismatch** (the audit's #1 finding — T1/T3): compare the
   number of `Table N`/`Tableau N` headings found in `<output.md>` against
   the number found in the source reference (§1.1/§1.2/§1.3). `❌` if the
