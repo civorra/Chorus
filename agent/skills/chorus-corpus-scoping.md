@@ -42,6 +42,39 @@ them, **then** run `chorus-feed` for actual generation.
 - **Never triggers on `--enrich` runs** — scoping is a Mode A (initialization)
   concern only. Enrichment works within an already-scoped structure.
 
+### Pre-load operator instructions (always, before any other step)
+
+Before applying the decision table below — and before any corpus file is read —
+check for `sandboxes/<sandbox-name>/instructions-scoping.md` at the sandbox root.
+
+- **If the file exists:** read it fully into context. Display:
+  ```
+  [chorus-corpus-scoping] ✅ instructions-scoping.md chargé —
+    agents déclarés : <N> (<slug1>, <slug2>, …)
+    Frames déclarés : <N>
+    Réponses pré-remplies pour les 5 questions structurantes.
+  ```
+  The answers from that file are used **directly** in Phase 1 to seed the
+  SCOPING.md draft without re-deriving them from the corpus alone:
+  - `## Agents` table ← Question 1 of the instructions file
+  - `## Domain Frames` ← Question 2
+  - `## Inter-Frame relationships` ← Question 3
+  - `## Control slots` ← Question 4
+  - `## BOARD slots` and pipeline order ← Question 5
+  - `## Corpus section assignment` guidelines ← the assignment table
+
+  Phase 1 still reads the corpus to verify consistency and assign sections
+  (Step 1–2), but agents, Frames and control slots are taken from the
+  instructions file rather than inferred from scratch — saving the full
+  §1.1–1.3 inference pass.
+
+  Open questions listed under `## Questions ouvertes` in the instructions
+  file are surfaced for explicit operator confirmation before `SCOPING.md`
+  is written.
+
+- **If the file is absent:** proceed normally — Phase 1 derives all five
+  answers from corpus analysis alone (interactive / inference mode).
+
 ### Standalone invocation — decision table
 
 When called as `chorus-corpus-scoping <sandbox-name> [--split]`, apply this

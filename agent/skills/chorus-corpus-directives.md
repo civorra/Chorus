@@ -33,6 +33,25 @@ referencing ETSI TS 119 312 for cryptographic thresholds.
 
 ## Detection logic (followed by the agent)
 
+0. **Pre-load operator instructions** — check for
+   `sandboxes/<sandbox-name>/instructions-directives.md` at the sandbox root.
+   - If the file exists: read it fully into context. Display:
+     ```
+     [chorus-corpus-directives] ✅ instructions-directives.md chargé —
+       sources déclarées : <N> (liste des slugs)
+       Réponses pré-remplies pour les 4 questions structurantes.
+     ```
+     The answers from that file (sources table, no_auto_rules justifications,
+     version pinning, thesaurus seed, cross-reference format) are used
+     **directly** to populate `CORPUS-DIRECTIVES.md` without asking the
+     operator interactively — the skill proceeds as if the operator had
+     provided those answers in the conversation.
+     Open questions marked with `> ⚠️ **Point de décision**` in the
+     instructions file are surfaced for explicit confirmation before
+     the file is written.
+   - If the file is absent: proceed normally (interactive mode — ask the
+     operator the four questions in sequence).
+
 1. Look for `sandboxes/<sandbox-name>/CORPUS-DIRECTIVES.md`.
 2. If absent — bootstrap it from the template below. All four sections
    must be filled, together with the human operator, before `chorus-feed`
