@@ -922,6 +922,66 @@ done
 > `06-CC-3.1.5` 2026-11-06, `class_family_completion_status` collision between
 > `agent-adv-agd-alc` and `agent-ate-ava-aco` after `chorus-feed --enrich` Gap #2)*
 
+**Extension Step 5m — scan `use utf8;` manquant dans Helpers.pm (ENG-052):**
+
+> ⚠️ **Pourquoi le scanner ici :** le YAML parser de Chorus Engine décode l'UTF-8 des
+> fichiers règles → les chaînes issues des EFFETs YAML deviennent des **Perl Unicode
+> strings**. Un Helpers.pm sans `use utf8;` stocke ses littéraux comme des **byte strings
+> UTF-8** → les comparaisons `eq` échouent **silencieusement** (ex. `'2ème'` hex `32 e8 6d 65`
+> Unicode ≠ `32 c3 a8 6d 65` bytes). Ce mismatch ne produit ni erreur ni warning — la
+> fonction Helper retourne simplement `undef`, et la règle émet un verdict `_a_confirmer`
+> ou `NC` impossible à tracer sans debuggage hex.
+
+```bash
+# Helpers.pm contenant des caractères non-ASCII mais sans déclaration use utf8
+for pm in $SANDBOX/lib/*/Agent/*/Helpers.pm \
+          $SANDBOX/lib/*/Agent/*/*/Helpers.pm 2>/dev/null; do
+  [ -f "$pm" ] || continue
+  grep -qP '[^\x00-\x7F]' "$pm" || continue   # pas de non-ASCII → skip
+  grep -q "^use utf8" "$pm" || \
+    echo "⚠️  ENG-052 — $pm : chaînes non-ASCII présentes mais 'use utf8;' absent"
+done
+```
+
+- **No output** → tous les Helpers.pm non-ASCII ont `use utf8;` → continuer.
+- **Output found** → ajouter `use utf8;` immédiatement après `use warnings;` dans
+  chaque Helpers.pm signalé. Pas de modification de `.kb-hash` requise (fichiers `.pm`,
+  pas `.yml`), mais `perl -c` sur le fichier pour confirmer la syntaxe.
+
+### Step 5o — Worst-verdict BOARD : initialisation bloquée par `// 'CONFORME'` (ENG-053) (mandatory, before Phase 2)
+
+> ⚠️ **Pourquoi obligatoire :** le pattern `$SELF->BOARD->{slot} // 'CONFORME'` dans
+> une comparaison worst-verdict empêche l'initialisation du BOARD quand tous les verdicts
+> du groupe sont CONFORME (cas courant sur les premiers projets de test). Le BOARD slot
+> n'est jamais écrit → la règle TERMINAL attend ce slot indéfiniment → pipeline FAILED/TIMEOUT
+> à `_MAX_ITER`. Aucune erreur, aucun warning — le seul symptôme est un pipeline timeout.
+
+```bash
+# Règles YAML qui utilisent // 'CONFORME' comme défaut dans une comparaison worst-verdict
+grep -rn "BOARD->{[a-z_]*} // 'CONFORME'" $SANDBOX/rules/*/*.yml 2>/dev/null \
+  && echo "⚠️  Remplacer par : !defined BOARD->{slot} || (prio{v} > prio{board_slot})"
+# Variante avec guillemets doubles
+grep -rn 'BOARD->{[a-z_]*} // "CONFORME"' $SANDBOX/rules/*/*.yml 2>/dev/null \
+  && echo "⚠️  Même correction requise"
+```
+
+- **No matches** → toutes les initialisations worst-verdict utilisent `!defined || >` → continuer.
+- **Matches found** → pour chaque occurrence, remplacer selon le pattern canonique :
+  ```perl
+  # ⛔ CASSÉ
+  my $bv = $SELF->BOARD->{verdict_xxx} // 'CONFORME';
+  if (($prio{$verdict} // 0) > ($prio{$bv} // 0)) { $SELF->BOARD->{verdict_xxx} = $verdict }
+
+  # ✅ CORRECT
+  if (!defined $SELF->BOARD->{verdict_xxx}
+      || ($prio{$verdict} // 0) > ($prio{$SELF->BOARD->{verdict_xxx}} // 0)) {
+      $SELF->BOARD->{verdict_xxx} = $verdict;
+  }
+  ```
+  Corriger avant de générer l'infra. Régénérer `agent/.kb-hash` après modification.
+
+> **Référence :** `chorus-engine-yaml.md § Pitfall — Worst-verdict BOARD` (ENG-053).
+
 ### Step 5n — `CONDITION`/`EXCEPTION` plain scalar tronqué (ENG-051) (mandatory, before Phase 2)
 
 > ⚠️ **Pourquoi obligatoire :** une `CONDITION: do {` sans indicateur `|` fait que le
@@ -1176,6 +1236,18 @@ Create `$SANDBOX/run.pl` from template **T5** (`chorus-templates.md`).
 - `@pipeline_def` ← one entry per agent: `[ label, slot_ciblage, slot_resultat_ok ]` from `index.org` pipeline table
 
 **Rule:** `run.pl` contains **no hardcoded data** — all project input comes from the JSON argument.
+
+> ⛔ **ENG-054 — `%VERDICT_SLOT` : paires explicites uniquement, jamais `map { $_ => 'X' }`.**
+> Dans l'initialisation du hash `%VERDICT_SLOT`, Perl peut parser `{ $_ => '...' }` comme
+> une hash reference plutôt qu'un code block quand plusieurs `map` s'enchaînent. Résultat :
+> tous les types héritent silencieusement de la valeur du **premier** `map`, et les chaînes
+> comme `'verdict_facades'` deviennent des **clés** supplémentaires dans le hash. `perl -c`
+> passe sans erreur — le bug n'est visible qu'au runtime (compteur `Conformes: 2 / 11` au
+> lieu de `9 / 11`). Toujours utiliser des paires explicites :
+> ```perl
+> # ⛔ CASSÉ (map ambigu)      map { $_ => 'verdict_facades' } qw(rideau lourde ...)
+> # ✅ CORRECT (paires)       'rideau' => 'verdict_facades', 'lourde' => 'verdict_facades',
+> ```
 
 > ⚠️ **Reference-valued result slots — do not assume every slot is a scalar.**
 > Any slot in `@slots_resultat_display` (or returned by a custom `verdict_of()`

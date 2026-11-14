@@ -803,6 +803,53 @@ ACTION: "$SELF->BOARD->{phase_done} = 1;"
 > 19 `EXCEPTION` blocks. See `chorus-check.md § Step 5i` for the full writeup
 > and the mechanical scan now guarding against recurrence.
 
+### ⛔ Pitfall — Worst-verdict BOARD : initialisation bloquée par `// 'CONFORME'` (ENG-053)
+
+> **Symptôme :** un slot BOARD (ex. `verdict_acoustique`, `verdict_facades`) n'est
+> jamais initialisé malgré le traitement correct de toutes les Frames du groupe.
+> La règle TERMINAL attend ce BOARD slot → pipeline timeout à `_MAX_ITER` sans SOLVED.
+> Le bug ne se manifeste que lorsque **tous** les verdicts du groupe sont CONFORME —
+> cas courant sur les premiers projets de test ou les sandboxes neufs.
+
+**Cause :** le défaut `// 'CONFORME'` dans la comparaison worst-verdict initialise
+`$board_verdict` à 'CONFORME' (priorité 0) même quand le BOARD n'est pas encore défini.
+Un verdict CONFORME (priorité 0) ne satisfait jamais `0 > 0` → le BOARD n'est jamais écrit.
+
+```perl
+# ⛔ CASSÉ — BOARD jamais initialisé si tous les verdicts sont CONFORME
+my $board_verdict = $SELF->BOARD->{verdict_xxx} // 'CONFORME';   # ← défaut erroné
+my %prio = (NON_CONFORME => 2, _a_confirmer => 1, CONFORME => 0);
+if (($prio{$verdict} // 0) > ($prio{$board_verdict} // 0)) {
+    $SELF->BOARD->{verdict_xxx} = $verdict;
+}
+# → quand verdict='CONFORME' : (0 > 0) = FALSE → BOARD jamais écrit
+
+# ✅ CORRECT — initialise si absent, upgrade si verdict plus mauvais
+my %prio = (NON_CONFORME => 2, _a_confirmer => 1, CONFORME => 0);
+if (!defined $SELF->BOARD->{verdict_xxx}
+    || ($prio{$verdict} // 0) > ($prio{$SELF->BOARD->{verdict_xxx}} // 0)) {
+    $SELF->BOARD->{verdict_xxx} = $verdict;
+}
+```
+
+**Pattern affecté (récurrent dans les règles publication-board) :**
+
+Toute règle qui accumule un verdict "pire-cas" sur BOARD (un résultat global issu
+de N Frames individuelles) doit utiliser ce pattern. La distinction est :
+
+| Situation | Test correct |
+|---|---|
+| Premier Frame du groupe | `!defined $SELF->BOARD->{slot}` → toujours initialiser |
+| Frames suivantes | `> (priorité du BOARD existant)` → upgrade si pire |
+
+> `chorus-check.md § Step 5o` scanne `// 'CONFORME'` dans les comparaisons BOARD
+> pour détecter ce pattern mécaniquement.
+
+> **Incident :** session 2026-11-14, sandbox `03b-contruction-bois-HABITATION` —
+> `BOARD:verdict_acoustique` jamais initialisé malgré 2 Frames acoustiques CONFORME
+> traitées. Pipeline FAILED/TIMEOUT à `_MAX_ITER=200`. Découvert par inspection
+> directe du BOARD après ajout d'instrumentation.
+
 ### ⛔ Pitfall — multi-line `EXCEPTION`/`CONDITION` must be a single expression (wrap in `do {}`)
 
 > `Chorus::Engine::codeRule()` compiles a rule's `EXCEPTION` field into

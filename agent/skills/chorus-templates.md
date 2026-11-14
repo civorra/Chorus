@@ -983,6 +983,13 @@ artefacts (`agent/.kb-hash`, `agent/sessions/`) per the sandbox's own
 ```perl
 # One entry per type_element known to the pipeline (from each agent's KB org
 # "Frame catalogue" — union of all type_element values across all agents).
+#
+# ⛔ ENG-054 — ALWAYS use explicit 'key' => 'value' pairs below.
+# NEVER use: map { $_ => 'verdict_xxx' } qw(type_a type_b ...)
+# Perl may parse { $_ => '...' } as a hash reference, not a code block,
+# when multiple map calls appear in a hash initialisation — all types
+# silently inherit the value of the FIRST map. The bug passes perl -c.
+# Correct form: one explicit 'type_element' => 'slot_verdict' per line.
 my %VERDICT_SLOT = (
     '<type_a>' => '<slot_verdict_agent_1>',   # e.g. qualite_alea
     '<type_b>' => '<slot_verdict_agent_2>',   # e.g. conforme (shared Frame class)
