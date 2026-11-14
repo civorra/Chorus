@@ -22,6 +22,26 @@ its definition in the agent's `.org` file (header, Catalogue de règles, Contrai
 
 ---
 
+## Prerequisites
+
+**Before Phase 0**, load the authoritative engine YAML reference:
+
+```
+eca__read_file("$ENGINE/agent/skills/chorus-engine-yaml.md")
+```
+
+This ensures Phase 3 pitfall checks are always aligned with the latest engine
+conventions — CONDITION vs EXCEPTION semantics, `filtre` string rule, `fmatch`
+limitations, `do{}` wrapping requirement, etc.
+
+> Phase 3 of this skill inlines the pitfall patterns for standalone execution,
+> but `chorus-engine-yaml.md` is the **authoritative source**. If the two diverge
+> (new pitfall added to `chorus-engine-yaml.md` but not yet propagated here),
+> `chorus-engine-yaml.md` takes precedence. Any new pitfall added there must be
+> reflected in Phase 3 of this skill in the same commit.
+
+---
+
 ## Phase 0 — Sandbox inventory
 
 **Before any file read**, call `eca__directory_tree($SANDBOX/rules/)` and
