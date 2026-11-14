@@ -556,10 +556,24 @@ grep -rl "^TERMINAL: solved$\|^TERMINAL: failed$" $SANDBOX/rules/*/*.yml
   aggregation agent** (the agent occupying the last `#+PIPELINE_POS` in
   `index.org`, whose rule reads every upstream BOARD phase-done flag before
   concluding) → proceed to Phase 2.
-- **Zero matches** → the pipeline has no explicit termination rule at all;
-  confirm this is intentional (e.g. termination handled via `$SELF->solved()`
-  called directly in some agent's `ACTION` instead of via the `TERMINAL:` key
-  — search for `->solved()`/`->failed()` as well) before proceeding.
+- **Zero matches** → no `TERMINAL:` key found. Run a secondary scan for
+  direct `$SELF->solved()` / `$SELF->failed()` calls in YAML ACTION blocks:
+  ```bash
+  grep -rn "\$SELF->solved()\|\$SELF->failed()" $SANDBOX/rules/*/*.yml
+  ```
+  - Secondary scan finds **at least one match** → termination is handled inline
+    in ACTION → proceed to Phase 2.
+  - Secondary scan finds **zero matches** → **the pipeline has NO termination
+    mechanism at all**. Without `solved()` or `TERMINAL: solved`, `Chorus::Expert::process()`
+    runs until `_MAX_ITER` on **every** project, regardless of content, then reports
+    `FAILED/TIMEOUT` — infra generation is useless.
+    **⛔ STOP — do NOT generate infrastructure.** Create the missing TERMINAL rule first:
+    ```
+    REGLE: r-termination-pipeline
+    (placed in rules/<last_agent>/, see chorus-engine-yaml.md § TERMINAL pattern)
+    ```
+    Then re-run Step 5f to confirm exactly one TERMINAL/solved before continuing.
+    See ENG-055 for the auto-generation roadmap (chorus-feed should generate this rule).
 - **More than one matching file** → every file beyond the legitimate final
   aggregator's own rule is a bug. For each one: remove the `TERMINAL: solved`/
   `failed` line entirely (keep the rest of the rule — it almost always also
@@ -907,6 +921,41 @@ done
 > **Incident:** `agent/org/incidents-log.org § cc314-10` *(to be added — incident
 > `06-CC-3.1.5` 2026-11-06, `class_family_completion_status` collision between
 > `agent-adv-agd-alc` and `agent-ate-ava-aco` after `chorus-feed --enrich` Gap #2)*
+
+### Step 5n — `CONDITION`/`EXCEPTION` plain scalar tronqué (ENG-051) (mandatory, before Phase 2)
+
+> ⚠️ **Pourquoi obligatoire :** une `CONDITION: do {` sans indicateur `|` fait que le
+> parser YAML tronque la valeur au premier `}` à indentation zéro — le bloc Perl est
+> incomplet, `codeRule()` retourne `undef`, la règle se charge (comptée dans `_RULES`)
+> mais ne se déclenche **jamais**. Aucun message d'erreur, aucun `loadRules()` warning
+> explicite — le seul indice est un `Use of uninitialized value in concatenation` générique
+> à la ligne 620 de `Chorus/Engine.pm`, facilement noyé dans d'autres warnings.
+> Découvert sur 5 règles brisées en sandbox `03b-contruction-bois-HABITATION` (2026-11-14).
+
+Run, for every agent's rules directory, before writing any infrastructure file:
+
+```bash
+# CONDITION/EXCEPTION dont la valeur commence par un token non-quoted et non-|
+# → plain scalar YAML potentiellement tronqué si multi-lignes
+grep -rnE "^(CONDITION|EXCEPTION): [^|'\"0-9]" $SANDBOX/rules/*/*.yml 2>/dev/null \
+  | grep -vE "^.*:(CONDITION|EXCEPTION): '.*'$" \
+  || echo "OK — aucun plain scalar non-quoté détecté"
+```
+
+Interprétation des résultats :
+
+- **Aucun match** → toutes les `CONDITION`/`EXCEPTION` utilisent soit `|` soit des quotes simples `'...'` → continuer vers Phase 2.
+- **Matches trouvés** → pour chaque occurrence, inspecter si la valeur est réellement
+  multi-lignes (cas problématique) ou une expression courte sur une seule ligne (acceptable
+  si elle tient sur une ligne, sans `}` fermant séparé) :
+  - **Multi-lignes avec `do {` ou bloc** → **remplacer par `CONDITION: |`** + indentation
+    du contenu (corriger avant de générer l'infra).
+  - **Une seule ligne sans continuation** → risque limité mais préférer les quotes `'...'`
+    pour l'expliciter.
+- Après correction, re-exécuter le scan pour confirmer zéro match, puis régénérer
+  `agent/.kb-hash` si des fichiers `.yml` ont été modifiés.
+
+> **Référence :** `chorus-engine-yaml.md § Pitfall — CONDITION: do { sans |` (ENG-051).
 
 ---
 

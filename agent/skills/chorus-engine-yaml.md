@@ -690,6 +690,73 @@ ACTION: "1"
 - `$SELF->solved()` in ACTION — also valid: `$SELF` inside a YAML ACTION is the agent (Engine), so `$SELF->solved()` correctly sets `BOARD->{SOLVED}`. Can be combined with `TERMINAL: solved` or used alone.
 - ⛔ **Never** use a global `fmatch` in a YAML `FIND`/`CHERCHER` block for a termination rule → guaranteed infinite loop. Use `fmatch` in `EXCEPTION`/`CONDITION` only (safe — not bound).
 
+### Pattern TERMINAL multi-agent — CONDITION groupe vide (ENG-055)
+
+Dans un pipeline multi-agents, la règle TERMINAL doit pouvoir traiter des **projets
+partiels** (ne contenant pas tous les types d'éléments). La CONDITION doit être satisfaite
+même si un groupe de types est absent du projet — sinon la règle attend indéfiniment un
+BOARD verdict qui ne sera jamais publié (aucun élément de ce type → aucune règle ne se
+déclenche pour ce groupe → son BOARD verdict reste undef → TERMINAL bloqué).
+
+**Pattern canonique — CONDITION groupe vide :**
+
+```yaml
+REGLE: r-termination-pipeline
+
+CHERCHER:
+  tout:
+    attribut: type_element
+
+EXCEPTION: '($SELF->BOARD && defined $SELF->BOARD->{pipeline_solved})'
+
+CONDITION: |
+  do {
+    my $b   = $SELF->BOARD // {};
+    my @all = Chorus::Frame::fmatch(slot => 'type_element');
+
+    # Pour chaque groupe d'agents : vrai si groupe VIDE ou si BOARD verdict défini.
+    # Un groupe vide signifie qu'aucun élément de ce type n'est présent dans le projet
+    # → la condition est satisfaite sans attendre un verdict qui ne viendra jamais.
+    my @grp1 = grep { ($_->get('type_element') // '') =~ /^(type_a|type_b)$/ } @all;
+    my @grp2 = grep { ($_->get('type_element') // '') =~ /^(type_c|type_d)$/ } @all;
+    # ... un groupe par agent/domaine ...
+
+    (!@grp1 || defined $b->{verdict_agent_1})
+    && (!@grp2 || defined $b->{verdict_agent_2})
+    # ... && pour chaque groupe ...
+  }
+
+EFFET: |
+  my $trace = $tout->get('_rule_trace') // [];
+  unless (grep { ($_->{rule_id} // '') eq 'r-termination-pipeline' } @$trace) {
+    push @$trace, {
+      rule_id    => 'r-termination-pipeline',
+      corpus_ref => 'pipeline — agrégation finale tous agents'
+    };
+    $tout->set('_rule_trace', $trace);
+  }
+  $SELF->BOARD->{pipeline_solved} = 1;
+  $SELF->solved();
+  1
+```
+
+**Propriétés du pattern :**
+
+| Propriété | Mécanisme |
+|---|---|
+| **Idempotence** | `EXCEPTION: defined $SELF->BOARD->{pipeline_solved}` — ne se déclenche qu'une fois |
+| **Projet partiel** | `!@grp || defined $b->{verdict}` — groupe vide → condition vraie sans attendre |
+| **Traceability** | `_rule_trace` push avec guard `unless grep` — évite le flood si la règle tentait de refirer |
+| **Un seul déclenchement** | BOARD `pipeline_solved` + `$SELF->solved()` — arrêt immédiat après le premier appel |
+
+> **Placement :** cette règle doit être dans le répertoire du **dernier agent**
+> (`#+PIPELINE_POS` le plus élevé dans `index.org`), numérotée en dernier
+> (ex. `R06-termination-pipeline.yml` si R05 est la dernière règle métier).
+
+> **Remarque :** `chorus-feed` devrait générer automatiquement cette règle à la fin
+> du Mode A (ENG-055). En attendant, la créer manuellement et vérifier avec
+> `chorus-check Step 5f` (scan TERMINAL + `->solved()`).
+
 ### ⛔ Pitfall — BOARD-publishing rule must guard against self-refiring
 
 > Any rule whose `ACTION` publishes a BOARD flag (`$SELF->BOARD->{<flag>} = 1`
@@ -838,6 +905,57 @@ EXCEPTION: |
 > `_check_guard_coherence()`, it only `warn`s — it never blocks `loadRules()`.
 > Treat any occurrence of this warning as a build-breaking issue to fix
 > immediately, the same way `GUARD MISMATCH` warnings are treated.
+
+### ⛔ Pitfall — `CONDITION: do {` sans `|` : YAML plain scalar tronqué (ENG-051)
+
+> **Symptôme :** règle chargée par `loadRules()` (comptée dans `_RULES`), aucun message
+> d'erreur, mais ne se déclenchant **jamais**. Le seul indice visible est un warning
+> `Use of uninitialized value in concatenation (.) or string at Chorus/Engine.pm line 620`
+> passé inaperçu parmi d'autres warnings de chargement.
+
+**Cause :** en YAML, un scalaire brut multi-lignes (`CONDITION: do {`) dont la ligne
+de fermeture `}` est à indentation zéro est **tronqué** par le parser — le `}` fermant
+n'est pas inclus dans la valeur. `codeRule()` reçoit un bloc `do {` incomplet, génère
+du Perl syntaxiquement invalide, retourne `undef`, et l'eval produit `$SELF->addrule()`
+sans arguments — une règle vide qui ne s'applique à aucun Frame.
+
+```yaml
+# ⛔ CASSÉ — YAML plain scalar tronqué (closing } absent → Perl syntax error)
+CONDITION: do {
+  defined $f->get('nb_niveaux')
+    || defined $f->get('hauteur_plancher_bas_m')
+}
+# Le parser YAML lit : "do {\n  defined $f->get('nb_niveaux')\n    || ..."
+# La ligne "}" seule à colonne 0 termine le scalaire AVANT d'être incluse.
+
+# ✅ CORRECT — indicateur | (literal block scalar) oblige le parser à tout inclure
+CONDITION: |
+  do {
+    defined $f->get('nb_niveaux')
+      || defined $f->get('hauteur_plancher_bas_m')
+  }
+```
+
+**Formes autorisées pour `CONDITION` et `EXCEPTION` :**
+
+| Cas | Forme correcte | Exemple |
+|---|---|---|
+| Expression courte (1 ligne) | Quoted scalar `'...'` | `CONDITION: 'defined $f->{slot}'` |
+| Bloc multi-lignes avec `do {}` | Literal block `\|` | `CONDITION: \|` + bloc indenté |
+| Expression longue sans `do {}` | Literal block `\|` | `CONDITION: \|` + expression |
+
+> ⛔ **Règle stricte :** toute `CONDITION:` ou `EXCEPTION:` dont la valeur contient un
+> `do {`, un `if (`, ou tout autre bloc Perl multi-lignes **DOIT** utiliser `|` comme
+> indicateur de scalaire. Ne jamais écrire `CONDITION: do {` sans `|`.
+>
+> **Détection :** `chorus-check Phase 1.5 Step 5n` (ENG-051) scanne
+> `^CONDITION: [^|'"]` dans tous les fichiers `.yml` — toute correspondance est un bug.
+
+> **Incident :** session 2026-11-14, sandbox `03b-contruction-bois-HABITATION` —
+> 5 règles brisées silencieusement (R01/R02/R06/R07 agent-securite-incendie-facades,
+> R03 agent-reaction-feu), l'agent entier ne produisant aucun résultat. Découvert
+> uniquement par debuggage exhaustif après constat que `famille_resolue` restait
+> `undef` malgré le feed correct.
 
 ### ⛔ Pitfall — Helper namespace collision via glob-aliasing (`Chorus::Engine`)
 
@@ -1288,6 +1406,20 @@ across the full tree before falling back to _DEFAULT.
 
 ### ✅ YAML Rules
 
+- [ ] ⛔ **`CONDITION`/`EXCEPTION` multi-lignes : indicateur `|` obligatoire (ENG-051).**
+      Toute `CONDITION:` ou `EXCEPTION:` dont la valeur contient un bloc Perl multi-lignes
+      (`do {`, `if (`, variable intermédiaire, etc.) DOIT utiliser l'indicateur de scalaire
+      littéral `|`. Sans `|`, le parser YAML tronque la valeur au premier `}` à indentation
+      zéro → `codeRule()` reçoit un Perl syntaxiquement invalide → retourne `undef` → la règle
+      se charge (comptée dans `_RULES`) mais ne se déclenche **jamais** (aucun message d'erreur).
+      ```yaml
+      # ⛔ CASSÉ         CONDITION: do {   ← } fermant tronqué par le parser YAML
+      # ✅ CORRECT       CONDITION: |
+      #                    do {
+      #                      ...
+      #                    }
+      ```
+      Détection : `chorus-check Phase 1.5 Step 5n` — `grep -rnE "^CONDITION: [^|'\"]" rules/`.
 - [ ] ⛔ **`type_element` — canonical slot name:** the slot identifying the element type is
       **always** named `type_element` in every `FIND`/`CHERCHER` `attribut:` that routes by
       element type. Never `element_type`, `type`, `kind`, or any other variant.

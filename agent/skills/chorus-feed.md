@@ -1471,6 +1471,18 @@ optimize rule order at runtime. PREMISES declare
 the slots the rule needs — the sorting code consults them via `$rule->_PREMISSES`.
 
 YAML Checklist:
+- [ ] ⛔ **Règle TERMINAL obligatoire (ENG-055) — vérifier que le dernier agent possède une règle appelant `$SELF->solved()` ou `TERMINAL: solved`.**
+      Sans règle TERMINAL, `Chorus::Expert::process()` boucle jusqu'à `_MAX_ITER` sur **tout** projet,
+      indépendamment du contenu — le pipeline ne se termine jamais correctement.
+      **À la fin de chaque Mode A ou Mode B, vérifier** :
+      ```bash
+      grep -rl "^TERMINAL: solved\|->solved()" $SANDBOX/rules/<dernier_agent>/*.yml \
+        || echo "⛔ TERMINAL MANQUANT — créer r-termination-pipeline.yml avant chorus-check"
+      ```
+      Si aucune règle TERMINAL n'existe encore pour ce sandbox, en générer une dans
+      `rules/<dernier_agent>/` (voir `chorus-engine-yaml.md § TERMINAL pattern — groupe vide`
+      pour la CONDITION multi-groupe). Numéroter en dernier (`R<N+1>`) dans le répertoire.
+      (ENG-055 : cette vérification/génération sera automatisée dans une version future de chorus-feed.)
 - [ ] ⛔ **`type_element` canonical name** — see Phase 1.2 ⛔ note; applies equally to YAML `attribut:` field.
 - [ ] **Header present** — every `.yml` file opens with the structured `##` header (RULE/REGLE, AGENT, CORPUS, PURPOSE/OBJECTIF, INPUTS/ENTRÉES, OUTPUTS/SORTIES, HELPERS, GUARD). Header language matches the corpus language.
 - [ ] **CORPUS line filled** — references the exact §N article from the corpus. If not identifiable → `# CORPUS: TODO — source not identified`.
@@ -1501,6 +1513,21 @@ YAML Checklist:
 - [ ] ⛔ **`$f->{slot} = val` in ACTION** → silent pipeline break (`fmatch` returns 0 Frames downstream) — always use `$f->set('slot', val)` → `chorus-engine §5`
 - [ ] ⛔ **CONDITION too restrictive on `type_element`** → silently excludes Frames of other types — prefer testing slot presence → `chorus-engine §5`
 - [ ] ⛔ **Conditional ACTION without `else`** → returns `1` even when nothing modified → infinite loop at scale — always `return 1` inside the `if`, `0` as fallback → `chorus-engine §5`
+- [ ] ⛔ **`CONDITION`/`EXCEPTION` multi-lignes : indicateur `|` obligatoire (ENG-051).**
+      Toute `CONDITION:` ou `EXCEPTION:` dont la valeur est un bloc Perl multi-lignes
+      (`do {`, `if (`, variable intermédiaire…) **doit** utiliser `|` comme indicateur
+      de scalaire littéral. Sans `|`, le parser YAML tronque la valeur au premier `}`
+      à indentation zéro → `codeRule()` retourne `undef` → la règle se charge sans
+      jamais se déclencher (aucun message d'erreur). Forme correcte :
+      ```yaml
+      CONDITION: |          # ← | obligatoire
+        do {
+          defined $f->get('slot_a')
+            && defined $f->get('slot_b')
+        }
+      ```
+      Une `CONDITION` sur une seule ligne peut utiliser les quotes `CONDITION: '...'`.
+      `chorus-check Phase 1.5 Step 5n` détecte toute occurrence de `^CONDITION: [^|'"]`.
 - [ ] ⛔ **Use `|` (literal block scalar) for multi-line `ACTION` — never `>`.** `>` folds newlines to spaces: a `# comment` line followed by an `if` statement on the next line becomes a single line after folding — `# comment if (condition) {` — the `if` is now part of the comment and silently never executes. See `chorus-engine-yaml.md` checklist for the full pattern and correct example.
 - [ ] ⛔ **One rule per YAML file. Never use `---` document separator.** `Chorus::Engine::loadRules()` calls `YAML::LoadFile()` which reads only the **first** YAML document. Any rule after `---` is silently ignored — no error, no warning.
 - [ ] ⛔ **`PREMISES` values must be simple Perl identifiers (slot names) — never natural language descriptions.** `loadRules()` compiles PREMISES list items as bare hash keys in Perl. A phrase like `"gate is set on BOARD by agent-scope R05"` causes `Bareword "is" not allowed` / `syntax error` at eval time — that rule is skipped. When no `reorder()` is planned, **omit `PREMISES` entirely** (preferred).
