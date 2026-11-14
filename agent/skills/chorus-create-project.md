@@ -1502,6 +1502,34 @@ as `chorus-check` Phase 6.3 — same algorithm, using the final corrected run.pl
 
 ### 6.1 `--batch` — Orchestrator workflow
 
+#### Step 0-pre — `run.pl` pre-flight check (ENG-049)
+
+**Before spawning any sub-agent**, verify that `run.pl` exists in the sandbox:
+
+```bash
+test -f <SANDBOX>/run.pl && echo "EXISTS" || echo "MISSING"
+```
+
+| Result | Action |
+|---|---|
+| `EXISTS` | Proceed to Step 0-bis normally. |
+| `MISSING` | **Stop immediately** — do NOT spawn any sub-agent. Display: |
+
+```
+⛔ chorus-create-project --batch: run.pl not found in <SANDBOX>.
+   Sub-agents cannot run the Phase 5b correction loop without it, and may
+   attempt to generate it via chorus-check — causing parallel file conflicts.
+
+   Fix: run chorus-check once first to generate the pipeline files:
+     chorus-check <sandbox-name> <any-project.json>
+   Then re-run: chorus-create-project <sandbox-name> --batch
+```
+
+> **Rationale (ENG-049):** sub-agents spawned in parallel that discover `run.pl`
+> missing may independently invoke `chorus-check` to generate it — causing 4
+> concurrent `chorus-check` runs that overwrite each other's `Feed.pm`,
+> `Expert.pm`, `run.pl`, and `Agent/*.pm` files, corrupting the pipeline.
+
 #### Step 0-bis — Task planning
 
 Call `eca__task` once before Step 1 to give the webapp terminal a live checklist (☐⏳☑):
@@ -1582,6 +1610,12 @@ STRATEGY GOAL:
   cross → elements that trigger multiple rules simultaneously (1–3 per rule pair)
   scale → ≥ 100 elements, all types × all classes/zones (termination stress test)
 
+⛔ STRICT CONSTRAINTS (ENG-049 — do NOT deviate):
+   - NEVER call `chorus-check`, `chorus-feed`, or any other Chorus skill or command.
+   - NEVER generate or modify `run.pl`, `Feed.pm`, `Expert.pm`, or any `Agent/*.pm` file.
+   - Your ONLY responsibilities: generate <FILE>, validate JSON syntax, run `perl run.pl`
+     if it already exists, return the result block. Nothing else.
+
 YOUR TASKS:
 0. **Archive before write** (unless `--no-archive` was passed to the orchestrator): if
    <SANDBOX>/<FILE> already exists, move it to
@@ -1606,8 +1640,12 @@ YOUR TASKS:
 3. Write the file using eca__write_file.
 4. Validate:
    python3 -c "import json; json.load(open('<SANDBOX>/<FILE>')); print('JSON valide')"
-5. If <SANDBOX>/run.pl exists, run the **Phase 5b correction loop in automatic mode**
-   (no user prompts — all corrections applied silently, maximum 3 iterations):
+5. **Check for `run.pl` — mandatory before any execution attempt:**
+   - If `<SANDBOX>/run.pl` does NOT exist → skip this step entirely. Report
+     `PIPELINE: NOT_RUN (run.pl absent)` in the return block. ⛔ Do NOT attempt
+     to generate it, do NOT call chorus-check or any other skill.
+   - If `<SANDBOX>/run.pl` exists → run the **Phase 5b correction loop in automatic mode**
+     (no user prompts — all corrections applied silently, maximum 3 iterations):
 
    **Iteration 1:**
    ```bash
