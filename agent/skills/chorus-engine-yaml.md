@@ -470,10 +470,11 @@ FIND:
   > threshold, slot presence guaranteed at Feed time). Use `CONDITION` for anything that depends
   > on slots written by other rules during the inference cycle.
 
-> ⛔ **`filtre` MUST be a Perl string expression — never a YAML mapping.**
-> A `filtre:` written as a YAML sub-mapping (key: value pairs) is parsed as a **hashref**
-> by the YAML loader and compiled to `grep { HASH(0x...) } fmatch(...)` — a constant truthy
-> value that matches every Frame. No syntax error is raised; the rule silently ignores the filter.
+> ⛔ **`filtre` MUST be a Perl string expression — never a YAML structure (mapping or sequence).**
+> Two common broken forms exist:
+>
+> **Form 1 — YAML mapping** (key: value pairs) → parsed as **hashref** → `grep { HASH(0x...) }` —
+> constant truthy, matches every Frame. No error raised.
 > ```yaml
 > # ⛔ WRONG — filtre as YAML mapping → HASH(0x...) in grep, filters nothing
 > FIND:
@@ -482,8 +483,38 @@ FIND:
 >     filtre:
 >       type_element: use_of_work
 >       besoin_permitted_use: 1
+> ```
 >
-> # ✅ CORRECT — filtre as a quoted Perl string on $_
+> **Form 2 — YAML sequence** (- item) → parsed as **arrayref of barewords** →
+> `grep { use_of_work }` — constant truthy (non-empty string), matches every Frame.
+> This is the most insidious form: the YAML looks intuitive ("a list of allowed values")
+> but `setFilter()` expects Perl expressions, not literal values to match against.
+> No error raised; `loadRules()` emits `[Chorus::Engine] FILTRE-SEQUENCE-LITERAL` warn if ENG-050 is applied.
+> ```yaml
+> # ⛔ WRONG — filtre as YAML sequence → arrayref of barewords → constant truthy
+> FIND:
+>   e:
+>     attribut: type_element
+>     filtre:
+>       - use_of_work
+>       - broadcast
+> ```
+>
+> **Correct form — always a quoted Perl string on `$_`:**
+> ```yaml
+> # ✅ CORRECT — single value
+> FIND:
+>   e:
+>     attribut: type_element
+>     filtre: '$_->{type_element} eq "use_of_work"'
+>
+> # ✅ CORRECT — multiple values
+> FIND:
+>   e:
+>     attribut: type_element
+>     filtre: '$_->{type_element} =~ /^(use_of_work|broadcast)$/'
+>
+> # ✅ CORRECT — combined criteria (AND — same as YAML sequence of Perl expressions)
 > FIND:
 >   e:
 >     attribut: type_element

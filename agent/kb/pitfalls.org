@@ -125,6 +125,58 @@ FIND:
 
 Ces deux filtres sont AND'd. C'est intentionnel (pré-filtrage restrictif du scope).
 
+* PITFALL FILTRE-SEQUENCE-LITERAL — filtre YAML séquence de valeurs littérales
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine / DSL YAML
+  :SEVERITY: Critique — silencieux
+  :DISCOVERED: 2026-11-14 (chorus-audit-rules sandbox 03b-contruction-bois-HABITATION)
+  :ENG: ENG-050
+  :END:
+
+Déclarer =filtre:= comme une séquence YAML de valeurs littérales (pas d'expressions Perl)
+génère un filtre constant truthy — le filtre est totalement inopérant.
+
+#+begin_src yaml
+# ⛔ WRONG — YAML séquence → arrayref de barewords → grep { cheminement_ext } = truthy
+CHERCHER:
+  ce:
+    attribut: type_element
+    filtre:
+      - cheminement_ext
+      - cheminement_int
+#+end_src
+
+=setFilter()= attend des *expressions Perl* dans le tableau (combinées en ET), pas des
+valeurs à comparer. L'arrayref =["cheminement_ext", "cheminement_int"]= est compilé en :
+
+: grep { cheminement_ext and cheminement_int } fmatch(slot => 'type_element')
+
+Les deux barewords sont non-vides → toujours truthy → toutes les Frames portant le slot
+=type_element= entrent dans le scope, quel que soit leur valeur réelle.
+
+Aucune erreur n'est levée. =loadRules()= émettra un warn =FILTRE-SEQUENCE-LITERAL=
+une fois l'Axe A d'ENG-050 implémenté.
+
+** Règle
+=filtre:= doit *toujours* être une string Perl quotée sur =$_=.
+
+#+begin_src yaml
+# ✅ CORRECT — valeur unique
+filtre: '$_->{type_element} eq "cheminement_ext"'
+
+# ✅ CORRECT — valeurs multiples
+filtre: '$_->{type_element} =~ /^(cheminement_ext|cheminement_int)$/'
+
+# ✅ CORRECT — tableau de vraies expressions Perl (ET implicite)
+filtre:
+  - '$_->{type_element} =~ /^cheminement/'
+  - 'defined $_->{largeur_m}'
+#+end_src
+
+Découvert sur 7 règles du sandbox =03b-contruction-bois-HABITATION= (agent-accessibilite-pmr
+R01–R07) — les filtres ciblaient des types PMR distincts mais laissaient passer toutes les
+Frames =type_element=, provoquant des verdicts incorrects sur des types non concernés.
+
 * PITFALL fmatch() ne voit pas les slots posés après new()
   :PROPERTIES:
   :COMPONENT: Chorus::Frame / fmatch
@@ -256,6 +308,59 @@ else      { # failed or timeout }
 Ne jamais se fier à =BOARD->{SOLVED}= après =process()=. Les résultats domaine
 doivent être posés sur des slots BOARD personnalisés (=$agent->BOARD->set('result', ...)=)
 dans la règle de terminaison — ces slots ne sont pas effacés par =process()=.
+
+* PITFALL BOARD-ACCESS-UNDEF — $SELF->BOARD retourne undef avant le premier slot BOARD publié
+  :PROPERTIES:
+  :COMPONENT: Chorus::Engine / DSL YAML
+  :SEVERITY: Significatif — crash potentiel
+  :DISCOVERED: 2026-11-14 (chorus-audit-rules sandbox 03b-contruction-bois-HABITATION)
+  :ENG: ENG-050
+  :END:
+
+=$SELF->BOARD= retourne =undef= tant qu'aucun agent n'a encore posé de slot BOARD.
+Accéder à =$SELF->BOARD->{key}= sans null-check crash avec :
+
+: Can't use an undefined value as a HASH reference
+
+Le cas le plus risqué : le premier agent du pipeline (pos. 1/N) accède à BOARD
+dans son =EFFET/ACTION= dès le premier cycle, avant d'avoir lui-même initialisé BOARD.
+
+#+begin_src perl
+# ⛔ WRONG — crash si aucun slot BOARD n'existe encore
+my $liste = $SELF->BOARD->{classements_resolus} // [];
+
+# ✅ CORRECT — guard explicite dans EFFET/ACTION
+my $b     = $SELF->BOARD // {};
+my $liste = $b->{classements_resolus} // [];
+#+end_src
+
+Dans les =EXCEPTION= et =CONDITION= YAML, le guard est encore plus important :
+
+#+begin_src yaml
+# ⛔ WRONG — crash si BOARD undef
+EXCEPTION: defined $SELF->BOARD->{verdict_ok}
+
+# ✅ CORRECT — null-safe
+EXCEPTION: '($SELF->BOARD && defined $SELF->BOARD->{verdict_ok})'
+#+end_src
+
+#+begin_src yaml
+# ⛔ WRONG — crash dans CONDITION si BOARD undef
+CONDITION: defined $SELF->BOARD->{phase_done}
+
+# ✅ CORRECT
+CONDITION: '($SELF->BOARD && defined $SELF->BOARD->{phase_done})'
+#+end_src
+
+** Règle
+- Dans les =EXCEPTION/CONDITION= YAML : *toujours* `($SELF->BOARD && ...)` avant tout accès.
+- Dans les =EFFET/ACTION= YAML : utiliser `my $b = $SELF->BOARD // {};` puis `$b->{key}`.
+- Règles d'agrégation/publication BOARD : combiner guard nul + guard clé :
+  `($SELF->BOARD && defined $SELF->BOARD->{key})`.
+
+** Fix moteur prévu (ENG-050 Axe B)
+Initialiser =BOARD= à ={}= dans =loadRules()= pour que =$SELF->BOARD= ne retourne jamais
+=undef= dès lors que le moteur est chargé.
 
 * PITFALL Pattern B (_ISA prototypes) : $inject_isa dans une seule passe
   :PROPERTIES:
