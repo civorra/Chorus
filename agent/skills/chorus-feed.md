@@ -1529,6 +1529,17 @@ YAML Checklist:
   catches the missing KB documentation that prevents `chorus-create-project` from generating
   correct test data).*
 - [ ] ⛔ **If `PREMISES` present: values must be simple slot name identifiers only** — natural language descriptions cause Perl bareword errors at `loadRules()` eval time. When no `reorder()` is planned, **omit `PREMISES` entirely** (preferred). See `chorus-engine-yaml.md § PREMISES` for the full rule and correct/incorrect examples.
+- [ ] ⛔ **`PREMISES`/`PREMISSES` must NEVER contain Perl expressions** (`defined`, `->get(`, `do {`, `ne`, `eq`, `//`, `&&`, etc.). Perl expressions in `PREMISES` are **syntactically valid but completely inert at runtime** — `applyrules()` ignores `_PREMISSES` entirely. A Perl expression placed there silently disappears: it *looks* like a guard but is never evaluated. **Any runtime prerequisite must go in `CONDITION:`.**
+  ```yaml
+  # ⛔ WRONG — Perl expressions in PREMISSES: valid syntax, zero effect at runtime
+  PREMISSES:
+    - "defined $e->get('type_reception')"
+    - "($e->get('type_travaux') // 'neuf') ne 'agrandissement'"
+
+  # ✅ CORRECT — runtime guard in CONDITION (retried every cycle until true)
+  CONDITION: '($e->get("type_travaux") // "neuf") ne "agrandissement"'
+  ```
+  > **Incident — sandbox 03b-contruction-bois-HABITATION (2026-11-14):** 5 rules generated with Perl expressions in PREMISSES (R02/R03/R05 acoustique, R04 acoustique, R08 PMR). Conséquences : garde `type_travaux ne 'agrandissement'` inopérante (R02 et R03 s'appliquent à tort aux agrandissements), agrégation prématurée dans R05 et R08 (verdict produit avant que les règles amont aient tourné). Ticket ENG-047.
 
 ### Phase 5.5 — Generate Perl Helpers
 
