@@ -1,5 +1,31 @@
 # Skill — chorus-excel
 
+## ⚡ Phase inventory — READ THIS FIRST (ENG-058)
+
+> **Ce skill fait 1570 lignes. `eca__read_file` tronque à 2000 L — lecture possible en un seul appel.**
+> **Vérifier que la lecture n'est PAS tronquée avant de commencer. Créer un plan `eca__task`.**
+
+| Phase | Titre | ⛔ |
+|---|---|---|
+| 0.0 | Auto-detect mode (key probe → text / hybrid) | |
+| 0.1 | Resolve sandbox path | |
+| 0.2 | Resolve XLSX/CSV path | |
+| 0.3 | Resolve output filename (NNN prefix, slug, extension) | |
+| 1 | Workbook analysis — sheets, tables, embedded images/charts | |
+| 1.5 | nohup gate (hybrid only — exit 2 si > 15 images → relancer avec `CHORUS_PDF_FORCE=1`) | |
+| 2 | Generate + execute extraction script (`agent/extract-excel-<slug>.py`) | |
+| 2b | CHORUS:no_auto_rules auto-annotation (doctrinal sections) | |
+| 2.5 | Cross-reference pass — XREF INDEX (hybrid only, dans le script) | |
+| 3 | Sanity check output (sheet count, table count, length) | |
+| **3.5** | **`chorus-markdown <sandbox> <source.xlsx> <output.md> --report`** | **⛔ OBLIGATOIRE** |
+| 4.1 | Update `README.org` corpus table (skip si appelé par `chorus-import-project`) | |
+| 4.2 | Report final à l'utilisateur (incluant résultat chorus-markdown) | |
+
+> ⛔ **Phase 3.5 est NON OPTIONNELLE** — quelle que soit la durée de l'extraction,
+> le contexte d'appel, ou le nombre de fichiers produits.
+
+---
+
 > Trigger: `chorus-excel <sandbox-name> <file.xlsx|file.csv> [--out <slug>] [--sheet <name>] [--batch]`
 > Agent: `architect`
 >

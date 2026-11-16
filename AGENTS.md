@@ -182,6 +182,49 @@ entries — these skills do not update `.org` automatically.
 - **Tests** — `Test::More`, suite in `t/`
 - **Build** — `ExtUtils::MakeMaker` (`Makefile.PL`)
 
+## Skill execution protocol (ENG-058)
+
+> **Applies to any skill trigger received in a session.**
+
+### Règle 1 — Lecture complète avant toute action
+
+`eca__read_file` tronque à **2000 lignes** par défaut. Tout skill > 2000 lignes
+sera tronqué au premier appel.
+
+**⛔ Si la réponse contient `[CONTENT TRUNCATED]` → continuer la lecture avec
+`line_offset` jusqu'à atteindre la fin du fichier (réponse sans truncation).**
+Aucune action (génération de script, écriture de fichier, lancement de commande)
+n'est autorisée tant que le skill n'est pas intégralement lu.
+
+### Règle 2 — Plan `eca__task` obligatoire pour tout skill > 1500 lignes
+
+Dès qu'un skill > 1500 lignes est chargé, **créer un plan `eca__task` listant
+toutes ses phases numérotées avant de commencer la Phase 0.** Le plan doit être
+dérivé de la lecture complète du skill (Règle 1 en prérequis).
+
+**Seuil :** skills dépassant 1500 lignes (vérifiable via `wc -l`) :
+
+| Skill | Lignes | Phases post-exécution critiques |
+|---|---|---|
+| `chorus-pdf.md` | 3233 | Phase 3.5 `chorus-markdown` ⛔ · Phase 4 README |
+| `chorus-check.md` | 2978 | Steps 5a-5o · Phase 4 rapport |
+| `chorus-feed.md` | 2616 | Phase 6.5 coverage · SP check |
+| `chorus-import-project.md` | 2083 | Thésaurus NON OPTIONAL · audit-import NON OPTIONAL |
+| `chorus-engine-yaml.md` | 1988 | *(référence — pas de phases séquentielles)* |
+| `chorus-create-project.md` | 1925 | Phase 5 JSON validation · README |
+| `chorus-excel.md` | 1570 | Phase 3.5 `chorus-markdown` ⛔ · Phase 4 README |
+| `chorus-word.md` | 1460 | Phase 3.5 `chorus-markdown` ⛔ · Phase 4 README |
+
+> **Pourquoi :** les phases finales (validation, README, rapport) sont invisibles
+> si le skill est lu partiellement. Leur omission invalide silencieusement la
+> chaîne qualité sans aucun signal d'erreur.
+
+### Règle 3 — Clôture de plan : vérifier les tâches OBLIGATOIRE
+
+Avant de déclarer un skill terminé, vérifier que toutes les tâches du plan
+`eca__task` sont `done`. Toute tâche portant la mention **OBLIGATOIRE** ou **⛔**
+ne peut pas rester `pending` ou être sautée.
+
 ## Triggers and skills
 
 > **Rule:** When a trigger is received, load the skill and execute immediately — no confirmation required.
