@@ -1532,6 +1532,7 @@ YAML Checklist:
 - [ ] **Header present** — every `.yml` file opens with the structured `##` header (RULE/REGLE, AGENT, CORPUS, PURPOSE/OBJECTIF, INPUTS/ENTRÉES, OUTPUTS/SORTIES, HELPERS, GUARD). Header language matches the corpus language.
 - [ ] **CORPUS line filled** — references the exact §N article from the corpus. If not identifiable → `# CORPUS: TODO — source not identified`.
 - [ ] **ACTION/EFFET body commented** — each logical block has a one-line comment; early `return 0` statements explain why the Frame is skipped.
+- [ ] ⛔ **Motif pour CONFORME (règles numériques — ENG-063)** — toute règle dont l'EFFET compare une valeur déclarée à un seuil réglementaire (`$val >= $seuil` ou `$val <= $seuil`) **doit** renseigner le slot `motif_*` pour **tous** les verdicts, y compris CONFORME. Le motif CONFORME indique la valeur prise en compte et le seuil appliqué (traçabilité instructeur). Voir `chorus-engine-yaml.md § Convention — Motif pour CONFORME` pour le pattern de référence et les exceptions légitimes (lookup, agrégation, publication BOARD).
 - [ ] Slot names = Slot dictionary from the KB
 - [ ] **`CHERCHER`/`FIND` has a named scope variable** — the scope key must be a variable name (`f:`, `e:`, `p:` …), not directly `attribut:`. Without it the engine treats `attribut` itself as the variable name → runtime crash.
       ```yaml

@@ -674,6 +674,64 @@ ACTION:
 > ⚠️ Last instruction must return a truthy value **only when the rule has done useful work**.
 > Use `|` (newlines preserved), never `>`.
 
+### Convention — Motif pour CONFORME (règles numériques) (ENG-063)
+
+> **Règle obligatoire** : toute règle dont l'EFFET compare une valeur déclarée à un seuil
+> réglementaire (`$val >= $seuil`, `$val <= $seuil`) **doit** renseigner son slot `motif_*`
+> pour **tous** les verdicts, y compris CONFORME.
+
+**Pourquoi :** un rapport avec MOTIF vide sur les éléments CONFORME n'est pas traçable —
+l'instructeur ne peut pas vérifier quelle valeur a été prise en compte ni quel seuil a été appliqué.
+
+**Pattern de référence :**
+
+```perl
+# ✅ CORRECT — motif renseigné pour tous les verdicts
+if ($val <= $seuil) {
+  $f->set('verdict_X', 'CONFORME');
+  $f->set('motif_X',
+    sprintf("val = %.1f unité ≤ %d unité requis (%s)", $val, $seuil, $corpus_ref));
+} else {
+  $f->set('verdict_X', 'NON_CONFORME');
+  $f->set('motif_X',
+    sprintf("val = %.1f > %d exigé par %s — dépassement de %.1f", $val, $seuil, $corpus_ref, $val - $seuil));
+}
+
+# ✅ CORRECT — règle multi-critères (accumulator @non_confs)
+# Construire @conf_items en parallèle pour le motif CONFORME
+my @conf_items;
+if (defined $largeur && $largeur >= $seuil_larg) {
+  push @conf_items, sprintf("largeur %.2f m ≥ %.2f m", $largeur, $seuil_larg);
+}
+# ... autres critères ...
+if (@non_confs) {
+  $f->set('verdict_X', 'NON_CONFORME');
+  $f->set('motif_X', join('; ', @non_confs));
+} else {
+  $f->set('verdict_X', 'CONFORME');
+  $f->set('motif_X',
+    (@conf_items ? join('; ', @conf_items) . " ($corpus_ref)"
+                 : "$corpus_ref — critères vérifiés satisfaits"));
+}
+```
+
+**Règles de référence (pattern déjà correct) :**
+`R04-equipements`, `R02-isolement-aerien`, `R03-bruits-choc`, `R05-isolement-exterieur`
+(sandbox `03b-contruction-bois-HABITATION`).
+
+**Exceptions légitimes** (motif CONFORME non requis) :
+
+| Cas | Raison |
+|---|---|
+| Règles de lookup / classification (Euroclass → M, etc.) | Pas de valeur mesurée vs seuil |
+| Règles d'agrégation (`R06-finalisation-verdict`, `worst-verdict`) | Pas de comparaison directe sur Frame |
+| Règles de publication BOARD | Pas de verdict sur Frame |
+| Règles de ciblage / gate | Ne produisent pas de verdict final |
+
+> **Détection automatique :** `chorus-audit-rules Phase 3.23` signale en 🟡 MINOR
+> les règles numériques sans motif CONFORME. `chorus-feed` Phase 5 inclut ce point
+> dans sa checklist de génération.
+
 ### TERMINAL — Automatic Termination
 
 ```yaml

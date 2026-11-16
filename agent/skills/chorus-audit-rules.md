@@ -528,6 +528,44 @@ Finding: `🟠 USE-UTF8-MISSING — Helpers.pm non-ASCII sans use utf8 → compa
 
 If `--fix`: add `use utf8;` immediately after `use warnings;` in the Helpers.pm. Run `perl -c` to confirm syntax.
 
+### 3.23 — Motif absent pour CONFORME sur règle numérique (ENG-063) — 🟡 MINOR
+
+```
+Pattern: EFFET contains a numeric comparison (>= $seuil or <= $seuil) AND writes
+  verdict_X = 'CONFORME' AND does NOT write motif_X in the same CONFORME branch.
+  → rapport de pipeline : colonne MOTIF vide pour les éléments conformes
+  → instructeur ne peut pas vérifier la valeur prise en compte ni le seuil appliqué
+```
+
+```bash
+# Pour chaque fichier YAML de l'agent :
+for f in $SANDBOX/rules/$AGENT_SLUG/*.yml; do
+  # Heuristique : EFFET contient >= ou <= ET 'CONFORME' mais pas set('motif dans la branche CONFORME
+  perl -0777 -ne '
+    next unless /EFFET|ACTION/;
+    next unless />=\s*\$|<=\s*\$/;      # comparaison numérique présente
+    next unless /CONFORME/;             # verdict CONFORME présent
+    # Vérifier si motif_* ou motif est écrit quelque part dans le bloc CONFORME
+    if (/set\(['"'"'"][^'"'"'"]*motif/) {
+      # motif présent → OK
+    } else {
+      print "MISSING-CONFORME-MOTIF: $ARGV\n";
+    }
+  ' "$f"
+done
+```
+
+> **Note :** cette heuristique est conservative. Elle peut produire des faux positifs
+> sur des règles de lookup ou d'agrégation (voir exceptions légitimes dans
+> `chorus-engine-yaml.md § Convention — Motif pour CONFORME`). Toujours valider
+> manuellement les findings.
+
+Finding: `🟡 MISSING-CONFORME-MOTIF — règle numérique sans motif_* sur branche CONFORME → colonne MOTIF vide pour les éléments conformes (ENG-063)`
+
+> **Pas de `--fix` automatique** : la valeur et le format du motif CONFORME sont
+> sémantiques — ils doivent être déterminés par révision humaine en s'appuyant sur
+> le pattern de référence `chorus-engine-yaml.md § Convention — Motif pour CONFORME`.
+
 ---
 
 ## Phase 4 — CHERCHER / CONDITION / EFFET coherence
