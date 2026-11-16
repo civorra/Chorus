@@ -724,6 +724,27 @@ done
 
 > **Incident:** `agent/org/incidents-log.org § cc314-07`
 
+**Variant — `_rule_trace` push before `return 0` in a data-insufficient branch (ENG-039 Bug 3):**
+
+A rule that pushes to `_rule_trace` *before* a data-check block ending in `return 0` duplicates
+the trace entry on every re-fire cycle — even without an fmatch-based EXCEPTION.
+Detection heuristic: an ACTION that pushes `_rule_trace` without a `unless (grep ...)` guard
+AND contains a `return 0` (not `return 1`) anywhere in the block.
+
+```bash
+# Find rules that push _rule_trace without guard AND contain return 0
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -q "push @\$trace" "$f" || continue
+  grep -q "unless (grep" "$f" && continue   # already guarded — skip
+  grep -q "return 0" "$f"    || continue   # no return 0 → different pattern
+  echo "⚠️  $f — _rule_trace push without guard + return 0 (ENG-039 variant)"
+done
+```
+
+Fix: add `unless (grep { ($_->{rule_id} // '') eq '<rule-id>' } @$trace)` guard around
+the push, OR move the push inside the data-sufficient branch only.
+See `chorus-engine-yaml.md § ENG-039` and `pitfalls.org § return 0 sans écriture du slot de sortie`.
+
 ### Step 5k — `return 0` on `!@elements` in bounded-wait aggregate scan (mandatory, before Phase 2)
 
 > ⚠️ **Why this is mandatory, not optional:** an aggregate rule that applies a
