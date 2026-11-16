@@ -1563,6 +1563,31 @@ across the full tree before falling back to _DEFAULT.
       after the fact. Treat this checklist item exactly like "Header present" or
       "CORPUS line traceable" above — resolve it at generation time, never leave it
       for a later audit to catch.
+- [ ] ⛔ **ENG-039 — Every rule whose EXCEPTION is `defined $f->{output_slot}` MUST write
+      `output_slot` in ALL branches of its ACTION, including the "insufficient data" branch.
+      A `return 0` without writing the output slot leaves the EXCEPTION permanently false
+      → the rule re-fires every cycle until `_MAX_ITER` is reached (silent infinite loop).**
+
+      ```yaml
+      # ⛔ WRONG — return 0 without writing output_slot
+      } else {
+          return 0;   # EXCEPTION remains false → re-fire every cycle
+      }
+
+      # ✅ CORRECT — write output_slot in every branch
+      } else {
+          $f->set('output_slot',       '_a_confirmer');
+          $f->set('non_conformity_motif', 'Insufficient data: slot_a, slot_b and slot_c all absent');
+          return 1;
+      }
+      ```
+
+      **Corollary — `_rule_trace` push before `return 0`:** if the rule pushes to
+      `_rule_trace` before the data-check block, the push fires every re-fire cycle →
+      hundreds of duplicate entries in the trace. Always guard the push with
+      `unless (grep { ($_->{rule_id} // '') eq '<rule-id>' } @$trace)`, OR move it
+      inside the successful branch only. (ENG-039 Bug 3)
+
 - [ ] ⛔ **Every rule that can resolve a verdict slot (`*_ok`/`*_conforme`/`statut_conformite`,
       etc.) to a FAILING value MUST also write an explicit `non_conformity_motif`
       (English corpus) / `motif_non_conformite` (French corpus) in the same branch —

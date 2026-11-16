@@ -489,3 +489,75 @@ la réponse vers le bon chatId. Non implémenté à ce jour (2026-10-30).
 =eca__ask_user= n'est fiable que dans le chat **parent** d'un terminal ECA
 webapp. Tout skill potentiellement spawné via =eca__spawn_agent= doit
 implémenter =AUTONOMOUS_MODE= pour gérer le cas de retour =""=.
+
+* PITFALL _incomplet + slot requis absent → die() dans load_projet → boucle chorus-check
+  :PROPERTIES:
+  :COMPONENT: Feed.pm / chorus-templates T1
+  :SEVERITY: Critique — boucle infinie
+  :DISCOVERED: 2026-11-12 (sandbox 02b-FI-copyright, element work-01)
+  :ENG: ENG-039
+  :END:
+
+=load_projet= valide les slots de =%SLOTS_REQUIS= via =die()= pour tout élément.
+Un élément marqué =_incomplet: 1= (par =chorus-audit-import=) peut légitimement
+avoir des slots manquants — le =die= est sémantiquement faux dans ce cas.
+
+Résultat : =chorus-check= entre en boucle infinie (génère =Feed.pm= → =die= →
+relance → =die= → ...).
+
+** Fix obligatoire dans le template T1 (=chorus-templates.md=)
+
+#+begin_src perl
+# ✅ CORRECT — guard _incomplet avant la boucle SLOTS_REQUIS
+unless ($elem->{_incomplet}) {
+    for my $slot (@$requis) {
+        die "Slot '$slot' missing for '$id' (type_element=$type_element)\n"
+            unless defined $elem->{$slot};
+    }
+}
+#+end_src
+
+Implémenté dans =chorus-templates.md= template T1 (ENG-039).
+Les =Feed.pm= existants sur sandboxes doivent être re-générés via =chorus-check=.
+
+* PITFALL return 0 sans écriture du slot de sortie → re-fire infini (règles _incomplet)
+  :PROPERTIES:
+  :COMPONENT: Chorus YAML DSL / Rules
+  :SEVERITY: Critique — boucle moteur silencieuse
+  :DISCOVERED: 2026-11-12 (sandbox 02b-FI-copyright, R03-copyright-term)
+  :ENG: ENG-039
+  :END:
+
+Une règle dont l'=EXCEPTION= est =defined $f->{output_slot}= doit écrire
+=output_slot= dans **toutes** les branches de son =ACTION=, y compris la branche
+"données insuffisantes". Un =return 0= sans écriture laisse l'=EXCEPTION= fausse
+→ la règle se re-fire chaque cycle jusqu'à =_MAX_ITER=.
+
+#+begin_src yaml
+# ⛔ WRONG — return 0 sans écrire output_slot
+EXCEPTION: defined $f->{protection_status}
+ACTION: |
+  if (defined $author_death) {
+    $f->set('protection_status', 'CONFORME');
+    return 1;
+  } else {
+    return 0;   # ← EXCEPTION reste fausse → re-fire infini
+  }
+
+# ✅ CORRECT — toutes les branches écrivent output_slot
+ACTION: |
+  if (defined $author_death) {
+    $f->set('protection_status', 'CONFORME');
+    return 1;
+  } else {
+    $f->set('protection_status',    '_a_confirmer');
+    $f->set('non_conformity_motif', 'Insufficient data: author_death_year absent');
+    return 1;
+  }
+#+end_src
+
+Corollaire : si la règle pousse dans =_rule_trace= avant le check des données,
+chaque re-fire ajoute une entrée dupliquée → trace polluée (effet Bug 3 ENG-039).
+Guard obligatoire : =unless (grep { ... } @$trace)= autour du push.
+
+Voir =chorus-engine-yaml.md § ENG-039= pour la convention complète.

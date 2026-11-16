@@ -104,9 +104,17 @@ sub load_projet {
             next;
         }
 
-        for my $slot (@$requis) {
-            die "Slot '$slot' missing for '$id' (type_element=$type_element)\n"
-                unless defined $elem->{$slot};
+        # _incomplet: 1 — element flagged as partially extracted by chorus-audit-import.
+        # Required slots may be absent by design; skip the mandatory-slot die() and
+        # load with whatever is present. Rules fire partially or not at all via
+        # EXCEPTION guards on undef slots (e.g. EXCEPTION: 'not defined $f->{slot}').
+        # ENG-039: without this guard, chorus-check enters an infinite loop on any
+        # project JSON that contains an _incomplet element with a missing required slot.
+        unless ($elem->{_incomplet}) {
+            for my $slot (@$requis) {
+                die "Slot '$slot' missing for '$id' (type_element=$type_element)\n"
+                    unless defined $elem->{$slot};
+            }
         }
 
         # type_element (agent 1 targeting slot) is guaranteed present by the
