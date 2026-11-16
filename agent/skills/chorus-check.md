@@ -1,5 +1,9 @@
 # Skill — chorus-check
 
+> **⚠️ Ce skill fait 2978 lignes — lire en entier (plusieurs appels `eca__read_file` avec `line_offset`) avant de créer un plan `eca__task`.**
+> **Phases NON-OPTIONAL : Steps 5a–5o (qualité YAML/Perl) · Phase 4 rapport · `--explain`/`--summary` si demandés**
+> **→ Créer un plan `eca__task` listant toutes les phases avant la Phase 0.**
+
 > Trigger: `chorus-check <sandbox-name> <fichier-project> [--all] [--explain] [--summary] [--lang <fr|en>]`
 > Trigger: `chorus-check <sandbox-name> --from-report <run-report-path> [--explain] [--summary] [--lang <fr|en>]`
 > Agent: `architect`

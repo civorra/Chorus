@@ -1,5 +1,9 @@
 # Skill — chorus-feed
 
+> **⚠️ Ce skill fait 2616 lignes et 4 modes (A init · B enrich · D unattended · pre-split) — lire en entier avant tout plan.**
+> **Phases NON-OPTIONAL : Phase 6.5 coverage (retry too-ambiguous · CORPUS: audit · SP check) · WIP checkpoint cleanup (Mode B)**
+> **→ Créer un plan `eca__task` adapté au mode détecté avant la Phase 0.**
+
 > Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich]`
 > Trigger: `chorus-feed <sandbox-name> --unattended [--corpus-dir <path>] [--max-passes N]`
 > Agent: `architect`
@@ -1483,18 +1487,15 @@ YAML Checklist:
           || ($prio{$v} // 0) > ($prio{$SELF->BOARD->{verdict_xxx}} // 0)) { ... }
       ```
       `chorus-check Phase 1.5 Step 5o` détecte `BOARD->{} // 'CONFORME'` mécaniquement.
-- [ ] ⛔ **Règle TERMINAL obligatoire (ENG-055) — vérifier que le dernier agent possède une règle appelant `$SELF->solved()` ou `TERMINAL: solved`.**
+- [ ] ⛔ **Règle TERMINAL obligatoire (ENG-055) — générée automatiquement par Phase 5.9.**
       Sans règle TERMINAL, `Chorus::Expert::process()` boucle jusqu'à `_MAX_ITER` sur **tout** projet,
       indépendamment du contenu — le pipeline ne se termine jamais correctement.
-      **À la fin de chaque Mode A ou Mode B, vérifier** :
+      Phase 5.9 (ci-dessous) génère `r-termination-pipeline.yml` automatiquement si aucun
+      `->solved()` ni `TERMINAL: solved` n'est présent. Vérification manuelle en cas de doute :
       ```bash
-      grep -rl "^TERMINAL: solved\|->solved()" $SANDBOX/rules/<dernier_agent>/*.yml \
-        || echo "⛔ TERMINAL MANQUANT — créer r-termination-pipeline.yml avant chorus-check"
+      grep -rl "^TERMINAL: solved\|->solved()" $SANDBOX/rules/*/*.yml \
+        || echo "⛔ TERMINAL MANQUANT — Phase 5.9 non exécutée ?"
       ```
-      Si aucune règle TERMINAL n'existe encore pour ce sandbox, en générer une dans
-      `rules/<dernier_agent>/` (voir `chorus-engine-yaml.md § TERMINAL pattern — groupe vide`
-      pour la CONDITION multi-groupe). Numéroter en dernier (`R<N+1>`) dans le répertoire.
-      (ENG-055 : cette vérification/génération sera automatisée dans une version future de chorus-feed.)
 - [ ] ⛔ **`type_element` canonical name** — see Phase 1.2 ⛔ note; applies equally to YAML `attribut:` field.
 - [ ] **Header present** — every `.yml` file opens with the structured `##` header (RULE/REGLE, AGENT, CORPUS, PURPOSE/OBJECTIF, INPUTS/ENTRÉES, OUTPUTS/SORTIES, HELPERS, GUARD). Header language matches the corpus language.
 - [ ] **CORPUS line filled** — references the exact §N article from the corpus. If not identifiable → `# CORPUS: TODO — source not identified`.
@@ -1580,6 +1581,120 @@ YAML Checklist:
   CONDITION: '($e->get("type_travaux") // "neuf") ne "agrandissement"'
   ```
   > **Incident — sandbox 03b-contruction-bois-HABITATION (2026-11-14):** 5 rules generated with Perl expressions in PREMISSES (R02/R03/R05 acoustique, R04 acoustique, R08 PMR). Conséquences : garde `type_travaux ne 'agrandissement'` inopérante (R02 et R03 s'appliquent à tort aux agrandissements), agrégation prématurée dans R05 et R08 (verdict produit avant que les règles amont aient tourné). Ticket ENG-047.
+
+### Phase 5.9 — Generate TERMINAL rule (ENG-055) [automatic]
+
+> **Exécuter à la fin de chaque Mode A et Mode B**, après toutes les règles fonctionnelles.
+> Cette phase est **idempotente** : si une règle TERMINAL existe déjà, elle ne fait rien.
+
+**Step 1 — Vérifier l'existence d'une règle de terminaison :**
+
+```bash
+grep -rl "^TERMINAL: solved\|->solved()" $SANDBOX/rules/*/*.yml 2>/dev/null
+```
+
+- **Au moins un résultat** → une règle TERMINAL existe. ✅ Skip (idempotent).
+  - Si plus d'un résultat → avertissement : TERMINAL dupliqué — voir `chorus-check Step 5f`.
+- **Zéro résultat** → aucune terminaison. Continuer avec Step 2.
+
+**Step 2 — Identifier le dernier agent :**
+
+Lire `$SANDBOX/agent/chorus/index.org`. Collecter les valeurs `#+PIPELINE_POS` de chaque
+fichier agent. L'agent avec le `#+PIPELINE_POS` le plus élevé est le **dernier agent**
+(`<last_agent>`).
+
+Déterminer le prochain numéro de règle disponible dans `$SANDBOX/rules/<last_agent>/` :
+le plus grand `R<NN>` existant + 1 → `R<NN>-termination-pipeline.yml`.
+
+**Step 3 — Collecter BOARD verdicts et types par agent :**
+
+Pour chaque agent (dans l'ordre pipeline), lire son fichier `.org` et extraire :
+- Le slot BOARD verdict sortant (table *Outgoing BOARD* du dictionnaire de slots)
+- Les valeurs `type_element` qu'il traite (filtres ou attribut patterns)
+
+Cela construit les groupes `@grp_<slug>` et les conditions `defined $b->{<verdict>}`.
+
+**Step 4 — Générer `R<NN>-termination-pipeline.yml` :**
+
+Déterminer la langue des mots-clés selon le corpus (français → `REGLE`/`CHERCHER`/`EFFET`,
+anglais → `RULE`/`FIND`/`ACTION`). Utiliser la même langue que les autres règles du sandbox.
+
+```yaml
+##
+# REGLE: r-termination-pipeline
+# AGENT: <Namespace>::Agent::<LastAgent>  (pos. <N> / <N>)
+# CORPUS: pipeline — agrégation finale tous agents
+#
+# OBJECTIF
+#   Termine le pipeline une fois que tous les agents ont publié leur verdict BOARD
+#   (ou qu'aucun élément du type concerné n'est présent dans le projet).
+#
+# ENTRÉES  (slots lus)
+#   type_element     : targeting slot — tout Frame du pipeline
+#   <verdict_1>      : BOARD — publié par <agent_1>
+#   <verdict_2>      : BOARD — publié par <agent_2>
+#
+# SORTIES  (slots écrits)
+#   _rule_trace      : trace (push)
+#
+# GUARD — EXCEPTION: defined $SELF->BOARD->{pipeline_solved}
+#   Idempotence : ne se déclenche qu'une fois.
+##
+REGLE: r-termination-pipeline
+
+CHERCHER:
+  tout:
+    attribut: type_element
+
+EXCEPTION: '($SELF->BOARD && defined $SELF->BOARD->{pipeline_solved})'
+
+CONDITION: |
+  do {
+    my $b   = $SELF->BOARD // {};
+    my @all = Chorus::Frame::fmatch(slot => 'type_element');
+
+    # Pour chaque groupe d'agents : vrai si groupe VIDE ou BOARD verdict défini.
+    # Groupe vide = aucun élément de ce type dans le projet → pas d'attente.
+    my @grp_<slug_1> = grep { ($_->get('type_element') // '') =~ /^(<types_1>)$/ } @all;
+    my @grp_<slug_2> = grep { ($_->get('type_element') // '') =~ /^(<types_2>)$/ } @all;
+    # ... un grep par agent ...
+
+    (!@grp_<slug_1> || defined $b->{<verdict_1>})
+    && (!@grp_<slug_2> || defined $b->{<verdict_2>})
+    # ... && par groupe ...
+  }
+
+EFFET: |
+  # Trace (guard contre re-push si la règle tentait de refirer)
+  my $trace = $tout->get('_rule_trace') // [];
+  unless (grep { ($_->{rule_id} // '') eq 'r-termination-pipeline' } @$trace) {
+    push @$trace, {
+      rule_id    => 'r-termination-pipeline',
+      corpus_ref => 'pipeline — agrégation finale tous agents'
+    };
+    $tout->set('_rule_trace', $trace);
+  }
+  # Marquer le pipeline comme résolu et appeler solved()
+  $SELF->BOARD->{pipeline_solved} = 1;
+  $SELF->solved();
+  1
+```
+
+> **Règle de langue :** français → `REGLE`/`CHERCHER`/`EFFET` ; anglais → `RULE`/`FIND`/`ACTION`.
+> Les commentaires internes (`#`) suivent la même langue que les en-têtes YAML.
+
+**Step 5 — Mettre à jour `index.org` et l'`.org` du dernier agent :**
+
+Ajouter une entrée dans la table *Rule Catalog* de `$SANDBOX/agent/chorus/index.org`
+et dans le fichier `.org` du dernier agent :
+
+| R<NN> | `r-termination-pipeline` | `pipeline — agrégation finale` | BOARD `pipeline_solved` |
+
+> **Idempotence :** si `r-termination-pipeline` figure déjà dans le Rule Catalog → skip.
+
+> **Référence :** `chorus-engine-yaml.md § Pattern TERMINAL multi-agent — CONDITION groupe vide (ENG-055)`.
+
+---
 
 ### Phase 5.5 — Generate Perl Helpers
 

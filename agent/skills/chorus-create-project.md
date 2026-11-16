@@ -1,5 +1,9 @@
 # Skill — chorus-create-project
 
+> **⚠️ Ce skill fait 1925 lignes et 4 modes (`--batch` · `--batch-seq` · `--strategy` · défaut) — lire en entier avant tout plan.**
+> **Phases NON-OPTIONAL : Phase 5 validation JSON (verdicts attendus · slots requis) · Phase README.org**
+> **→ Créer un plan `eca__task` adapté au mode détecté avant la Phase 0.**
+
 > Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch] [--batch-seq] [--strategy iso|edges|cross|scale] [--no-archive]`
 > Agent: `architect`
 >
