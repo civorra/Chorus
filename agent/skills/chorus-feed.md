@@ -1,8 +1,40 @@
 # Skill — chorus-feed
 
 > **⚠️ Ce skill fait 2616 lignes et 4 modes (A init · B enrich · D unattended · pre-split) — lire en entier avant tout plan.**
-> **Phases NON-OPTIONAL : Phase 6.5 coverage (retry too-ambiguous · CORPUS: audit · SP check) · WIP checkpoint cleanup (Mode B)**
 > **→ Créer un plan `eca__task` adapté au mode détecté avant la Phase 0.**
+
+## ⚡ Phase inventory — chorus-feed (ENG-058 Axe C)
+
+> **Lire ce bloc en entier avant la Phase 0.** Il tient dans les 30 premières lignes du skill.
+> Toutes les phases marquées **⛔ OBLIGATOIRE** sont non-optionnelles — elles ne peuvent
+> pas rester `pending` ou être sautées quelle que soit la durée du contexte.
+
+| Phase | Mode | Description | ⛔ |
+|---|---|---|---|
+| 0 — Prerequisites | A/B | Charger `chorus-engine-yaml.md`, vérifier format corpus, créer répertoires | |
+| 0-bis — Task planning | A/B/D | Créer plan `eca__task` adapté au mode détecté | ⛔ OBLIGATOIRE (skill > 1500 L) |
+| -1 — Corpus directives | A | Conditionnel — multi-source seulement | |
+| -0.5 — Corpus scoping gate | A | Conditionnel — corpus > 2 fichiers ou > ~50 pages | |
+| 1.0 — Pre-annotation scan | A | Scan `CHORUS:no_auto_rules` avant analyse | |
+| 1 — Corpus analysis | A | Agents, Frames, pipeline | |
+| 2 — Targeting strategy | A | Stratégie A ou B, `_MAX_CYCLES` | |
+| 3 — KB org per agent | A | Remplir `<slug>.org` depuis template | |
+| 4 — YAML rules | A | Générer `rules/<slug>/R<NN>-*.yml` | |
+| 5 — Helpers.pm | A | Générer `lib/.../Helpers.pm` + `@EXPORT_OK` | |
+| 5.5 — Helper extraction | A | Sections `HELPER-SOURCE` → Helper | |
+| 6 — Index + README | A | `index.org` + `README.org` initial | |
+| **6.5 — Coverage report** | **A** | **Scan corpus, classifier ✅/⏭/⛔, écrire README, check SP** | **⛔ OBLIGATOIRE** |
+| **6.5 gate — `chorus-audit-rules`** | **A** | **Lancer avant `chorus-check` — zéro 🔴/🟠 requis** | **⛔ OBLIGATOIRE** |
+| B-1 — Corpus directives check | B | Conditionnel — nouvelle source | |
+| B0 — Read existing KB + WIP | B | Lire index.org, agents .org, YAMLs, écrire `.chorus-wip.md` | |
+| B1 — Analyze new corpus | B | Classifier Refinement/Extension/New domain | |
+| B1.5 — Per-family batching | B | Simple vs Complex — max 1 Complex par passe | |
+| B2 — Save corpus | B | Numéroter corpus, `index.org * Integrated corpus` | |
+| B3 — Apply changes | B | Mettre à jour `.org` + générer YAML delta | |
+| B4 — Closing | B | `README.org` Agent status + enrichissement counter | |
+| **B4.5 — Coverage delta** | **B** | **Delta ⏭ Deferred, écrire README, supprimer WIP** | **⛔ OBLIGATOIRE** |
+| **B4.5 gate — `chorus-audit-rules`** | **B** | **Lancer sur agent(s) enrichi(s) avant `chorus-check`** | **⛔ OBLIGATOIRE** |
+| D — Unattended | D | Délègue à Mode A/B — voir `chorus-feed-unattended.md` | |
 
 > Trigger: `chorus-feed <sandbox-name> <corpus> [--enrich]`
 > Trigger: `chorus-feed <sandbox-name> --unattended [--corpus-dir <path>] [--max-passes N]`
@@ -2133,6 +2165,39 @@ remains.
 > sub-skill's generic Deferred/Helper-source/UNSCANNED/CORPUS convergence
 > conditions apply identically to Mode A and Mode B.
 
+### ⛔ Gate pre-`chorus-check` — `chorus-audit-rules` (ENG-057, mandatory)
+
+**Mandatory after every Mode A pass, before the first `chorus-check`.**
+Running `chorus-check` without this gate allows semantic bugs produced by
+`chorus-feed` (hash reads in CONDITION, missing motifs, incomplete aggregation
+in termination rules) to silently produce wrong verdicts — no runtime error,
+just incorrect conformity results.
+
+**Command:**
+```
+chorus-audit-rules <sandbox-name> --agent <slug>
+```
+(`<slug>` = the agent processed in this Mode A pass)
+
+**Outcome gate:**
+- **🔴 / 🟠 findings** → fix before `chorus-check` (use `--fix` for syntactic
+  pitfalls, manual review for semantic ones), then re-run `chorus-audit-rules`.
+  Do not proceed to `chorus-check` while any 🔴 or 🟠 finding is open.
+- **🟡 / 📝 findings** → document in KB org `* Contraintes & Pitfalls` if
+  relevant, fix at next session — not a blocker for `chorus-check`.
+
+**Mode D (`--unattended`) exception:** this gate runs **once only**, at the
+very end of the unattended session (convergence or `max_passes`) — never
+between intermediate passes. See `chorus-feed-unattended.md § Step 5.7`.
+
+> **`README.org ** Next step` template** — replace with:
+> ```
+> # Recommended next steps (in order) :
+> # 1. chorus-audit-rules <sandbox> --agent <slug>   ← mandatory pre-chorus-check gate
+> # 2. chorus-check <sandbox> <projet.json>
+> # 3. chorus-review-kb <sandbox>                    ← only at SP1/SP2
+> ```
+
 
 ## Mode D — Unattended batch (`--unattended` required)
 
@@ -2525,6 +2590,26 @@ Display confirmation:
 
 > **Convergence criterion (legacy note):** the `--enrich` loop converges when the
 > `⏭ Deferred` list reaches 0. See the full exit criteria in the section below.
+
+### ⛔ Gate pre-`chorus-check` — `chorus-audit-rules` (ENG-057, mandatory)
+
+**Mandatory after every `--enrich` pass, before `chorus-check`.**
+New and amended YAML rules are semantic artefacts — `chorus-feed` cannot
+self-audit the correctness of the rules it generates or modifies.
+
+**Command:**
+```
+chorus-audit-rules <sandbox-name> --agent <slug-enrichi>
+```
+(`<slug-enrichi>` = the agent(s) whose `.org` or YAML files were modified
+this pass — not `--all` unless the entire KB was rewritten.
+If multiple agents were enriched: run once per agent or use `--all`.)
+
+**Outcome gate:** same as Phase 6.5 above — zero 🔴/🟠 required before
+proceeding to `chorus-check`. 🟡/📝 are non-blocking.
+
+**Mode D (`--unattended`) exception:** same as Phase 6.5 above.
+See `chorus-feed-unattended.md § Step 5.7`.
 
 ## Convergence loop — KB quality cycle
 

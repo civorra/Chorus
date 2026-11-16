@@ -63,6 +63,12 @@ $COMPARE/
 | `structural` | Agents or Frames present in one sandbox but absent in the other |
 | `uncertain` | Cannot be determined without human review |
 
+> **Invariant (one-sided rows).** A row where only ONE side has a normative atom
+> (`Section A` or `Section B` is `—`) can NEVER be `legal-divergence`. It stays
+> `kb-gap` until the targeted corpus search of Phase 4.3 has ruled out the
+> provision in the other corpus (`absence_proof` filled). A `legal-divergence`
+> requires atoms on BOTH sides.
+
 **Method tag** — every matrix row also carries a `method` field:
 
 | Value | Meaning |
@@ -70,6 +76,35 @@ $COMPARE/
 | `deterministic` | Computed mechanically from YAML metadata (thresholds, slot sets, CORPUS: refs) |
 | `llm-assisted` | LLM interpretation of ACTION semantics or concept alignment |
 | `human-validated` | Operator has confirmed or corrected the finding |
+
+**Direction tag** — every `legal-divergence` row also carries a `direction` field
+(set by the operator or the LLM, tagged accordingly), because the legal reading
+differs: a national rule STRICTER than a directive is generally lawful, a rule
+WEAKER than the directive is a potential non-transposition.
+
+| Value | Meaning |
+|---|---|
+| `B_stricter_than_A` / `A_stricter_than_B` | Same obligation, tighter threshold/scope/duty on one side |
+| `B_weaker_than_A` / `A_weaker_than_B` | One side grants less protection or imposes less than the other |
+| `different_structure` | Different mechanism (not comparable on a strict/weak axis) |
+| `undetermined` | Cannot be ordered without a legal opinion |
+
+When one corpus is a minimum-harmonisation instrument (e.g. an EU directive) and
+the other its national implementation, express direction relative to that
+instrument.
+
+**Evidence tag** — every `legal-divergence` row carries an `evidence` field. The
+two levels are never merged under the single word "confirmed":
+
+| Value | Meaning |
+|---|---|
+| `text-anchored` | Both atoms cite distinct texts (`corpus_ref` on both sides) and the difference was computed deterministically |
+| `witness-confirmed` | Phase W produced differing verdicts on boundary cases (engine-level proof) |
+| `witness-artefact` | Phase W produced identical verdicts — textual difference, no behavioural one |
+| `llm-only` | Alignment or description is LLM-assisted and not corroborated |
+
+**Absence proof** — every one-sided row that the operator upgrades to a legal
+absence carries `absence_proof: <corpus file + section/line searched, search terms>`.
 
 ---
 
@@ -161,6 +196,37 @@ If Deferred > 0 OR Uncovered > 0 for either sandbox → flag as **unstable**:
 ```
 
 Record `stability_A` and `stability_B` (true/false) for use in Phase W.
+
+### 0.4 — Scoping policy parity check (warn, do not block)
+
+A comparison is only as fair as the two scopes are alike. If sandbox A treats a
+class of provisions as `Deferred` (behavioural, procedural, reporting deadlines…)
+while sandbox B models them, every such provision surfaces as a false divergence.
+
+For each sandbox, read the `Deferred-S` / `Deferred-C` rows of its `README.org`
+`* Coverage` section and extract the stated criteria:
+
+```
+Scoping policy A : <criteria / count by reason>
+Scoping policy B : <criteria / count by reason>
+```
+
+Compare the two. If a provision class is Deferred or Uncovered in one sandbox but
+integrated in the other, list it:
+
+```
+⚠️  Scoping asymmetry: <class> (e.g. 'deadlines for distribution of amounts')
+    is Deferred in <A> (§…) but modelled in <B> (§…).
+    Rows in this class will be labelled kb-gap, never legal-divergence, until
+    <A> is re-fed with the same policy (chorus-feed <A> --enrich).
+```
+
+Record `scoping_asymmetries[]` for Phase 4 and for the report annex.
+Rows touching these sections **default to `kb-gap`** but are NOT permanently locked:
+they still go through the Phase 4.3a targeted corpus search. If the search confirms
+the provision is genuinely absent from corpus A's raw text → upgradeable to
+`legal-absence` (with `absence_proof` filled, as usual). The asymmetry is a
+**warning and a default**, not a forced classification.
 
 ---
 
@@ -394,10 +460,33 @@ For each section in `sections_only_in_A` or `sections_only_in_B`:
 - Note: "Section present in corpus X, cited by N rules — no corresponding
   section found in corpus Y's KB."
 
-### 4.3 — Human checkpoint: kb-gap vs legal-absence
+### 4.3 — Targeted corpus search, then human checkpoint
 
-Present the `sections_only_in_A` and `sections_only_in_B` lists to the operator
-and ask per item (or per batch if the list is long):
+**4.3a — Targeted search (mandatory, before any upgrade).** For each one-sided
+item, search the RAW corpus of the sandbox that lacks the atom, using the
+concept's thesaurus terms and the key figures of the atom (e.g. `nine months`,
+`three years`, `notice`, article titles). Rows touching a `scoping_asymmetries` section are **not skipped** — run the
+targeted search normally. Present the result to the operator with an asymmetry
+flag: `⚠️ scoping-asymmetric in <A> — targeted search result: <found|not found>`.
+The operator may still upgrade to `legal-absence` if `absence_proof` is filled.
+Default remains `kb-gap` if the search is inconclusive or the provision is
+found in corpus A (meaning A simply hasn't fed it yet).
+
+Classify the result:
+
+| Search result | Action |
+|---|---|
+| Provision found in the other corpus (same or other article) | `kb-gap` (or `thesaurus-mismatch` if only naming differs); record the found reference; the pair returns to Phase 5 once the KB is fed |
+| Nothing found after searching all relevant files | candidate `legal-absence`; fill `absence_proof` (files, terms searched) |
+| Corpus incomplete / search not conclusive | `uncertain` |
+
+Never classify from memory of the law: the proof must come from the corpus files
+or be flagged for a lawyer.
+
+**4.3b — Human checkpoint: kb-gap vs legal-absence.**
+
+Present the `sections_only_in_A` and `sections_only_in_B` lists to the operator,
+WITH the 4.3a result for each item, and ask per item (or per batch if the list is long):
 
 ```
 Phase 4 — Coverage gaps requiring your input:
@@ -408,7 +497,8 @@ For each of the following sections, is the ABSENCE from the other corpus:
   [THES]   a thesaurus miss (the equivalent section exists under a different name)
 ```
 
-Update `origin` accordingly. `THES` items → add entry to thesaurus-cross.org and
+`[LEGAL]` is accepted only when `absence_proof` is filled (4.3a). Update `origin`
+accordingly. `THES` items → add entry to thesaurus-cross.org and
 recompute the coverage map (may eliminate the gap entirely).
 
 ### 4.4 — Display coverage summary
@@ -547,7 +637,15 @@ e.g. rule_a: obligation_type = "requires"
 LLM produces a one-sentence natural-language description of the divergence,
 tagged `llm-assisted`.
 
-### 6.4 — Display divergence report
+### 6.4 — Direction and evidence
+
+For each divergence set `direction` (see Conventions) and `evidence = text-anchored`
+(or `llm-only` for 6.3 findings). Threshold divergences get `direction` from the
+delta and the semantic of the slot (a higher minimum retention period is
+'stricter'; a higher maximum delay is 'weaker'): when the slot semantic is not
+obvious, set `undetermined` rather than guess.
+
+### 6.5 — Display divergence report
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -617,7 +715,9 @@ For each witness case:
 | Verdict identical in A and B | ⚠️ **Modelling artefact** — the YAML rules may be equivalent in practice despite textual difference |
 | One sandbox errors / unprocessed | ❌ **Witness failure** — check Feed coverage for this element type |
 
-Update the matrix row with `witness_result: confirmed | artefact | failure`.
+Update the matrix row with `witness_result: confirmed | artefact | failure` and
+`evidence = witness-confirmed | witness-artefact` (failure leaves `evidence`
+unchanged). A row never shows 'confirmed' without saying which level.
 
 ---
 
@@ -641,6 +741,7 @@ Write `$COMPARE/matrix-compare.org` (or `--out` path if specified).
    | Concept           | Section A   | Section B   | Status         | Origin     | Method        | Rules A    | Rules B    | Witness      | Validated |
    |-------------------|-------------|-------------|----------------|------------|---------------|------------|------------|--------------|-----------|
    | <term>            | §X.Y        | —           | gap-B          | kb-gap     | deterministic | R01-slug   | —          | —            | ○         |
+   (one-sided rows: origin is kb-gap | legal-absence | uncertain — never legal-divergence; legal-absence requires absence_proof)
 
 ** Aligned concepts — equivalent
    | Concept           | Section A   | Section B   | Status         | Origin            | Method           | Rules A   | Rules B   | Witness   | Validated |
@@ -648,9 +749,9 @@ Write `$COMPARE/matrix-compare.org` (or `--out` path if specified).
    | <term>            | §X.Y        | §P.Q        | equivalent     | —                 | llm-assisted     | R01       | R02       | —         | ✓         |
 
 ** Divergences — threshold
-   | Concept     | Section A | Section B | Status     | Slot        | Value A | Value B | Delta | Unit match | Origin            | Method        | Witness      | Validated |
-   |-------------|-----------|-----------|------------|-------------|---------|---------|-------|------------|-------------------|---------------|--------------|-----------|
-   | <term>      | §X.Y      | §P.Q      | A_stricter | <slot_name> | 70      | 60      | +10   | ✓          | legal-divergence  | deterministic | confirmed ✅ | ✓         |
+   | Concept     | Section A | Section B | Status     | Slot        | Value A | Value B | Delta | Unit match | Origin            | Direction | Evidence      | Method        | Witness      | Validated |
+   |-------------|-----------|-----------|------------|-------------|---------|---------|-------|------------|-------------------|-----------|---------------|---------------|--------------|-----------|
+   | <term>      | §X.Y      | §P.Q      | A_stricter | <slot_name> | 70      | 60      | +10   | ✓          | legal-divergence  | B_weaker_than_A | text-anchored | deterministic | confirmed ✅ | ✓         |
 
 ** Divergences — scope
    (same columns + scope_A_extra, scope_B_extra)
@@ -671,9 +772,11 @@ Write `$COMPARE/matrix-compare.org` (or `--out` path if specified).
   Structural divergences   : N
   Coverage gaps            : N  (kb-gap: N · legal-absence: N)
   Equivalent concepts      : N
-  Threshold divergences    : N  (confirmed by witness: N)
-  Scope divergences        : N  (confirmed by witness: N)
-  Obligation divergences   : N
+  Threshold divergences    : N  (text-anchored: N · witness-confirmed: N · witness-artefact: N)
+  Scope divergences        : N  (text-anchored: N · witness-confirmed: N · witness-artefact: N)
+  Obligation divergences   : N  (llm-only: N)
+  By direction             : <side>_stricter: N · <side>_weaker: N · different_structure: N · undetermined: N
+  Scoping asymmetries      : N  (default kb-gap · N upgraded to legal-absence after 4.3a)
   Uncertain                : N  → human review required
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Matrix written → $COMPARE/matrix-compare.org
@@ -723,7 +826,11 @@ Delete `.compare-wip.md` on successful completion.
 | human-validated | *(aucune mention — résultat intégré directement)* |
 | deterministic | *(aucune mention — résultat intégré directement)* |
 | uncertain | *point nécessitant une analyse juridique complémentaire* |
-| witness confirmed | *divergence confirmée par test comparatif* |
+| witness-confirmed | *divergence confirmée par test comparatif* |
+| text-anchored (no witness) | *divergence établie par comparaison des textes — non testée* |
+| direction `*_stricter` | *exigence plus stricte en [droit A/B]* |
+| direction `*_weaker` | *protection ou exigence moindre en [droit A/B] — point d'attention (conformité à l'instrument de référence)* |
+| direction `different_structure` | *mécanismes différents, non comparables terme à terme* |
 | threshold | *seuil* / *délai* / *plafond* (avec valeur et unité en clair) |
 
 ### R.2 — Agent-to-theme mapping
@@ -784,6 +891,12 @@ Write the report section by section in this order:
 > Les points suivants révèlent une différence de fond entre les deux référentiels.
 > Chaque fiche indique la nature de la divergence et son impact pratique.
 
+<Section 3 lists ONLY rows with origin `legal-divergence` (atoms on both sides).
+ A provision found on one side only goes to section 4, never here — even when
+ the other column reads "non couvert". Order the fiches by direction: weaker/
+ different first (conformity risk), stricter after. Open the section with a
+ count by direction, and make it equal to the number of fiches.>
+
 <One "fiche" per divergence:>
 
 ### [Thème] — [Concept en langage clair]
@@ -796,7 +909,10 @@ Write the report section by section in this order:
 
 **Nature de la divergence :** <A stricter / B stricter / champs d'application distincts>
 **Impact pratique :** <one sentence for a legal professional>
-**Statut :** ✅ confirmé / ⚠️ à confirmer
+**Nature :** <direction in plain language: plus stricte / moindre protection / mécanismes différents>
+**Statut :** ✅ établi par test comparatif / 📄 établi par comparaison des textes (non testé) / ⚠️ à confirmer
+<Use ⚠️ whenever the alignment is llm-only or the pair rests on a different
+ legal mechanism (e.g. different instrument for the same concept).>
 
 ---
 
@@ -805,7 +921,11 @@ Write the report section by section in this order:
 ### 4.1 — Présentes dans [cadre A] uniquement
 
 <List by theme. For each: concept name, article reference, one-line description.
- Note if this is a confirmed legal absence or an analysis coverage gap.>
+ State explicitly: "absence confirmée dans le texte" (absence_proof present) or
+ "non modélisé dans le périmètre de l'analyse" (kb-gap). Never present a
+ kb-gap as a divergence. In 4.2, if the provision belongs to a general regime of
+ the other framework (e.g. an EU directive), say so rather than implying a
+ national specificity.>
 
 ### 4.2 — Présentes dans [cadre B] uniquement
 
@@ -825,6 +945,15 @@ Write the report section by section in this order:
 **Textes analysés :**
 - [Cadre A] : <list of normative sources from corpus>
 - [Cadre B] : <list of normative sources from corpus>
+
+**Cohérence interne :** the counts in section 1, the matrix and sections 3–5 must
+agree; if a figure counts matrix rows and another counts fiches, label each.
+State the temporal scope of each text (consolidated version / last amendment
+included).
+
+**Asymétries de périmètre :** <list `scoping_asymmetries` in legal language:
+"Les dispositions suivantes ont été analysées dans [cadre B] mais non dans
+[cadre A] ; l'absence de correspondant ne vaut pas absence de la règle.">
 
 **Hors périmètre de la présente analyse :**
 <Paraphrase the Deferred-S items in legal language:

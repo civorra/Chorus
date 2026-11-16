@@ -446,6 +446,63 @@ Determine next state — **evaluate in this exact order** (SP1/SP2 take priority
    Rapport : $SANDBOX/agent/autofeed-report-<NNN>.md
 ```
 
+### Step 5.7 — Gate pre-`chorus-check` — `chorus-audit-rules` (ENG-057, mandatory)
+
+> **Triggered at `converged` OR `stopped_max_passes` only** — never on
+> intermediate `waiting` checkpoints.
+>
+> **Why not per-pass:** running `chorus-audit-rules` after every intermediate
+> `--unattended` pass would (1) audit a partially-built KB (agents not yet
+> initialized produce misleading findings), (2) add non-trivial overhead on
+> each session, and (3) generate noise that obscures the actual generation
+> progress. One audit at the end is sufficient and accurate.
+
+**Read `agents_modified` from the checkpoint:**
+
+```json
+"agents_modified": ["agent-reaction-feu", "agent-securite-incendie-facades"]
+```
+
+This field (see Checkpoint JSON structure below) is updated after every
+processed file: any pass that writes or modifies at least one `.yml` rule or
+`.org` KB file adds the corresponding agent slug to `agents_modified`.
+On first run (field absent): fall back to `--all` (conservative).
+
+**Command:**
+
+```bash
+# If agents_modified is non-empty and not all agents:
+chorus-audit-rules <sandbox-name> --agent <slug1>
+chorus-audit-rules <sandbox-name> --agent <slug2>
+# ... one per slug in agents_modified
+
+# If agents_modified contains all agents (or field absent):
+chorus-audit-rules <sandbox-name>
+```
+
+**Outcome gate:** same as `chorus-feed.md § Phase 6.5 gate` — zero 🔴/🟠
+required before `chorus-check`. Findings 🟡/📝 are non-blocking.
+
+If 🔴 or 🟠 findings are found: surface them in the final report
+(Step 5's display) alongside the convergence summary. Do not block the
+display of the convergence message itself — the audit result is a
+pre-`chorus-check` gate, not a convergence criterion.
+
+Include in `autofeed-report-<NNN>.md` under a dedicated section:
+
+```markdown
+## ⛔ Audit pré-`chorus-check` — `chorus-audit-rules`
+
+| Agent | Findings 🔴 | Findings 🟠 | Findings 🟡 | Findings 📝 | Statut |
+|---|---|---|---|---|---|
+| agent-X | 0 | 0 | 1 | 2 | ✅ Prêt pour chorus-check |
+| agent-Y | 1 | 0 | 0 | 0 | ⛔ Corriger avant chorus-check |
+```
+
+> **Never skip this step** even if `agents_modified` is empty (defensive check
+> — if no agent was modified, the KB was not changed, `chorus-audit-rules`
+> exits immediately with zero findings).
+
 ### Step 5.5 — Audit `_rule_trace` coverage (convergence + stopped_max_passes only)
 
 > **Triggered only when** `status` is `converged` or `stopped_max_passes` —
@@ -599,7 +656,8 @@ After both writes, run `emacsclient --eval '(with-current-buffer (find-file-nose
   "suggested_next_file": "<NNN-slug.md>|null",
   "deferred_unchanged_passes": 0,
   "families_closed_this_pass": 0,
-  "unresolved_deferred_notes": []
+  "unresolved_deferred_notes": [],
+  "agents_modified": []
 }
 ```
 
@@ -616,6 +674,12 @@ After both writes, run `emacsclient --eval '(with-current-buffer (find-file-nose
   computation of each. Written on every `waiting`/`stopped_max_passes`/
   `converged` checkpoint update, not only on the very first one shown above
   as a shape reference.
+- **`agents_modified`** (array of slug strings): cumulative list of agent
+  slugs for which at least one `.yml` rule or `.org` KB file was written or
+  modified during this `--unattended` session. Updated after each processed
+  file — append the slug if not already present. Used by Step 5.7 to scope
+  `chorus-audit-rules` to only the modified agents, avoiding a full `--all`
+  audit on a large sandbox when only 1–2 were actually touched.
 
 > **Webapp integration (WEB-004):** poll `$SANDBOX/.chorus-unattended-state.json`
 > every 2s via `/api/sandbox/:id/unattended-state`. Progress bar =
