@@ -3,31 +3,56 @@
 
 * Index
 
-| ID      | Titre                                          | Statut   | Domaine | Date       | ENG     |
-|---------+------------------------------------------------+----------+---------+------------+---------|
-| ADR-001 | =_PREMISSES= comme métadonnée engine-only      | proposed | engine  | —          | —       |
-| ADR-002 | =CONDITION=(OR) vs =filtre=(AND) — asymétrie DSL | proposed | dsl     | —          | —       |
-| ADR-003 | =string eval= pour le produit cartésien        | proposed | engine  | —          | —       |
-| ADR-004 | Politique KB org ↔ YAML sync V1/V2/V3/V4       | proposed | skills  | —          | ENG-041 |
+| ID      | Titre                                                              | Statut   | Domaine       | Priorité | ENG     |
+|---------+--------------------------------------------------------------------+----------+---------------+----------+---------|
+| ADR-001 | =PREMISES= : tags booléens pour =reorder()= exclusivement         | proposed | dsl · engine  | haute    | ENG-047 |
+| ADR-002 | =CONDITION=(OR) vs =filtre=(AND) — asymétrie DSL intentionnelle   | proposed | dsl           | haute    | —       |
+| ADR-003 | =string eval= pour le produit cartésien dans =applyrules()=       | proposed | engine        | haute    | —       |
+| ADR-004 | Politique KB org ↔ YAML sync : seul V1 (=chorus-feed=) automatique | proposed | skills        | haute    | ENG-041 |
+| ADR-005 | =$SELF= = moteur dans ACTION (coderef pur, jamais dispatch Frame)  | proposed | engine        | haute    | —       |
+| ADR-006 | =_RULES= / =_QUEUE= : liste maître vs copie de travail            | proposed | engine        | haute    | —       |
+| ADR-007 | =Expert::new()= ignore ses arguments (asymétrie délibérée)        | proposed | engine        | haute    | —       |
+| ADR-008 | =BOARD->{SOLVED/FAILED}= supprimés par =process()= avant retour   | proposed | engine        | haute    | —       |
+| ADR-009 | Promotion ={}= → Frame automatique (arrayrefs non promus)         | proposed | engine        | haute    | —       |
+| ADR-010 | =get('a b c')= vs AUTOLOAD chaîné : sémantique =$SELF= différente | proposed | engine        | haute    | —       |
+| ADR-011 | Modes N/Z d'héritage : flag global, pas per-Frame                 | proposed | engine        | moyenne  | —       |
+| ADR-012 | =_CYCLE= / =_SUCCES= : compteurs intra-=loop()=, non cumulatifs   | proposed | engine        | moyenne  | —       |
+| ADR-013 | =fmatch()= via =%REPOSITORY= uniquement (contrat avec =set()=)    | proposed | engine        | moyenne  | —       |
+| ADR-014 | =_LOCK_UNTIL_STABLE= : skip si agent précédent a tiré             | proposed | engine        | moyenne  | —       |
+| ADR-015 | Pattern B =_ISA= : =$inject_isa= obligatoire dans les deux passes | proposed | pipeline      | moyenne  | —       |
+| ADR-016 | Champs =*_ref= bannis de =%SLOTS_REQUIS= (rétrocompatibilité)     | proposed | pipeline      | moyenne  | —       |
+| ADR-017 | =eca__ask_user= non fiable en sub-agent → =AUTONOMOUS_MODE=       | proposed | skills        | basse    | —       |
+| ADR-018 | =Engine= est une Frame ; =Expert= est un blessed hashref          | proposed | engine        | basse    | —       |
+| ADR-019 | Distribution CPAN nommée =Chorus= (pas =Chorus-Engine=) dès v2.01 | proposed | cpan          | basse    | —       |
+| ADR-020 | Roadmap backward-chaining D1–D6 (statuts formels)                 | proposed | engine        | —        | —       |
+
+* Périmètre par ticket
+
+| Ticket  | ADR couverts    | Statut  |
+|---------+-----------------+---------|
+| ENG-064 | infrastructure  | ✅ DONE |
+| ENG-065 | ADR-001–ADR-010 | TODO    |
+| ENG-067 | ADR-011–ADR-016 | TODO    |
+| ENG-066 | cross-refs skills | TODO (bloqué ENG-065) |
+| —       | ADR-020         | session backward-chaining |
 
 * Statuts
 
-- =proposed=   : identifié, en attente de rédaction formelle (ENG-065)
+- =proposed=   : identifié, en attente de rédaction formelle
 - =accepted=   : rédigé, relu, commité
 - =deprecated= : remplacé par une approche différente (sans successeur direct)
 - =superseded-by ADR-NNN= : remplacé par un ADR plus récent
 
-* Conventions
+* Conventions de référencement
 
-- Un ADR = un fichier =ADR-NNN.org= dans ce répertoire.
-- Un ADR accepté ne se modifie pas — il se remplace par un nouvel ADR (statut =superseded-by=).
-- Référencer depuis les commits : =feat(...): ... — See ADR-NNN=
-- Référencer depuis les YAML rules : =# Design: See ADR-NNN (<raison courte>)=
-- Référencer depuis =pitfalls.org= : property =:ADR: ADR-NNN=
+- Depuis commits git : =feat(...): ... — See ADR-NNN=
+- Depuis YAML rules  : =# Design: See ADR-NNN (<raison courte>)=
+- Depuis =pitfalls.org= : property =:ADR: ADR-NNN=
+- Depuis skills     : ="See ADR-NNN."= dans le texte d'instruction
 
 * Trigger ECA
 
 #+begin_src
-chorus-adr --list          → eca__read_file sur ce fichier
-chorus-adr <NNN>           → eca__read_file sur ADR-NNN.org
+chorus-adr --list        → eca__read_file sur ce fichier
+chorus-adr <NNN>         → eca__read_file sur ADR-NNN.org
 #+end_src

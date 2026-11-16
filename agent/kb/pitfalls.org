@@ -56,9 +56,12 @@ $agent->reorder(sub {
 });
 #+end_src
 
-** Pertinence pour le backward-chaining
-=_PREMISSES= est la matière première naturelle d'un index inverse
-"quelles règles consomment le slot X ?". Voir =architecture.org= §Backward-chaining.
+** Règle
+=PREMISES= = système de tags booléens sur les règles (=slot => 'Y'=), lisibles
+uniquement par un comparateur passé à =reorder()=.
+Hors appel à =reorder()= : omettre =PREMISES= entièrement — totalement inerte.
+La logique de prérequis (conditions de déclenchement) va dans =CONDITION=.
+Voir =lib/Chorus/Engine.pm §codeRule()= · =chorus-engine-yaml.md §PREMISES= · ADR-001.
 
 * PITFALL _MAX_ITER ignoré par Chorus::Expert->new()
   :PROPERTIES:
