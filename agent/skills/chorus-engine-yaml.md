@@ -489,7 +489,7 @@ FIND:
 > `grep { use_of_work }` — constant truthy (non-empty string), matches every Frame.
 > This is the most insidious form: the YAML looks intuitive ("a list of allowed values")
 > but `setFilter()` expects Perl expressions, not literal values to match against.
-> No error raised; `loadRules()` emits `[Chorus::Engine] FILTRE-SEQUENCE-LITERAL` warn if ENG-050 is applied.
+> No error raised; `loadRules()` emits `[Chorus::Engine] FILTRE-SEQUENCE-LITERAL` warn (`_check_filtre_not_string()`, ENG-050).
 > ```yaml
 > # ⛔ WRONG — filtre as YAML sequence → arrayref of barewords → constant truthy
 > FIND:
@@ -753,9 +753,9 @@ EFFET: |
 > (`#+PIPELINE_POS` le plus élevé dans `index.org`), numérotée en dernier
 > (ex. `R06-termination-pipeline.yml` si R05 est la dernière règle métier).
 
-> **Remarque :** `chorus-feed` devrait générer automatiquement cette règle à la fin
-> du Mode A (ENG-055). En attendant, la créer manuellement et vérifier avec
-> `chorus-check Step 5f` (scan TERMINAL + `->solved()`).
+> **Génération automatique :** `chorus-feed` Phase 5.9 génère cette règle automatiquement
+> à la fin de chaque Mode A ou Mode B si aucun `->solved()` ni `TERMINAL: solved` n'est
+> présent dans le sandbox (ENG-055). Vérifier via `chorus-check Step 5f` après génération.
 
 ### ⛔ Pitfall — BOARD-publishing rule must guard against self-refiring
 

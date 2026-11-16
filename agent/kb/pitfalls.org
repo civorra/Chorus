@@ -154,8 +154,8 @@ valeurs à comparer. L'arrayref =["cheminement_ext", "cheminement_int"]= est com
 Les deux barewords sont non-vides → toujours truthy → toutes les Frames portant le slot
 =type_element= entrent dans le scope, quel que soit leur valeur réelle.
 
-Aucune erreur n'est levée. =loadRules()= émettra un warn =FILTRE-SEQUENCE-LITERAL=
-une fois l'Axe A d'ENG-050 implémenté.
+Aucune erreur n'est levée. =loadRules()= émet un warn =FILTRE-SEQUENCE-LITERAL=
+(implémenté dans ENG-050 Axe A, =_check_filtre_not_string()=).
 
 ** Règle
 =filtre:= doit *toujours* être une string Perl quotée sur =$_=.
@@ -358,9 +358,9 @@ CONDITION: '($SELF->BOARD && defined $SELF->BOARD->{phase_done})'
 - Règles d'agrégation/publication BOARD : combiner guard nul + guard clé :
   `($SELF->BOARD && defined $SELF->BOARD->{key})`.
 
-** Fix moteur prévu (ENG-050 Axe B)
-Initialiser =BOARD= à ={}= dans =loadRules()= pour que =$SELF->BOARD= ne retourne jamais
-=undef= dès lors que le moteur est chargé.
+** Fix moteur appliqué (ENG-050 Axe B)
+=BOARD= est initialisé à ={}= dans =loadRules()=. =$SELF->BOARD= ne retourne jamais
+=undef= dès lors que le moteur est chargé (sauf si appelé avant =loadRules()=).
 
 * PITFALL Pattern B (_ISA prototypes) : $inject_isa dans une seule passe
   :PROPERTIES:
