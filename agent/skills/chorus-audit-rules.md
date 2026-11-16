@@ -566,6 +566,28 @@ Finding: `🟡 MISSING-CONFORME-MOTIF — règle numérique sans motif_* sur bra
 > sémantiques — ils doivent être déterminés par révision humaine en s'appuyant sur
 > le pattern de référence `chorus-engine-yaml.md § Convention — Motif pour CONFORME`.
 
+### 3.24 — PREMISES declared — informative note only (ADR-001)
+
+If a rule declares `PREMISES:` / `PREMISSES:`:
+
+→ **Do NOT emit a warning or ❌.** `PREMISES` is a boolean tag system for `reorder()` — intentional behaviour documented in ADR-001.
+→ Emit an informative note only:
+
+Finding: `ℹ️  PREMISES declared — boolean tag for reorder() by design (ADR-001). Valid. Check separately: no Perl expressions inside? (ENG-047)`
+
+> If the PREMISES list contains Perl expressions (e.g. `defined $f->{x}`, `->get(`, `do {`):
+> escalate to ENG-047 pitfall — expressions compile silently but are ignored at runtime.
+> Finding: `⚠️  PREMISES-PERL-EXPR — Perl expression in PREMISES: ignored silently (ENG-047)`
+
+### 3.25 — CONDITION list or filtre list — informative note only (ADR-002)
+
+If a rule's `CONDITION:` or `filtre:` is a YAML list:
+
+→ **Do NOT emit a warning or ❌.** The asymmetry (CONDITION → implicit OR, filtre → implicit AND) is intentional, documented in ADR-002.
+→ Verify only that each list item is a valid Perl expression (not a bare identifier — that is the ENG-050 / FILTRE-SEQUENCE-LITERAL pitfall).
+
+Finding: `ℹ️  CONDITION/filtre list — OR/AND asymmetry intentional (ADR-002). Items are valid Perl expressions — OK.`
+
 ---
 
 ## Phase 4 — CHERCHER / CONDITION / EFFET coherence

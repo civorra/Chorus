@@ -1940,6 +1940,10 @@ rm -f $SANDBOX/.last-check-results.json
 
 **KB consistency gate (mandatory after invalidation)**
 
+> `chorus-feed` is the only skill that keeps the KB org ↔ YAML sync automatically.
+> `chorus-check` (Phase 1.5), `chorus-fix` (Bucket B), and direct edits (V4) do **not**
+> update the `.org` — by design (single-responsibility). See **ADR-004**.
+
 Run `scripts/validate-kb-consistency.py` on the sandbox before closing
 the agent. This check verifies internal coherence between the three
 artefacts just written (org KB ↔ YAML rules ↔ Helpers.pm):

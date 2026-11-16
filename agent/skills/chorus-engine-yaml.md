@@ -521,6 +521,10 @@ FIND:
 >     filtre: '$_->{type_element} eq "use_of_work" && $_->{besoin_permitted_use}'
 > ```
 
+> Multiple `filtre` expressions (YAML list) are joined with **implicit AND** (`setFilter()`: `join(' and ', ...)`):
+> all expressions must be true for a candidate to enter scope. This is the opposite of `CONDITION` list (implicit OR).
+> See **ADR-002** (`agent/kb/decisions/ADR-002.org`) — intentional, coherent asymmetry.
+
 > ⛔ **Never use `return` inside `filtre`** — `filtre` is compiled as the
 > predicate of a `grep {}` block. In Perl, `return` inside a `grep {}` does **not**
 > skip the current element — it **exits the entire enclosing `_SCOPE` closure**,
@@ -586,6 +590,10 @@ FIND:
 |---|---|---|---|---|
 | `EXCEPTION` = true | rule **must not** fire | `return if <EXCEPTION>;` | Scope combination | **Permanent** (P1) / Transient (P2) |
 | `CONDITION` = false | rule **must** wait | `return unless <CONDITION>;` | Scope combination | **Always transient** — retry next cycle |
+
+> A `CONDITION` given as a YAML list uses **implicit OR** (`setCondition()`: `join("or", ...)`):
+> the rule fires if *any one* condition holds. This is the opposite of `filtre` list (implicit AND).
+> See **ADR-002** (`agent/kb/decisions/ADR-002.org`) — intentional, coherent asymmetry.
 
 > **`CONDITION` — transience rule:**
 > When `CONDITION` is false, the engine skips the current combination for this cycle and retries
@@ -1141,6 +1149,7 @@ Multiple directories = multiple `loadRules()` calls.
 > **Preferred when no `reorder()` is needed: omit `PREMISES` entirely.**
 > `PREMISES` is metadata for `reorder()` only — `applyrules()` ignores it at runtime.
 > Write the actual prerequisite logic in `CONDITION`, not in `PREMISES`.
+> See **ADR-001** (`agent/kb/decisions/ADR-001.org`) for the full rationale.
 
 ```perl
 sub sort_by_interest {
