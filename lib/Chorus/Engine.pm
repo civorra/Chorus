@@ -668,8 +668,83 @@ sub _check_multistatement_guard {
     }
 }
 
+# _check_filtre_not_string -- called by loadRules() for each parsed YAML rule.
+#
+# The 'filtre' key under FIND/CHERCHER expects a Perl expression string on $_.
+# Two broken forms exist:
+#   Form 1 — YAML mapping (key: value) → hashref → grep { HASH(0x...) } → constant truthy
+#   Form 2 — YAML sequence (- item)   → arrayref of barewords →
+#             grep { bareword } → constant truthy (non-empty string, always passes)
+#
+# This check detects Form 2 (FILTRE-SEQUENCE-LITERAL pitfall — most insidious):
+# the YAML looks intuitive ("a list of allowed values") but setFilter() expects
+# Perl expressions, not literal values to match against.
+#
+# Form 1 (hashref) is also flagged — any ref in filtre is never a valid Perl string.
+#
+# Heuristic — an array element is a "bare identifier" (not a Perl expression)
+# when it contains none of the characters: $ @ - > ( ) = ~ ! < > |
+# False-positive risk is minimal: a valid Perl filter expression without any
+# of those characters is essentially non-existent in practice.
+#
+# Pattern aligned on _check_guard_coherence and _check_multistatement_guard:
+# warn-only, never die, zero false positives on correct string filters.
+sub _check_filtre_not_string {
+    my ($rule, $filename) = @_;
+
+    my $scp = $rule->{CHERCHER} // $rule->{FIND};
+    return unless ref($scp) eq 'HASH';
+
+    my $rulename = $rule->{REGLE} // $rule->{RULE} // '?';
+
+    for my $var (sort keys %$scp) {
+        my $desc   = $scp->{$var};
+        my $filtre = $desc->{filtre};
+        next unless defined $filtre && ref($filtre);
+
+        if (ref($filtre) eq 'ARRAY') {
+            # Detect bare identifiers: strings containing no Perl expression characters.
+            my @bare = grep { defined $_ && $_ !~ /[\$\@\-\>\(\)\=\~\!\<\>\|]/ } @$filtre;
+            next unless @bare;   # all elements look like Perl expressions — intentional array
+
+            warn sprintf(
+                "[Chorus::Engine] FILTRE-SEQUENCE-LITERAL in rule '%s' (%s)\n" .
+                "  var '%s': filtre contains bare string(s): [%s]\n" .
+                "  Risk: compiled to 'grep { %s }' -- constant truthy, NO filtering applied.\n" .
+                "  ALL Frames with slot '%s' enter scope regardless of their actual value.\n" .
+                "  Suggested fix: filtre: '\$_->{%s} =~ /^(%s)\$/'\n",
+                $rulename, $filename,
+                $var, join(', ', map { "'$_'" } @bare),
+                join(' and ', @bare),
+                $desc->{attribut} // '?',
+                $desc->{attribut} // '?',
+                join('|', @bare),
+            );
+
+        } elsif (ref($filtre) eq 'HASH') {
+            warn sprintf(
+                "[Chorus::Engine] FILTRE-NOT-STRING in rule '%s' (%s)\n" .
+                "  var '%s': filtre is a YAML mapping (hashref) --\n" .
+                "  compiled to 'grep { HASH(0x...) }' -- constant truthy, NO filtering applied.\n" .
+                "  Suggested fix: filtre: '\$_->{%s} eq \"<value>\"'\n",
+                $rulename, $filename,
+                $var,
+                $desc->{attribut} // '?',
+            );
+        }
+    }
+}
+
 sub loadRules {
     my ( $dir, %opts ) = @_;
+
+    # Axe B (ENG-050): ensure BOARD is always a defined value from load time.
+    # When an agent runs standalone (without Chorus::Expert), $SELF->BOARD is
+    # undef until a rule publishes a slot — any rule accessing $SELF->BOARD->{key}
+    # without a null-check would crash. Initialising to {} here guarantees
+    # $SELF->BOARD is always truthy. Expert::register() overwrites this with
+    # the shared Chorus::Frame board when the agent is registered — harmless.
+    $SELF->set('BOARD', {}) unless defined $SELF->get('BOARD');
 
     opendir( my $dh, $dir ) || do {
         warn "Can't opendir $dir: $!";
@@ -696,6 +771,11 @@ sub loadRules {
         # multiple Perl statements without a wrapping do {}. See
         # _check_multistatement_guard() above.
         _check_multistatement_guard($rule_data, $_) if $rule_data;
+
+        # Filtre-not-string check: warn if filtre is a YAML structure (hashref
+        # or arrayref of bare identifiers) instead of a Perl string expression.
+        # See _check_filtre_not_string() above and pitfall FILTRE-SEQUENCE-LITERAL.
+        _check_filtre_not_string($rule_data, $_) if $rule_data;
 
         my $code = '$SELF->addrule(' . codeRule( $SELF, $rule_data, debug => $debug ) . ');';
 
