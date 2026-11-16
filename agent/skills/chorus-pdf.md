@@ -1368,7 +1368,8 @@ def extract_tables_from_page(page):
 def analyse_pages(pdf_path):
     """Extract text blocks, figure bboxes, and vector-table markers per page.
     Returns {page_num: {'texts': [(text, y_center, x0, x1)], 'figures': [(x0,y0,x1,y1)],
-                        'height': float, 'has_table': bool}}
+                        'height': float, 'has_table': bool,
+                        'borderless_table_suspect': bool, 'borderless_reason': str|None}}
     Used verbatim in Text mode (figures checked as bool) and Hybrid mode (figures as crop targets).
     Uses the full 7-parameter LAParams set (from the original text mode) for both modes —
     this is intentional: the hybrid mode previously used only 2 params (boxes_flow, char_margin),
@@ -1431,11 +1432,27 @@ def analyse_pages(pdf_path):
                             _has_table = True
                             break
         
+        # §1.4d — Borderless table detection (ENG-059 fix)
+        # Must run AFTER vector-line detection so has_table is already known.
+        # detect_borderless_table() uses the dual heuristic:
+        #   Signal 1 — explicit text announcement ("le tableau ci-dessous...")
+        #   Signal 2 — X-band numeric density (≥5 short blocks in ≥3 bands)
+        page_text_joined = ' '.join(t for t, *_ in texts)
+        _borderless_suspect, _borderless_reason = detect_borderless_table(
+            texts, layout.width, page_text_joined)
+        # Suppress false-positive: if the page already has a vector table (has_table),
+        # the borderless detector is not needed — vector pdfplumber reconstruction handles it.
+        if _has_table:
+            _borderless_suspect = False
+            _borderless_reason  = None
+
         result[page_num] = {
-            'texts':     texts,
-            'figures':   figures,
-            'height':    layout.height,
-            'has_table': _has_table,
+            'texts':                    texts,
+            'figures':                  figures,
+            'height':                   layout.height,
+            'has_table':                _has_table,
+            'borderless_table_suspect': _borderless_suspect,  # §1.4d
+            'borderless_reason':        _borderless_reason,   # §1.4d
         }
     return result
 
@@ -1501,6 +1518,35 @@ def detect_and_tag_formulas(text):
         return f"{line}\n[FORMULA: pattern detected ({reason}){latex_hint} — verify against source]"
 
     return "\n".join(tag_line(line) for line in text.split("\n"))
+
+
+def extract_page_via_pdftotext_layout(pdf_path, page_num):
+    """§1.4c/§1.4d — Fallback extraction for borderless or rotated-header tables.
+
+    Uses pdftotext -layout (Poppler) which preserves the absolute X/Y grid of
+    the page — a completely independent layout engine from pdfminer/pdfplumber.
+    Returns the raw layout-preserving text for the page, or None on failure.
+
+    Required: poppler-utils installed (sudo apt install poppler-utils).
+    Cost: fully offline, no API call.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-f", str(page_num), "-l", str(page_num), "-layout",
+             pdf_path, "-"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout
+    except FileNotFoundError:
+        print(f"[chorus-pdf] ⚠️  pdftotext not found (poppler-utils) — "
+              "borderless table fallback disabled. Install: sudo apt install poppler-utils",
+              file=sys.stderr)
+        return None
+    except Exception:
+        return None
 
 
 def call_claude_with_retry(payload, headers, label, timeout=300):
@@ -2196,13 +2242,18 @@ def main():
     total      = len(pages)
     n_with_fig = sum(1 for p in pages.values() if p['figures'])
     n_figs     = sum(len(p['figures']) for p in pages.values())
-    n_with_tbl = sum(1 for p in pages.values() if p['has_table'])
+    n_with_tbl        = sum(1 for p in pages.values() if p['has_table'])
+    n_borderless      = sum(1 for p in pages.values() if p.get('borderless_table_suspect'))
     print(f"[chorus-pdf]   → {total} pages, {n_with_fig} with figures, "
-          f"{n_figs} figure(s), {n_with_tbl} page(s) with tables",
+          f"{n_figs} figure(s), {n_with_tbl} page(s) with vector tables, "
+          f"{n_borderless} page(s) with borderless tables (§1.4d)",
           file=sys.stderr)
     if n_with_tbl > 0:
         print(f"[chorus-pdf]   → vector tables will be reconstructed via pdfplumber",
               file=sys.stderr)
+    if n_borderless > 0:
+        print(f"[chorus-pdf]   → {n_borderless} borderless table(s) will be extracted "
+              "via pdftotext -layout fallback (§1.4d)", file=sys.stderr)
 
     # --- nohup gate -----------------------------------------------------------
     NOHUP_THRESHOLD = 15
@@ -2247,6 +2298,25 @@ def main():
                     print(f"[chorus-pdf] Page {page_num} — {len(table_entries)} table(s) extracted",
                           file=sys.stderr)
 
+            # --- §1.4d Borderless table fallback (pdftotext -layout) --- (ENG-059)
+            borderless_entries = []
+            if page_data.get('borderless_table_suspect') and not page_data['has_table']:
+                reason = page_data.get('borderless_reason', 'detected')
+                layout_text = extract_page_via_pdftotext_layout(PDF_PATH, page_num)
+                if layout_text:
+                    matrix_block = (
+                        f"[MATRIX TABLE — extracted via pdftotext -layout "
+                        f"(borderless table detected: {reason})]\n"
+                        f"{layout_text.strip()}\n"
+                        "[END MATRIX TABLE]"
+                    )
+                    borderless_entries.append(matrix_block)
+                    print(f"[chorus-pdf] Page {page_num} — borderless table fallback "
+                          f"(pdftotext -layout, reason: {reason})", file=sys.stderr)
+                else:
+                    print(f"[chorus-pdf] Page {page_num} — borderless table suspect but "
+                          "pdftotext unavailable (poppler-utils not installed)", file=sys.stderr)
+
             # --- Figure extraction (Claude vision) ---
             if page_data['figures']:
                 print(f"[chorus-pdf] Page {page_num} — {len(page_data['figures'])} figure(s) ...",
@@ -2257,8 +2327,11 @@ def main():
                     desc = call_claude_figure(png_bytes, page_num, fig_idx)
                     all_figure_descs[(page_num, fig_idx)] = desc
                     print(f"[chorus-pdf]   fig {fig_idx} → {len(desc)} chars", file=sys.stderr)
-            elif not table_entries:
+            elif not table_entries and not borderless_entries:
                 print(f"[chorus-pdf] Page {page_num} — text only (pdfminer)", file=sys.stderr)
+
+            # Store borderless entries on page_data for assembly pass
+            page_data['borderless_entries'] = borderless_entries
 
     if plumber_pdf:
         plumber_pdf.close()
@@ -2288,7 +2361,14 @@ def main():
         table_entries = []
         if plumber_pdf2 and page_data['has_table']:
             table_entries = extract_tables_from_page(plumber_pdf2.pages[page_num - 1])
+        # §1.4d — inject borderless blocks collected during extraction pass
+        borderless_entries = page_data.get('borderless_entries', [])
         page_block = assemble_page(page_num, page_data, figure_descriptions, table_entries)
+        # Append borderless matrix blocks at the end of the page block (before END PAGE marker)
+        if borderless_entries:
+            end_marker = f"=== END PAGE {page_num} ==="
+            for blk in borderless_entries:
+                page_block = page_block.replace(end_marker, blk + "\n\n" + end_marker)
         parts.append(page_block)
 
     if plumber_pdf2:
