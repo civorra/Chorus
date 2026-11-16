@@ -21,7 +21,7 @@
 | ADR-014 | =_LOCK_UNTIL_STABLE=: skip if a preceding agent has fired         | accepted | engine        | moyenne  | —       |
 | ADR-015 | Pattern B =_ISA=: =$inject_isa= required in both Feed.pm passes   | accepted | pipeline      | moyenne  | —       |
 | ADR-016 | =*_ref= fields must never appear in =%SLOTS_REQUIS=               | accepted | pipeline      | moyenne  | —       |
-| ADR-017 | =eca__ask_user= non fiable en sub-agent → =AUTONOMOUS_MODE=       | proposed | skills        | basse    | —       |
+| ADR-017 | =eca__ask_user= unreliable in sub-agents → =AUTONOMOUS_MODE= workaround | accepted | skills   | basse    | —       |
 | ADR-018 | =Engine= est une Frame ; =Expert= est un blessed hashref          | proposed | engine        | basse    | —       |
 | ADR-019 | Distribution CPAN nommée =Chorus= (pas =Chorus-Engine=) dès v2.01 | proposed | cpan          | basse    | —       |
 | ADR-020 | Roadmap backward-chaining D1–D6 (statuts formels)                 | proposed | engine        | —        | —       |

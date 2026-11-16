@@ -1,0 +1,81 @@
+#+TITLE: ADR-017 — eca__ask_user is unreliable inside sub-agents; AUTONOMOUS_MODE is the sanctioned workaround
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: skills
+#+ENG:
+
+* Context
+
+=eca__ask_user= silently returns =""= (empty string) when called from inside a
+sub-agent spawned via =eca__spawn_agent=. No error is raised; the skill receives
+the empty string and continues, producing an incorrect or incomplete result.
+
+Root cause: in =subscribeEcaEvents= (=eca-client.js=), the =chat:ask-question=
+event handler is guarded by =isParentChat= — it fires only for the main chat,
+not for sub-agent chats (=subagent-<id>=). The sub-agent's call reaches the ECA
+backend, receives =""=, and returns immediately.
+
+Critically, =eca__ask_user= *is present* in the sub-agent's tool catalogue — the
+tool is not absent, it just silently does nothing. The standard =AUTONOMOUS_MODE=
+detection (checking whether the tool is available) therefore does *not* catch this
+case.
+
+Affected skills (use =eca__ask_user= AND can be spawned as sub-agents):
+=chorus-strengthen= (Phase 4-checkpoint), =chorus-feed= (Phase 6.5),
+=chorus-create-project= (Phase 3 =--batch-seq=).
+
+* Decision
+
+Until the structural fix is implemented (see Rejected alternatives), every Chorus
+skill that calls =eca__ask_user= AND can be invoked via =eca__spawn_agent= MUST
+implement =AUTONOMOUS_MODE= detection using an empirical sentinel:
+
+#+begin_src markdown
+| Running inside a sub-agent | Detect empirically: call `eca__ask_user` with a
+  harmless sentinel value and check if the return is `""` without user interaction
+  delay — if so, set AUTONOMOUS_MODE = true and use the documented default for
+  every subsequent interactive prompt. |
+#+end_src
+
+In =AUTONOMOUS_MODE=, every =eca__ask_user= call is replaced by its documented
+safe default. The skill must document its defaults explicitly.
+
+* Positive consequences
+
+- Skills spawned as sub-agents produce correct results without hanging
+- The sentinel pattern is explicit and auditable — not implicit
+- Safe defaults are documented per skill, not silently assumed
+
+* Negative consequences / accepted trade-offs
+
+- Boilerplate: every affected skill must implement the sentinel check
+- If a user interacts with a skill in AUTONOMOUS_MODE thinking their input is
+  being taken into account, it silently is not — the skill uses the default
+- The sentinel itself consumes one =eca__ask_user= round-trip per skill invocation
+
+* Rejected alternatives
+
+| Alternative                                        | Reason for rejection / status                                              |
+|----------------------------------------------------+----------------------------------------------------------------------------|
+| Check tool catalogue for =eca__ask_user= absence  | Tool IS present in sub-agent catalogue — does not detect the silent-=""=  |
+|                                                    | failure mode                                                               |
+| Structural fix: propagate =chat:ask-question=      | Not yet implemented (2026-11-16). Requires routing the question event      |
+| from sub-agent to parent chat via =chatId=         | from =subagent-<id>= to the parent chatId in =subscribeEcaEvents=.         |
+|                                                    | When implemented, this ADR becomes **superseded** — AUTONOMOUS_MODE        |
+|                                                    | sentinel guards can be removed from all skills.                            |
+| Forbid =eca__ask_user= in all spawneable skills   | Too restrictive — interactive mode in the main chat is a valid use case    |
+
+* Lifecycle note
+
+This ADR has status =accepted= as a deliberate workaround.
+When the structural fix (=subscribeEcaEvents= sub-agent routing) is shipped,
+this ADR must be marked =superseded-by ADR-NNN= and all =AUTONOMOUS_MODE=
+sentinel patterns in skills removed or simplified.
+
+* References
+
+- =agent/kb/pitfalls.org §eca__ask_user silencieusement ignoré dans un sub-agent=
+- =agent/skills/chorus-engine.md §AUTONOMOUS_MODE= — sentinel detection pattern
+- =agent/skills/chorus-strengthen.md §Phase 4-checkpoint=
+- =agent/skills/chorus-feed.md §Phase 6.5=
+- =agent/skills/chorus-create-project.md §Phase 3 --batch-seq=
