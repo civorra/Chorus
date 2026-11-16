@@ -366,7 +366,9 @@ autonomously — the Tests tab can surface a **"⚠️ Non validé"** badge on t
 > ⛔ **Sub-agent restriction:** `eca__ask_user` called from a skill running inside
 > `eca__spawn_agent` silently returns `""` — the widget is never shown to the user.
 > Always set `AUTONOMOUS_MODE = true` when the skill detects it is running as a
-> sub-agent (see `$EAKB/pitfalls.org § eca__ask_user silencieusement ignoré`).
+> sub-agent (see `$EAKB/pitfalls.org § eca__ask_user silencieusement ignoré`
+> and **ADR-017** — AUTONOMOUS_MODE is the sanctioned workaround until the structural
+> fix ships; superseded at that point).
 
 ### Pattern A — Validation checkpoint (gate before commit)
 

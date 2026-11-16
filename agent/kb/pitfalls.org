@@ -437,6 +437,7 @@ EXCEPTION: 'not defined $w->get("link_slot")'
   :COMPONENT: chorus-web / ECA terminal
   :SEVERITY: Moyen (dégradation silencieuse, pas d'erreur)
   :DISCOVERED: 2026-10-30
+  :ADR:      ADR-017
   :END:
 
 ** Symptôme

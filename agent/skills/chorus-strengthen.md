@@ -53,6 +53,8 @@ If the checkpoint file is present, read it and display:
 ```
 
 Call `eca__ask_user` with options `["Reprendre depuis Phase 4.5", "Recommencer depuis Phase 0"]`.
+> ⚠️ Sub-agent context: if `AUTONOMOUS_MODE = true` (skill spawned via `eca__spawn_agent`),
+> skip this call and apply the default (Resume). See ADR-017.
 
 - **Reprendre** → read the checkpoint JSON into memory as the `gaps[]` array and all
   metadata fields, then jump directly to Phase 4.5 (skip task planning's Phase 0–4 tasks,
