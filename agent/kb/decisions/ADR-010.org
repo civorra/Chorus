@@ -1,0 +1,62 @@
+#+TITLE: ADR-010 — get('a b c') vs chained AUTOLOAD: distinct $SELF semantics
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+Two syntaxes exist for traversing a Frame hierarchy:
+
+#+begin_src perl
+$frame->get('slot_a slot_b slot_c')   # path form
+$frame->slot_a->slot_b->slot_c        # chained AUTOLOAD form
+#+end_src
+
+They are NOT equivalent with respect to =$SELF=:
+
+| Form               | =$SELF= during traversal                      | =_NEEDED= on intermediate frames |
+|--------------------+-----------------------------------------------+-----------------------------------|
+| =get('a b c')=     | Fixed on the **root** frame throughout        | Not evaluated                     |
+| =->a->b->c=        | Advances to each intermediate frame in turn   | Evaluated at each step            |
+
+Mechanically:
+- =get()= calls =pushself($root)= once, then =_getN($SELF, 'a b c')= navigates
+  the full path with =$SELF= fixed to the root.
+- AUTOLOAD calls =get($frame, $slotName)= at each step, pushing a new =$SELF=
+  for each intermediate frame.
+
+* Decision
+
+Both forms are maintained with their distinct and documented semantics. The
+choice between them depends on intent:
+
+- Use =get('a b c')= when the hook context must remain on the root frame
+  (=_NEEDED=, =_AFTER=, etc. should see the root as =$SELF=).
+- Use =->a->b->c= when local hook evaluation on each intermediate frame is
+  desired (each step's =_NEEDED= fires with the correct local =$SELF=).
+
+* Positive consequences
+
+- Both traversal strategies are available without introducing new syntax
+- Root-anchored traversal is efficient (single pushself/popself pair)
+
+* Negative consequences / accepted trade-offs
+
+- Refactoring one form to the other silently changes which =$SELF= is visible
+  in intermediate =_NEEDED= hooks — behaviour differs only with deep hierarchies
+  that rely on =_NEEDED= for slot derivation
+- The difference is non-obvious without reading the source
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                      |
+|--------------------------------------------------+---------------------------------------------------------------------------|
+| Unify both forms to the same =$SELF= semantics   | Would require passing context explicitly through every traversal step —   |
+|                                                  | complete rewrite of the Frame API; full backward incompatibility           |
+
+* References
+
+- =lib/Chorus/Frame.pm §get()= — =pushself($root)= + =_getN($SELF, path)=
+- =lib/Chorus/Frame.pm §AUTOLOAD= — =get($frame, $slotName)= at each step
+- =agent/kb/components.org §get() path vs AUTOLOAD — $SELF semantics=

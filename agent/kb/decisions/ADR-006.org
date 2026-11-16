@@ -1,0 +1,57 @@
+#+TITLE: ADR-006 — _RULES (master list) and _QUEUE (working copy) are strictly separate
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=applyrules()= operates on two distinct structures:
+
+- =_RULES= : master rule list, fed by =addrule()=. Never modified during =applyrules()=.
+- =_QUEUE= : working copy built at the start of each =applyrules()= call.
+  Consumed by the recursive =$apply_rec= sub.
+
+#+begin_src perl
+# Start of applyrules() — fresh copy every pass
+$SELF->{_QUEUE} = [ @{$SELF->{_RULES} || []} ];
+return $apply_rec->(shift @{$SELF->{_QUEUE}});
+#+end_src
+
+=cut()=, =last()=, =replay()=, and =replay_all()= all manipulate =_QUEUE=
+(setting it to =[]=) to interrupt the current pass. =_RULES= is never touched.
+
+* Decision
+
+Strict separation of =_RULES= (immutable master) and =_QUEUE= (consumable
+working copy) is the necessary precondition for all Chorus flow-control
+mechanisms to work correctly.
+
+Each new =applyrules()= pass starts from a fresh copy of =_RULES=, regardless
+of how the previous pass was interrupted.
+
+* Positive consequences
+
+- =cut()=, =last()=, =replay()=, =replay_all()= work at any point in the rule
+  queue without corrupting the master list
+- =reorder()= can safely re-sort =_RULES= between passes; the next
+  =applyrules()= call picks up the new order
+
+* Negative consequences / accepted trade-offs
+
+- Minor memory overhead: one array copy per =applyrules()= call
+  (reference copy — cheap in practice)
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                        |
+|--------------------------------------------------+-----------------------------------------------------------------------------|
+| Consume =_RULES= directly                        | =cut()= / =last()= / =replay()= would destroy the rule list permanently;   |
+|                                                  | next pass has no rules — silent failure, pipeline fires nothing             |
+| Shared pointer with index tracking              | Complex bookkeeping; =replay()= semantics become ambiguous                  |
+
+* References
+
+- =lib/Chorus/Engine.pm §applyrules()= — =$SELF->{_QUEUE} = [ @{$SELF->{_RULES}} ]=
+- =agent/kb/architecture.org §_RULES / _QUEUE — master list / working copy=
+- =agent/kb/components.org §Structures de données par instance=

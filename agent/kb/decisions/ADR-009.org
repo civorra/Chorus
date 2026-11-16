@@ -1,0 +1,74 @@
+#+TITLE: ADR-009 — Hashrefs passed to Frame->new() are automatically promoted to Frames; arrayrefs are not
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=Chorus::Frame->new()= calls =blessToFrame({@desc})=, which recursively
+promotes nested data structures:
+
+- Any ={}= hashref value → blessed to =Chorus::Frame= (unless =_NOFRAME= is set)
+- Any =[]= arrayref value → left as an arrayref (not promoted)
+- Hashrefs **inside** an arrayref → also promoted by =_blessToFrameRec()=
+
+#+begin_src perl
+# blessToFrame / _blessToFrameRec (Frame.pm)
+if (_isa($val, 'HASH')) {           # hash slot value → promoted
+    next if $val->{_NOFRAME};
+    bless($val, 'Chorus::Frame');
+    ...
+}
+if (_isa($_->[$idx], 'HASH')) {     # hash inside array → also promoted
+    next if exists $_->[$idx]->{_NOFRAME};
+    bless($_->[$idx], 'Chorus::Frame');
+}
+#+end_src
+
+Consequence: a ={}= passed as a slot value in =new()= becomes a Frame
+(=keys %{ $frame->{slot} }= will include =_KEY=), which causes cryptic errors
+such as =Can't use string ("rJO...") as an ARRAY ref= if the slot is later used
+as a plain hashref.
+
+* Decision
+
+Automatic promotion of hashrefs is maintained — it is the mechanism by which
+nested sub-structures become navigable Frames (enabling =get('a b c')= path
+traversal and =fmatch()= registration). Arrayrefs are intentionally not promoted
+at the top level; they represent ordered sequences, not Frame ontologies.
+
+The =_NOFRAME= flag on a hashref opts it out of promotion when a plain hashref
+is explicitly required. For pure hashrefs that must remain plain (e.g.
+=_RULE_PRODUCES=), use direct post-construction assignment:
+
+#+begin_src perl
+my $engine = Chorus::Engine->new(_RULES => []);  # [] stays arrayref — OK
+$engine->{_RULE_PRODUCES} = {};                  # direct assignment — stays plain hashref
+#+end_src
+
+* Positive consequences
+
+- Transparent nested-Frame navigation with =get('a b c')= and =fmatch()=
+- Sub-structures inherit Frame capabilities automatically
+
+* Negative consequences / accepted trade-offs
+
+- A ={}= passed accidentally becomes a Frame — cryptic errors if later used as a
+  plain hashref (=_KEY= string contaminates =keys=)
+- Hashrefs inside arrayrefs are also promoted — sometimes unexpected
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                      |
+|--------------------------------------------------+---------------------------------------------------------------------------|
+| No automatic promotion                           | Breaks =get('a b c')= path traversal; nested sub-structures would not be  |
+|                                                  | registered in =%REPOSITORY=, invisible to =fmatch()=                      |
+| Also promote arrayrefs                           | =_RULES= and =_QUEUE= would become Frames; =applyrules()= cannot iterate  |
+|                                                  | them — catastrophic breakage                                              |
+
+* References
+
+- =lib/Chorus/Frame.pm §blessToFrame()= — hashref promotion logic
+- =lib/Chorus/Frame.pm §_blessToFrameRec()= — recursive promotion including arrays
+- =agent/kb/pitfalls.org §{} passed to Frame->new() is promoted to Frame=

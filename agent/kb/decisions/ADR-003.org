@@ -1,0 +1,65 @@
+#+TITLE: ADR-003 — string eval for the cartesian product in applyrules()
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=applyrules()= generates the cartesian product of all scope variables by building
+a string =eval= that emits nested =foreach= loops with a =JUMP:= label:
+
+#+begin_src perl
+my $head = 'JUMP: { '
+         . join('', map {
+               'foreach my $k' . (++$i) . ' (@{$scope{' . $_ . '}}) '
+             . '{$opt{' . $_ . '}=$k' . $i . ';'
+           } keys %scope);
+
+my $body = '$res = do { my $_af = $rule->{_APPLY}; $_af ? $_af->(%opt) : 0 }; '
+         . 'last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or ...';
+
+my $tail = '}' x scalar(keys %scope) . '}';
+
+eval $head . $body . $tail;
+#+end_src
+
+This technique is non-standard and fragile to naive refactoring.
+
+* Decision
+
+String eval is retained for two complementary reasons.
+
+(1) Scope arity is variable at runtime — the number of =FIND= variables in a rule
+is only known when the YAML is parsed. Static pre-compiled closures cannot handle
+an arbitrary number of nested loops.
+
+(2) The =JUMP:= label enables =cut()= to exit all nested loops in one instruction
+(=last JUMP=) regardless of arity. This semantics is impossible to replicate with
+an iterator pattern or static closures.
+
+* Positive consequences
+
+- Handles any scope arity (0 to N variables) uniformly
+- =cut()=, =last()=, =replay()= work correctly at any nesting depth
+- Approximately 1 µs per rule amortised over a full cycle — negligible overhead
+
+* Negative consequences / accepted trade-offs
+
+- Opaque to a reader unfamiliar with the pattern
+- No static bytecode optimisation possible (eval compiles on every pass)
+- Errors in generated code surface at runtime, not at load time
+
+* Rejected alternatives
+
+| Alternative                              | Reason for rejection                                                      |
+|------------------------------------------+---------------------------------------------------------------------------|
+| Static nested closures                   | Fixed arity only; =cut()= via =last JUMP= is not implementable            |
+| Iterator / generator pattern             | =cut()= requires complex flag threading; object overhead per combination  |
+| Pure recursion with return flags         | =last JUMP= becomes =return= with flag — less readable, slower            |
+
+* References
+
+- =lib/Chorus/Engine.pm §applyrules()= — full string eval implementation
+- =agent/kb/architecture.org §applyrules() — Cartesian product via eval=
+- =agent/kb/components.org §applyrules algorithm=

@@ -1,0 +1,56 @@
+#+TITLE: ADR-002 — CONDITION(OR) vs filtre(AND): intentional DSL asymmetry
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: dsl
+#+ENG:
+
+* Context
+
+The Chorus YAML DSL provides two guard keywords that behave asymmetrically
+when given a list:
+
+- =CONDITION:= list → implicit OR  (=setCondition()=: =join("or", ...)=)
+- =filtre:=    list → implicit AND (=setFilter()=:    =join("and", ...)=)
+
+=pitfalls.org= documents them separately as "Counter-intuitive" and "Asymmetric"
+without explaining that the asymmetry is deliberate and semantically coherent.
+
+* Decision
+
+The asymmetry is intentional and semantically correct.
+
+=filtre:= is a **restrictive pre-filter** on the scope: each expression narrows
+the set of candidate frames passed to =_APPLY=. Multiple filters must all be
+true for a candidate to be retained → AND logic.
+
+=CONDITION:= is a **disjunction of application cases** for the same rule: the
+rule applies if one OR another condition holds (case A or case B both trigger
+the same action) → OR logic.
+
+* Positive consequences
+
+- Natural expressiveness: =filtre= restricts, =CONDITION= broadens
+- No explicit operators to learn — semantics follow from keyword position
+- Aligns with the intended use: =filtre= lives inside =FIND=, =CONDITION= is
+  a rule-level guard applied after scope resolution
+
+* Negative consequences / accepted trade-offs
+
+- Learning curve: the two keywords appear symmetric but have opposite semantics
+- Silent over-permissiveness risk: an accidental AND-intended =CONDITION= list
+  fires on any single condition — too broad
+
+* Rejected alternatives
+
+| Alternative                              | Reason for rejection                                           |
+|------------------------------------------+----------------------------------------------------------------|
+| Unify everything as AND                  | =CONDITION= loses its multi-case expressiveness                |
+| Unify everything as OR                   | =filtre= can no longer restrictively narrow a candidate list   |
+| Explicit =AND:/OR:= operators            | DSL bloat; breaks all existing YAML rules                      |
+
+* References
+
+- =lib/Chorus/Engine.pm §setCondition()= — =join("\n      or ", ...)=
+- =lib/Chorus/Engine.pm §setFilter()= — =join(' and ', ...)=
+- =agent/kb/pitfalls.org §CONDITION multiple: implicit OR=
+- =agent/kb/pitfalls.org §filtre: multiple: implicit AND=

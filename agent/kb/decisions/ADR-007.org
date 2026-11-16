@@ -1,0 +1,67 @@
+#+TITLE: ADR-007 — Chorus::Expert::new() ignores all its arguments (deliberate asymmetry with Engine)
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=Chorus::Engine->new()= creates a Frame inheriting from the =$ENGINE= prototype
+and accepts named arguments (=_IDENT=, =_MAX_CYCLES=, etc.).
+
+=Chorus::Expert->new()= does the following and nothing more:
+
+#+begin_src perl
+sub new {
+  my $class = shift;
+  return bless {
+    _agents => [],
+    _board  => Chorus::Frame->new(),
+  }, $class;
+}
+#+end_src
+
+All arguments are silently discarded. =_MAX_ITER= must be set by direct
+assignment after construction:
+
+#+begin_src perl
+my $xprt = Chorus::Expert->new();
+$xprt->{_MAX_ITER} = 50_000;   # mandatory — new() does not accept this
+#+end_src
+
+* Decision
+
+=Chorus::Expert= is intentionally a plain blessed hashref, not a Frame. It
+orchestrates agents without participating in inference and has no need for
+Frame mechanisms (=fmatch=, inheritance, =set/get=, slot hooks).
+
+Accepting arguments in =new()= would create a false symmetry with
+=Chorus::Engine= and mask the direct-assignment convention required for
+=_MAX_ITER= and other overrides.
+
+* Positive consequences
+
+- Clear architectural boundary: =Engine= is a Frame (inference participant);
+  =Expert= is a coordinator (plain object)
+- No risk of Frame-level mechanisms (=fmatch=, =_AFTER= hooks) inadvertently
+  firing on the =Expert= instance
+
+* Negative consequences / accepted trade-offs
+
+- =new(_MAX_ITER => X)= silently does nothing — documented pitfall
+- Asymmetry with =Engine= constructor is not obvious from the API surface
+
+* Rejected alternatives
+
+| Alternative                                        | Reason for rejection                                                      |
+|----------------------------------------------------+---------------------------------------------------------------------------|
+| Make =Expert= inherit from =$ENGINE=               | Gives =process()= access to =cut=, =solved=… with ambiguous =$SELF=;     |
+|                                                    | unintended coupling between orchestrator and inference engine              |
+| Accept arguments in =new()=                        | False symmetry; impossible to migrate without breaking direct-assignment   |
+|                                                    | patterns already in use across all existing sandboxes                     |
+
+* References
+
+- =lib/Chorus/Expert.pm §new()= — =bless { _agents => [], _board => ... }, $class=
+- =agent/kb/pitfalls.org §_MAX_ITER ignored by Chorus::Expert->new()=
+- =agent/kb/components.org §Chorus::Expert= — ⚠️ blessed hashref, not a Frame

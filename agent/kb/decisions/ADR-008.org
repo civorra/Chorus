@@ -1,0 +1,61 @@
+#+TITLE: ADR-008 — BOARD->{SOLVED} and BOARD->{FAILED} are deleted by process() before returning
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=process()= deletes both termination flags from the shared BOARD before
+returning to the caller:
+
+#+begin_src perl
+($board->delete('SOLVED'), return 1) if $board->{SOLVED};
+($board->delete('FAILED'), return  ) if $board->{FAILED};
+#+end_src
+
+After =process()= returns, testing =$agent->BOARD->SOLVED= always returns
+=undef= — even when the pipeline succeeded.
+
+The correct pattern is to use the return value of =process()= itself:
+
+#+begin_src perl
+my $ok = $xprt->process();
+if ($ok) { ... }   # pipeline solved
+else      { ... }  # failed or max-iter exceeded
+#+end_src
+
+Domain results must be published on custom BOARD slots inside the terminating
+rule — these slots are not deleted by =process()=.
+
+* Decision
+
+Cleanup of =SOLVED= / =FAILED= before return is deliberate. It allows the same
+=Chorus::Expert= instance to be reused across multiple =process()= calls without
+stale termination flags interfering. Without this cleanup, a second call to
+=process()= would find =BOARD->{SOLVED}= already set and terminate immediately
+without running any agent.
+
+* Positive consequences
+
+- Expert instances are safely reusable across multiple pipeline runs
+- Unit tests can call =process()= repeatedly on the same expert instance
+
+* Negative consequences / accepted trade-offs
+
+- Counter-intuitive: checking =BOARD->{SOLVED}= after =process()= always returns
+  undef — callers must rely on the return value instead
+- Domain results that must survive across calls must use dedicated BOARD slots
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                      |
+|--------------------------------------------------+---------------------------------------------------------------------------|
+| Leave flags on BOARD after return                | Multi-pass pipelines and unit tests break silently on second call         |
+| Explicit =reset()= method                        | Easy to forget; API becomes more complex without added safety             |
+
+* References
+
+- =lib/Chorus/Expert.pm §process()= — delete before return
+- =agent/kb/pitfalls.org §BOARD->{SOLVED} and BOARD->{FAILED} deleted after process()=
+- =agent/kb/components.org §Chorus::Expert — Comportement de process()=

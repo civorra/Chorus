@@ -5,16 +5,16 @@
 
 | ID      | Titre                                                              | Statut   | Domaine       | Priorité | ENG     |
 |---------+--------------------------------------------------------------------+----------+---------------+----------+---------|
-| ADR-001 | =PREMISES= : tags booléens pour =reorder()= exclusivement         | proposed | dsl · engine  | haute    | ENG-047 |
-| ADR-002 | =CONDITION=(OR) vs =filtre=(AND) — asymétrie DSL intentionnelle   | proposed | dsl           | haute    | —       |
-| ADR-003 | =string eval= pour le produit cartésien dans =applyrules()=       | proposed | engine        | haute    | —       |
-| ADR-004 | Politique KB org ↔ YAML sync : seul V1 (=chorus-feed=) automatique | proposed | skills        | haute    | ENG-041 |
-| ADR-005 | =$SELF= = moteur dans ACTION (coderef pur, jamais dispatch Frame)  | proposed | engine        | haute    | —       |
-| ADR-006 | =_RULES= / =_QUEUE= : liste maître vs copie de travail            | proposed | engine        | haute    | —       |
-| ADR-007 | =Expert::new()= ignore ses arguments (asymétrie délibérée)        | proposed | engine        | haute    | —       |
-| ADR-008 | =BOARD->{SOLVED/FAILED}= supprimés par =process()= avant retour   | proposed | engine        | haute    | —       |
-| ADR-009 | Promotion ={}= → Frame automatique (arrayrefs non promus)         | proposed | engine        | haute    | —       |
-| ADR-010 | =get('a b c')= vs AUTOLOAD chaîné : sémantique =$SELF= différente | proposed | engine        | haute    | —       |
+| ADR-001 | =PREMISES=: boolean tag system for =reorder()= only               | accepted | dsl · engine  | haute    | ENG-047 |
+| ADR-002 | =CONDITION=(OR) vs =filtre=(AND) — intentional DSL asymmetry      | accepted | dsl           | haute    | —       |
+| ADR-003 | =string eval= for the cartesian product in =applyrules()=         | accepted | engine        | haute    | —       |
+| ADR-004 | KB org ↔ YAML sync policy: only V1 (=chorus-feed=) is automatic   | accepted | skills        | haute    | ENG-041 |
+| ADR-005 | =$SELF= always points to the engine inside an ACTION block        | accepted | engine        | haute    | —       |
+| ADR-006 | =_RULES= / =_QUEUE= strictly separate (master vs working copy)    | accepted | engine        | haute    | —       |
+| ADR-007 | =Expert::new()= ignores all arguments (deliberate asymmetry)      | accepted | engine        | haute    | —       |
+| ADR-008 | =BOARD->{SOLVED/FAILED}= deleted by =process()= before return     | accepted | engine        | haute    | —       |
+| ADR-009 | Hashrefs promoted to Frame automatically; arrayrefs are not       | accepted | engine        | haute    | —       |
+| ADR-010 | =get('a b c')= vs chained AUTOLOAD: distinct =$SELF= semantics    | accepted | engine        | haute    | —       |
 | ADR-011 | Modes N/Z d'héritage : flag global, pas per-Frame                 | proposed | engine        | moyenne  | —       |
 | ADR-012 | =_CYCLE= / =_SUCCES= : compteurs intra-=loop()=, non cumulatifs   | proposed | engine        | moyenne  | —       |
 | ADR-013 | =fmatch()= via =%REPOSITORY= uniquement (contrat avec =set()=)    | proposed | engine        | moyenne  | —       |

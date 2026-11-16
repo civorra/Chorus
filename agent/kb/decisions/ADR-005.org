@@ -1,0 +1,56 @@
+#+TITLE: ADR-005 — $SELF always points to the engine inside an ACTION block
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+Before v2.01, =applyrules()= invoked =_APPLY= via Frame dispatch (=$rule->_APPLY=),
+which triggered =pushself($rule)= and set =$SELF= to the rule Frame during the
+entire ACTION execution.
+
+Consequence: =$SELF->solved()=, =$SELF->cut()=, =$SELF->last()= etc. inside a
+YAML =ACTION:= block were silent no-ops — the rule Frame does not inherit these
+engine methods. Any pipeline that relied on inline termination simply never
+terminated. No error was raised.
+
+* Decision
+
+Since v2.01, =_APPLY= is called as a plain coderef:
+
+#+begin_src perl
+my $_af = $rule->{_APPLY};
+$res = $_af ? $_af->(%opt) : 0;
+#+end_src
+
+=$SELF= remains the engine instance throughout the ACTION block. =$SELF->solved()=,
+=cut()=, =last()=, =replay()=, =replay_all()= all work correctly from inside YAML
+rules.
+
+* Positive consequences
+
+- Inline termination (=$SELF->solved()= in ACTION) works as expected
+- No difference in behaviour between YAML =TERMINAL: solved= and inline
+  =$SELF->solved() if ...= — both are valid and equivalent
+- Eliminates an entire class of silent pipeline hangs
+
+* Negative consequences / accepted trade-offs
+
+- =_APPLY= must be a plain coderef — it cannot be a Frame slot with
+  automatic dispatch
+- The rule Frame itself is not accessible as =$SELF= during ACTION
+  (use =$SELF->BOARD= or closure-captured variables instead)
+
+* Rejected alternatives
+
+| Alternative                                        | Reason for rejection                                                        |
+|----------------------------------------------------+-----------------------------------------------------------------------------|
+| Keep Frame dispatch (=$rule->_APPLY=)              | =$SELF->solved()= and control flow methods are silent no-ops in rules       |
+| Inject engine explicitly as parameter to =_APPLY=  | Breaks =_APPLY= call signature; migration of all existing sandboxes needed  |
+
+* References
+
+- =lib/Chorus/Engine.pm §applyrules()= — coderef call: =my $_af = $rule->{_APPLY}=
+- =agent/kb/pitfalls.org §_APPLY called as coderef, not Frame dispatch=
+- =agent/kb/architecture.org §$SELF — global context variable=

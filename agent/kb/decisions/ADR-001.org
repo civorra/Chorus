@@ -1,0 +1,58 @@
+#+TITLE: ADR-001 — PREMISES: boolean tag system for reorder() only
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: dsl · engine
+#+ENG: ENG-047
+
+* Context
+
+=PREMISES= / =PREMISSES= is declared in YAML as a list of slot names
+(bare Perl identifiers only). =codeRule()= compiles each item into
+=slot => 'Y'= inside =_PREMISSES => {...}= on the rule Frame:
+
+#+begin_src perl
+# YAML: PREMISES: [algo_chiffrement, longueur_cle]
+# compiled by codeRule() into:
+_PREMISSES => { algo_chiffrement => 'Y', longueur_cle => 'Y' }
+#+end_src
+
+=applyrules()= never reads =_PREMISSES=. The only consumption point is a
+comparator passed to =reorder()=, which tests =$rule->{_PREMISSES}{slot_name}=
+as a boolean to sort rules.
+
+* Decision
+
+=PREMISES= is a boolean tag system on rules, exploitable only by a comparator
+passed to =reorder()=. Outside a =reorder()= call, =PREMISES= is completely
+inert — omitting it entirely is the recommended practice.
+Prerequisite logic (firing conditions) belongs in =CONDITION=, never in =PREMISES=.
+
+* Positive consequences
+
+- Allows rules to be dynamically reordered based on domain context
+  (e.g. after detecting an input type, prioritise the relevant rules)
+- Declarative tags, readable in YAML, independent of execution logic
+
+* Negative consequences / accepted trade-offs
+
+- Surprising for developers coming from Prolog/CLIPS where premises actually
+  gate rule firing
+- ENG-047 risk: Perl expressions in =PREMISES= (e.g. =defined $f->{x}=) compile
+  without error but are silently ignored — =codeRule()= treats them as bareword
+  slot names, causing a parse error at eval time or producing an unusable key
+
+* Rejected alternatives
+
+| Alternative                                  | Reason for rejection                                           |
+|----------------------------------------------+----------------------------------------------------------------|
+| Remove =PREMISES= entirely                   | Loses the =reorder()= mechanism                                |
+| Consume =_PREMISSES= in =applyrules()=       | Functional overlap with =CONDITION=; breaks backward compat.  |
+| Rename to =TAGS= or =LABELS=                 | DSL break; migration of all existing sandboxes required        |
+
+* References
+
+- =lib/Chorus/Engine.pm §codeRule()= — compiles =PREMISES= into =_PREMISSES=
+- =lib/Chorus/Engine.pm §reorderRules()= — only consumer of =_PREMISSES=
+- =agent/kb/pitfalls.org §_PREMISSES declared in YAML but ignored=
+- =agent/skills/chorus-engine-yaml.md §PREMISES=
+- ENG-047 — Perl expressions in PREMISES pitfall

@@ -1,0 +1,59 @@
+#+TITLE: ADR-004 — KB org ↔ YAML sync policy: only V1 (chorus-feed) is automatic
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: skills · pipeline
+#+ENG: ENG-041
+
+* Context
+
+Four vectors can modify YAML rules without updating the corresponding =.org= agent
+file (the canonical source of truth):
+
+| Vector | Triggered by             | Updates .org? |
+|--------+--------------------------+---------------|
+| V1     | =chorus-feed= Mode A/B   | ✅ yes        |
+| V2     | =chorus-check= Phase 1.5 | ❌ no         |
+| V3     | =chorus-fix= Bucket B    | ❌ no         |
+| V4     | Direct edit              | ❌ no         |
+
+Only V1 maintains the sync automatically (ENG-041).
+
+* Decision
+
+V2 and V3 do not maintain KB ↔ YAML sync because they apply the
+single-responsibility principle.
+
+=chorus-check= validates a project against an existing KB — it does not know the
+normative intent behind each rule and cannot reconstruct it.
+
+=chorus-fix= corrects syntactic issues — it has no access to the corpus that
+justified the rule's logic.
+
+Only =chorus-feed= has both the corpus and the full context needed to update the
+=.org= file reliably. V4 (direct edit) is under operator responsibility, governed
+by the convention documented in =AGENTS.md=.
+
+* Positive consequences
+
+- Clear single-responsibility boundary for each skill
+- No risk of =.org= files being silently overwritten with incomplete context
+- =chorus-feed= remains the single authoritative KB init/update path
+
+* Negative consequences / accepted trade-offs
+
+- Desynchronisation is possible after V2/V3/V4 without operator discipline
+- V4 requires explicit operator action to keep =.org= in sync
+- ENG-041 plans =.kb-hash= to detect drift automatically — not yet implemented
+
+* Rejected alternatives
+
+| Alternative                               | Reason for rejection                                                      |
+|-------------------------------------------+---------------------------------------------------------------------------|
+| Auto-sync in V2/V3                        | Risk of overwriting =.org= with incomplete context (no corpus access)     |
+| Mandatory manual sync after every change  | Too costly; not scalable across multiple sandboxes                        |
+
+* References
+
+- =AGENTS.md §KB org ↔ YAML sync= — operational rule for V4
+- ENG-041 — desynchronisation vectors and future =.kb-hash= guard
+- =agent/skills/chorus-audit-rules.md= — post-feed audit gate
