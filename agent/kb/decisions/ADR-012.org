@@ -1,0 +1,66 @@
+#+TITLE: ADR-012 — _CYCLE and _SUCCES are intra-loop counters, not cumulative
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=loop()= resets both counters unconditionally at the start of every call:
+
+#+begin_src perl
+loop => sub {
+    $SELF->{_SUCCES} = 0;
+    $SELF->{_CYCLE}  = 0;
+    my $max = $SELF->get('_MAX_CYCLES') // 10_000;
+    while ( applyrules() ) {
+        ...
+        ++$SELF->{_CYCLE};
+    }
+},
+#+end_src
+
+=_CYCLE= counts the number of =applyrules()= passes within the current =loop()=
+call, not the total passes over the agent's lifetime.
+=_SUCCES= is =1= if at least one rule fired in the current pass, =0= otherwise —
+it drives the =while (applyrules())= convergence test.
+
+* Decision
+
+Both counters are intentionally intra-=loop()= and non-cumulative.
+
+=_SUCCES= must start at =0= each time =loop()= is called so that the
+=while= condition correctly detects a pass with no firings (convergence
+reached). A cumulative =_SUCCES= would always remain truthy after the first
+firing — infinite loop.
+
+=_CYCLE= measures progress within the current loop invocation, which is the
+only meaningful scope for cycle-based logic inside a rule's =_APPLY=.
+
+* Positive consequences
+
+- Convergence detection is correct on every =loop()= call regardless of history
+- Rules can safely read =_CYCLE= to know how many passes have elapsed
+  in the current loop invocation
+
+* Negative consequences / accepted trade-offs
+
+- Reading =_CYCLE= after =loop()= returns to count total lifetime passes
+  always gives the count of the last call only — misleading if misused
+- No built-in lifetime cycle counter; callers that need one must accumulate
+  into a custom BOARD slot from within a rule
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                        |
+|--------------------------------------------------+-----------------------------------------------------------------------------|
+| Cumulative =_SUCCES=                             | Always truthy after first firing → =while (applyrules())= never exits →    |
+|                                                  | infinite loop on every pipeline run                                         |
+| Separate =_SUCCES_TOTAL= alongside reset =_SUCCES= | Added complexity; the use case (lifetime stats) belongs in domain rules,  |
+|                                                  | not the engine                                                              |
+
+* References
+
+- =lib/Chorus/Engine.pm §loop()= — reset at entry
+- =agent/kb/pitfalls.org §_CYCLE et _SUCCES remis à 0 à chaque loop()=
+- =agent/kb/components.org §Sémantique de _CYCLE et _SUCCES=

@@ -1,0 +1,61 @@
+#+TITLE: ADR-016 — *_ref fields must never appear in %SLOTS_REQUIS (backward-compatibility)
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: pipeline
+#+ENG:
+
+* Context
+
+=Feed.pm= validates incoming project JSON elements against =%SLOTS_REQUIS=,
+a map of mandatory slots per element type. Any slot listed there causes a
+=warn + next= (element silently skipped) when absent from the JSON.
+
+=*_ref= fields (e.g. =supports_ref=, =building_ref=) are optional inter-Frame
+link fields added by Pattern A (see =chorus-engine-infra.md §Relations inter-frames=).
+They are present only in project documents derived from BIM data or engineering
+drawings — they are absent from all project JSONs produced before the inter-Frame
+feature was introduced.
+
+If a =*_ref= field appears in =%SLOTS_REQUIS=, every pre-existing project JSON
+is silently rejected: the pipeline runs to completion, the report is empty,
+conformance is 0% — with no error message.
+
+* Decision
+
+=*_ref= fields must never be listed in =%SLOTS_REQUIS=. They are always optional.
+Rules that use an inter-Frame link must provide either a fallback to a direct
+slot (Option A) or an =EXCEPTION= guard that skips the rule when the link is
+absent (Option B):
+
+#+begin_src perl
+# Option A — fallback to direct slot
+my $target = $f->get('link_slot');
+my $val = $target ? $target->get('remote_slot') : $f->get('local_fallback');
+
+# Option B — skip rule if link absent
+# EXCEPTION: 'not defined $f->get("link_slot")'
+#+end_src
+
+* Positive consequences
+
+- All project JSONs produced before the inter-Frame feature remain valid
+- Adding inter-Frame support to a sandbox is a non-breaking change
+
+* Negative consequences / accepted trade-offs
+
+- Every rule using a =*_ref= link must explicitly handle the absent-link case
+- Rules become slightly more verbose (fallback or guard on every inter-Frame access)
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                        |
+|--------------------------------------------------+-----------------------------------------------------------------------------|
+| Add =*_ref= to =%SLOTS_REQUIS= for completeness  | Silently breaks all pre-existing project JSONs — empty reports, 0%         |
+|                                                  | conformance, no error raised — catastrophic backward incompatibility        |
+| Separate "required" vs "optional" in SLOTS_REQUIS | Added complexity for a case already handled by EXCEPTION guards in rules   |
+
+* References
+
+- =agent/skills/chorus-engine-infra.md §*_ref fields OPTIONAL in %SLOTS_REQUIS=
+- =agent/kb/pitfalls.org §*_ref dans %SLOTS_REQUIS — rupture de rétrocompatibilité=
+- =agent/kb/architecture.org §Relations inter-frames — Rétrocompatibilité=

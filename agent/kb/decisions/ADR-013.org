@@ -1,0 +1,78 @@
+#+TITLE: ADR-013 — fmatch() uses %REPOSITORY only — strict contract with set()
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=fmatch()= finds all Frames providing a given slot by going through the
+internal registry =%REPOSITORY=, never by scanning Frame hashes directly:
+
+#+begin_src perl
+# _hasSlot() — direct providers from %REPOSITORY
+sub _hasSlot {
+  my ($slot) = @_;
+  return map { $FMAP{$_} || () } keys(%{$REPOSITORY{$slot}});
+}
+
+# _framesProvidingSlot() — direct providers + inheriting frames + memoization
+sub _framesProvidingSlot {
+  my ($slot) = @_;
+  return $FPS_CACHE{$slot} if exists $FPS_CACHE{$slot};  # O(1) cache hit
+  my @res = _hasSlot($slot);                             # O(1) registry lookup
+  ...                                                    # _wholeTree() walk for inheritors
+  $FPS_CACHE{$slot} = $result;
+  return $result;
+}
+#+end_src
+
+=%REPOSITORY= is updated by =set()= only — a direct hash assignment
+(=$frame->{slot} = val=) bypasses the registry entirely.
+
+* Decision
+
+=fmatch()= operates exclusively via =%REPOSITORY= for two reasons.
+
+(1) Performance: the =%REPOSITORY= direct lookup is O(1). After the first call
+for a given slot, =%FPS_CACHE= memoizes the result — subsequent calls are O(1)
+amortised, regardless of sandbox size. ⚠️ The first call with a deep inheritance
+tree triggers a =_wholeTree()= walk (O(providers + inheritors)) before caching.
+
+(2) Consistency: a Frame is "visible" to =fmatch()= only if its slots were
+registered. This makes visibility explicit and predictable — =set()= is the
+contract.
+
+The mandatory corollary: always use =$frame->set(slot, val)= to write domain
+slots. Never use =$frame->{slot} = val= in rule ACTION blocks.
+
+* Positive consequences
+
+- O(1) amortised lookup on any sandbox size (memoized after first call)
+- Predictable visibility: a Frame appears in =fmatch()= results iff it was
+  registered with =set()=
+
+* Negative consequences / accepted trade-offs
+
+- First =fmatch()= call on a heavily-inherited slot may be expensive
+  (=_wholeTree()= walk) — cached on subsequent calls
+- Direct hash assignment =$frame->{slot} = val= is a silent trap:
+  the slot is not registered, =fmatch()= will never return that Frame
+  (documented in =pitfalls.org=)
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                      |
+|--------------------------------------------------+---------------------------------------------------------------------------|
+| Scan all Frame hashes on every =fmatch()= call   | O(n) over all registered Frames — with 10 k frames at ~30 ms/cycle,     |
+|                                                  | each =fmatch()= inside a rule would stall the pipeline                    |
+| Auto-register direct hash assignments            | Would require overloading =%{}= on every Frame — Perl performance cliff;  |
+|                                                  | makes the Frame/hashref boundary opaque                                   |
+
+* References
+
+- =lib/Chorus/Frame.pm §fmatch()= — registry-only lookup
+- =lib/Chorus/Frame.pm §_framesProvidingSlot()= — =%FPS_CACHE= memoization
+- =lib/Chorus/Frame.pm §_hasSlot()= — =%REPOSITORY= direct lookup
+- =agent/kb/pitfalls.org §fmatch() ne voit pas les slots posés après new()=
+- =agent/kb/components.org §fmatch()= — O(1) complexity note

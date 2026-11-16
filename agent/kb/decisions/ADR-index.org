@@ -15,12 +15,12 @@
 | ADR-008 | =BOARD->{SOLVED/FAILED}= deleted by =process()= before return     | accepted | engine        | haute    | —       |
 | ADR-009 | Hashrefs promoted to Frame automatically; arrayrefs are not       | accepted | engine        | haute    | —       |
 | ADR-010 | =get('a b c')= vs chained AUTOLOAD: distinct =$SELF= semantics    | accepted | engine        | haute    | —       |
-| ADR-011 | Modes N/Z d'héritage : flag global, pas per-Frame                 | proposed | engine        | moyenne  | —       |
-| ADR-012 | =_CYCLE= / =_SUCCES= : compteurs intra-=loop()=, non cumulatifs   | proposed | engine        | moyenne  | —       |
-| ADR-013 | =fmatch()= via =%REPOSITORY= uniquement (contrat avec =set()=)    | proposed | engine        | moyenne  | —       |
-| ADR-014 | =_LOCK_UNTIL_STABLE= : skip si agent précédent a tiré             | proposed | engine        | moyenne  | —       |
-| ADR-015 | Pattern B =_ISA= : =$inject_isa= obligatoire dans les deux passes | proposed | pipeline      | moyenne  | —       |
-| ADR-016 | Champs =*_ref= bannis de =%SLOTS_REQUIS= (rétrocompatibilité)     | proposed | pipeline      | moyenne  | —       |
+| ADR-011 | Inheritance modes N/Z: global flag, not per-Frame                 | accepted | engine        | moyenne  | —       |
+| ADR-012 | =_CYCLE= / =_SUCCES=: intra-=loop()= counters, not cumulative     | accepted | engine        | moyenne  | —       |
+| ADR-013 | =fmatch()= via =%REPOSITORY= only — strict contract with =set()=  | accepted | engine        | moyenne  | —       |
+| ADR-014 | =_LOCK_UNTIL_STABLE=: skip if a preceding agent has fired         | accepted | engine        | moyenne  | —       |
+| ADR-015 | Pattern B =_ISA=: =$inject_isa= required in both Feed.pm passes   | accepted | pipeline      | moyenne  | —       |
+| ADR-016 | =*_ref= fields must never appear in =%SLOTS_REQUIS=               | accepted | pipeline      | moyenne  | —       |
 | ADR-017 | =eca__ask_user= non fiable en sub-agent → =AUTONOMOUS_MODE=       | proposed | skills        | basse    | —       |
 | ADR-018 | =Engine= est une Frame ; =Expert= est un blessed hashref          | proposed | engine        | basse    | —       |
 | ADR-019 | Distribution CPAN nommée =Chorus= (pas =Chorus-Engine=) dès v2.01 | proposed | cpan          | basse    | —       |

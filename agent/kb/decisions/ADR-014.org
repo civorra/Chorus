@@ -1,0 +1,64 @@
+#+TITLE: ADR-014 — _LOCK_UNTIL_STABLE skips an agent only when a preceding agent has fired
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+An agent tagged with =_LOCK_UNTIL_STABLE= is skipped in the current iteration
+of =process()= if any **earlier** agent (already iterated in the same pass) has
+=_SUCCES= set:
+
+#+begin_src perl
+for my $agent (@$agents) {
+    if ($agent->_LOCK_UNTIL_STABLE) {
+        last if grep { $_->_SUCCES } @processed;  # @processed = earlier agents only
+    }
+    do { $agent->loop() } while $agent->_REPLAY;
+    push @processed, $agent;
+    ...
+}
+#+end_src
+
+The check is against =@processed= — agents iterated **before** the locked
+agent in the current pass, not all agents in the pipeline.
+
+* Decision
+
+The "earlier agents only" semantics are intentional. The locked agent is
+placed last in the registration order. It runs only when all upstream agents
+have exhausted their rules in the current iteration (none of them fired),
+meaning the system has stabilised from their perspective.
+
+This implements ordered sequencing without explicit coupling: a final
+aggregation or validation agent waits for the upstream agents to converge
+before consuming their output.
+
+* Positive consequences
+
+- Clean priority-based sequencing without explicit inter-agent communication
+- The locked agent always reads fully-computed upstream results
+- Placement in =register()= order is the only configuration needed
+
+* Negative consequences / accepted trade-offs
+
+- Semantics depend on registration order — inserting an agent before the
+  locked one changes behaviour silently
+- An agent inserted *after* the locked one does not benefit from the lock —
+  "later agents" are never checked
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                      |
+|--------------------------------------------------+---------------------------------------------------------------------------|
+| Skip if *any* agent (earlier or later) has fired | Later agents may not have run yet — semantics become unpredictable on     |
+|                                                  | multi-agent pipelines; aggregation agents read partial results            |
+| Explicit dependency declarations                 | More expressive but requires a dependency graph, topological sort, and    |
+|                                                  | significant engine complexity for a relatively rare use case              |
+
+* References
+
+- =lib/Chorus/Expert.pm §process()= — =last if grep { $_->_SUCCES } @processed=
+- =agent/kb/components.org §_LOCK_UNTIL_STABLE — synchronisation d'agents=
+- =agent/kb/architecture.org §Boucle process() — Expert orchestration=

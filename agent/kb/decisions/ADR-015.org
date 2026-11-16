@@ -1,0 +1,70 @@
+#+TITLE: ADR-015 — Pattern B (_ISA prototypes): $inject_isa must be called in both Feed.pm passes
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: pipeline
+#+ENG:
+
+* Context
+
+Pattern B uses a catalogue of prototype Frames (Minsky-style) that carry
+normative thresholds. Each domain Frame inherits from the matching prototype
+via =_ISA=. =Feed.pm= loads elements in two passes:
+
+- Pass 1 — elements whose JSON does not contain any =*_ref= field
+- Pass 2 — elements whose JSON contains at least one =*_ref= field
+  (inter-Frame links resolved in this pass)
+
+The closure =$inject_isa= (which calls =fselect()= on the catalogue and sets
+=_ISA= via =_inherits()=) must be called for every Frame in **both** passes.
+
+If =$inject_isa= is called only in pass 2 (a natural-looking DRY refactoring),
+all elements loaded in pass 1 never receive their =_ISA= prototype. Rules that
+read threshold slots via inheritance (=$f->get('threshold_slot')=) silently
+get =undef= or the engine default instead of the normative value — false-positive
+verdicts with no error raised.
+
+* Decision
+
+Call =$inject_isa= in both passes. The operation is idempotent: calling it
+twice on the same Frame is harmless (=_inherits()= checks for duplicate =_ISA=).
+The slight code duplication is intentional and explicitly required.
+
+#+begin_src perl
+# Pass 1 — elements without *_ref
+for my $id (grep { !$slots{supports_ref} } @ids) {
+    my $frame = Chorus::Frame->new(%slots);
+    $inject_isa->(\%slots);    # ← mandatory here too
+}
+
+# Pass 2 — elements with *_ref (reference resolution)
+for my $id (@ids) {
+    $inject_isa->(\%slots);    # ← idempotent second call
+    # ... resolve *_ref links ...
+}
+#+end_src
+
+* Positive consequences
+
+- All Frames receive their normative prototype regardless of whether they
+  carry inter-Frame links
+- Threshold inheritance is correct on the first =chorus-check= run
+
+* Negative consequences / accepted trade-offs
+
+- Apparent code duplication — the developer instinct to DRY is the
+  exact trap this ADR documents
+
+* Rejected alternatives
+
+| Alternative                              | Reason for rejection                                                        |
+|------------------------------------------+-----------------------------------------------------------------------------|
+| Call =$inject_isa= in pass 2 only        | Pass-1 elements never get their =_ISA= → silent wrong verdicts on          |
+|                                          | threshold rules — no error, just incorrect results                          |
+| Single-pass loading                      | =*_ref= links require the target Frame to already exist; two passes are      |
+|                                          | structurally necessary for forward-reference resolution                      |
+
+* References
+
+- =agent/skills/chorus-engine-infra.md §$inject_isa closure= — called in both passes
+- =agent/kb/pitfalls.org §Pattern B (_ISA prototypes) : $inject_isa dans une seule passe=
+- =agent/kb/architecture.org §Relations inter-frames — Pattern B=

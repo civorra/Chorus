@@ -1,0 +1,65 @@
+#+TITLE: ADR-011 — Inheritance modes N and Z are a global flag, not per-Frame
+#+DATE: 2026-11-16
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=Chorus::Frame= supports two strategies for resolving =get()= across an
+inheritance tree. The active mode is controlled by a single package-level
+lexical variable:
+
+#+begin_src perl
+my $getMode = MODE_N;   # default — package-level, not per-Frame
+
+sub get {
+  pushself(shift);
+  my $res = $getMode == MODE_N ? _getN($SELF, @_) : _getZ($SELF, @_);
+  popself();
+  return $res;
+}
+#+end_src
+
+Switching modes with =setMode()= affects every =get()= call in the entire
+process from that point forward:
+
+#+begin_src perl
+Chorus::Frame::setMode(GET => 'Z');  # switches ALL frames globally
+Chorus::Frame::setMode(GET => 'N');  # restore default
+#+end_src
+
+There is no per-Frame mode setting.
+
+* Decision
+
+The global flag is deliberate. It allows =get()= to dispatch to =_getN= or
+=_getZ= with a single comparison — no per-instance overhead on every slot
+access. Mode switches are rare (at most once per pipeline run, in test harnesses
+between scenarios); the global cost is acceptable.
+
+* Positive consequences
+
+- Zero per-Frame overhead on =get()= for mode selection
+- =_reset()= restores mode N automatically between test cases
+
+* Negative consequences / accepted trade-offs
+
+- Calling =setMode('Z')= in one test case without restoring =N= corrupts
+  all subsequent =get()= calls in the same process — a silent, hard-to-diagnose
+  behaviour change
+- No per-agent or per-rule mode isolation is possible
+
+* Rejected alternatives
+
+| Alternative                                      | Reason for rejection                                                        |
+|--------------------------------------------------+-----------------------------------------------------------------------------|
+| Per-Frame mode flag                              | Per-instance check on every =get()= call — overhead on the hot path        |
+| Per-call mode parameter (=get($slot, mode=>'Z')=) | Breaks the entire existing =get()= call surface; migration impossible      |
+
+* References
+
+- =lib/Chorus/Frame.pm §setMode()= — =my $getMode = MODE_N= package variable
+- =lib/Chorus/Frame.pm §get()= — =_getN= / =_getZ= dispatch
+- =agent/kb/components.org §Modes d'héritage N et Z=
+- =agent/kb/components.org §Chorus::Frame — Inheritance Modes N & Z=
