@@ -1,7 +1,8 @@
 # Skill — chorus-create-project
 
-> **⚠️ Ce skill fait 1925 lignes et 4 modes (`--batch` · `--batch-seq` · `--strategy` · défaut) — lire en entier avant tout plan.**
-> **Phases NON-OPTIONAL : Phase 5 validation JSON (verdicts attendus · slots requis) · Phase README.org**
+> **⚠️ Ce skill fait ~1291 lignes et 4 modes (`--batch` · `--batch-seq` · `--strategy` · défaut) — lire en entier avant tout plan.**
+> **Phases NON-OPTIONAL : Phase 5 validation statique JSON (ENG-060 — ⛔ JAMAIS `perl run.pl`) · Phase README.org**
+> **→ `chorus-check --all` est la SEULE étape qui valide les `expected_verdict` en exécutant le pipeline.**
 > **→ Créer un plan `eca__task` adapté au mode détecté avant la Phase 0.**
 
 > Trigger: `chorus-create-project <sandbox-name> <output-file.json> [--batch] [--batch-seq] [--strategy iso|edges|cross|scale] [--no-archive]`
@@ -782,7 +783,7 @@ they must **not** be provided explicitly if Feed computes them.
 
 ## Phase 4 — Validate the JSON before execution
 
-Before running `perl run.pl`, perform a quick validation:
+**Validation statique obligatoire** (Phase 4 — avant de passer à `chorus-check`) :
 
 ```bash
 python3 -c "import json; json.load(open('<fichier.json>')); print('JSON valide')"
@@ -894,600 +895,65 @@ Check:
 
 ---
 
-## Phase 5 — Execute and verify
+## Phase 5 — Validation statique finale (ENG-060)
 
+> ⛔ **JAMAIS lancer `perl run.pl` ici — interdiction stricte (ENG-060).**
+>
+> `chorus-create-project` est un **générateur pur** (KB → JSON).
+> L'exécution du pipeline et la détection de discordances sont la responsabilité
+> exclusive de **`chorus-check`**.
+>
+> **Pourquoi cette interdiction :**
+> - Un bug de règle YAML (boucle infinie, `_MAX_CYCLES`) planterait les sous-agents
+>   sans diagnostic utile, déclenchant des corrections hors-scope (sur les JSON
+>   générés plutôt que sur les règles).
+> - `chorus-check --all` détecte les mêmes discordances avec plus de contexte
+>   (`_rule_trace`, motifs, rapport complet).
+> - Lancer le pipeline deux fois ne prouve rien de plus.
+>
+> ⛔ **Ne pas appeler `chorus-check`, `chorus-feed`, ni aucun autre skill.**
+> ⛔ **Ne pas générer ni modifier `run.pl`, `Feed.pm`, `Expert.pm`, `Agent/*.pm`.**
+
+**Checklist de validation statique** (complémentaire à Phase 4 — s'applique à tous les modes) :
+
+- [ ] JSON syntaxiquement valide : `python3 -c "import json; json.load(open('<fichier.json>')); print('JSON valide')"`
+- [ ] Chaque élément a `id` et `type_element`
+- [ ] Chaque `type_element` reconnu dans le KB (`%SLOTS_REQUIS` / KB org)
+- [ ] Convention `-OK-` / `-KO-` cohérente avec `expected_verdict` ∈ `{CONFORME, NON_CONFORME}`
+- [ ] `expected_verdict` présent sur chaque élément avec un `id` contenant `-OK-` ou `-KO-`
+- [ ] Pas de slots calculés par le pipeline inclus dans le JSON (résultats, verdicts)
+- [ ] IDs uniques — pas de doublons dans le fichier
+
+**Étape suivante obligatoire :**
 ```bash
-perl $SANDBOX/run.pl $SANDBOX/<fichier.json>
+chorus-check <sandbox-name> --all
 ```
-
-> ⚠️ **Timeout guard — do not run unattended beyond a reasonable budget.** If `run.pl`
-> produces no output beyond the initial `Feed: N element(s) loaded` line for more than
-> ~30–60s of wall-clock time, suspect a non-terminating pipeline (see "Lifecycle/aggregation
-> rules" note above) rather than a merely slow run — a correctly terminating pipeline on a
-> project-generation-sized file (tens to a few hundred elements) normally completes in a
-> few seconds. Run with a hard timeout (e.g. `timeout 60 perl $SANDBOX/run.pl ...`) and, on
-> timeout, re-check the flagged types from Phase 0.2 before assuming an engine bug.
-
-Check:
-- [ ] No Feed crash (unknown type, missing slot)
-- [ ] `Unprocessed: 0` — every element must reach the final conformity status
-- [ ] Expected KO elements are indeed `NON_CONFORME` with the correct reason
-- [ ] Expected OK elements are indeed `CONFORME`
-- [ ] `Pipeline : SOLVED ✅`
-
-If an expected KO element is CONFORME → investigate:
-1. Does the CONDITION of the targeted rule exclude this type? ← most common pitfall
-2. Does the EXCEPTION short-circuit the rule? (slot already set by a preceding rule)
-3. Does the provided value actually cross the threshold? (recompute)
+C'est la seule étape qui exécute le pipeline et valide les `expected_verdict`.
 
 ---
 
-## Phase 5b — Post-run systematic corrections (all modes)
+## Phase 5b — ⛔ REMOVED (ENG-060) — Corrections post-pipeline
 
-> **Runs immediately after the first `perl run.pl` execution** — Phase 5 (single-file)
-> or Phase 6.2 Step 3 (strategy mode). Applies four predictable corrections that
-> are auto-detectable from the run.pl output, closing the gap between a
-> single-run generation and a fully converged file.
+> ⛔ **Cette phase est supprimée (ENG-060).**
 >
-> **This phase is the documented equivalent of the iterative fix loop** that would
-> otherwise be performed manually in an ECA session. Running it ensures that a
-> webapp-launched ECA terminal produces the same converged result as a full
-> interactive session.
+> Les corrections C1–C5 (catalog errors, `besoin_conformite`, naming, SAR dependency)
+> dépendent toutes de la sortie de `perl run.pl` — ce qui viole l'interdiction
+> d'exécuter le pipeline dans `chorus-create-project`.
 >
-> **Loop:** after each correction pass, re-run `perl $SANDBOX/run.pl`. Stop when:
-> - `Pipeline : SOLVED ✅`
-> - No "not a recognised element" errors in the output
-> - `Discordances = 0` (or all remaining discordances belong to documented
->   `_expected_uncertain` elements)
+> **Ce qui remplace C1–C5 :**
+> - **C1 (catalog errors)** → détectées par `chorus-check --all` via `Unprocessed: N`
+> - **C2 (`besoin_conformite`)** → à corriger manuellement dans le JSON généré si
+>   signalé par `chorus-check --all`
+> - **C3–C5 (naming conventions)** → les `Discordances > 0` détectées par
+>   `chorus-check --all` guident `chorus-strengthen` pour diagnostiquer et corriger
 >
-> Maximum 3 correction iterations before escalating to the user.
-
----
-
-### Correction C1 — CO-PRESENCE catalog errors ("not a recognised element")
-
-**Detection:** run.pl output contains:
-```
-→ motif: <COMP>.<SUFFIX> is not a recognised element of component '<COMP>'
-→ motif: <COMP>: N/M expected elements missing (<S1>,<S2>,...)
-```
-
-**Root cause:** the generated file uses SAR element identifiers that do not exist in
-the Helpers.pm catalog for that component (e.g., `AGD_OPE.1.8C` when the catalog only
-goes to `7C`), AND/OR is missing elements that the catalog requires (e.g., `2D`, `3D`
-suffixes that the file never included).
-
-**Fix — apply via Python:**
-```python
-import json, re
-from collections import defaultdict
-
-# 1. Parse run.pl output into correction maps
-not_recognised = defaultdict(set)   # comp → {wrong suffixes}
-missing        = defaultdict(set)   # comp → {missing suffixes}
-
-for line in run_output_lines:
-    m = re.search(r': (\S+) is not a recognised element of component .(\S+)', line)
-    if m:
-        suf = re.search(r'(\d+[DCE])$', m.group(1))
-        if suf: not_recognised[m.group(2).rstrip("'")].add(suf.group(1))
-    m2 = re.search(r': (\S+): \d+/\d+ expected elements missing[^(]*\(([^)]+)\)', line)
-    if m2:
-        comp = m2.group(1).rstrip("'")
-        for s in m2.group(2).split(','):
-            suf = re.search(r'(\d+[DCE])$', s.strip())
-            if suf: missing[comp].add(suf.group(1))
-
-# 2. Apply corrections to JSON elements
-new_elems = []
-i = 0
-while i < len(elems):
-    e = elems[i]; te = e.get('type_element',''); eid = e.get('id','')
-    # SAR element — collect with parent
-    if re.search(r'\d+[DCE]$', te):
-        i += 1; continue
-    # SAR component with catalog corrections
-    is_sar_comp = re.match(r'^(ACO|ADV|AGD|ALC|ASE|ATE|AVA)_[A-Z0-9]+\.\d+$', te)
-    if is_sar_comp and (te in not_recognised or te in missing):
-        new_elems.append(e)
-        cur = {}
-        j = i + 1
-        while j < len(elems) and re.search(r'\d+[DCE]$', elems[j].get('type_element','')):
-            e2 = elems[j]; te2 = e2.get('type_element','')
-            if re.sub(r'\.\d+[DCE]$', '', te2) != te: break
-            s = re.search(r'(\d+[DCE])$', te2)
-            if s: cur[s.group(1)] = e2
-            j += 1
-        # Keep correct, remove wrong, add missing
-        keep = {s: e2 for s, e2 in cur.items() if s not in not_recognised.get(te, set())}
-        for s, e2 in sorted(keep.items()):
-            new_elems.append(e2)
-        for s in sorted(missing.get(te, set())):
-            # Preserve content_declared=False if that suffix was a KO test
-            new_elems.append({'id': f"{eid}.{s}", 'type_element': f"{te}.{s}", 'content_declared': True})
-        i = j; continue
-    new_elems.append(e); i += 1
-```
-
-> ⚠️ **KO content_declared intent preservation:** if a SAR component was designed so
-> that ONE element has `content_declared: false` (to trigger R04 KO), check the original
-> element list before adding missing elements — the "missing" element from run.pl output
-> may be the one that was intentionally absent. In that case, add it with
-> `content_declared: false` to preserve the KO intent.
-
----
-
-### Correction C2 — Remove `besoin_conformite` from SFR component JSON frames
-
-**Detection:** in the run.pl output, an sfr_component or sfr_element Frame (e.g.,
-`FAU_GEN.1`, `FCS_CKM.1`) has toe-structure slots in its state (`introduction_ok: 0`,
-`spd_obj_req_ok: 0`) — or gets `verdict=FAILED` from conformance-ctrl despite its
-SFR verdict being correct.
-
-**Root cause:** `besoin_conformite: 1` was placed in the JSON for the sfr_component
-Frame. toe-structure R01 fires on ANY Frame with `besoin_conformite` defined, sets
-`introduction_ok`, `spd_obj_req_ok`, etc. on it — treating the SFR Frame as an ST/PP.
-The correct design: `besoin_conformite` on BOARD is set by toe-structure when it
-processes the TOE/ST/PP Frame; SFR CONDITION clauses read `$SELF->BOARD->{besoin_conformite}`.
-There is no need for SFR Frames to carry `besoin_conformite` in the project JSON.
-
-**Fix:**
-```python
-for e in elems:
-    te = e.get('type_element','')
-    # SFR families — neither TOE/ST/PP nor SAR families
-    is_sfr = (re.match(r'^F(AU|CO|CS|DP|IA|MT|PR|PT|RU|TA|TP)_', te) or
-              re.match(r'^F(AU|CO|CS|DP|IA|MT|PR|PT|RU|TA|TP)_[A-Z_]+\.\d+\.', te))
-    if is_sfr and 'besoin_conformite' in e:
-        del e['besoin_conformite']
-```
-
----
-
-### Correction C3 — sfr_element paired with a KO component (naming convention)
-
-**Detection:** discordance `KO-got-OK` where the element type_element matches
-`FAMILY.N.N` or `FAMILY_EXT.N.N` (sfr_element) AND the actual gap is a dependency
-failure that only ever fires at the **component** level (`dependency_catalog_ok`),
-never on the element itself (`operation_mandate_ok`). The sfr_element verdict=1
-is correct — no rule in any SFR class agent ever propagates a component's
-`dependency_catalog_ok` down to its own `.N.M` sub-elements.
-
-> ⚠️ **Context:** the original detection
-> regex (`-KO-R04` literal substring) only matched ids that explicitly named the
-> rule tag in the suffix. Elements with generic `-KO-\d+` suffixes
-> went undetected by C3 and surfaced as unexplained
-> discordances in `chorus-strengthen`. Detection is now based on **structural
-> verification** (does any rule actually write `dependency_catalog_ok` on this
-> Frame's own `type_element`?), not on a literal id substring — this covers any
-> future `-KO-<anything>` suffix, not just `-KO-R04`.
-
-**Fix:**
-```python
-for e in elems:
-    eid = e.get('id',''); te = e.get('type_element','')
-    is_sfr_elem = bool(re.match(r'^[A-Z]+_[A-Z_]+(_EXT)?\.\d+\.\d+$', te))
-    if not is_sfr_elem or '-KO-' not in eid.upper():
-        continue
-    # Structural check (not a literal 'R04' substring match): does this
-    # element's own run.pl trace show operation_mandate_ok=1 (correctly
-    # computed, grammar-valid) while the id's -KO- suffix actually refers
-    # to a sibling COMPONENT's own dependency_catalog_ok=0? If so, this is
-    # a mislabelled element, not a genuine element-level gap.
-    parent_component = re.sub(r'\.\d+$', '', te)  # strip trailing ".N" sub-element index
-    sibling_component_ko = any(
-        e2.get('type_element','') == parent_component and '-KO-' in e2.get('id','').upper()
-        for e2 in elems
-    )
-    if sibling_component_ko:
-        e['id'] = re.sub(r'-KO-\d+', '-DEPPAIR-01', eid, flags=re.IGNORECASE)
-        e.setdefault('_note_calc', '')
-        e['_note_calc'] += (f' (renamed: dependency_catalog_ok is only ever computed on the '
-                             f'parent component {parent_component}, never propagated to this '
-                             f'sub-element — element verdict=1 is correct; -KO- removed to '
-                             f'prevent false discordance; see chorus-create-project.md § C3)')
-```
-
-Apply the same pattern for any other R-prefixed tags that only apply to components
-(R05, R06) if the element is an sfr_element — the structural check above (no rule
-ever writes the implicated slot on an `.N.M` Frame) generalises to all of them.
-
----
-
-### Correction C4 — SAR component with -KO- showing `sar_component_declared=1`
-
-**Detection:** discordance `KO-got-OK` where the element is a SAR component
-(`ACO_*`, `ADV_*`, etc.) with all its catalog elements having `content_declared=True`.
-The run.pl output shows `sar_component_declared: 1` AND `sar_dependency_ok: 0` (or a
-similar dep-check slot). The verdict=1 is from `sar_component_declared`; the KO
-is captured in the dep-check slot.
-
-**Two cases:**
-
-**Case A — The KO intent was content_declared boundary:**
-The component should have had ONE element with `content_declared: false`. Check the
-original generation: if all elements have `content_declared=True` it was a generation
-error. Fix: set `content_declared: false` on the ONE element intended to be KO
-(typically the first Developer action element — 1D — or the one called out in
-`_note_calc`).
-
-**Case B — The KO intent was SAR dependency (Annex-C):**
-All elements are content_declared=True (correct); the KO is captured in
-`sar_dependency_ok=0`. The displayed verdict=1 is correct behavior — the dependency
-failure does not change `sar_component_declared`. Fix: rename -KO- to -CROSSDEP-
-(or -DEPKO-) and add `_note_calc` documenting that the real KO is in `sar_dependency_ok`.
-
-```python
-for e in elems:
-    eid = e.get('id',''); te = e.get('type_element','')
-    is_sar_comp = bool(re.match(r'^(ACO|ADV|AGD|ALC|ASE|ATE|AVA)_[A-Z]+\.\d+$', te))
-    # Determine which case:
-    #   - If _note_calc mentions "dependency" or "Annex C" → Case B
-    #   - Otherwise → Case A (investigate content_declared)
-    note = e.get('_note_calc','').lower()
-    if is_sar_comp and '-KO-' in eid.upper():
-        if 'dep' in note or 'annex' in note or 'annex-c' in note:
-            # Case B: rename, preserve content
-            e['id'] = eid.replace('-KO-', '-CROSSDEP-', 1)
-            e.setdefault('_note_calc','')
-            e['_note_calc'] += ' (renamed: sar_component_declared=1 because all elements content_declared=True; KO captured in sar_dependency_ok=0 — not reflected in displayed verdict; see chorus-create-project.md § C4)'
-```
-
-> **Case C — component declared only as a dependency TARGET for another
-> component under test, never under test itself:** if a component's own
-> `_note_calc` states it exists solely to satisfy a sibling's Annex-C/Table
-> dependency (e.g. "declared here so sar_dependency_ok for X resolves =1"),
-> it still needs its own D/C/E elements with `content_declared: true` to pass
-> `R05-component-declared-aggregate` — a bare mention in `dependances_declarees`
-> is not enough. Detect any component whose `_note_calc` contains "dependency
-> target"/"Annex-C"/"so ... resolves" and verify its element list is complete
-> (same catalog lookup as the main C1 block above); if elements are missing,
-> add any missing elements with `content_declared: true` rather than leaving
-> the component incomplete and expecting `-OK-` to still mean CONFORME.
->
-> **Context:** a component was
-> declared purely as an Annex-C dependency target for another component, with no
-> sub-elements at all — `R05-component-declared-aggregate` waited
-> `MAX_WAIT_CYCLES` then gave up, producing `sar_component_declared=0` and an
-> unexplained `OK-got-KO` discordance. C4 as originally scoped (requires an
-> explicit `-KO-` tag on the component itself) never triggered on this case.
-
----
-
-### Correction C5 — conformance-ctrl driver frame receiving `verdict=FAILED`
-
-**Detection:** discordance `OK-got-KO` where the element has `type_element` equal to
-`ST`, `PP`, or `TOE`, AND the run.pl output shows `conformite_globale: CONFORME` on
-the same Frame alongside `verdict=FAILED`.
-
-**Root cause:** toe-structure R01 sets `besoin_conformite=1` on every ST/PP/TOE Frame.
-conformance-ctrl R01 then selects one of them as the "driver" Frame and writes the
-global project verdict (`FAILED` when any element is NON_CONFORME) on it. When the
-driver Frame is named `-OK-`, the discordance checker flags it as a false positive.
-
-**Fix:** mark the Frame `_expected_uncertain: true` with an explanatory `_note_calc`:
-```python
-for e in elems:
-    eid = e.get('id',''); te = e.get('type_element','')
-    if te in ('ST','PP','TOE') and '-OK-' in eid.upper():
-        # Only mark if conformite_globale was CONFORME (verified from run output)
-        e['_expected_uncertain'] = True
-        e.setdefault('_note_calc','')
-        e['_note_calc'] += ' (_expected_uncertain: Frame selected as conformance-ctrl driver; receives global project verdict FAILED even though toe-structure verdict is CONFORME — see chorus-create-project.md § C5)'
-```
-
-> ⚠️ Apply C5 only to the FIRST ST/PP/TOE Frame in the file (the one that actually
-> becomes the conformance-ctrl driver). Do not blanket-mark all ST/PP/TOE Frames.
-> Verify by checking whether `pipeline_complete_ok` appears in the Frame's state in
-> the run.pl output — only the driver Frame carries this slot.
-
----
-
-### Correction C6 — duplicate `type_element` across an OK/KO Frame pair (component contamination)
-
-> **Context:** a component's
-> own sub-element appeared twice in the same project file under the exact
-> same `type_element` (once `-OK-`, once `-KO-WRONGOP-`). Any component-level
-> aggregate rule that collects elements by matching `type_element` against
-> the `"<component>.<N>"` convention merges both Frames indiscriminately —
-> the OK scenario's verdict gets silently contaminated by the KO sibling.
-> This is a structural hazard of the flat single-file project format
-> whenever a KB agent aggregates by `type_element` pattern rather than by
-> scenario/id — not specific to `_EXT` components.
-
-**Detection — mandatory pre-write check, run on every generated project file
-before finalising it (not only during gap triage):**
-```python
-from collections import defaultdict
-te_to_ids = defaultdict(list)
-for e in elems:
-    te_to_ids[e.get('type_element','')].append(e.get('id',''))
-duplicates = {te: ids for te, ids in te_to_ids.items() if len(ids) > 1}
-# A duplicate is HARMLESS only if every id in the group shares the same
-# OK/KO polarity (e.g. two "-OK-" variants testing different unrelated
-# slots on the same Frame on purpose). It is HAZARDOUS if the group mixes
-# "-OK-" and "-KO-" ids — that is exactly the contamination pattern above.
-for te, ids in duplicates.items():
-    polarities = {('KO' if '-KO-' in i.upper() else 'OK') for i in ids}
-    if len(polarities) > 1:
-        print(f"⛔ C6 hazard: type_element '{te}' shared by mixed-polarity ids: {ids}")
-```
-
-**Fix — do not rely on `_expected_uncertain` here (the contamination is a real
-engine behaviour difference, not test-oracle noise); resolve the collision
-itself:**
-1. **Preferred:** move the `-KO-WRONGOP-`/`-KO-*` Frame (and only that one —
-   never the `-OK-` Frame) out of the current project file into a dedicated
-   file (or `project-stress-*.json` if the case is adversarial by nature),
-   so the OK scenario's own file never contains a competing `type_element`.
-2. **Alternative (when splitting is impractical):** suffix the `type_element`
-   of the KO Frame with a disambiguating marker the KB agent's own element-
-   matching regex still accepts if the corpus allows an iteration/variant
-   suffix (e.g. the `(N)` iteration suffix already supported by several
-   agents' `parse_*_identifier()` Helpers) — verify this is actually
-   supported by the implicated agent before using it; do not invent a
-   suffix convention the KB does not already parse.
-3. Document the applied fix in `_note_calc` on both Frames: which file/
-   suffix resolved the collision, and which `type_element` each now carries.
-
----
-
-### Correction C7 — single element shared between two mutually exclusive
-### file-level scenarios (irreducible conflict)
-
-> **Context:** a global
-> package Frame (`I-EAL4-OK-01`) expected `CONFORME` while the same project
-> file deliberately reused one of its components, with an incomplete
-> `content_declared: false`, as the sole basis of a separate intentional
-> `-KO-` test elsewhere in the same file. Because the aggregate slot
-> (`eal_package_complete`) is file-wide, not scenario-scoped, the file could
-> never simultaneously host a complete-baseline OK scenario and an
-> incomplete-baseline KO scenario sharing the same component instance.
-
-**Detection:** before finalising a project file, for any file-wide/global
-aggregate slot (`eal_package_complete`, `global_non_conformity_count`, or any
-other slot computed once across the *entire* file rather than per-Frame),
-check whether more than one element's expected verdict depends on that same
-global aggregate reaching two different values. If the file declares both an
-"-OK-" id expecting the aggregate to resolve true and a "-KO-" id expecting
-it to resolve false — **and both depend on the same shared component
-instance** — the scenario pair cannot coexist in one file.
-
-**Fix (in order of preference):**
-1. **Split into two project files** — one with the complete baseline (true
-   OK scenario, aggregate resolves CONFORME), one with the isolated KO
-   component (aggregate resolves NON_CONFORME as designed). This is the only
-   fix that produces a genuinely verifiable OK verdict.
-2. **If splitting is impractical for this test round:** mark the global-
-   aggregate-dependent "-OK-" id `_expected_uncertain: true` with a
-   `_note_calc` explaining the shared-component conflict and which other id
-   in the same file is the true source of the KO — exactly mirroring the
-   existing C5 pattern, but for a file-wide aggregate conflict rather than a
-   conformance-ctrl driver-Frame conflict.
-
----
-
-### Correction C8 — grammar-only id claims a global verdict it was never designed to assert
-
-> **Context:** an id suffixed
-> `-OK-GRAMMAR-` was expected `CONFORME`, but `verdict_of()` returns the
-> Frame's overall pipeline verdict, not the isolated grammar-check slot. The
-> file's own partial baseline (never intended to carry a complete package)
-> correctly made the overall aggregate fail — the test's intent ("grammar is
-> valid") and the oracle's claim ("verdict is CONFORME") were conflated.
-
-**Detection:** any id containing a scope-qualifying suffix that names a
-*specific* sub-check (`-GRAMMAR-`, `-SYNTAX-`, `-FORMAT-`, or similar) must
-have its `expected` value verified against the **specific slot** the suffix
-names — never against the Frame's overall `verdict_of()` result — unless the
-project file is independently confirmed to carry a complete baseline/package
-for that Frame (i.e. the overall verdict and the specific slot coincide).
-
-**Fix:**
-```python
-for e in elems:
-    eid = e.get('id','').upper()
-    if '-GRAMMAR-' in eid or '-SYNTAX-' in eid or '-FORMAT-' in eid:
-        # Verify independently: does this file carry a COMPLETE baseline/
-        # package for this Frame's type? If not (e.g. an `edges`-scoped file
-        # with a partial component set), the only verdict verdict_of() can
-        # honestly return is NON_CONFORME/FAILED, regardless of whether the
-        # grammar-specific slot itself is valid — correct 'expected' to match.
-        e.setdefault('_note_calc', '')
-        e['_note_calc'] += (' (verify: -GRAMMAR- suffix asserts only the grammar slot; '
-                             'if this file lacks a complete baseline for this Frame, '
-                             'correct expected to NON_CONFORME/FAILED to match '
-                             'verdict_of()s actual overall-verdict semantics — '
-                             'see chorus-create-project.md § C8)')
-```
-
-> This is a **documentation/naming discipline** fix as much as a data fix:
-> going forward, prefer a suffix that names the file's actual scope honestly
-> (e.g. `-GRAMMAR-PARTIAL-BASELINE-` for an edges file) over a bare
-> `-GRAMMAR-` that implies the Frame is otherwise fully conformant.
-
----
-
-### Convergence loop — with interactive checkpoints
-
-> **Design principle:** the corrections below are automatic and deterministic, but
-> each major batch of changes is surfaced to the user before applying. This ensures
-> the same interactive experience whether the skill is triggered from a direct ECA
-> session or from a webapp-launched ECA terminal. Both use `eca__ask_user` — there
-> is no "headless" mode difference.
->
-> **Future evolution:** if a `--auto` flag is added to this trigger, the checkpoints
-> below should auto-accept their default option without prompting.
-
-**Step 1 — First run**
-```bash
-perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json 2>&1 | tee /tmp/run-output.txt
-```
-Capture full output into `/tmp/run-output.txt`.
-
----
-
-**Step 2 — Apply C1 + C2 (silent, no prompt needed)**
-
-C1 (catalog) and C2 (besoin_conformite) are fully objective: run.pl either reports
-"not a recognised element" / "expected elements missing" or it doesn't. Apply both
-corrections silently without asking the user.
-
-After applying C1/C2, re-run immediately:
-```bash
-perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json 2>&1 | tee /tmp/run-output-2.txt
-```
-
----
-
-**Checkpoint 5b.1 — Present C1/C2 results to user**
-
-Display a compact bilan:
-```
-[Phase 5b] Catalog + structure corrections applied:
-
-  C1 — CO-PRESENCE:
-    Removed  : N wrong element IDs (e.g. AGD_OPE.1.8C, ALC_FLR.3.12C, ...)
-    Added    : N missing element IDs (e.g. ADV_ARC.1.2D, ALC_CMC.4.3D, ...)
-
-  C2 — besoin_conformite:
-    Removed from : N sfr_component/sfr_element frames
-
-  Re-run result after C1/C2:
-    Pipeline   : SOLVED ✅
-    Unprocessed: N  (N _expected_uncertain)
-    Discordances: N
-    "not a recognised element": 0  ✅
-```
-
-If discordances = 0 (or all _expected_uncertain) → skip to Checkpoint 5b.3 (done).
-Otherwise → proceed to Step 3.
-
----
-
-**Step 3 — Analyse discordances (C3/C4/C5)**
-
-From `/tmp/run-output-2.txt`, classify each discordance using C3/C4A/C4B/C5 criteria
-(see sections above). Build a plan:
-
-```
-[Phase 5b] Naming corrections planned:
-
-  C3 — sfr_element -KO-RNN- (N items):
-    X-DEP-FAUFPT-KO-FAU_GEN.1.1  → X-DEP-FAUFPT-PAIRELEM-FAU_GEN.1.1
-    ...
-
-  C4B — SAR comp -KO- / sar_component_declared=1 (N items):
-    X-EAL-KO-AGD_OPE.1   → X-EAL-CROSSDEP-AGD_OPE.1
-    ...
-
-  C5 — ST/PP/TOE -OK- + verdict=FAILED (N items):
-    E-ST-OK-ECD-REQUIRED-01  → mark _expected_uncertain
-    ...
-
-  Remaining discordances after rename: 0 (estimated)
-```
-
----
-
-**Checkpoint 5b.2 — Ask user to confirm naming corrections**
-
-```python
-eca__ask_user(
-  question="Apply the naming corrections above and re-run the pipeline?",
-  options=[
-    {"label": "✅ Apply all (recommended)",
-     "description": "Rename/mark the N items listed above, then re-run to verify 0 discordances."},
-    {"label": "⏭ Skip renames — accept current discordances",
-     "description": "Keep the file as-is and document the discordances as known issues in INDEX.md."},
-    {"label": "✏️ Show me the full list first",
-     "description": "Display all planned renames before confirming."}
-  ],
-  allowFreeform=False
-)
-```
-
-- **Apply all** → apply C3/C4/C5 → re-run → go to Checkpoint 5b.3
-- **Skip renames** → go to Checkpoint 5b.3 with current discordances documented
-- **Show full list** → display complete rename table → re-ask this question
-
----
-
-**Step 4 — Re-run after C3/C4/C5**
-```bash
-perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json 2>&1 | tee /tmp/run-output-3.txt
-```
-
----
-
-**Checkpoint 5b.3 — Final status + INDEX.md update**
-
-Display final bilan and ask:
-```
-[Phase 5b] Final state of project-<slug>.json:
-
-  Pipeline     : SOLVED ✅
-  Elements     : N total
-  CONFORME     : N
-  NON_CONFORME : N
-  Unprocessed  : N  (all _expected_uncertain: <list>)
-  Discordances : N  (all _expected_uncertain: <list> | 0 ✅)
-```
-
-```python
-eca__ask_user(
-  question="Update archive/INDEX.md with these final results?",
-  options=[
-    {"label": "✅ Update INDEX.md (recommended)",
-     "description": "Append a row with CONFORME/NON_CONFORME counts and a correction summary."},
-    {"label": "⏭ Skip INDEX.md update",
-     "description": "Leave INDEX.md as-is for now."}
-  ],
-  allowFreeform=False
-)
-```
-
-If **Update INDEX.md** → append row to `$SANDBOX/archive/<slug>/INDEX.md` with:
-`| NNN | date | ~N rules | n/a | SOLVED ✅ | N | N | Phase 5b: C1 (<corrections>), C3 (<renames>), 0 disc |`
-
----
-
-**Full convergence loop (summary)**
-
-```
-1.  perl run.pl → /tmp/run-output.txt
-2.  Apply C1 (catalog) + C2 (besoin_conformite) → silently
-3.  Re-run → /tmp/run-output-2.txt
-4.  [Checkpoint 5b.1] Present C1/C2 results
-5.  Classify discordances → plan C3/C4A/C4B/C5
-6.  [Checkpoint 5b.2] Ask: apply naming corrections?
-7.  Apply C3/C4/C5 if confirmed
-8.  Re-run → /tmp/run-output-3.txt
-9.  [Checkpoint 5b.3] Ask: update INDEX.md?
-10. Verify: Pipeline SOLVED + Unprocessed=0 + Discordances=0 (or all _expected_uncertain)
-```
-
-**Context:** the absence of this correction
-loop in the skill created a visible gap: the webapp "re-generate test" button produced
-files with many discordances requiring multiple follow-up sessions. The checkpoints
-above ensure the same interactive experience in both a direct ECA session and a
-webapp-launched ECA terminal — both support `eca__ask_user`.
-
-**Checkpoint 5b.4 — Upsert `.last-check-results.json`**
-
-After Phase 5b corrections are complete (Checkpoint 5b.3 done), apply the same upsert
-as `chorus-check` Phase 6.3 — same algorithm, using the final corrected run.pl results:
-
-```
-1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
-3. Read $SANDBOX/.last-check-results.json if exists       → existing (or {})
-4. Upsert entry for the generated project file (basename).
-5. Recompute aggregates. Write file.
-```
-
-> No `eca__ask_user` here — this write is automatic and silent.
-> Triggers WEB-021 SSE `refresh` → Tests tab updates immediately.
+> **Workflow correct :**
+> ```
+> chorus-create-project --batch   → génère 4 JSON + validation statique (Phase 5)
+> chorus-check --all              → SEUL responsable de l'exécution pipeline
+>                                   et de la détection de discordances
+> chorus-strengthen               → si discordances > 0
+> ```
 
 ---
 
@@ -1506,33 +972,11 @@ as `chorus-check` Phase 6.3 — same algorithm, using the final corrected run.pl
 
 ### 6.1 `--batch` — Orchestrator workflow
 
-#### Step 0-pre — `run.pl` pre-flight check (ENG-049)
+#### Step 0-pre — ⛔ REMOVED (ENG-060)
 
-**Before spawning any sub-agent**, verify that `run.pl` exists in the sandbox:
-
-```bash
-test -f <SANDBOX>/run.pl && echo "EXISTS" || echo "MISSING"
-```
-
-| Result | Action |
-|---|---|
-| `EXISTS` | Proceed to Step 0-bis normally. |
-| `MISSING` | **Stop immediately** — do NOT spawn any sub-agent. Display: |
-
-```
-⛔ chorus-create-project --batch: run.pl not found in <SANDBOX>.
-   Sub-agents cannot run the Phase 5b correction loop without it, and may
-   attempt to generate it via chorus-check — causing parallel file conflicts.
-
-   Fix: run chorus-check once first to generate the pipeline files:
-     chorus-check <sandbox-name> <any-project.json>
-   Then re-run: chorus-create-project <sandbox-name> --batch
-```
-
-> **Rationale (ENG-049):** sub-agents spawned in parallel that discover `run.pl`
-> missing may independently invoke `chorus-check` to generate it — causing 4
-> concurrent `chorus-check` runs that overwrite each other's `Feed.pm`,
-> `Expert.pm`, `run.pl`, and `Agent/*.pm` files, corrupting the pipeline.
+> ~~ENG-049 `run.pl` pre-flight check~~ — supprimé (ENG-060).
+> Les sous-agents ne lancent plus `perl run.pl` → le check d'existence de `run.pl`
+> est inutile. Procéder directement à Step 0-bis.
 
 #### Step 0-bis — Task planning
 
@@ -1614,10 +1058,11 @@ STRATEGY GOAL:
   cross → elements that trigger multiple rules simultaneously (1–3 per rule pair)
   scale → ≥ 100 elements, all types × all classes/zones (termination stress test)
 
-⛔ STRICT CONSTRAINTS (ENG-049 — do NOT deviate):
+⛔ STRICT CONSTRAINTS (ENG-049 + ENG-060 — do NOT deviate):
    - NEVER call `chorus-check`, `chorus-feed`, or any other Chorus skill or command.
    - NEVER generate or modify `run.pl`, `Feed.pm`, `Expert.pm`, or any `Agent/*.pm` file.
-   - Your ONLY responsibilities: generate <FILE>, validate JSON syntax, run `perl run.pl`
+   - NEVER run `perl run.pl` or any pipeline command (ENG-060).
+   - Your ONLY responsibilities: generate <FILE>, validate JSON statically (Phase 5)
      if it already exists, return the result block. Nothing else.
 
 YOUR TASKS:
@@ -1644,127 +1089,49 @@ YOUR TASKS:
 3. Write the file using eca__write_file.
 4. Validate:
    python3 -c "import json; json.load(open('<SANDBOX>/<FILE>')); print('JSON valide')"
-5. **Check for `run.pl` — mandatory before any execution attempt:**
-   - If `<SANDBOX>/run.pl` does NOT exist → skip this step entirely. Report
-     `PIPELINE: NOT_RUN (run.pl absent)` in the return block. ⛔ Do NOT attempt
-     to generate it, do NOT call chorus-check or any other skill.
-   - If `<SANDBOX>/run.pl` exists → run the **Phase 5b correction loop in automatic mode**
-     (no user prompts — all corrections applied silently, maximum 3 iterations):
-
-   **Iteration 1:**
-   ```bash
-   perl <SANDBOX>/run.pl <SANDBOX>/<FILE> 2>&1 | tee /tmp/run-<slug>-1.txt
-   ```
-   Apply C1 (catalog errors) + C2 (besoin_conformite) automatically
-   from `/tmp/run-<slug>-1.txt` using the Python snippets in
-   `chorus-create-project.md § Correction C1` and `§ Correction C2`.
-   Write corrected JSON back with `eca__write_file`.
-
-   **Iteration 2:**
-   ```bash
-   perl <SANDBOX>/run.pl <SANDBOX>/<FILE> 2>&1 | tee /tmp/run-<slug>-2.txt
-   ```
-   Apply C3 (sfr_element -KO-RNN- renaming) + C4A/C4B (SAR -KO- with
-   sar_component_declared=1) + C5 (conformance-ctrl driver _expected_uncertain)
-   automatically from `/tmp/run-<slug>-2.txt` using
-   `chorus-create-project.md § Correction C3/C4/C5`.
-   Write corrected JSON back with `eca__write_file`.
-
-   **Iteration 3 (final verification):**
-   ```bash
-   perl <SANDBOX>/run.pl <SANDBOX>/<FILE> 2>&1 | tee /tmp/run-<slug>-3.txt
-   ```
-   Stop when: `Pipeline: SOLVED ✅` + `Unprocessed: 0`
-   + `Discordances: 0` (or all remaining are `_expected_uncertain: true`).
-
-   > **Auto mode rules:**
-   > - Never call `eca__ask_user` — apply every correction silently.
-   > - Skip Checkpoint 5b.1, 5b.2, 5b.3 entirely.
-   > - Skip INDEX.md update (Step 4 orchestrator handles the synthesis).
-   > - If still discordant after 3 iterations → proceed anyway, report
-   >   residual discordances in the return block.
+5. **Validation statique (ENG-060 — ⛔ JAMAIS lancer perl run.pl):**
+   - Vérifier la syntaxe JSON (python3 -c "import json; json.load(open('...'))")
+   - Vérifier que chaque `type_element` est reconnu dans le KB summary ci-dessus
+   - Vérifier la cohérence `-OK-`/`-KO-` ↔ `expected_verdict`
+   - ⛔ NE PAS lancer `perl run.pl` — NE PAS appeler `chorus-check` ni aucun autre skill
+   - ⛔ NE PAS générer ni modifier `run.pl`, `Feed.pm`, `Expert.pm`, `Agent/*.pm`
 
 6. Return exactly this block:
    FILE: <SANDBOX>/<FILE>
-   ELEMENTS: <N> CONFORME / <N> NON_CONFORME
-   DISCORDANCES: <N>  (0 if fully converged, or list residuals)
-   PIPELINE: SOLVED ✅  |  <error summary if failed>
-   CORRECTIONS:
-     C1: <N> catalog errors fixed  (or "none")
-     C2: <N> besoin_conformite removed  (or "none")
-     C3: <N> sfr_element -KO- renamed  (or "none")
-     C4: <N> SAR -KO- fixed  (or "none")
-     C5: <N> conformance-ctrl driver marked _expected_uncertain  (or "none")
-     ITERATIONS: <N>  (number of perl run.pl passes, min 1)
-   (omit CORRECTIONS block entirely if no correction was needed — 0 for all C1–C5)
+   ELEMENTS: <N total> (<N OK> expected CONFORME / <N KO> expected NON_CONFORME)
+   VALIDATION: JSON ✅ | type_element ✅ | naming convention ✅
+   (or flag any static validation failure with ⚠️ + detail)
+   NEXT_STEP: chorus-check <sandbox-name> --all
 ```
 
 #### Step 4 — Collect results and report
 
-After all sub-agents complete, display the enriched synthesis table including
-corrections applied during Phase 5b auto mode:
+After all sub-agents complete, display the synthesis table (ENG-060 — no pipeline execution, no Corrections column) :
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   chorus-create-project --batch  <sandbox-name>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Strategy │ Status     │ Elements │ Disc │ Corrections
-  ─────────┼────────────┼──────────┼──────┼────────────────────
-  iso      │ SOLVED ✅  │  N / N   │   0  │ C2×1 (1 pass)
-  edges    │ SOLVED ✅  │  N / N   │   0  │ none (1 pass)
-  cross    │ SOLVED ✅  │  N / N   │   0  │ C1×3 C3×2 (2 passes)
-  scale    │ SOLVED ✅  │  N / N   │   1  │ C2×1 (2 passes) ⚠️
+  Strategy │ Éléments total │ OK attendus │ KO attendus │ Validation JSON
+  ─────────┼────────────────┼─────────────┼─────────────┼────────────────
+  iso      │      N         │      N      │      N      │ ✅
+  edges    │      N         │      N      │      N      │ ✅
+  cross    │      N         │      N      │      N      │ ✅
+  scale    │      N         │      N      │      N      │ ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ⛔ Aucun pipeline exécuté — validation statique uniquement
+  ✅ Prochaine étape : chorus-check <sandbox-name> --all
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
-
-- **Corrections** column: summarise each Cx with count (from sub-agent CORRECTIONS block).
-  Omit if all "none". Show ⚠️ if DISCORDANCES > 0 (residual after 3 iterations).
-- **Disc > 0** → add below table: `⚠️ <slug>: <N> residual discordance(s) — run chorus-strengthen to diagnose.`
 
 If a sub-agent failed → re-run with `chorus-create-project <sandbox> --strategy <slug>`
 in a new session, pasting the compact KB summary as context to skip Phase 0.
 
-**Auto-update `archive/<slug>/INDEX.md`** for each sub-agent that applied ≥ 1 correction
-(or produced ≥ 1 residual discordance), append one row per strategy:
-
-```
-| <NNN+1> | <YYYY-MM-DD> | <N> elements | n/a | SOLVED ✅ | <N>/<N> | <N> disc |
-  --batch auto corrections: <C1×N> <C2×N> <C3×N> <C4×N> <C5×N> — <N> pass(es) |
-```
-
-> If no correction was applied for a strategy (CORRECTIONS block absent from sub-agent
-> result), skip INDEX.md update for that strategy — no noise for clean generations.
-
-#### Step 5 — Upsert `.last-check-results.json`
-
-After displaying the synthesis table, update the results cache so the webapp
-Tests tab reflects the regenerated projects immediately (synergy with WEB-021):
-
-```
-1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
-3. Read $SANDBOX/.last-check-results.json if exists       → existing (or {})
-4. For each sub-agent result block (FILE / PIPELINE / ELEMENTS):
-     Build entry:
-       file         = basename(FILE)
-       status       = "SOLVED" if PIPELINE contains "SOLVED", else "FAILED"
-       conforme     = N  (from "N CONFORME")
-       non_conforme = N  (from "N NON_CONFORME")
-       unprocessed  = 0  (sub-agents report 0 or a summary — use 0 if absent)
-       discordances = N  (from sub-agent DISCORDANCES field — 0 if fully converged)
-       disc_detail  = []
-       unproc_detail= []
-     Upsert: replace existing entry with matching "file", or append.
-5. Recompute overall_discordances=0, overall_total=N, converged=(all SOLVED).
-6. Write $SANDBOX/.last-check-results.json with kb_hash, proj_hash, timestamp.
-```
-
-> **`discordances`** reflects the final state after Phase 5b corrections (sub-agent
-> Task step 5). If fully converged (0 discordances after ≤ 3 iterations), `converged`
-> is `true` for this entry. If residual discordances remain (> 3 iterations or structural
-> issue), the real count is stored — a subsequent `chorus-strengthen` will diagnose them.
->
-> Triggers WEB-021 SSE `refresh` → Tests tab updates immediately after `--batch`.
+> **⛔ Step 5 (upsert `.last-check-results.json`) — REMOVED (ENG-060).**
+> Ce fichier est mis à jour par `chorus-check --all`, seul responsable de l'exécution
+> du pipeline. `chorus-create-project` ne connaît pas les discordances réelles —
+> il n'a jamais lancé `run.pl` — et ne doit pas écrire un cache de résultats vide
+> ou fictif qui fausserait la lecture du webapp (onglet Tests).
 
 ### 6.2 `--strategy` — Single-file workflow
 
@@ -1787,42 +1154,38 @@ Using the KB summary and coverage table (from `.chorus-batch-ctx.md`, Phase 0+1,
    ```bash
    python3 -c "import json; json.load(open('$SANDBOX/project-<slug>.json')); print('JSON valide')"
    ```
-3. **Execute** — if `run.pl` exists:
+3. **Validate statically (ENG-060)** — Phase 5 checklist :
    ```bash
-   perl $SANDBOX/run.pl $SANDBOX/project-<slug>.json
+   python3 -c "import json; json.load(open('$SANDBOX/project-<slug>.json')); print('JSON valide')"
    ```
-   Check: `Pipeline : SOLVED ✅`, `Unprocessed: 0`, expected verdicts match.
-   If an expected KO is CONFORME → apply the Phase 5 diagnosis.
-4. **Apply Phase 5b corrections** — immediately after the first run.pl:
-   - C1 if "not a recognised element" or "expected elements missing" appear in output
-   - C2 if sfr_component/sfr_element frames carry `besoin_conformite` in JSON
-   - Re-run after C1/C2
-   - C3 if sfr_elements named -KO-RNN- are getting verdict=1 unexpectedly
-   - C4A/C4B if SAR components named -KO- have sar_component_declared=1
-   - C5 if ST/PP/TOE frame named -OK- receives verdict=FAILED (conformance-ctrl driver)
-   - Re-run after C3/C4/C5
-   - **Stop when** Pipeline SOLVED + Unprocessed=0 + Discordances=0 (or all _expected_uncertain)
-   See `## Phase 5b` above for the complete correction logic and Python snippets.
+   - Vérifier chaque `type_element` dans le KB summary
+   - Vérifier cohérence `-OK-`/`-KO-` ↔ `expected_verdict`
+   - ⛔ NE PAS lancer `perl run.pl` — NE PAS appeler `chorus-check`
+   
+4. ~~**Apply Phase 5b corrections**~~ — ⛔ REMOVED (ENG-060).
+   Les corrections C1–C5 dépendent de la sortie de `perl run.pl`.
+   Les discordances éventuelles seront détectées par `chorus-check --all`.
 
-5. **Upsert `.last-check-results.json`** — after all corrections are done and the final
-   run.pl result is stable, apply the same upsert logic as `chorus-check` Phase 6.3:
+5. ~~**Upsert `.last-check-results.json`**~~ — ⛔ REMOVED (ENG-060).
+   Ce fichier est mis à jour par `chorus-check --all` uniquement.
+
+   Prochaine étape : `chorus-check <sandbox-name> --all`
 
    ```
-   1. Read $SANDBOX/agent/.kb-hash                           → kb_hash_current
-   2. sha256sum $SANDBOX/project-*.json | awk '{print $1}' | sha256sum   → proj_hash_current
-   3. Read $SANDBOX/.last-check-results.json if it exists    → existing (or {})
-   4. Build/replace entry for "project-<slug>.json" with final SOLVED/FAILED,
-      CONFORME, NON_CONFORME, UNPROCESSED, DISCORDANCES counts.
+   placeholder (removed — no run.pl output available)
       disc_detail and unproc_detail from the last run.pl output.
    5. Recompute overall_discordances, overall_total, converged.
    6. Write $SANDBOX/.last-check-results.json with updated kb_hash, proj_hash, timestamp.
    ```
 
    > **Why here:** `chorus-create-project --strategy X` produces fresh results from a
-   > freshly generated project file. Writing them immediately to `.last-check-results.json`
-   > means the webapp Tests tab reflects the correct convergence state as soon as the
-   > generation is done — without requiring a separate `chorus-check --all`.
-   > Synergy with WEB-021: this write triggers the SSE `refresh` event immediately.
+   > ~~freshly generated project file. Writing them immediately to `.last-check-results.json`~~
+   > ~~means the webapp Tests tab reflects the correct convergence state as soon as the~~
+   > ~~generation is done — without requiring a separate `chorus-check --all`.~~
+   >
+   > ⛔ **REMOVED (ENG-060)** — `.last-check-results.json` est écrit par `chorus-check --all`
+   > uniquement. `chorus-create-project --strategy` ne lance pas `perl run.pl` → il n'a
+   > aucun résultat de pipeline à persister.
 
 ### 6.3 `--batch-seq` — Safe sequential orchestration
 
