@@ -1,0 +1,38 @@
+#+TITLE: ADR-NNN — <titre court>
+#+DATE: YYYY-MM-DD
+#+STATUS: proposed
+#+DOMAIN: engine | dsl | skills | pipeline | cpan
+#+ENG:
+
+* Contexte
+
+<Situation qui rend la décision nécessaire — 3-5 lignes.
+Contraintes, historique, ce qui a changé.>
+
+* Décision
+
+<Ce qui a été décidé — formulé à l'impératif, 1-3 lignes.>
+
+* Conséquences positives
+
+- <bénéfice 1>
+- <bénéfice 2>
+
+* Conséquences négatives / trade-offs assumés
+
+- <coût ou contrainte acceptée 1>
+- <coût ou contrainte acceptée 2>
+
+* Alternatives rejetées
+
+| Alternative | Raison du rejet |
+|-------------|-----------------|
+|             |                 |
+
+* Références
+
+- =agent/kb/components.org §<section>=
+- =agent/kb/pitfalls.org §<section>=
+- =agent/kb/architecture.org §<section>=
+- ENG-NNN
+- Session =YYYY-MM-DD-<mots-clés>.md=

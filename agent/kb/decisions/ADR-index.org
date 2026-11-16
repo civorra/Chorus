@@ -1,0 +1,33 @@
+#+TITLE: ADR — Index des décisions architecturales Chorus Engine
+#+DATE: 2026-11-16
+
+* Index
+
+| ID      | Titre                                          | Statut   | Domaine | Date       | ENG     |
+|---------+------------------------------------------------+----------+---------+------------+---------|
+| ADR-001 | =_PREMISSES= comme métadonnée engine-only      | proposed | engine  | —          | —       |
+| ADR-002 | =CONDITION=(OR) vs =filtre=(AND) — asymétrie DSL | proposed | dsl     | —          | —       |
+| ADR-003 | =string eval= pour le produit cartésien        | proposed | engine  | —          | —       |
+| ADR-004 | Politique KB org ↔ YAML sync V1/V2/V3/V4       | proposed | skills  | —          | ENG-041 |
+
+* Statuts
+
+- =proposed=   : identifié, en attente de rédaction formelle (ENG-065)
+- =accepted=   : rédigé, relu, commité
+- =deprecated= : remplacé par une approche différente (sans successeur direct)
+- =superseded-by ADR-NNN= : remplacé par un ADR plus récent
+
+* Conventions
+
+- Un ADR = un fichier =ADR-NNN.org= dans ce répertoire.
+- Un ADR accepté ne se modifie pas — il se remplace par un nouvel ADR (statut =superseded-by=).
+- Référencer depuis les commits : =feat(...): ... — See ADR-NNN=
+- Référencer depuis les YAML rules : =# Design: See ADR-NNN (<raison courte>)=
+- Référencer depuis =pitfalls.org= : property =:ADR: ADR-NNN=
+
+* Trigger ECA
+
+#+begin_src
+chorus-adr --list          → eca__read_file sur ce fichier
+chorus-adr <NNN>           → eca__read_file sur ADR-NNN.org
+#+end_src

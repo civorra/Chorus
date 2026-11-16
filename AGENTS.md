@@ -274,6 +274,7 @@ ne peut pas rester `pending` ou être sautée.
 | Writing or modifying a YAML rule | auto | *(no dedicated skill — apply engine conventions documented in `./agent/skills/chorus-engine-yaml.md`)* **⚠️ KB org sync required — see § "KB org ↔ YAML sync" below** | `code` |
 | `cpan-release` | command | `./agent/skills/cpan-release.md` *(local — not distributed in the CPAN package)* | `code` |
 | `git-ctx` | command | *(no skill — call `git__git_branch` + `git__git_status` + `git__git_log` on this repository)* | `fast` |
+| `chorus-adr [<NNN>] [--list]` | meta | *(no skill — `eca__read_file` on `$EAKB/decisions/ADR-NNN.org` or `ADR-index.org` when `--list`)* | `fast` |
 | `skills [--all]` | meta | `eca__directory_tree ./agent/skills/` → name + status `✅` loaded / `○` available. Without `--all`: sub-skills are hidden (see list below). | `fast` |
 | `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
 

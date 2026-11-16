@@ -40,6 +40,7 @@ Ne jamais appeler =$SELF->solved()= en supposant que =$SELF= est la règle —
   :PROPERTIES:
   :COMPONENT: Chorus::Engine
   :SEVERITY: Surprenant
+  :ADR:      ADR-001
   :END:
 
 =PREMISSES:= / =PREMISES:= dans un fichier YAML est compilé en =_PREMISSES => {...}=
@@ -85,6 +86,7 @@ Pour un pipeline de N frames × M règles au total :
   :PROPERTIES:
   :COMPONENT: Chorus::Engine / DSL YAML
   :SEVERITY: Contre-intuitif
+  :ADR:      ADR-002
   :END:
 
 Quand =CONDITION:= contient une liste YAML :
@@ -109,6 +111,7 @@ CONDITION: "($f->{type}//'') eq 'stud' && defined $f->{section}"
   :PROPERTIES:
   :COMPONENT: Chorus::Engine / DSL YAML
   :SEVERITY: Asymétrique
+  :ADR:      ADR-002
   :END:
 
 =filtre:= dans un bloc =CHERCHER:= / =FIND:= utilise =setFilter()= qui joint les
