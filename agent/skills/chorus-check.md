@@ -346,18 +346,10 @@ grep -rn '\$agent->' $SANDBOX/rules/
 ```
 
 - **No matches** → proceed to Phase 2.
-- **Matches found** → every one of them is a bug in the YAML KB (not a template/
-  infrastructure issue) — fix each occurrence in place, replacing `$agent->` with
-  `$SELF->` (identical semantics: `$SELF->BOARD` and `$agent->BOARD` are the same
-  Frame instance inside a rule's own ACTION). Do this **before** generating any
-  `.pm`/`run.pl` file — a smoke test run against a KB still carrying this bug will
-  either crash on the first BOARD-publishing rule reached, or silently skip the
-  BOARD write (depending on where in the ACTION body the crash occurs relative to
-  prior statements), producing a confusing downstream symptom (e.g. an empty
-  `applicable_codes_set` read by a later agent) instead of a clear error at the
-  source.
-- After fixing, re-run the grep to confirm zero remaining matches, then regenerate
-  `agent/.kb-hash` (the YAML content changed) before proceeding to Phase 2.
+- **Matches found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` to auto-correct this pitfall.
+  Re-run `chorus-audit-rules` until zero 🔴 findings before continuing.
+  See: `chorus-audit-rules.md § Phase 3.10 — AGENT-MISUSE`.
 
 > **Incident:** `agent/org/incidents-log.org § build-en-01`
 
@@ -427,23 +419,15 @@ produce a failing or uncertain verdict must also appear in both scans' "no match
 > verdicts removed from the generic pattern — see note above.)
 
 - **No matches (all rules covered)** → proceed to Phase 2.
-- **Matches found** → for each flagged file:
-  - Missing `_rule_trace`: add the mandatory push block at the top of `ACTION`
-    (see `chorus-engine-yaml.md` checklist for the exact snippet).
-  - Missing `non_conformity_motif`: add an explicit, rule-authored motif in each
-    failing branch (one motif per distinct failure cause — never a single generic
-    motif covering several branches), guarded by `unless $f->get('non_conformity_motif')`.
-  - Fix in place, do **not** defer to a later `chorus-strengthen`/`chorus-review-kb`
-    pass — those tools check KB *correctness*, not *traceability completeness*,
-    and will not catch this.
-- After fixing, re-run both scans to confirm zero remaining matches, then
-  regenerate `agent/.kb-hash` before proceeding to Phase 2.
-- **Also verify `run.pl`'s own JSON-report block** (not just the `.yml` rules)
-  actually reads `_rule_trace` back off the element and includes a
-  `generic_motif_from_trace()` fallback (see `chorus-templates.md` T5) — a KB
-  that correctly pushes `_rule_trace` is still silently useless downstream if
-  the hand-written/previously-generated `run.pl` never reads it back into the
-  JSON report.
+- **Matches found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox>` to get the full finding list.
+  Use `--fix` for auto-correctable patterns; apply manual fixes for semantic ones.
+  Re-run `chorus-audit-rules` until zero 🔴/🟠 findings before continuing.
+  See: `chorus-audit-rules.md § Phase 3.6 (MISSING-MOTIF) + 3.7 (MISSING-RULE-TRACE)`.
+- **Also verify `run.pl`'s own JSON-report block** actually reads `_rule_trace` back
+  off the element and includes a `generic_motif_from_trace()` fallback
+  (see `chorus-templates.md` T5) — a KB that correctly pushes `_rule_trace` is
+  silently useless if `run.pl` never reads it back into the JSON report.
 
 > **Incident:** `agent/org/incidents-log.org § build-en-02`
 
@@ -483,20 +467,12 @@ grep -rn "set('<S>'" $SANDBOX/rules/*/*.yml          # Frame-local writers
 grep -rn "BOARD->{<S>}\|BOARD->set('<S>'" $SANDBOX/rules/*/*.yml   # BOARD writers
 ```
 
-- **Slot is written on BOARD only, but read via `$e->{slot}`/`$w->{slot}`/`$c->{slot}`
-  anywhere** → this is the exact bug class from the `05-CC-3.1.4` incident
-  (see `chorus-engine-yaml.md` for the full writeup). Fix every offending
-  `CONDITION`/`EXCEPTION` to read `$SELF->BOARD->{slot}` instead. Do this
-  **before** generating any infrastructure file.
-- **Slot is written Frame-local on a Frame type that never matches the
-  `FIND`/`filtre` of the rule reading it** (e.g. written only on `ST`/`PP`/`TOE`,
-  read on `FAU_*`) → same bug class, opposite direction: either add an
-  explicit propagation rule (documented in both agents' KB org) that copies
-  the value onto the consuming Frame type, or — the far more common correct
-  fix — promote the slot to BOARD at the publishing rule (`$SELF->BOARD->{slot}
-  = 1` in addition to, or instead of, the Frame-local copy) and update every
-  consuming `CONDITION`/`EXCEPTION` accordingly.
 - **No cross-agent slot found in this state** → proceed to Phase 2.
+- **Slot wiring issue found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox>` to get the full finding with suggested fix pattern.
+  Semantic fix requires human decision (Frame-local propagation rule vs BOARD promotion).
+  Re-run `chorus-audit-rules` until zero 🔴 findings before continuing.
+  See: `chorus-audit-rules.md § Phase 3.11 — CROSS-AGENT-WIRING`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-01`
 
@@ -524,15 +500,12 @@ grep -rlP 'split\(/,/.*elements.*\n' $SANDBOX/rules/*/*.yml 2>/dev/null \
 ```
 
 - **No matches** → proceed to Phase 2.
-- **Matches found** → each one is a candidate unbounded aggregate wait. Open it,
-  confirm it matches the pattern (splits a comma-joined expected-id slot,
-  resolves each via `fmatch`, `return 0` if any lookup misses), and apply the
-  bounded-wait fix from `chorus-engine-yaml.md` — a `_decl_wait_cycles` counter
-  per Frame, falling through to an explicit `non_conformity_motif` + a
-  non-blocking verdict after `MAX_WAIT_CYCLES` (5 is a reasonable default)
-  cycles still missing the same expected id(s). Do this **before** generating
-  any infrastructure file — regenerate `agent/.kb-hash` afterward (the YAML
-  content changed).
+- **Matches found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox>` — this pitfall requires a semantic fix
+  (domain-specific MAX_WAIT value). `chorus-audit-rules` reports the affected
+  rules with the bounded-wait pattern. Manual fix required; see
+  `chorus-engine-yaml.md § Aggregate rule bounded-wait`.
+  See: `chorus-audit-rules.md § Phase 3.12 — UNBOUNDED-AGGREGATE`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-02`
 
@@ -556,34 +529,18 @@ infrastructure file:
 grep -rl "^TERMINAL: solved$\|^TERMINAL: failed$" $SANDBOX/rules/*/*.yml
 ```
 
-- **Exactly one matching file, and it belongs to the pipeline's own final
-  aggregation agent** (the agent occupying the last `#+PIPELINE_POS` in
-  `index.org`, whose rule reads every upstream BOARD phase-done flag before
-  concluding) → proceed to Phase 2.
-- **Zero matches** → no `TERMINAL:` key found. Run a secondary scan for
-  direct `$SELF->solved()` / `$SELF->failed()` calls in YAML ACTION blocks:
+- **Exactly one matching file** belonging to the final aggregation agent → proceed to Phase 2.
+- **Zero matches** → run secondary scan for `$SELF->solved()`/`$SELF->failed()` in ACTION:
   ```bash
   grep -rn "\$SELF->solved()\|\$SELF->failed()" $SANDBOX/rules/*/*.yml
   ```
-  - Secondary scan finds **at least one match** → termination is handled inline
-    in ACTION → proceed to Phase 2.
-  - Secondary scan finds **zero matches** → **the pipeline has NO termination
-    mechanism at all**. Without `solved()` or `TERMINAL: solved`, `Chorus::Expert::process()`
-    runs until `_MAX_ITER` on **every** project, regardless of content, then reports
-    `FAILED/TIMEOUT` — infra generation is useless.
-    **⛔ STOP — do NOT generate infrastructure.** Create the missing TERMINAL rule first:
-    ```
-    REGLE: r-termination-pipeline
-    (placed in rules/<last_agent>/, see chorus-engine-yaml.md § TERMINAL pattern)
-    ```
-    Then re-run Step 5f to confirm exactly one TERMINAL/solved before continuing.
-    See ENG-055 for the auto-generation roadmap (chorus-feed should generate this rule).
-- **More than one matching file** → every file beyond the legitimate final
-  aggregator's own rule is a bug. For each one: remove the `TERMINAL: solved`/
-  `failed` line entirely (keep the rest of the rule — it almost always also
-  publishes a legitimate per-agent BOARD phase-done flag, which must remain).
-  Do this **before** generating any infrastructure file — regenerate
-  `agent/.kb-hash` afterward (the YAML content changed).
+  - At least one match → termination handled inline → proceed to Phase 2.
+  - Zero matches → ⛔ **HARD STOP — pipeline has NO termination mechanism.**
+    Create the missing TERMINAL rule first (see `chorus-engine-yaml.md § TERMINAL pattern`,
+    ENG-055). Then re-run Step 5f before continuing.
+- **More than one matching file** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` to remove duplicate TERMINAL lines.
+  See: `chorus-audit-rules.md § Phase 3.13 — DUPLICATE-TERMINAL`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-03`
 
@@ -610,16 +567,12 @@ grep -rnE "(EXCEPTION|CONDITION):.*fmatch\(" $SANDBOX/rules/*/*.yml \
   | grep -v "grep[^)]*type_element"
 ```
 
-- **No matches** → every `fmatch` call in a guard already filters by Frame
-  family before testing a domain slot → proceed to Phase 2.
-- **Matches found** → open each one and confirm whether the missing filter
-  is a genuine bug (the intent was clearly to scope to this agent's own
-  Frame family, matching its own `FIND.filtre`) or a deliberate
-  pipeline-wide check (rare — e.g. a true cross-agent gate reading a BOARD
-  slot instead, which does not need Frame filtering at all since BOARD is
-  not Frame-scoped). For the former, add the same family filter already used
-  by the agent's own `FIND` clause, as a `grep { $_->{type_element} =~ /.../ }`
-  immediately wrapping the `fmatch()` result before the slot-presence test.
+- **No matches** → every `fmatch` call in a guard already filters by Frame family → proceed to Phase 2.
+- **Matches found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox>` — the fix requires the agent's own `FIND.filtre`
+  pattern (cannot be auto-corrected). `chorus-audit-rules` reports the agent's
+  existing filter as a suggestion for manual application.
+  See: `chorus-audit-rules.md § Phase 3.9 — FMATCH-UNFILTERED-GUARD`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-04`
 
@@ -657,15 +610,12 @@ while read -r attr; do
 done < /tmp/find_attributs.txt
 ```
 
-- **No warnings printed** → every non-`type_element` `FIND.attribut` is
-  traceable to either a rule's own `ACTION` or a project data key → proceed
-  to Phase 2.
-- **Warnings printed** → for each flagged attribut, open the rule(s) using it
-  and confirm against the sandbox's own domain model (KB org Slot dictionary,
-  or the corpus itself) whether the name is simply not yet produced in the
-  project fixtures used for this scan (acceptable — document and move on) or
-  a genuine typo/drift from the real slot name (fix the `FIND.attribut`
-  value).
+- **No warnings printed** → every non-`type_element` `FIND.attribut` is traceable → proceed to Phase 2.
+- **Warnings printed** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox>` to investigate (requires domain knowledge to
+  determine whether the attribut name is a typo/drift or simply not yet in the
+  current project fixtures). No auto-fix available.
+  See: `chorus-audit-rules.md § Phase 3.14 — FIND-ATTRIBUT-DANGLING`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-05`
 
@@ -701,21 +651,15 @@ for f in $SANDBOX/rules/*/*.yml; do
 done
 ```
 
-- **No warnings printed** → every BOARD-publishing rule already guards against
-  re-firing once its own flag is set → proceed to Phase 2.
-- **Warnings printed** → for each flagged rule, add `defined $SELF->BOARD->{<flag>}
-  || (<original aggregation condition>)` to the `EXCEPTION` (or the inverse
-  polarity for `CONDITION`), so the rule becomes permanently inert once it has
-  published its flag once. Do this **before** generating any infrastructure
-  file — regenerate `agent/.kb-hash` afterward (the YAML content changed).
+- **No warnings printed** → every BOARD-publishing rule guards against re-firing → proceed to Phase 2.
+- **Warnings printed** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` — this pitfall is auto-correctable
+  (adds the idempotent EXCEPTION guard). Re-run until zero 🔴 findings.
+  See: `chorus-audit-rules.md § Phase 3.15 — BOARD-SELF-REFIRING`.
 
-> ⛔ **`PREMISSES:` has zero runtime semantics — `applyrules()` ignores it
-> completely.** All guard logic (including "do not re-fire once the BOARD flag
-> is set") MUST be expressed in `CONDITION:` or `EXCEPTION:`. A rule that relies
-> on `PREMISSES:` as an implicit guard is silently broken: it re-fires every
-> cycle with no warning. Never treat a warning from this step as a
+> ⛔ **`PREMISSES:` has zero runtime semantics** — all guard logic MUST be in
+> `CONDITION:` or `EXCEPTION:`. Never treat a warning from this step as a
 > "PREMISSES false positive".
-- Re-run the scan after fixing to confirm zero remaining matches.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-06`
 
@@ -773,13 +717,10 @@ done
   my $trace = $dummy->{_rule_trace} // [];
   unless (grep { ($_->{rule_id} // '') eq '<rule-id>' } @$trace) {
     push @$trace, { rule_id => '<rule-id>', corpus_ref => '<corpus_ref>' };
-    $dummy->{_rule_trace} = $trace;
-  }
-  1
-  ```
-  Do this **before** generating any infrastructure file — regenerate
-  `agent/.kb-hash` afterward (the YAML content changed).
-- Re-run the scan after fixing to confirm zero remaining matches.
+- **Warnings printed** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` — the `unless (grep ...)` guard
+  is auto-correctable. Re-run until zero findings.
+  See: `chorus-audit-rules.md § Phase 3.16 — UNGUARDED-TRACE-PUSH`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-07`
 
@@ -816,8 +757,10 @@ done
 ```
 
 - **No matches** → bounded-wait aggregate rules do not trap fixpoint on empty sub-element lists → proceed.
-- **Matches found** → for each flagged rule: **remove the `return 0` branch inside `!@elements`** — replace with an immediate set of the aggregate slot (see `chorus-engine-yaml.md § Bounded-wait !@elements — fixpoint trap` for the correct pattern). The `return 0` / `_decl_wait_cycles` wait is only correct for the `@pending` branch (sub-elements exist but are not yet scored); it is always wrong for `!@elements` (sub-elements will never arrive).
-- After fixing, regenerate `agent/.kb-hash` before proceeding to Phase 2.
+- **Matches found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` — the `!@elements` branch replacement
+  is auto-correctable. Re-run until zero 🔴 findings.
+  See: `chorus-audit-rules.md § Phase 3.17 — FIXPOINT-TRAP-ELEMENTS`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-08`
 
@@ -850,11 +793,10 @@ done
 ```
 
 - **No matches** → all multi-BOARD-flag readers have a `CONDITION` → proceed.
-- **Matches found** → for each flagged rule: add a `CONDITION:` clause checking
-  `defined $SELF->BOARD->{flagA} && defined $SELF->BOARD->{flagB} ...` for each
-  flag the ACTION reads (see `chorus-engine-yaml.md § Multi-BOARD gate rule must
-  have CONDITION` for the correct pattern). Do this **before** generating any
-  infrastructure file.
+- **Matches found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` — the `CONDITION:` clause addition
+  is auto-correctable. Re-run until zero 🔴 findings.
+  See: `chorus-audit-rules.md § Phase 3.18 — MULTI-BOARD-NO-CONDITION`.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-09`
 
@@ -909,18 +851,13 @@ done
 ```
 
 - **No output** → all Helper names are unique across agents → proceed to Phase 2.
-- **Output found** → one or more name collisions detected. For each collision:
-  - Is the name already prefixed with an agent slug? If not → rename it to
-    `<slug>_<name>` in the `Helpers.pm` file (sub declaration **and** typeglob line)
-    and update every YAML `ACTION` in that agent's `rules/<slug>/` that calls it.
-  - If two agents legitimately share identical logic → extract to a common module
-    (e.g. `lib/<Namespace>/SharedHelpers.pm`) with a unique sub name, or qualify
-    each per-agent copy with its own slug prefix.
-  - After renaming, re-run the scan to confirm zero remaining collisions.
-  - Regenerate `agent/.kb-hash` if any `.yml` rule was edited (the call site changed).
-- **ENG-032 (option 2 — authoring convention):** every new Helper written by
-  `chorus-feed` Phase 5.5 or manually must carry a `<slug>_` prefix from the start —
-  this scan is a safety net for the generation layer, not a substitute for it.
+- **Output found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox>` to get the full collision report with rename
+  suggestions. Manual fix required: rename to `<slug>_<name>` in Helpers.pm
+  AND update every YAML ACTION calling it.
+  See: `chorus-audit-rules.md § Phase 3.21 — HELPER-COLLISION`.
+- **ENG-032 (option 2 — authoring convention):** every new Helper must carry a
+  `<slug>_` prefix from authoring time — this scan is a safety net, not a substitute.
 
 > **Incident:** `agent/org/incidents-log.org § cc314-10` *(to be added — incident
 > `06-CC-3.1.5` 2026-11-06, `class_family_completion_status` collision between
@@ -948,9 +885,9 @@ done
 ```
 
 - **No output** → tous les Helpers.pm non-ASCII ont `use utf8;` → continuer.
-- **Output found** → ajouter `use utf8;` immédiatement après `use warnings;` dans
-  chaque Helpers.pm signalé. Pas de modification de `.kb-hash` requise (fichiers `.pm`,
-  pas `.yml`), mais `perl -c` sur le fichier pour confirmer la syntaxe.
+- **Output found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` — `use utf8;` insertion is auto-correctable.
+  See: `chorus-audit-rules.md § Phase 3.22 — USE-UTF8-MISSING`.
 
 ### Step 5o — Worst-verdict BOARD : initialisation bloquée par `// 'CONFORME'` (ENG-053) (mandatory, before Phase 2)
 
@@ -970,19 +907,10 @@ grep -rn 'BOARD->{[a-z_]*} // "CONFORME"' $SANDBOX/rules/*/*.yml 2>/dev/null \
 ```
 
 - **No matches** → toutes les initialisations worst-verdict utilisent `!defined || >` → continuer.
-- **Matches found** → pour chaque occurrence, remplacer selon le pattern canonique :
-  ```perl
-  # ⛔ CASSÉ
-  my $bv = $SELF->BOARD->{verdict_xxx} // 'CONFORME';
-  if (($prio{$verdict} // 0) > ($prio{$bv} // 0)) { $SELF->BOARD->{verdict_xxx} = $verdict }
-
-  # ✅ CORRECT
-  if (!defined $SELF->BOARD->{verdict_xxx}
-      || ($prio{$verdict} // 0) > ($prio{$SELF->BOARD->{verdict_xxx}} // 0)) {
-      $SELF->BOARD->{verdict_xxx} = $verdict;
-  }
-  ```
-  Corriger avant de générer l'infra. Régénérer `agent/.kb-hash` après modification.
+- **Matches found** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` — the `!defined || >` pattern replacement
+  is auto-correctable. Re-run until zero 🟠 findings.
+  See: `chorus-audit-rules.md § Phase 3.20 — WORST-VERDICT-INIT`.
 
 > **Référence :** `chorus-engine-yaml.md § Pitfall — Worst-verdict BOARD` (ENG-053).
 
@@ -1008,16 +936,12 @@ grep -rnE "^(CONDITION|EXCEPTION): [^|'\"0-9]" $SANDBOX/rules/*/*.yml 2>/dev/nul
 
 Interprétation des résultats :
 
-- **Aucun match** → toutes les `CONDITION`/`EXCEPTION` utilisent soit `|` soit des quotes simples `'...'` → continuer vers Phase 2.
-- **Matches trouvés** → pour chaque occurrence, inspecter si la valeur est réellement
-  multi-lignes (cas problématique) ou une expression courte sur une seule ligne (acceptable
-  si elle tient sur une ligne, sans `}` fermant séparé) :
-  - **Multi-lignes avec `do {` ou bloc** → **remplacer par `CONDITION: |`** + indentation
-    du contenu (corriger avant de générer l'infra).
-  - **Une seule ligne sans continuation** → risque limité mais préférer les quotes `'...'`
-    pour l'expliciter.
-- Après correction, re-exécuter le scan pour confirmer zéro match, puis régénérer
-  `agent/.kb-hash` si des fichiers `.yml` ont été modifiés.
+- **Aucun match** → toutes les `CONDITION`/`EXCEPTION` utilisent `|` ou quotes `'...'` → continuer vers Phase 2.
+- **Matches trouvés** → ⛔ **HARD STOP — do NOT generate infrastructure.**
+  Run `chorus-audit-rules <sandbox> --fix` — `do {` without `|` is auto-correctable.
+  Single-line cases: prefer adding quotes `'...'` (advisory, non-blocking).
+  Re-run until zero 🔴 findings.
+  See: `chorus-audit-rules.md § Phase 3.19 — PLAIN-SCALAR-TRUNCATED`.
 
 > **Référence :** `chorus-engine-yaml.md § Pitfall — CONDITION: do { sans |` (ENG-051).
 

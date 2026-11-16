@@ -247,6 +247,287 @@ Pattern: fmatch(slot => '...', value => ...)
 
 Finding: `🟠 FMATCH-VALUE-UNSUPPORTED — paramètre value => ignoré par Chorus::Frame::fmatch (non implémenté)`
 
+### 3.9 — Unfiltered `fmatch` in `EXCEPTION`/`CONDITION` — 🔴 CRITICAL
+
+```
+Pattern: EXCEPTION or CONDITION contains fmatch(slot => 'X')
+  AND no grep { $_->{type_element} =~ /.../ } filter immediately precedes
+  the domain-slot test in the same expression.
+```
+
+```bash
+grep -rnE "(EXCEPTION|CONDITION):.*fmatch\(" $SANDBOX/rules/*/*.yml \
+  | grep -v "grep[^)]*type_element"
+```
+
+Finding: `🔴 FMATCH-UNFILTERED-GUARD — fmatch() dans EXCEPTION/CONDITION sans filtre famille → rule dormante ou multi-Frame erreur`
+
+If `--fix`: **cannot auto-fix** — family filter depends on the agent's own `FIND.filtre`. Report with the agent's existing filter pattern as a suggestion. Operator must apply manually.
+
+### 3.10 — `$agent->` misuse in YAML rule — 🔴 CRITICAL
+
+```
+Pattern: any .yml file contains $agent->
+  ($agent is valid in addrule() Perl closures but always out-of-scope
+   inside a .yml EFFET/ACTION/EXCEPTION — only $SELF is bound there)
+```
+
+```bash
+grep -rn '\$agent->' $SANDBOX/rules/
+```
+
+Finding: `🔴 AGENT-MISUSE — $agent-> utilisé dans une règle YAML (hors scope → crash silencieux au premier déclenchement)`
+
+If `--fix`: replace every `$agent->` with `$SELF->` (identical semantics inside a rule ACTION). Re-run grep to confirm zero matches.
+
+### 3.11 — Cross-agent targeting-slot BOARD vs Frame-local wiring — 🔴 CRITICAL
+
+```
+Pattern: a slot S appears in CONDITION/EXCEPTION via $e->{S} or $w->{S}
+  (Frame-local read) in agent B, but S is ONLY written as
+  $SELF->BOARD->{S} (BOARD write) in agent A.
+  → Frame-local read of a BOARD-only slot → always undef → rule dormant.
+```
+
+```bash
+# Step 1: collect cross-agent candidate slots
+grep -rhoE "(CONDITION|EXCEPTION):.*\\\$\w+->\{(\w+)\}" $SANDBOX/rules/*/*.yml \
+  | grep -oE '\{(\w+)\}' | tr -d '{}' | sort | uniq -c | sort -rn
+# Step 2: for each candidate slot S in N>1 agents, check if it is BOARD-only
+grep -rn "set('<S>'" $SANDBOX/rules/*/*.yml       # Frame-local writers
+grep -rn "BOARD->{'<S>'}" $SANDBOX/rules/*/*.yml  # BOARD writers
+```
+
+Finding: `🔴 CROSS-AGENT-WIRING — slot S lu Frame-local ($e->{S}) mais jamais écrit Frame-local → toujours undef`
+
+If `--fix`: **cannot auto-fix** (semantic decision: Frame-local propagation rule vs BOARD promotion). Report affected rules with suggested fix pattern.
+
+### 3.12 — Unbounded aggregate wait (`fmatch`/`return 0` forever) — 🔴 CRITICAL
+
+```
+Pattern: ACTION splits a comma-joined expected-id slot, resolves each via fmatch(),
+  AND uses `return 0` if any lookup misses, with no retry counter (_decl_wait_cycles)
+  and no MAX_WAIT fallback.
+```
+
+```bash
+grep -rlP 'split\(/,/.*elements' $SANDBOX/rules/*/*.yml 2>/dev/null \
+  | xargs -I{} sh -c 'grep -q "_decl_wait_cycles\|MAX_WAIT" {} || echo {}'
+```
+
+Finding: `🔴 UNBOUNDED-AGGREGATE — aggregate rule attend indéfiniment des sous-éléments → pipeline TIMEOUT`
+
+If `--fix`: **cannot auto-fix** (MAX_WAIT value is domain-specific). Report with the bounded-wait pattern from `chorus-engine-yaml.md § Aggregate rule bounded-wait`.
+
+### 3.13 — Duplicate `TERMINAL: solved`/`failed` — 🔴 CRITICAL
+
+```
+Pattern: more than one .yml file in the sandbox contains the literal
+  `^TERMINAL: solved` or `^TERMINAL: failed` on its own line.
+  (Only the pipeline's final aggregation agent may carry this key.)
+```
+
+```bash
+grep -rl "^TERMINAL: solved$\|^TERMINAL: failed$" $SANDBOX/rules/*/*.yml
+```
+
+Finding: `🔴 DUPLICATE-TERMINAL — plusieurs règles TERMINAL: solved → pipeline s'arrête avant que tous les agents aient tourné`
+
+If `--fix`: remove the `TERMINAL: solved`/`failed` line from every file except the legitimate final aggregation agent's rule. The surrounding rule content (BOARD phase-done flag, etc.) must be preserved.
+
+### 3.14 — `FIND.attribut` slot-existence — 🟠 SIGNIFICANT
+
+```
+Pattern: a FIND.attribut value that is not `type_element`, not written by any
+  rule's ACTION ($x->set('<attribut>', ...)), and not a literal key in any
+  project JSON fixture in the sandbox.
+```
+
+```bash
+grep -rhA1 "^FIND:" $SANDBOX/rules/*/*.yml | grep "attribut:" \
+  | sed 's/.*attribut:\s*//' | sort -u > /tmp/find_attributs.txt
+while read -r attr; do
+  [ "$attr" = "type_element" ] && continue
+  grep -rq "set('$attr'" "$SANDBOX/rules/"*/*.yml && continue
+  grep -rlq "\"$attr\"" "$SANDBOX/"*.json "$SANDBOX/workspace/"*/*.json 2>/dev/null && continue
+  echo "⚠️  FIND.attribut '$attr' — jamais écrit par une règle, jamais clé JSON projet"
+done < /tmp/find_attributs.txt
+```
+
+Finding: `🟠 FIND-ATTRIBUT-DANGLING — FIND.attribut pointe un slot inconnu → règle dormante (zéro Frame candidate)`
+
+If `--fix`: **cannot auto-fix** (requires domain knowledge to determine correct slot name). Report with candidate replacements from KB org Slot dictionary.
+
+### 3.15 — BOARD-flag self-refiring rule — 🔴 CRITICAL
+
+```
+Pattern: a rule whose ACTION publishes a BOARD flag ($SELF->BOARD->{X} = ...)
+  BUT whose EXCEPTION/CONDITION never guards on that same flag already being set
+  (defined $SELF->BOARD->{X} absent from guards).
+  → rule re-fires every engine cycle once its aggregation condition is met.
+```
+
+```bash
+for f in $SANDBOX/rules/*/*.yml; do
+  flag=$(grep -oP "BOARD->\{?\K\w+(?=\}?\s*=|'\s*,)" "$f" | head -1)
+  [ -z "$flag" ] && continue
+  grep -qE "EXCEPTION:.*defined \\\$SELF->BOARD->\{?$flag\}?|CONDITION:.*defined \\\$SELF->BOARD->\{?$flag\}?" "$f" \
+    || echo "⚠️  $f — publie BOARD->{$flag} sans guard self sur ce flag"
+done
+```
+
+Finding: `🔴 BOARD-SELF-REFIRING — règle BOARD sans guard idempotent → re-fire chaque cycle → CPU burn jusqu'à _MAX_CYCLES`
+
+If `--fix`: add `defined $SELF->BOARD->{<flag>}` to the EXCEPTION as a short-circuit guard. Pattern: `EXCEPTION: "defined $SELF->BOARD->{<flag>} || (<original condition>)"`.
+
+### 3.16 — Unguarded `_rule_trace` push on fmatch-based EXCEPTION — 🟡 MINOR
+
+```
+Pattern: ACTION pushes to _rule_trace (push @$trace, {...})
+  AND EXCEPTION is an fmatch()-based aggregate check
+  AND no `unless (grep { ... rule_id ... } @$trace)` guard wraps the push.
+  → push fires every cycle → flooded _rule_trace array → inflated run-report JSON.
+```
+
+```bash
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -q "push @\$trace" "$f" || continue
+  grep -q "unless (grep" "$f" && continue
+  exc=$(awk '/^EXCEPTION:/{flag=1} flag{print} /^ACTION:/{exit}' "$f")
+  echo "$exc" | grep -q "fmatch" || continue
+  echo "$exc" | grep -q "BOARD->{" && continue
+  echo "🟡  $f — push _rule_trace non gardé sur EXCEPTION fmatch"
+done
+```
+
+Finding: `🟡 UNGUARDED-TRACE-PUSH — _rule_trace push sans guard unless-grep → doublons massifs dans run-report JSON`
+
+If `--fix`: wrap the push in `unless (grep { ($_->{rule_id} // '') eq '<rule-id>' } @$trace)`.
+
+### 3.17 — `return 0` on `!@elements` fixpoint trap — 🔴 CRITICAL
+
+```
+Pattern: a bounded-wait aggregate rule (uses _decl_wait_cycles / MAX_WAIT_CYCLES)
+  AND its !@elements branch uses `return 0`
+  (correct for @pending, ALWAYS WRONG for !@elements — prevents fixpoint completion).
+```
+
+```bash
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -q "MAX_WAIT_CYCLES\|_decl_wait_cycles" "$f" || continue
+  perl -0777 -ne '
+    if (/if\s*\(!\@elements\).*?return\s+0/s) { print "⚠️  FIXPOINT TRAP: '"$f"'\n" }
+  ' "$f"
+done
+```
+
+Finding: `🔴 FIXPOINT-TRAP-ELEMENTS — return 0 sur !@elements dans un aggregate borné → élément jamais traité si sous-éléments absents`
+
+If `--fix`: remove the `return 0` branch inside `!@elements` — replace with immediate set of the aggregate slot using the domain's "not applicable" or zero-count variant. See `chorus-engine-yaml.md § Bounded-wait !@elements`.
+
+### 3.18 — Multi-BOARD gate rule missing `CONDITION` — 🔴 CRITICAL
+
+```
+Pattern: a rule whose ACTION reads ≥ 2 distinct BOARD flags
+  (BOARD->{flagA} && BOARD->{flagB}) but has NO `CONDITION:` line.
+  → fires on first cycle before any upstream agent publishes those flags
+  → gate slot set to 0/false permanently.
+```
+
+```bash
+for f in $SANDBOX/rules/*/*.yml; do
+  grep -qE "BOARD->\{[a-z_]+\}" "$f" || continue
+  board_count=$(grep -oE "BOARD->\{[a-z_]+\}" "$f" | sort -u | wc -l)
+  [ "$board_count" -lt 2 ] && continue
+  grep -q "^CONDITION:" "$f" || echo "⚠️  $f — lit $board_count BOARD flags sans CONDITION gate"
+done
+```
+
+Finding: `🔴 MULTI-BOARD-NO-CONDITION — gate multi-BOARD sans CONDITION → s'exécute cycle 1, verrouille le slot à 0 définitivement`
+
+If `--fix`: add `CONDITION:` clause checking `defined $SELF->BOARD->{flagA} && defined $SELF->BOARD->{flagB}` for each flag read. See `chorus-engine-yaml.md § Multi-BOARD gate rule must have CONDITION`.
+
+### 3.19 — `CONDITION`/`EXCEPTION` plain scalar tronqué (ENG-051) — 🔴 CRITICAL
+
+```
+Pattern: CONDITION: or EXCEPTION: value that starts with an unquoted,
+  non-| token (e.g. `do {` without `|`) → YAML parser truncates the
+  value at the first } at zero indent → Perl block incomplete →
+  codeRule() returns undef → rule never fires.
+```
+
+```bash
+grep -rnE "^(CONDITION|EXCEPTION): [^|'\"0-9]" $SANDBOX/rules/*/*.yml \
+  | grep -vE ":(CONDITION|EXCEPTION): '.*'$"
+```
+
+Finding: `🔴 PLAIN-SCALAR-TRUNCATED — CONDITION/EXCEPTION sans | → bloc Perl tronqué → règle ne se déclenche jamais`
+
+If `--fix`: prepend `|` to the CONDITION/EXCEPTION line and indent its body by 2 spaces. Auto-fixable for the `do {` pattern; other cases require manual review.
+
+### 3.20 — Worst-verdict BOARD init `// 'CONFORME'` (ENG-053) — 🟠 SIGNIFICANT
+
+```
+Pattern: BOARD->{slot} // 'CONFORME' used in a worst-verdict comparison
+  → when all verdicts are CONFORME the BOARD slot is never written
+  → TERMINAL rule waits on that slot → pipeline TIMEOUT.
+```
+
+```bash
+grep -rn "BOARD->{[a-z_]*} // 'CONFORME'\|BOARD->{[a-z_]*} // \"CONFORME\"" \
+  $SANDBOX/rules/*/*.yml
+```
+
+Finding: `🟠 WORST-VERDICT-INIT — BOARD init via // 'CONFORME' bloque l'écriture → pipeline TIMEOUT sur projet 100% conforme`
+
+If `--fix`: replace with the canonical `!defined $SELF->BOARD->{slot} || (prio{v} > prio{...})` pattern. See `chorus-engine-yaml.md § Pitfall — Worst-verdict BOARD` (ENG-053).
+
+### 3.21 — Helper qualified-name collision (ENG-032) — 🔴 CRITICAL
+
+```
+Pattern: two or more Helpers.pm files across different agents define a sub
+  with the same name. Chorus::Engine uses a single shared typeglob namespace
+  → second agent's build() silently overwrites the first's closure.
+```
+
+```bash
+for pm in $SANDBOX/lib/*/Agent/*/Helpers.pm $SANDBOX/lib/*/Agent/*/*/Helpers.pm 2>/dev/null; do
+  slug=$(basename $(dirname "$pm"))
+  grep -oP '^sub \K\w+' "$pm" | while read fn; do echo "$fn $slug $pm"; done
+done | sort > /tmp/helper-names.txt
+awk '{print $1}' /tmp/helper-names.txt | sort | uniq -d | while read dup; do
+  echo "🔴 HELPER-COLLISION '$dup':"
+  grep "^$dup " /tmp/helper-names.txt | awk '{print "    " $2 " → " $3}'
+done
+```
+
+Finding: `🔴 HELPER-COLLISION — même nom de Helper dans ≥ 2 agents → écrasement silencieux → verdicts incorrects`
+
+If `--fix`: rename to `<slug>_<name>` in the Helpers.pm declaration **and** typeglob line, and update every YAML ACTION calling it. See ENG-032.
+
+### 3.22 — `use utf8;` manquant dans Helpers.pm (ENG-052) — 🟠 SIGNIFICANT
+
+```
+Pattern: a Helpers.pm contains non-ASCII characters (accented French)
+  but does not declare `use utf8;`.
+  → Perl stores literals as byte strings while YAML rules produce Unicode strings
+  → eq comparisons silently fail → Helper returns undef → _a_confirmer verdicts.
+```
+
+```bash
+for pm in $SANDBOX/lib/*/Agent/*/Helpers.pm \
+          $SANDBOX/lib/*/Agent/*/*/Helpers.pm 2>/dev/null; do
+  [ -f "$pm" ] || continue
+  grep -qP '[^\x00-\x7F]' "$pm" || continue
+  grep -q "^use utf8" "$pm" || \
+    echo "🟠 USE-UTF8-MISSING: $pm — chaînes non-ASCII sans 'use utf8;'"
+done
+```
+
+Finding: `🟠 USE-UTF8-MISSING — Helpers.pm non-ASCII sans use utf8 → comparaisons eq silencieusement fausses (ENG-052)`
+
+If `--fix`: add `use utf8;` immediately after `use warnings;` in the Helpers.pm. Run `perl -c` to confirm syntax.
+
 ---
 
 ## Phase 4 — CHERCHER / CONDITION / EFFET coherence
