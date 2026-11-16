@@ -25,8 +25,11 @@
 > to `$SANDBOX/$WORKSPACE/reports/`, created automatically if absent. This keeps
 > human-facing deliverables (reports) separate from the operational KB/YAML
 > artefacts under `$SANDBOX/agent/`. Working files that are internal pipeline memory
-> (`thesaurus.org` / `thesaurus/*.org`, `.import-inventory-*.org`,
-> `.import-alignment-*.org`) stay in `$SANDBOX/agent/`. `project-import-*.json` is the
+> (`thesaurus.org` / `thesaurus/*.org`) stay in `$SANDBOX/agent/`.
+> `.import-inventory-*.org` and `.import-alignment-*.org` follow the **`$WORKFILES_DIR`
+> rule** (ENG-062): `$SANDBOX/agent/` for Scope=global, `$SANDBOX/workspace/<client>/`
+> for Scope=`<client>` (keeping `agent/` free of project-scoped data).
+> `project-import-*.json` is the
 > one exception: it stays in `$SANDBOX/agent/` only for Scope=global imports — for a
 > `$WORKSPACE/<client>/`-scoped import it is written to that same `<client>/` folder
 > instead (see `chorus-import-project.md § "Output JSON location"`), so that a

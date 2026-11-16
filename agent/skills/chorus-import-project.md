@@ -648,6 +648,17 @@ resolved by this **three-step cascade** (first match wins):
 3. Otherwise  → C = "global"  (default — preserves current behaviour)
 ```
 
+> **`$WORKFILES_DIR` — ENG-062 — initialized once after Scope `C` is resolved:**
+> - `C = "global"` → `$WORKFILES_DIR = $SANDBOX/agent`
+> - `C ≠ "global"` → `$WORKFILES_DIR = $SANDBOX/workspace/<C>`
+>
+> All `.import-inventory-*.org` and `.import-alignment-*.org` files (Phases 2, 3, 5,
+> and Phase-5 cleanup) use **`$WORKFILES_DIR`** as their base directory — never
+> `$SANDBOX/agent/` directly. For Scope=global the behaviour is unchanged; for
+> Scope=`<client>` the files land in the client workspace alongside `thesaurus.org`
+> and `project-import-*.json`, keeping `$SANDBOX/agent/` libre de toute donnée
+> project-scoped.
+
 Step 2 triggers **only** for the exact `<X>/sources/` structure — not arbitrary paths.
 A `Batch` on `./some-folder/` not under `$WORKSPACE/<X>/sources/` always resolves to `global`.
 
@@ -774,14 +785,14 @@ For each element E identified in the source (full sequential scan):
   If len(inventory) % BLOCK_SIZE == 0:
     # Keepalive write — resets IDE token TTL
     Write eca__write_file:
-      path    : $SANDBOX/agent/.import-inventory-<NNN>-blk<block_num>.org
+      path    : $WORKFILES_DIR/.import-inventory-<NNN>-blk<block_num>.org
       content : partial inventory (last BLOCK_SIZE elements)
     block_num += 1
     Print: "[Phase 2] Inventory block <block_num-1> written — <len(inventory)> elements so far"
 
 # After full scan — write consolidated inventory (used by Phase 3)
 Write eca__write_file:
-  path    : $SANDBOX/agent/.import-inventory-<NNN>.org
+  path    : $WORKFILES_DIR/.import-inventory-<NNN>.org
   content : full inventory (all elements, all blocks)
 Print: "[Phase 2] Complete inventory written — <len(inventory)> elements total"
 ```
@@ -886,7 +897,7 @@ If the engineer confirms `yes`, proceed — but set `"_couverture_kb": "low"` in
 ```
 # Step 0 — reload inventory from disk (keepalive + single source of truth)
 Read eca__read_file:
-  path: $SANDBOX/agent/.import-inventory-<NNN>.org
+  path: $WORKFILES_DIR/.import-inventory-<NNN>.org
 terms = all distinct terms extracted from the inventory
 Print: "[Phase 3] Inventory loaded — <len(terms)> distinct terms to align"
 
@@ -916,14 +927,14 @@ For each term T in terms (full sequential alignment):
   If len(alignment) % BLOCK_SIZE == 0:
     # Keepalive write — resets IDE token TTL
     Write eca__write_file:
-      path    : $SANDBOX/agent/.import-alignment-<NNN>-blk<block_num>.org
+      path    : $WORKFILES_DIR/.import-alignment-<NNN>-blk<block_num>.org
       content : partial alignment table (last BLOCK_SIZE rows)
     block_num += 1
     Print: "[Phase 3] Alignment block <block_num-1> written — <len(alignment)> terms done"
 
 # After all terms — write consolidated alignment (used by Phase 4 and Phase 5)
 Write eca__write_file:
-  path    : $SANDBOX/agent/.import-alignment-<NNN>.org
+  path    : $WORKFILES_DIR/.import-alignment-<NNN>.org
   content : full alignment table (all terms)
 Print: "[Phase 3] Complete alignment written — <len(alignment)> terms total"
 ```
@@ -1537,12 +1548,12 @@ from the canonical on-disk state rather than from context that may have drifted.
 ```
 # Reload consolidated inventory (Phase 2 output)
 Read eca__read_file:
-  path: $SANDBOX/agent/.import-inventory-<NNN>.org
+  path: $WORKFILES_DIR/.import-inventory-<NNN>.org
 → confirms element list, ids, source lines
 
 # Reload consolidated alignment (Phase 3 output)
 Read eca__read_file:
-  path: $SANDBOX/agent/.import-alignment-<NNN>.org
+  path: $WORKFILES_DIR/.import-alignment-<NNN>.org
 → confirms term → slot/value mappings, confidence levels, ❓/⚠️/⬜ flags
 
 Print: "[Phase 5] Sources reloaded — <N_elements> elements / <N_terms> aligned terms"
@@ -1666,13 +1677,15 @@ For each element E in the alignment table:
 After writing the final JSON (and before Phase 6), delete all transient block files:
 
 ```bash
-rm -f $SANDBOX/agent/.import-inventory-<NNN>-blk*.org
-rm -f $SANDBOX/agent/.import-alignment-<NNN>-blk*.org
+rm -f $WORKFILES_DIR/.import-inventory-<NNN>-blk*.org
+rm -f $WORKFILES_DIR/.import-alignment-<NNN>-blk*.org
 ```
 
 The two consolidated files (`.import-inventory-<NNN>.org` and `.import-alignment-<NNN>.org`)
 are **kept** — they serve as the audit trail for this import and are referenced by Phase 6
 (import report) and by future `chorus-import-project` runs (Phase 1.3 secondary memory).
+They reside in `$WORKFILES_DIR` — i.e. `$SANDBOX/agent/` for Scope=global, or
+`$SANDBOX/workspace/<client>/` for Scope=`<client>`.
 
 ---
 
