@@ -24,7 +24,7 @@
 > `--lang <fr|en>`: force the language of `--explain`/`--summary` reports. Overrides
 >                   auto-detection. Only affects report output — never the YAML rules,
 >                   KB org files, or run.pl output (those follow the YAML language
->                   convention documented in `AGENTS.md`). See `## Phase L0` below.
+>                   convention documented in `AGENTS.md`). See `## Phase L0` in `chorus-check-report.md`.
 > `--from-report <path>`: **pipeline-free mode** — skip Phases 0–6 entirely; read
 >                         element data directly from an existing run-report JSON.
 >                         `<path>` is relative to `$SANDBOX`
@@ -1067,44 +1067,6 @@ If **NOT CONVERGED** → recommend:
 > project file changed since the last `--all`, the new hash reflects it.
 
 
-## Phase L0 — Report language resolution (`$REPORT_LANG`)
-
-> **Runs once, before Phase E0, whenever `--explain` or `--summary` is present.**
-> Produces `$REPORT_LANG ∈ { fr, en }` used by all subsequent phases to select
-> French or English templates. Priority (highest first) :
-
-```
-1. --lang <fr|en> flag    → use directly, no further check
-2. #+CORPUS_LANG in       → read first line matching "^#\+CORPUS_LANG:" in
-   agent/chorus/index.org    $SANDBOX/agent/chorus/index.org
-                              value must be fr or en (case-insensitive), else skip
-3. YAML normative-content  → scan all files in $SANDBOX/rules/**/*.yml
-   dominant language          ⚠️ do NOT use the "^RULE:"/"^REGLE:" header keyword —
-                              it is a fixed structural tag from the engine's YAML
-                              template (English by default, per chorus-engine-yaml.md),
-                              not a reflection of the corpus's actual language, and is
-                              present as "RULE:" even on French-corpus sandboxes.
-                              Instead, scan the free-text normative content of each
-                              rule: the "# CORPUS:" line's reference label and the
-                              "# PURPOSE" block's prose. Count French-leaning markers
-                              (accented characters é/è/à/ê/ç, or words matching
-                              "Règle|Recommandation|Reco[A-Z]|conforme|non conforme"
-                              case-insensitively) vs English-leaning markers (words
-                              matching "Rule|Recommendation|compliant|non-compliant").
-                              $REPORT_LANG = language with the higher marker count
-                              across all scanned files; tie → fr
-4. Default                → fr
-```
-
-**Log line (mandatory):**
-```
-[lang] $REPORT_LANG=<fr|en>  source=<flag|index.org|yaml-scan|default>
-```
-
-This log line is the only place `$REPORT_LANG` is announced — do not repeat it.
-All phases below consume `$REPORT_LANG` silently; never re-run this resolution.
-
----
 
 ## Option `--explain` — Human-readable non-conformity explanations
 ## Option `--summary` — Consultation-friendly synthesis document
@@ -1119,12 +1081,11 @@ All phases below consume `$REPORT_LANG` silently; never re-run this resolution.
 > ```
 >
 > `chorus-check-report.md` contains:
+> - `## Phase L0` — report language resolution (`$REPORT_LANG`)
 > - `## Option --explain` (Phases E0–E4) — per-element non-conformity explanation file
 > - `## Option --summary` (Phases S1–S2) — one-page consultation synthesis
 > - `## Option --from-report` (Phases FR0–FR1) — pipeline-free mode from existing run-report
 >
-> ⛔ **Never skip this loading step** when a report flag is present — the Phase L0
-> `$REPORT_LANG` resolution (below) feeds directly into these report-generation phases.
 
 ## Phase 6-all — `--all` mode (batch run)
 

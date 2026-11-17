@@ -302,8 +302,10 @@ ne peut pas rester `pending` ou être sautée.
 > analysis/enrichment, and transitively into `chorus-feed-coverage.md` via those
 > modes' own coverage phases — not a 4th independent mode, purely an orchestrator.
 >
-> `chorus-check-report.md` — ENG-068: `--explain` (Phases E0–E4), `--summary`
-> (Phases S1–S2), and `--from-report` (Phases FR0–FR1) report-generation logic
-> factored out of `chorus-check.md`. Loaded via `eca__read_file` from `chorus-check.md`
-> before Phase 6 output consumption, only when `--explain`, `--summary`, or
-> `--from-report` is present. Reduces `chorus-check.md` from 2927 to ~1517 lines.
+> `chorus-check-report.md` — ENG-068/ENG-069: Phase L0 (language resolution),
+> `--explain` (Phases E0–E4), `--summary` (Phases S1–S2), and `--from-report`
+> (Phases FR0–FR1). **Direct trigger:**
+> `chorus-check-report <sandbox> <run-report.json> [--explain] [--summary]` — produces
+> explain/synthese reports from an existing run-report JSON without re-running the
+> pipeline. Also loaded as a sub-skill by `chorus-check` when a report flag is present.
+> Reduces `chorus-check.md` from 2927 to ~1477 lines (below 1500-line threshold).

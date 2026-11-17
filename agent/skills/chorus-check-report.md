@@ -1,13 +1,59 @@
 # Skill — chorus-check-report
 
-> **Sub-skill of `chorus-check` (ENG-068).**
-> Loaded only when `--explain`, `--summary`, or `--from-report` is present.
+> **Trigger:** `chorus-check-report <sandbox-name> <run-report.json> [--explain] [--summary]`
+> **Agent:** `code`
 >
-> Load via `eca__read_file("$ENGINE/agent/skills/chorus-check-report.md")`
-> from `chorus-check.md` before Phase 6 output consumption.
+> `<sandbox-name>` : sandbox containing the KB that produced the run.
+> `<run-report.json>` : path to an existing `run-report-*.json` produced by `chorus-check`.
+>                       Relative to `$SANDBOX` (e.g. `workspace/eviden/reports/run-report-20261102-141022.json`).
+> `--explain` : produce `explain-<slug>-<RUN_TIMESTAMP>.md` (rule-by-rule non-conformity details)
+> `--summary` : produce `synthese-<slug>-<RUN_TIMESTAMP>.md` (one-page consultation synthesis)
 >
-> **Never call `eca__skill(...)` for this skill** — use `eca__read_file` directly.
-> This sub-skill has no independent trigger; it is always loaded by `chorus-check`.
+> **Also loaded as a sub-skill by `chorus-check`** (ENG-068) when `--explain`, `--summary`,
+> or `--from-report` is present. In that case the caller provides Phase 6 output directly;
+> Phase FR0 is skipped (run-report already in memory).
+>
+> **Single responsibility:** read a run-report JSON → produce human-readable reports.
+> Never runs the pipeline. Never reads YAML rule files. Never generates Perl infrastructure.
+
+---
+
+## Phase L0 — Report language resolution (`$REPORT_LANG`)
+
+> **Runs once, before Phase E0, whenever `--explain` or `--summary` is present.**
+> Produces `$REPORT_LANG ∈ { fr, en }` used by all subsequent phases to select
+> French or English templates. Priority (highest first) :
+
+```
+1. --lang <fr|en> flag    → use directly, no further check
+2. #+CORPUS_LANG in       → read first line matching "^#\+CORPUS_LANG:" in
+   agent/chorus/index.org    $SANDBOX/agent/chorus/index.org
+                              value must be fr or en (case-insensitive), else skip
+3. YAML normative-content  → scan all files in $SANDBOX/rules/**/*.yml
+   dominant language          ⚠️ do NOT use the "^RULE:"/"^REGLE:" header keyword —
+                              it is a fixed structural tag from the engine's YAML
+                              template (English by default, per chorus-engine-yaml.md),
+                              not a reflection of the corpus's actual language, and is
+                              present as "RULE:" even on French-corpus sandboxes.
+                              Instead, scan the free-text normative content of each
+                              rule: the "# CORPUS:" line's reference label and the
+                              "# PURPOSE" block's prose. Count French-leaning markers
+                              (accented characters é/è/à/ê/ç, or words matching
+                              "Règle|Recommandation|Reco[A-Z]|conforme|non conforme"
+                              case-insensitively) vs English-leaning markers (words
+                              matching "Rule|Recommendation|compliant|non-compliant").
+                              $REPORT_LANG = language with the higher marker count
+                              across all scanned files; tie → fr
+4. Default                → fr
+```
+
+**Log line (mandatory):**
+```
+[lang] $REPORT_LANG=<fr|en>  source=<flag|index.org|yaml-scan|default>
+```
+
+This log line is the only place `$REPORT_LANG` is announced — do not repeat it.
+All phases below consume `$REPORT_LANG` silently; never re-run this resolution.
 
 ---
 
