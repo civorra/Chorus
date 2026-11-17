@@ -279,7 +279,7 @@ ne peut pas rester `pending` ou être sautée.
 | `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
 
 > **Sub-skills** — internal support files, no direct user trigger. Hidden from `skills` / `skills details` unless `--all` is passed:
-> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md` · `chorus-feed-unattended.md` · `chorus-check-report.md`
+> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md` · `chorus-feed-unattended.md` · `chorus-check-report.md` · `chorus-pdf-_shared-text-hybrid.md` · `chorus-pdf-_shared-auto-images.md` · `chorus-pdf-text.md` · `chorus-pdf-hybrid.md` · `chorus-pdf-auto.md` · `chorus-pdf-images.md`
 >
 > `chorus-import-extract.md` — ENG-030: document extraction pipelines (PDF/Excel/Word) extracted from `chorus-import-project.md`
 > to keep the main skill ≤ 2000 lines for CBOM imports. Loaded via `eca__read_file` from Phase 0
@@ -301,6 +301,18 @@ ne peut pas rester `pending` ou être sautée.
 > back into `chorus-feed.md § Mode A`/`§ Mode B` for the actual per-file corpus
 > analysis/enrichment, and transitively into `chorus-feed-coverage.md` via those
 > modes' own coverage phases — not a 4th independent mode, purely an orchestrator.
+>
+> `chorus-pdf-_shared-text-hybrid.md` — ENG-042: shared utilities for text & hybrid modes
+> (`detect_table_columns`, `extract_tables_from_page`, `analyse_pages` with borderless
+> detection per ENG-059). Loaded by `chorus-pdf.md` for text and `--hybrid` modes.
+>
+> `chorus-pdf-_shared-auto-images.md` — ENG-042: vision extraction prompt + `image_to_b64`.
+> Loaded by `chorus-pdf.md` for `--auto` and `--images` modes.
+>
+> `chorus-pdf-text.md` — ENG-042: Text mode script template + `detect_and_tag_formulas`.
+> `chorus-pdf-hybrid.md` — ENG-042: Phase 1.5 nohup gate + Hybrid script template + Phase 2.5.
+> `chorus-pdf-auto.md` — ENG-042: Auto mode script template.
+> `chorus-pdf-images.md` — ENG-042: Images mode script template.
 >
 > `chorus-check-report.md` — ENG-068/ENG-069: Phase L0 (language resolution),
 > `--explain` (Phases E0–E4), `--summary` (Phases S1–S2), and `--from-report`
