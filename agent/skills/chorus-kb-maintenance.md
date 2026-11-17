@@ -300,6 +300,36 @@ shard), confirm the target slot/value it maps to still exists in the current KB
 (Slot dictionary across all `<slug>.org` files). Flag orphaned aliases pointing to
 slots removed since the thesaurus entry was created.
 
+### 5.8 Structural consistency gate (`validate-kb-consistency.py`) (ENG-070)
+
+If `$ENGINE/scripts/validate-kb-consistency.py` exists, run it on the sandbox:
+
+```bash
+python3 $ENGINE/scripts/validate-kb-consistency.py $SANDBOX [--agent <slug>]
+```
+
+> Skip silently if `$ENGINE` is unavailable (standalone sandbox, no engine
+> checkout). Never block execution for a missing script.
+
+Classify findings by severity:
+
+| Kind | Severity | Meaning |
+|---|---|---|
+| `SLOT-MISMATCH` | 🔴 critical | Slot read in YAML absent from org Pipeline I/O table — causes bad JSON by construction |
+| `TYPE-ORPHAN` | ⚠️ warning | `type_element` in org catalogue not covered by any YAML filtre |
+| `TYPE-DEAD` | ⚠️ warning | `type_element` in YAML filtre absent from org catalogue |
+| `SLOT-ORPHAN` | ⚠️ warning | Slot written in YAML absent from org `** Outputs` |
+| `HELPERS-EXIST` | ⚠️ warning | Helper function called in YAML absent from `@EXPORT_OK` in Helpers.pm |
+| `HELPERS-SYNC` | ⚠️ warning | Desynchronisation between `@EXPORT_OK` and org `* Perl Helpers` section |
+| `SLOT-DEAD` | ℹ️ info | Slot in org `** Inputs` never read by any YAML rule |
+
+Feed all findings into the Phase 6 console summary and `--report` file under a
+dedicated "Phase 5.8 — Structural consistency" section.
+
+> `--patch` does **not** auto-fix findings from this check — the script is
+> read-only. Fixes require `chorus-feed --enrich` (org/YAML re-sync) or a manual
+> Helpers.pm edit, both of which require domain reasoning.
+
 
 ## Phase 6 — Report
 
@@ -316,6 +346,7 @@ slots removed since the thesaurus entry was created.
   Phase 3 — Pitfall compliance:  <N> findings — <F> auto-fixed (--patch) / <F> flagged
   Phase 4 — README.org:          ✅<a> ⚠️<s> 🔴<c>
   Phase 5 — Supplementary:       <N> findings (.kb-hash / catalog bijection / BOARD / WIP / thesaurus)
+  Phase 5.8 — Structural:        ✅ clean / ⚠️ <N> warnings / 🔴 <N> critical (SLOT-MISMATCH)
 
   <if --patch not given and any ✅-fixable P-check found>
   ℹ️  <N> mechanical fixes available — re-run with --patch to apply
