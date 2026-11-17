@@ -7,6 +7,11 @@ Five groups of mechanical checks per agent (deterministic, no LLM):
   1. HELPERS-EXIST  : YAML `use ...::Helpers qw(f)` → f in @EXPORT_OK
   2. HELPERS-SYNC   : @EXPORT_OK ↔ '* Perl Helpers' org section (bidi)
   3. TYPE-ORPHAN    : type_element in org not matched by any YAML filtre
+                      Supports Strategy A (two-stage targeting): a type is
+                      considered covered if a targeting rule matches it via
+                      type_element filtre (simple or regex) and sets an
+                      intermediate slot (besoin_*), provided at least one
+                      downstream verdict rule reads that intermediate slot.
   4. TYPE-DEAD      : type_element in YAML filtre absent from org catalogue
   5. SLOT-MISMATCH  : slot read in YAML ($f->{x}, attribut: x) absent
                       from org '** Inputs' table  [critical — causes bad JSON]
@@ -119,18 +124,242 @@ def parse_org_type_elements(org_text: str) -> tuple:
     return values, uncovered
 
 
-def parse_yaml_type_elements(rules_dir: Path) -> dict:
-    """Returns {type_element_value: [yml_filename, ...]}"""
-    val_map: dict = {}
+def _extract_regex_alternation(regex_inner: str) -> set:
+    """
+    Extract plain identifier values from a regex alternation inner string
+    (delimiters already stripped).
+
+    ``\\A(?:val1|val2|val3)\\z`` → {val1, val2, val3}
+
+    Accepts both single-backslash (``\\A``) and double-backslash (``\\\\A``)
+    escaped anchors as produced by YAML file read.
+    Returns an empty set when the inner pattern contains unsupported operators.
+    """
+    inner = regex_inner
+    # Remove anchors: \\A \\z \\Z ^ $  (double-backslash and single-backslash)
+    inner = re.sub(r'\\\\[AzZ]|\\[AzZ]|[\^$]', '', inner)
+    # Remove non-capturing groups (?:...) and plain capturing groups
+    inner = re.sub(r'\(\?:', '', inner)
+    inner = re.sub(r'[()]', '', inner)
+    vals = set()
+    for v in inner.split('|'):
+        v = v.strip()
+        # Accept only clean identifier-like values — reject residual regex chars
+        if v and not re.search(r'[\\.*+?{}\[\]]', v):
+            vals.add(v)
+    return vals
+
+
+def parse_filtre_values(filtre_str: str) -> set:
+    """
+    Extract concrete *type_element* values from a YAML ``filtre:`` expression.
+
+    Handles the four formats found in Chorus YAML rules:
+
+    1. **Simple value** — ``'paroi_separative'`` or ``paroi_separative``
+       → ``{paroi_separative}``
+
+    2. **Bare regex** — ``'/\\\\A(?:val1|val2)\\\\z/'``
+       → ``{val1, val2}``
+
+    3. **Perl ``=~`` expression** — the filtre is a quoted Perl snippet:
+       ``'$_->get("type_element") =~ /\\A(?:v1|v2)\\z/'``
+       ``'$_->{type_element} =~ /v1|v2/'``
+       → values extracted from the regex alternation
+
+    4. **Perl ``eq`` expression**:
+       ``'$_->get("type_element") eq "paroi_separative"'``
+       ``'$_->{type_element} eq "value"'``
+       → ``{value}``
+
+    Compound Perl expressions (``&&`` / ``||``) are supported — only the
+    ``type_element``-related clause is extracted; other conditions are ignored.
+
+    Returns an empty set when no recognizable ``type_element`` pattern is found
+    or the expression is too complex to parse safely.
+    """
+    if not filtre_str:
+        return set()
+    s = filtre_str.strip()
+
+    # Strip outer single or double quotes
+    if len(s) >= 2 and s[0] in ('"', "'") and s[-1] == s[0]:
+        inner = s[1:-1]
+        if '$_' in inner or '$f' in inner:
+            # Perl expression — process without further quote-stripping
+            s = inner
+        else:
+            # Quoted simple value or bare regex
+            s = inner
+
+    # ── Bare regex: /pattern/ ────────────────────────────────────────────────
+    if s.startswith('/') and s.endswith('/') and s.count('/') >= 2:
+        return _extract_regex_alternation(s[1:-1])
+
+    # ── Perl =~ expression ───────────────────────────────────────────────────
+    # Matches: $_->get("type_element") =~ /pattern/
+    #      or: $_->{type_element} =~ /pattern/
+    # (possibly preceded/followed by other &&/|| clauses)
+    _TYPE_EL = (
+        r'\$_\s*->\s*(?:get\s*\(\s*["\']type_element["\']\s*\)'
+        r'|{type_element})'
+    )
+    vals: set = set()
+    for m in re.finditer(_TYPE_EL + r'\s*=~\s*/([^/]+)/', s):
+        vals.update(_extract_regex_alternation(m.group(1)))
+    if vals:
+        return vals
+
+    # ── Perl eq expression ───────────────────────────────────────────────────
+    for m in re.finditer(_TYPE_EL + r'\s*eq\s*["\']([^"\']+)["\']', s):
+        vals.add(m.group(1))
+    if vals:
+        return vals
+
+    # ── Simple unquoted/bare value ───────────────────────────────────────────
+    if '$' not in s and not re.search(r'[/\\.*+?{}\[\]|()]', s):
+        return {s} if s else set()
+
+    return set()
+
+
+def parse_yaml_rules_structured(rules_dir: Path) -> list:
+    """
+    Parse every YAML rule file in *rules_dir* and return a list of dicts::
+
+        {
+          'file':          str,
+          'find_pairs':    [(attribut_name, filtre_str), ...],
+          'slots_set':     set[str],   # slots written via $f->set(...)
+          'writes_verdict': bool,
+        }
+
+    ``filtre_str`` is an empty string when no ``filtre:`` line follows the
+    ``attribut:`` line in the FIND/CHERCHER block.
+    """
+    rules = []
     for yml in sorted(rules_dir.glob('*.yml')):
         try:
             text = yml.read_text(encoding='utf-8', errors='replace')
         except OSError:
             continue
-        for m in re.finditer(
-                r'type_element\s*\}\s*(?:eq|==)\s*[\'"]([^\'"]+)[\'"]', text):
-            val_map.setdefault(m.group(1), []).append(yml.name)
-    return val_map
+
+        # --- (attribut, filtre) pairs ----------------------------------------
+        find_pairs = []
+        for m in re.finditer(r'\battribut:\s*(\w+)', text):
+            attr = m.group(1)
+            # Look for filtre: on the lines immediately following attribut:
+            # Stop before the next attribut: occurrence to stay within the item.
+            snippet = text[m.end(): m.end() + 300]
+            next_attr = re.search(r'\battribut:', snippet)
+            if next_attr:
+                snippet = snippet[:next_attr.start()]
+            filtre_m = re.search(r'\bfiltre:\s*(.+?)(?:\n|$)', snippet)
+            filtre_str = filtre_m.group(1).strip() if filtre_m else ''
+            find_pairs.append((attr, filtre_str))
+
+        # --- slots written via any frame variable ($f / $e / alias / $SELF) ----
+        # Chorus CHERCHER blocks may declare a named alias (e.g. `e:`, `src:`),
+        # so the frame variable in EFFET can be $e, $src, etc. — not only $f.
+        slots_set: set = set()
+        for sm in re.finditer(
+                r'\$\w+\s*->\s*set\s*\([\'"](\w+)[\'"]', text):
+            s = sm.group(1)
+            if not _INTERNAL_SLOT.match(s):
+                slots_set.add(s)
+
+        writes_verdict = any(s.startswith('verdict') for s in slots_set)
+
+        rules.append({
+            'file': yml.name,
+            'find_pairs': find_pairs,
+            'slots_set': slots_set,
+            'writes_verdict': writes_verdict,
+        })
+
+    return rules
+
+
+def build_type_coverage(rules: list) -> tuple:
+    """
+    Compute type_element coverage with Strategy A (two-stage) transitivity.
+
+    **Strategy A** pattern::
+
+        Stage 1 — targeting rule:
+            attribut: type_element
+            filtre: "/\\A(?:typeA|typeB|...)\\z/"   ← regex or simple value
+            ACTION: $f->set('besoin_X', 1)          ← no verdict_* written
+
+        Stage 2 — verdict rule:
+            attribut: besoin_X
+            filtre: 1
+            ACTION: $f->set('verdict_foo', ...)     ← verdict written
+
+    A type value is *transitively covered* when:
+    1. A targeting rule matches it (via type_element filtre) and sets an
+       intermediate slot (no verdict_* in its own ACTION).
+    2. At least one downstream rule reads that same intermediate slot via
+       ``attribut: <slot>`` and writes a ``verdict_*`` slot.
+
+    Returns:
+        direct_covered (set[str])      — types directly covered by verdict rules
+        transitive_covered (set[str])  — types covered via Strategy A chain
+        all_yaml_types (dict[str, list[str]])
+                                       — {type_val: [yml_file, ...]}
+                                         used for TYPE-DEAD check
+    """
+    all_yaml_types: dict = {}
+
+    # slot → True when a verdict rule reads it via attribut:
+    slot_has_verdict_downstream: dict = {}
+
+    # type_val → set of intermediate slots set by targeting rules
+    type_to_intermediates: dict = {}
+
+    direct_covered: set = set()
+
+    # --- Pass 1: classify rules -----------------------------------------------
+    for rule in rules:
+        type_pairs = [(a, f) for a, f in rule['find_pairs']
+                      if a == 'type_element']
+
+        if not type_pairs:
+            # No direct type_element targeting.
+            # If this rule writes a verdict, record which attribut slots it reads
+            # so we can resolve downstream transitivity in pass 2.
+            if rule['writes_verdict']:
+                for attr, _ in rule['find_pairs']:
+                    slot_has_verdict_downstream[attr] = True
+            continue
+
+        # Collect all type values matched by this rule
+        rule_type_vals: set = set()
+        for _, filt in type_pairs:
+            for v in parse_filtre_values(filt):
+                rule_type_vals.add(v)
+                all_yaml_types.setdefault(v, []).append(rule['file'])
+
+        if rule['writes_verdict']:
+            # Direct coverage — this rule both targets and decides
+            direct_covered.update(rule_type_vals)
+        else:
+            # Targeting rule (Strategy A stage 1) — sets intermediate slot(s)
+            for type_val in rule_type_vals:
+                type_to_intermediates.setdefault(
+                    type_val, set()).update(rule['slots_set'])
+
+    # --- Pass 2: resolve transitivity -----------------------------------------
+    transitive_covered: set = set()
+    for type_val, intermediate_slots in type_to_intermediates.items():
+        if type_val in direct_covered:
+            continue   # already directly covered — no need
+        for slot in intermediate_slots:
+            if slot_has_verdict_downstream.get(slot, False):
+                transitive_covered.add(type_val)
+                break
+
+    return direct_covered, transitive_covered, all_yaml_types
 
 
 # ── Slot checks parsers (ENG-026) ──────────────────────────────────────────────
@@ -301,7 +530,9 @@ def check_agent(agent: dict) -> list:
     export_ok    = parse_export_ok(pm_path) if pm_path else set()
     org_helpers  = parse_org_helpers_section(org_text)
     org_types, uncovered_types = parse_org_type_elements(org_text)
-    yaml_types   = parse_yaml_type_elements(rules_dir) if rules_dir.is_dir() else {}
+    _rules_struct  = parse_yaml_rules_structured(rules_dir) if rules_dir.is_dir() else []
+    _direct, _transitive, yaml_types = build_type_coverage(_rules_struct)
+    _covered_by_yaml = _direct | _transitive
     org_in, org_out, uncovered_in = parse_org_io_slots(org_text)
     yaml_reads   = parse_yaml_slot_reads_all(rules_dir) if rules_dir.is_dir() else {}
     yaml_writes  = parse_yaml_slot_writes_all(rules_dir) if rules_dir.is_dir() else {}
@@ -325,8 +556,11 @@ def check_agent(agent: dict) -> list:
                            'msg': f"'** {func}' in org but not in @EXPORT_OK"})
 
     # ── Check 3 — TYPE-ORPHAN ────────────────────────────────────────────────
+    # _covered_by_yaml = direct coverage ∪ transitive Strategy A coverage
+    # Guard: only run when at least one YAML filtre was successfully parsed
+    # (yaml_types non-empty), to avoid false positives on unknown filtre formats.
     if org_types and yaml_types:
-        for v in sorted(org_types - set(yaml_types) - uncovered_types):
+        for v in sorted(org_types - _covered_by_yaml - uncovered_types):
             issues.append({'kind': 'TYPE-ORPHAN', 'agent': slug,
                            'msg': f"type_element '{v}' in org but matched by no YAML filtre"})
 
