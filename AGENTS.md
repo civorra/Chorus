@@ -279,7 +279,7 @@ ne peut pas rester `pending` ou être sautée.
 | `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
 
 > **Sub-skills** — internal support files, no direct user trigger. Hidden from `skills` / `skills details` unless `--all` is passed:
-> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md` · `chorus-feed-unattended.md`
+> `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md` · `chorus-feed-unattended.md` · `chorus-check-report.md`
 >
 > `chorus-import-extract.md` — ENG-030: document extraction pipelines (PDF/Excel/Word) extracted from `chorus-import-project.md`
 > to keep the main skill ≤ 2000 lines for CBOM imports. Loaded via `eca__read_file` from Phase 0
@@ -301,3 +301,9 @@ ne peut pas rester `pending` ou être sautée.
 > back into `chorus-feed.md § Mode A`/`§ Mode B` for the actual per-file corpus
 > analysis/enrichment, and transitively into `chorus-feed-coverage.md` via those
 > modes' own coverage phases — not a 4th independent mode, purely an orchestrator.
+>
+> `chorus-check-report.md` — ENG-068: `--explain` (Phases E0–E4), `--summary`
+> (Phases S1–S2), and `--from-report` (Phases FR0–FR1) report-generation logic
+> factored out of `chorus-check.md`. Loaded via `eca__read_file` from `chorus-check.md`
+> before Phase 6 output consumption, only when `--explain`, `--summary`, or
+> `--from-report` is present. Reduces `chorus-check.md` from 2927 to ~1517 lines.

@@ -671,11 +671,44 @@ Markdown file `$SANDBOX/workspace/reports/audit-rules-<NNN>.md` containing:
 
 ---
 
+## Gate status file — `.audit-rules-status`
+
+> **ENG-068 / ENG-057:** `chorus-check` Phase 1.5 no longer re-runs the 14 pitfall
+> scans itself — it verifies this file instead. `chorus-audit-rules` **must** write it
+> at the end of every run.
+
+After producing the console summary (and report file if `--report`), always write:
+
+```bash
+# Format: <ISO-8601-timestamp> kb=<first-8-chars-of-kb-hash> red=<N> orange=<N>
+# N = count of 🔴 / 🟠 findings from Phase 3 (ENG-068 gate uses red= only)
+TIMESTAMP=$(date -Iseconds)
+KB_PREFIX=$(head -1 $SANDBOX/agent/.kb-hash 2>/dev/null | cut -c1-8 || echo "none")
+RED_COUNT=$(grep -c "^🔴" /tmp/audit-rules-findings 2>/dev/null || echo "0")
+ORANGE_COUNT=$(grep -c "^🟠" /tmp/audit-rules-findings 2>/dev/null || echo "0")
+echo "$TIMESTAMP kb=$KB_PREFIX red=$RED_COUNT orange=$ORANGE_COUNT" \
+  > $SANDBOX/agent/.audit-rules-status
+```
+
+> **Implementation note for ECA:** collect the 🔴/🟠 findings during Phases 1–4
+> (accumulate counts in working variables `$red_count` and `$orange_count`), then
+> write the status file verbatim at the end. Do not compute counts by grep-ing a
+> temporary file — derive them from the console summary directly.
+
+**`.audit-rules-status` conventions:**
+- Always written, even when `red=0` (clean run writes `red=0 orange=0`)
+- Always written **last** — after report file if `--report` was requested
+- **Never committed** (transient gate marker — add to `.gitignore` alongside `.kb-hash`)
+- Invalidated automatically: `chorus-feed` deletes `agent/.kb-hash` → stale check
+  in `chorus-check` detects mismatch → gates will block → user re-runs audit
+
+---
+
 ## Pitfall checklist integration
 
 > This skill's Phase 3 overlaps partially with `chorus-kb-maintenance`.
 > When both are run on the same sandbox, findings may duplicate.
 > Recommended workflow:
-> 1. `chorus-audit-rules` first (pre-run, definition conformance)
-> 2. `chorus-check --all` (run, verdict quality)
+> 1. `chorus-audit-rules` first (pre-run, definition conformance) — writes `.audit-rules-status`
+> 2. `chorus-check --all` (run, verdict quality) — reads `.audit-rules-status` gate
 > 3. `chorus-kb-maintenance` (post-run, structural drift)
