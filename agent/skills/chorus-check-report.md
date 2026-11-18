@@ -245,7 +245,23 @@ TARGETS = { e | element_status(e) == 'NON_CONFORME' }
 > or `motif` is already included via the `NON_CONFORME` / `_a_confirmer` branch
 > above (or will be classified ❓ by Phase C1.5 if it falls through).
 
-If `TARGETS` is empty → print `[explain] No NON_CONFORME or _a_confirmer element — nothing to explain.` and skip Phases E2–E4 entirely (no file written).
+Additionally, independently of `TARGETS` (ENG-071 — `caveat_motif` convention):
+
+```
+CAVEATS = { e | element_status(e) == 'CONFORME'
+                AND (e.caveat_motif is defined
+                     OR any e.caveat_motif_<aspect> is defined) }
+n_caveat = count(CAVEATS)
+```
+
+> `CAVEATS` elements are CONFORME — they never enter `TARGETS`, are never
+> classified 📋/🔤/❓/⛔ (Phase E2 step 5), and never count towards
+> `n_non_conforme`/`taux`. They feed only the dedicated "Réserves non
+> bloquantes" / "Non-blocking reservations" section (Phase E4) and the
+> `n_caveat` row in `--summary` (Phase S1/S2).
+
+If `TARGETS` is empty **and** `CAVEATS` is empty → print `[explain] No NON_CONFORME, _a_confirmer or caveat_motif element — nothing to explain.` and skip Phases E2–E4 entirely (no file written).
+If `TARGETS` is empty but `CAVEATS` is not → skip Phase E2's per-element reconstruction (nothing to classify) but still proceed to Phase E4 to write a file containing only the header (Phase E0) and the "Réserves non bloquantes" section.
 
 ### Phase E2 — Reconstruct the explanation for each target element
 
@@ -472,6 +488,8 @@ French corpus (default template):
 Date : <YYYY-MM-DD>
 Analyse : RÉSOLU ✅ / ÉCHEC ❌  [→ `chorus-complete-report` mettra à jour si n_u > 0]
 Éléments expliqués : <N> (📋 <n_subst> substantielle(s) · 🔤 <n_map> mapping · ❓ <n_unc> incertain(s) · ⛔ <n_unp> non traité(s))
+<if n_caveat > 0:>
+Éléments conformes avec réserve : <n_caveat> (voir § Réserves non bloquantes)
 
 ---
 
@@ -493,6 +511,19 @@ Analyse : RÉSOLU ✅ / ÉCHEC ❌  [→ `chorus-complete-report` mettra à jour
 **Bilan :** <N> non-conformité(s) substantielle(s) réelle(s) sur <N_total> élément(s)
 évaluable(s) (<X>%) — <N> anomalie(s) de mapping terminologique détectée(s)
 séparément, ne comptant pas comme défaut produit.
+<if n_caveat > 0:>
+
+## Réserves non bloquantes sur éléments conformes
+
+> Éléments verdict=CONFORME portant une réserve non bloquante (`caveat_motif`,
+> convention ENG-071) — recommandation non suivie ou condition optimale non
+> remplie, sans incidence sur le verdict. Section informative, distincte de la
+> classification 📋/🔤/❓/⛔ ci-dessus qui ne concerne que les non-conformités.
+
+| Réf. | Type | Réserve |
+|---|---|---|
+| <id> | <type_element> | <caveat_motif (ou caveat_motif_<aspect>) verbatim> |
+| ... | | |
 ```
 
 English corpus:
@@ -501,6 +532,8 @@ English corpus:
 Date: <YYYY-MM-DD>
 Analysis: RESOLVED ✅ / FAILED ❌  [→ `chorus-complete-report` will update if n_u > 0]
 Elements explained: <N> (📋 <n_subst> substantial · 🔤 <n_map> mapping · ❓ <n_unc> uncertain · ⛔ <n_unp> unprocessed)
+<if n_caveat > 0:>
+Compliant elements with reservation: <n_caveat> (see § Non-blocking reservations)
 
 ---
 
@@ -522,13 +555,29 @@ Elements explained: <N> (📋 <n_subst> substantial · 🔤 <n_map> mapping · �
 **Bottom line:** <N> genuine substantial non-conformit(y/ies) out of <N_total>
 evaluable element(s) (<X>%) — <N> terminology-mapping anomaly/ies detected
 separately, not counted as product defects.
+<if n_caveat > 0:>
+
+## Non-blocking reservations on compliant elements
+
+> Elements with verdict=CONFORME carrying a non-blocking reservation
+> (`caveat_motif`, ENG-071 convention) — a recommendation not followed or an
+> optimal condition not met, with no bearing on the verdict. Informational
+> section, distinct from the 📋/🔤/❓/⛔ classification above, which only
+> covers non-conformities.
+
+| Ref. | Type | Reservation |
+|---|---|---|
+| <id> | <type_element> | <caveat_motif (or caveat_motif_<aspect>) verbatim> |
+| ... | | |
 ```
 
 **Thesaurus decisions appendix (--explain):** Before writing, check whether
 `$WORKSPACE/thesaurus-log-<project-slug>.md` exists.
 
 If it does, append the following section **after** the `## Synthèse` / `## Summary`
-table and before the closing horizontal rule at the end of the file:
+table (and after the `## Réserves non bloquantes` / `## Non-blocking reservations`
+section, if present — ENG-071) and before the closing horizontal rule at the end
+of the file:
 
 French corpus:
 ```markdown
@@ -623,6 +672,21 @@ taux_reel = round(100 * (n_conforme + n_map) / n_total)   # optimistic rate if a
                                                             # not real defects
 ```
 
+Additionally (ENG-071 — `caveat_motif` convention, `chorus-engine-yaml.md`):
+
+```
+n_caveat = count(CAVEATS)   # CAVEATS set already defined in Phase E1 — reuse it
+                            # (computed there independently of --explain/--summary
+                            # so both options report a consistent figure)
+```
+
+> `n_caveat` counts CONFORME elements carrying a non-blocking reservation
+> (recommendation not followed, optimal condition not met — e.g. a classically-secure
+> algorithm marked CONFORME but missing a recommended post-quantum hybridisation).
+> It never affects `taux`/`taux_reel` — a caveat is not a non-conformity, it is an
+> informational note on an already-compliant element. If `n_caveat == 0`, the
+> corresponding Phase S2 line is simply omitted (see below).
+
 ### Phase S2 — One-page synthesis document
 
 Write `$WORKSPACE/synthese-<project-slug>-<RUN_TIMESTAMP>.md` using this exact template
@@ -664,6 +728,8 @@ French corpus (default template):
 | — dont non-conformités substantielles 📋 | <n_subst> |
 | — dont anomalies de mapping terminologique 🔤 | <n_map> |
 | ❓ Éléments à confirmer | <n_incertain> |
+<if n_caveat > 0:>
+| ⚠️ Conformes avec réserve non bloquante | <n_caveat> |
 
 ## Non-conformités substantielles (action requise sur le produit/dossier)
 
@@ -739,6 +805,8 @@ English corpus:
 | — of which substantial non-conformities 📋 | <n_subst> |
 | — of which terminology-mapping anomalies 🔤 | <n_map> |
 | ❓ Elements to confirm | <n_incertain> |
+<if n_caveat > 0:>
+| ⚠️ Compliant with non-blocking reservation | <n_caveat> |
 
 ## Substantial non-conformities (action required on the product/document)
 
