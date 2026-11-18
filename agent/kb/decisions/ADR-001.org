@@ -1,31 +1,121 @@
 #+TITLE: ADR-001 — PREMISES: boolean tag system for reorder() only
-#+DATE: 2026-11-16
+#+DATE: 2026-11-18
 #+STATUS: accepted
 #+DOMAIN: dsl · engine
 #+ENG: ENG-047
 
-* Context
+* Three distinct names — one concept
 
-=PREMISES= / =PREMISSES= is declared in YAML as a list of slot names
-(bare Perl identifiers only). =codeRule()= compiles each item into
-=slot => 'Y'= inside =_PREMISSES => {...}= on the rule Frame:
+| Name | Level | Used by |
+|------+-------+---------|
+| =PREMISES:= | YAML DSL key — English corpus | Rule authors — never read at runtime |
+| =PREMISSES:= | YAML DSL key — French corpus | Rule authors — bilingual alias, identical semantics |
+| =_PREMISSES= | Perl slot on the rule Frame | =reorder()= comparators only — the B<sole> runtime consumer |
+
+=PREMISES:= and =PREMISSES:= are B<authoring-time> input aliases (same pattern
+as =FIND=/=CHERCHER=, =ACTION=/=EFFET=). =_PREMISSES= is the B<runtime>
+representation produced by =codeRule()= — it is never written in YAML, only
+read by a comparator passed to =reorder()=:
 
 #+begin_src perl
-# YAML: PREMISES: [algo_chiffrement, longueur_cle]
-# compiled by codeRule() into:
-_PREMISSES => { algo_chiffrement => 'Y', longueur_cle => 'Y' }
+# The reorder() comparator accesses _PREMISSES directly — never PREMISES/PREMISSES:
+sub by_interest {
+    my ($r1, $r2) = @_;
+    return  1 if $r1->{_PREMISSES}{CAT_NOUN};   # r1 has the tag → sort first
+    return -1 if $r2->{_PREMISSES}{CAT_NOUN};
+    return  0;
+}
+$agent->reorder(\&by_interest);
 #+end_src
 
-=applyrules()= never reads =_PREMISSES=. The only consumption point is a
-comparator passed to =reorder()=, which tests =$rule->{_PREMISSES}{slot_name}=
-as a boolean to sort rules.
+* Context
+
+** The problem: rules fire in registration order
+
+=applyrules()= iterates the =_RULES= list in order.  When two rules share the
+same =FIND= scope and the same =EXCEPTION= guard (Pattern 1 — first writer
+wins), only the first one in the list ever fires: once it sets the guard slot,
+the second is permanently blocked.  Rule *numbering* (=R01=, =R02= …) controls
+load order and therefore firing priority — but numbering is static.
+
+Sometimes firing priority must be determined *dynamically*, after the engine
+has already started and detected a domain-level property: for example, if the
+input is a "noun phrase", noun-related rules should take priority; if it is a
+"verb phrase", verb-related rules should go first.  Renaming files at runtime
+is not an option.
+
+** The solution: tag rules, sort on demand
+
+=PREMISES:= / =PREMISSES:= (English/French bilingual input aliases) lets the
+rule author attach B<declarative tags> to a rule at authoring time:
+
+#+begin_src yaml
+RULE: classify-noun
+PREMISES:
+  - CAT_NOUN       # ← tag: "this rule is relevant when the input is a noun"
+FIND:
+  ...
+#+end_src
+
+=codeRule()= compiles each tag into a boolean entry in the =_PREMISSES= hashref
+on the rule Frame — B<no runtime cost, no effect on firing>:
+
+#+begin_src perl
+# YAML:  PREMISES: [CAT_NOUN]
+# →  _PREMISSES => { CAT_NOUN => 'Y' }
+#+end_src
+
+When the domain event occurs (e.g. the agent detects a noun phrase), the
+calling code invokes =reorder()= with a comparator that reads =_PREMISSES=:
+
+#+begin_src perl
+sub by_interest {
+    my ($r1, $r2) = @_;
+    return  1 if $r1->{_PREMISSES}{CAT_NOUN};   # CAT_NOUN rules → front
+    return -1 if $r2->{_PREMISSES}{CAT_NOUN};
+    return  0;
+}
+$agent->reorder(\&by_interest);  # re-sorts _RULES, then calls replay()
+#+end_src
+
+=reorder()= physically re-sorts the =_RULES= arrayref and calls =replay()= so
+the new order takes effect immediately.  =_PREMISSES= is never read by
+=applyrules()= itself — it is B<purely a sorting key>, nothing more.
+
+** reorder() is never called automatically — source-verified
+
+=reorder()= does not exist in =Chorus::Frame=, =Chorus::Expert=,
+=Chorus::Collection::List=, or =Chorus::Collection::Filter=.
+It is defined B<only> in =Chorus::Engine= and must be called B<explicitly>
+by application code.  The engine never triggers it on its own — not on slot
+change, not on Frame creation, not between cycles.
+
+=_PREMISSES= is therefore B<completely inert> until the application calls
+=$agent->reorder(\&cmp)=.  A rule with =PREMISES:= entries fires exactly as
+often as a rule without them — the tags have zero effect on =applyrules()=.
+
+** What PREMISES: is NOT — source-verified
+
+=PREMISES:= / =PREMISSES:= / =_PREMISSES= B<never gate rule firing>.
+Verified by exhaustive grep of =lib/Chorus/Engine.pm=: =_PREMISSES= appears
+in exactly three places — the =addrule()= POD, the =reorder()= POD example,
+and =codeRule()= where it is written onto the rule Frame.  It is B<absent>
+from =applyrules()=, =loadRules()=, =setCondition()=, =setException()=, and
+=setScope()=.
+
+The eval'd =_APPLY= body contains only: =_APPLY=, =_TERMINAL=, =_LAST=,
+=_CUT=, =_REPLAY=, =_REPLAY_ALL=, =BOARD=.  No =_PREMISSES=.
+
+A rule tagged =PREMISES: [X]= fires exactly as often as a rule with no
+=PREMISES:= at all.  Prerequisite logic belongs in =CONDITION:=, never in
+=PREMISES:=.
 
 * Decision
 
-=PREMISES= is a boolean tag system on rules, exploitable only by a comparator
-passed to =reorder()=. Outside a =reorder()= call, =PREMISES= is completely
-inert — omitting it entirely is the recommended practice.
-Prerequisite logic (firing conditions) belongs in =CONDITION=, never in =PREMISES=.
+=PREMISES:= / =PREMISSES:= is a boolean tag system on rules, exploitable only
+by a comparator passed to =reorder()=. Outside a =reorder()= call, =_PREMISSES=
+is completely inert — omitting =PREMISES:= entirely is the recommended practice.
+Prerequisite logic (firing conditions) belongs in =CONDITION=, never in =PREMISES:=.
 
 * Positive consequences
 

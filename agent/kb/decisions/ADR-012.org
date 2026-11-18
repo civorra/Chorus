@@ -1,5 +1,5 @@
 #+TITLE: ADR-012 — _CYCLE and _SUCCES are intra-loop counters, not cumulative
-#+DATE: 2026-11-16
+#+DATE: 2026-11-18
 #+STATUS: accepted
 #+DOMAIN: engine
 #+ENG:
@@ -59,8 +59,26 @@ only meaningful scope for cycle-based logic inside a rule's =_APPLY=.
 | Separate =_SUCCES_TOTAL= alongside reset =_SUCCES= | Added complexity; the use case (lifetime stats) belongs in domain rules,  |
 |                                                  | not the engine                                                              |
 
+* Related: _MAX_ITER in Expert.pm
+
+C<_MAX_ITER> (default: C<DEFAULT_MAX_ITER = 10_000>) is a B<separate> ceiling
+defined in C<Chorus::Expert::process()>.  It limits the number of full pipeline
+iterations (all agents visited once = one iteration), not intra-agent
+C<applyrules()> passes.
+
+The two defaults are identical (C<10_000>) but guard different scopes:
+
+| Parameter      | Module         | Scope                                        |
+|----------------+----------------+----------------------------------------------|
+| C<_MAX_CYCLES> | C<Engine.pm>   | Passes of C<applyrules()> inside one C<loop()> call |
+| C<_MAX_ITER>   | C<Expert.pm>   | Full pipeline iterations inside C<process()> |
+
+No environment variable (C<CHORUS_MAX_CYCLES>, C<CHORUS_MAX_ITER>) overrides
+either default — both must be set programmatically on the object if needed.
+
 * References
 
-- =lib/Chorus/Engine.pm §loop()= — reset at entry
+- =lib/Chorus/Engine.pm §loop()= — reset at entry, C<_MAX_CYCLES // 10_000>
+- =lib/Chorus/Expert.pm §process()= — C<DEFAULT_MAX_ITER = 10_000>
 - =agent/kb/pitfalls.org §_CYCLE et _SUCCES remis à 0 à chaque loop()=
 - =agent/kb/components.org §Sémantique de _CYCLE et _SUCCES=

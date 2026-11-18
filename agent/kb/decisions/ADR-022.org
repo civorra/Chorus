@@ -1,0 +1,84 @@
+#+TITLE: ADR-022 — YAML DSL for rule definition (not native Perl)
+#+DATE: 2026-11-18
+#+STATUS: accepted
+#+DOMAIN: dsl · engine
+#+ENG:
+
+* Context
+
+Expert-system rules must be authored by domain engineers who understand
+compliance corpora, not necessarily Perl programmers.  The core question
+at design time was: should rules be Perl coderefs added directly via
+=addrule()=, or should they be declared in a structured text format that
+is compiled to Perl at load time?
+
+The engine already exposed =addrule()= as a programmatic API.  A purely
+Perl-based rule authoring workflow would have required every domain expert
+to write and maintain =_SCOPE= / =_APPLY= coderefs — Perl closures — directly,
+with no structural separation between the rule's intent (what it checks) and
+its implementation (how it checks it).
+
+The =chorus-feed= pipeline generates rules automatically from corpus analysis
+sessions; a human-readable, diff-friendly text format was essential for
+LLM-generated output review and version control.
+
+* Decision
+
+Rules are declared in B<YAML>, using a fixed DSL with four keys:
+
+| YAML key (English) | YAML key (French) | Role |
+|--------------------+-------------------+------|
+| =FIND= / =CHERCHER= | =CHERCHER= | Scope — defines =_SCOPE= (mandatory) |
+| =ACTION= / =EFFET= | =EFFET= | Effect body — body of =_APPLY= (mandatory) |
+| =CONDITION=       | =CONDITION=       | Guard — =return unless CONDITION= (optional) |
+| =PREMISES=        | =PREMISSES=       | Metadata for =reorder()= only (optional) |
+
+=codeRule()= compiles each YAML rule into the Perl argument string passed to
+=addrule()=; =string eval= executes it.  The compiled code is generated once
+per rule load, not at every rule firing (amortised cost — see ADR-003 for the
+=string eval= rationale).
+
+The DSL accepts both English and French keys for the same rule (bilingual
+corpora), but =attribut= and =filtre= sub-keys are invariant across both
+languages.  English is the default for new rules; French is used only when
+the processed corpus is in French.
+
+* Positive consequences
+
+- Rules are readable and writable by domain engineers without Perl knowledge.
+- YAML is diff-friendly: LLM-generated rules can be reviewed line by line in
+  version control.
+- =chorus-feed= can generate syntactically valid YAML rules autonomously;
+  =chorus-audit-rules= can lint them structurally before execution.
+- The DSL enforces structural separation: =FIND= (scope), =CONDITION= (guard),
+  =ACTION= (effect) each have a single responsibility.
+- Bilingual key support allows French corpora to produce French-flavoured
+  YAML without a separate parser.
+
+* Negative consequences / accepted trade-offs
+
+- =string eval= introduces a compilation step and an eval context — see ADR-003
+  for the security and performance trade-offs already accepted there.
+- Perl expressions inside =ACTION= blocks are still Perl — domain engineers
+  cannot avoid learning the slot-access API (=get()=, =set()=, =fmatch()=).
+- The DSL cannot express arbitrary Perl control flow; complex logic must be
+  pushed into Helpers (=lib/…/Helpers.pm=), which are Perl.
+- LLM-generated YAML must be audited by =chorus-audit-rules= before use; the
+  DSL does not catch semantic errors at parse time.
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Pure =addrule()= Perl coderefs | Not writable by non-programmers; not generatable by LLM without structural guardrails; diffs are unreadable |
+| JSON rules | Less human-readable than YAML for multi-line =ACTION= blocks; no multiline string support without escaping |
+| Dedicated mini-language (not YAML) | Extra parser to maintain; YAML parsers are available on every platform; industry standard for declarative config |
+| Separate condition and effect files | Splits the logical unit of a rule across files; harder to review and diff |
+
+* References
+
+- =lib/Chorus/Engine.pm §codeRule()= — YAML → Perl compiler
+- =lib/Chorus/Engine.pm §setEffect()= / =setScope()= / =setCondition()= — per-key compilation
+- =lib/Chorus/Engine.pm §addrule()= — programmatic API (Perl)
+- =agent/kb/architecture.org §applyrules() — Boucle combinatoire=
+- ADR-003 — =string eval= for the cartesian product in =applyrules()=

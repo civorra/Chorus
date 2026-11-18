@@ -107,8 +107,10 @@ The main loop iterates over all registered agents in order, calling C<loop()>
 on each one, until C<BOARD->{SOLVED}> or C<BOARD->{FAILED}> is set.  It respects
 C<_REPLAY> and C<_REPLAY_ALL> signals from the agents.
 
-An agent tagged with C<_LOCK_UNTIL_STABLE> is skipped when any earlier agent in
-the current iteration has already succeeded (C<_SUCCES> is true).  This allows
+An agent tagged with C<_LOCK_UNTIL_STABLE> is skipped when any agent that
+B<precedes it in registration order> has already succeeded in the B<current
+iteration> (C<_SUCCES> is true on that agent; checked against C<@processed>,
+the list of agents visited before it in the current pass).  This allows
 priority-based sequencing without explicit coupling.
 
 If C<_MAX_ITER> full iterations complete without termination, a warning is emitted
@@ -123,10 +125,13 @@ An optional flag set directly on an agent frame:
   $agent->{_LOCK_UNTIL_STABLE} = 'Y';
 
 When C<_LOCK_UNTIL_STABLE> is set on agent N, C<process()> skips that agent in
-the current iteration if B<any> earlier agent has already succeeded
-(C<_SUCCES> is true on that agent).  This implements priority-based sequencing:
-earlier agents are given another full pass before the locked agent is allowed
-to run.
+the current iteration if B<any agent that precedes N in registration order> has
+already succeeded in the B<current pass> (C<_SUCCES> is true on that agent).
+The check is performed against C<@processed> — the list of agents visited before
+N in the current iteration — so agents that come I<after> N are never examined,
+and results from previous iterations are not considered.  This implements
+priority-based sequencing: earlier agents are given another full pass before the
+locked agent is allowed to run.
 
 Typical use: a "global cleanup" or "conformity check" agent that should only
 run once all upstream agents have stabilised for the current cycle.

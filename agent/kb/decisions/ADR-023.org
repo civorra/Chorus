@@ -1,0 +1,80 @@
+#+TITLE: ADR-023 — Mandatory _rule_trace and non_conformity_motif in every rule ACTION
+#+DATE: 2026-11-18
+#+STATUS: accepted
+#+DOMAIN: dsl · pipeline · skills
+#+ENG: ENG-037
+
+* Context
+
+Chorus compliance reports must be human-readable: each non-conformity must name
+the corpus article that triggered it, and each conclusion must carry an
+explanation usable in the webapp.
+
+Two output slots serve this purpose:
+
+- =_rule_trace= — a list accumulator on the target Frame (or on =BOARD=):
+  each rule that fires pushes a human-readable string identifying itself and
+  the corpus article it enforces.  Downstream tools (=chorus-check= reports,
+  webapp trace view) rely on =_rule_trace= being populated.
+
+- =non_conformity_motif= — a string set by any rule that concludes
+  =NON_CONFORME=.  Without it, the webapp displays an empty "reason" field —
+  a silent information gap that is indistinguishable from a compliant element.
+
+Both slots were introduced as a convention after the first working sandboxes.
+Rules generated before the convention existed do not have them, causing silent
+gaps discovered only in later =chorus-check --all= runs (ENG-037).
+
+* Decision
+
+Every YAML rule ACTION block B<must> publish both slots:
+
+1. =_rule_trace= — the rule must append a traceability string to the
+   =_rule_trace= list of the Frame it evaluates.  The push must be guarded
+   against duplicates (=unless grep { … } @$trace=) to avoid trace pollution
+   on re-fires (ENG-039).
+
+2. =non_conformity_motif= — any branch that sets the conformity slot to
+   =NON_CONFORME= must also call =->set('non_conformity_motif', '…')= with a
+   human-readable explanation.
+
+Both requirements are enforced by =chorus-audit-rules= (§3.6 =MISSING-MOTIF=
+and §3.7 =MISSING-RULE-TRACE=) and audited automatically by
+=chorus-feed --unattended= (Step 5.5, ENG-037) and
+=chorus-feed= Mode A/B (Phase 6.5).
+
+* Positive consequences
+
+- Every compliance report can display a corpus article reference per non-conformity.
+- The webapp "reason" field is never empty.
+- =chorus-audit-rules= can mechanically verify both requirements before a
+  =chorus-check= run, surfacing gaps while the engineer is still in session.
+- =chorus-feed --enrich= can target rules missing =_rule_trace= for a focused
+  correction pass.
+
+* Negative consequences / accepted trade-offs
+
+- Every existing rule generated before this convention must be patched;
+  the patch is a =chorus-feed --enrich= pass or a manual edit.
+- The duplicate-push guard adds boilerplate to every ACTION block.  The
+  =chorus-templates.md= template T1 encapsulates it, but custom rules must
+  implement it manually.
+- =non_conformity_motif= cannot be validated for content quality by the engine —
+  an empty string satisfies the structural check but is semantically useless.
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Optional =_rule_trace= (opt-in per rule) | Silent gaps accumulate; discovered only downstream; operationally equivalent to the current broken state |
+| Centralised trace written by the engine (not the rule) | The engine does not know which corpus article a rule encodes — only the rule author does |
+| Enforce only =non_conformity_motif=, skip =_rule_trace= | Corpus traceability (which article does this rule implement?) is independent of verdict — both are needed |
+
+* References
+
+- =agent/kb/pitfalls.org §PITFALL return 0 sans écriture du slot de sortie=
+- =agent/kb/pitfalls.org §Corollaire _rule_trace push guard= (ENG-039)
+- =agent/skills/chorus-audit-rules.md §3.6= (=MISSING-MOTIF=)
+- =agent/skills/chorus-audit-rules.md §3.7= (=MISSING-RULE-TRACE=)
+- =agent/skills/chorus-feed-unattended.md §Step 5.5=
+- ENG-037 — Audit =_rule_trace= en fin de convergence

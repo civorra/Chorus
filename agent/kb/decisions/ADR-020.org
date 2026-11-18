@@ -1,0 +1,80 @@
+#+TITLE: ADR-020 — Backward-chaining roadmap: formal D1–D6 decisions
+#+DATE: 2026-11-18
+#+STATUS: proposed
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+Chorus implements forward-chaining only: rules fire when their =FIND= scope
+matches existing Frames.  Several proto-backward bricks already exist in the
+engine (=_NEEDED=, =_AFTER=, CoW clone), but none of them are
+wired into a backward-chaining inference loop.
+(=_PREMISSES= is B<not> in this list — it is a =reorder()= tagging system only,
+with semantics incompatible with slot-production declarations; see ADR-001.)
+
+A deep-analysis session on 2026-07-03 (=deep-chorus backward-chaining=)
+produced five architectural sub-decisions (D1–D5) and a six-step implementation
+roadmap.  This ADR formalises those decisions before any code is written, so
+that the work can proceed incrementally without ambiguity.
+
+As of the commit that introduces this ADR, none of steps D1–D6 have been
+implemented.
+
+* Decision
+
+Backward chaining will be introduced *incrementally* through six ordered steps
+(D1–D6), without altering the existing forward-chaining engine.  Each step must
+be independently reviewable and committable.
+
+| Step | Deliverable | Dependency |
+|------|-------------|------------|
+| D1   | =PRODUCES:= key in YAML DSL + =_PRODUCES= slot on the rule-Frame | — |
+| D2   | =_MUTABLE= flag: list in project JSON + per-slot flag in Perl API | parallelisable with D1 |
+| D3   | =%RULE_PRODUCES= hash in =loadRules()= (after the main =for= loop) | D1 |
+| D4   | =_EXPLAIN= wrapper closure injected in =addrule()= | independent |
+| D5   | =_EXPLAIN= empty-scope pass (=string eval= in =applyrules()=) | D4 |
+| D6   | =Chorus::Planner= — new module =lib/Chorus/Planner.pm= | D1 + D2 + D3 |
+
+The five architectural sub-decisions locked on 2026-07-03 are:
+
+| ID | Decision |
+|----|----------|
+| D1 | =PRODUCES:= is *declarative* in the YAML (no static inference from rule graph) |
+| D2 | =%RULE_PRODUCES= scope is *per-agent* (={_RULE_PRODUCES}= on the engine) with optional merge at =register()= |
+| D3 | =_MUTABLE= granularity is *per-slot* (list =_mutable: [slot, …]= in project JSON; Perl: flag =_MUTABLE= per slot) |
+| D4 | =_EXPLAIN= is injected as a *wrapper closure* in =addrule()= first; =string eval= in =applyrules()= comes in phase 2 |
+| D5 | =Chorus::Planner= is a *separate module* (=lib/Chorus/Planner.pm=), not woven into =Engine.pm= |
+
+A lightweight alternative — CoW simulation (clone Frame + re-run =process()=,
+no =Chorus::Planner=) — remains valid after D2 and may be shipped independently.
+
+* Positive consequences
+
+- Formal contract before coding starts: each D-step can be reviewed against this ADR.
+- Steps D1–D4 are loosely coupled; they can be shipped and stabilised before the
+  full planner (D6) is built.
+- Preserves full backward compatibility with every existing sandbox and skill.
+
+* Negative consequences / accepted trade-offs
+
+- Backward chaining is not available in the current release; ETA undefined.
+- =Chorus::Planner= (D6) is a significant new module; it is not part of any
+  committed delivery timeline.
+
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Static inference from the YAML rule graph (no explicit =PRODUCES:= annotation) | Rules may produce slots conditionally; static inference would be unsound and hard to maintain |
+| Full backward-chaining engine from day 1 | Breaks the existing pipeline; incremental approach reduces integration risk |
+| Reuse =PREMISES:= / =_PREMISSES= as the =PRODUCES:= mechanism | =PREMISES:= compiles into =_PREMISSES= (boolean-tag hash for =reorder()=); those semantics are incompatible with a slot-production declaration |
+
+* References
+
+- =agent/kb/architecture.org §Chaînage avant vs chaînage arrière=
+- =agent/kb/architecture.org §Feuille de route backward-chaining (v2.x)=
+- =agent/kb/components.org §_NEEDED=
+- =agent/kb/pitfalls.org= (discovered 2026-07-03, Étape 3 backward-chaining)
+- Session =2026-07-03-backward-chaining-deep-chorus.md=

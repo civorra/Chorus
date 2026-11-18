@@ -1,0 +1,73 @@
+#+TITLE: ADR-021 — Forward chaining as the only inference strategy
+#+DATE: 2026-11-18
+#+STATUS: accepted
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+Chorus is an inference engine for compliance checking and expert systems.
+The two classical inference strategies are:
+
+- *Forward chaining* (data-driven): rules fire when their premises match
+  existing data.  The engine iterates until no rule fires or a termination
+  signal is raised.
+- *Backward chaining* (goal-driven): the engine works from a goal backwards
+  through rules that could produce it, recursively until base facts are
+  reached.
+
+Chorus's first use case — normative compliance checking — requires evaluating
+*all* rules against *all* submitted project slots, not resolving a specific goal.
+The corpus is fully known upfront; the question is "does this project comply?" not
+"how can I prove goal G?".
+
+Several proto-backward bricks exist in the engine (=_NEEDED=, =_PREMISSES=,
+=_AFTER=, CoW clone) but none of them are wired into a backward-chaining loop
+(as of this writing — see ADR-020 for the incremental roadmap).
+
+* Decision
+
+Chorus implements B<forward chaining only>.
+
+Rules fire when =FIND= locates matching Frames in the =REPOSITORY= and
+=CONDITION= evaluates to true.  The engine iterates passes of =applyrules()=
+until no rule fires in a full pass (convergence) or =_MAX_CYCLES= is reached.
+There is no goal stack, no recursive proof search, and no unification step.
+
+* Positive consequences
+
+- The engine loop is O(rules × frames) per pass — deterministic, auditable,
+  certifiable without a theorem prover.
+- Results are fully reproducible: two runs on the same input always produce
+  the same output (Phase B property — no LLM, no network).
+- Simple mental model for rule authors: "this rule fires whenever these slots
+  exist and satisfy this condition".
+- Compliance reports can be generated without knowledge of a specific goal —
+  all rules run unconditionally on every project.
+
+* Negative consequences / accepted trade-offs
+
+- Cannot directly express "find me a configuration that satisfies constraint C"
+  (planning / goal-seeking) without the =Chorus::Planner= module (ADR-020).
+- =_NEEDED= provides only local lazy evaluation on a single Frame — it cannot
+  trigger cross-Frame inference chains.
+- The =PREMISES:= / =PREMISSES:= YAML key (English/French bilingual aliases)
+  compiles into the =_PREMISSES= Perl slot on the rule Frame — a boolean-tag hash
+  for =reorder()= only (see ADR-001).  =_PREMISSES= is not consumed by
+  =applyrules()= and cannot serve as a backward-chaining dependency declaration.
+  Prerequisite logic belongs in =CONDITION=, never in =PREMISES:=.
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Pure backward chaining | Incompatible with the "evaluate all rules" compliance model; requires a goal, which does not exist in Phase B |
+| Hybrid (forward + backward) from day 1 | Significantly increases engine complexity; deferred to ADR-020 roadmap once the forward-only base is stable |
+| Prolog-style unification | Different paradigm (logic programming); Chorus targets Perl 5 shop-floor engineers, not logicians |
+
+* References
+
+- =agent/kb/architecture.org §Chaînage avant vs chaînage arrière=
+- =agent/kb/architecture.org §Comparaison avec autres moteurs d'inférence=
+- =lib/Chorus/Engine.pm §applyrules()=
+- ADR-020 — Backward-chaining roadmap D1–D6

@@ -1,0 +1,108 @@
+#+TITLE: ADR-024 — origin / direction / evidence classification model in chorus-compare-kb
+#+DATE: 2026-11-18
+#+STATUS: accepted
+#+DOMAIN: skills
+#+ENG:
+
+* Context
+
+=chorus-compare-kb= produces a cross-sandbox comparison matrix used by legal
+and compliance experts who need to know not only *whether* two normative corpora
+diverge, but *where* the divergence lies, *which side is stricter*, and *how
+confident* the finding is.
+
+Without a formal classification, matrix rows risk mixing three fundamentally
+different situations:
+
+1. A concept covered in corpus A but simply absent from corpus B's KB
+   (a *coverage gap*, not necessarily a legal divergence).
+2. A genuine legal difference: same concept, same field, different threshold,
+   scope, or obligation level.
+3. A terminological mismatch resolved by the thesaurus (no real divergence).
+
+Conflating these in a single "divergence" label produces misleading reports
+and wastes domain-expert review time.  Additionally, consumers of the report
+(lawyers, regulators) need to know which side is stricter and whether the
+finding is text-anchored or LLM-inferred — two distinct levels of confidence.
+
+* Decision
+
+Every row in a =chorus-compare-kb= comparison matrix carries B<three mandatory
+classification fields>:
+
+** origin — nature of the row
+
+| Value | Meaning |
+|-------+---------|
+| =kb-gap= | Concept covered in one corpus but absent from the corresponding KB |
+| =legal-divergence= | Concept present in both KBs with substantive difference (threshold, scope, obligation) |
+| =thesaurus-mismatch= | Same concept, different terminology — resolved by the thesaurus |
+| =structural= | Agent or Frame present in one sandbox but absent in the other |
+| =uncertain= | Requires human review before classification |
+
+Invariant: a one-sided row (normative atom on only one side) can B<never> be
+labelled =legal-divergence=.  It stays =kb-gap= until Phase 4.3 rules out the
+provision in the other corpus (=absence_proof= filled).  Upgrading a
+=kb-gap= to =legal-divergence= requires atoms on both sides.
+
+** direction — asymmetry of the divergence (legal-divergence rows only)
+
+| Value | Meaning |
+|-------+---------|
+| =A_stricter_than_B= / =B_stricter_than_A= | Same obligation, tighter on one side |
+| =A_weaker_than_B= / =B_weaker_than_A= | One side grants less protection or imposes less |
+| =different_structure= | Different mechanism, not comparable on a strict/weak axis |
+| =undetermined= | Cannot be ordered without a legal opinion |
+
+When one corpus is a minimum-harmonisation instrument (e.g. an EU directive) and
+the other its national implementation, direction is expressed relative to that
+instrument.
+
+** evidence — confidence level of the finding (legal-divergence rows only)
+
+| Value | Meaning |
+|-------+---------|
+| =text-anchored= | Both atoms cite distinct texts; difference computed deterministically |
+| =witness-confirmed= | Phase W (=chorus-stress= boundary tests) produced differing verdicts |
+| =witness-artefact= | Phase W produced identical verdicts — textual difference, no behavioural one |
+| =llm-only= | LLM-assisted alignment, not corroborated by text or witness |
+
+=text-anchored= and =witness-confirmed= are the two strongest levels and are
+never collapsed into a single "confirmed" label.
+
+* Positive consequences
+
+- Domain experts reviewing the matrix can immediately filter by =origin= to
+  skip coverage gaps and focus on genuine legal divergences.
+- The =direction= field provides the legal asymmetry ("A is stricter") in a
+  machine-readable form, enabling automatic aggregation in =--report= output.
+- The =evidence= field distinguishes deterministic findings from LLM inferences,
+  giving the reviewer a calibrated trust level per row.
+- The model is extensible: new =origin= values can be added without breaking
+  the existing classification logic.
+
+* Negative consequences / accepted trade-offs
+
+- Every matrix row requires three fields instead of one; the authoring burden
+  per row is higher.
+- =direction= and =evidence= apply only to =legal-divergence= rows — their
+  presence on other row types is undefined and ignored.
+- =llm-only= findings require human validation before they can be used in a
+  legal report; the model does not enforce this — only the =--report= output
+  workflow does.
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Single "divergence level" score (1–5) | Mixes confidence and legal severity; unreadable by domain experts |
+| Free-text "notes" per row | Not machine-readable; =--report= cannot aggregate |
+| Merge =text-anchored= and =witness-confirmed= into one "confirmed" level | Loses the distinction between textual and behavioural proof — legally different |
+| Make =direction= optional on =legal-divergence= rows | A divergence without direction is incomplete for legal analysis; forces a human classification pass that could be done at matrix creation time |
+
+* References
+
+- =agent/skills/chorus-compare-kb.md §Conventions origin / direction / evidence=
+- =agent/skills/chorus-compare-kb.md §Phase 4.3= (absence_proof upgrade rule)
+- =agent/skills/chorus-compare-kb.md §Phase W= (witness confirmation)
+- =agent/skills/chorus-compare-kb.md §Option --report= (downstream consumer)

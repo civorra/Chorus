@@ -1,5 +1,5 @@
 #+TITLE: ADR — Index des décisions architecturales Chorus Engine
-#+DATE: 2026-11-16
+#+DATE: 2026-11-18
 
 * Index
 
@@ -21,19 +21,23 @@
 | ADR-014 | =_LOCK_UNTIL_STABLE=: skip if a preceding agent has fired         | accepted | engine        | moyenne  | —       |
 | ADR-015 | Pattern B =_ISA=: =$inject_isa= required in both Feed.pm passes   | accepted | pipeline      | moyenne  | —       |
 | ADR-016 | =*_ref= fields must never appear in =%SLOTS_REQUIS=               | accepted | pipeline      | moyenne  | —       |
-| ADR-017 | =eca__ask_user= unreliable in sub-agents → =AUTONOMOUS_MODE= workaround | accepted | skills   | basse    | —       |
+| ADR-017 | =eca__ask_user= unreliable in sub-agents → =AUTONOMOUS_MODE= workaround | accepted | skills   | haute    | —       |
+| ADR-021 | Forward chaining as the only inference strategy                    | accepted | engine        | haute    | —       |
+| ADR-022 | YAML DSL for rule definition (not native Perl)                     | accepted | dsl · engine  | haute    | —       |
+| ADR-023 | Mandatory =_rule_trace= and =non_conformity_motif= in every ACTION | accepted | dsl · pipeline | haute   | ENG-037 |
+| ADR-024 | =origin= / =direction= / =evidence= classification in compare-kb   | accepted | skills        | moyenne  | —       |
 | ADR-018 | =Engine= est une Frame ; =Expert= est un blessed hashref          | proposed | engine        | basse    | —       |
 | ADR-019 | Distribution CPAN nommée =Chorus= (pas =Chorus-Engine=) dès v2.01 | proposed | cpan          | basse    | —       |
-| ADR-020 | Roadmap backward-chaining D1–D6 (statuts formels)                 | proposed | engine        | —        | —       |
+| ADR-020 | Backward-chaining roadmap: formal D1–D6 decisions                  | proposed | engine        | moyenne  | —       |
 
 * Périmètre par ticket
 
 | Ticket  | ADR couverts    | Statut  |
 |---------+-----------------+---------|
 | ENG-064 | infrastructure  | ✅ DONE |
-| ENG-065 | ADR-001–ADR-010 | TODO    |
-| ENG-067 | ADR-011–ADR-016 | TODO    |
-| ENG-066 | cross-refs skills | TODO (bloqué ENG-065) |
+| ENG-065 | ADR-001–ADR-010 | ✅ DONE |
+| ENG-067 | ADR-011–ADR-016 | ✅ DONE |
+| ENG-066 | cross-refs skills | ✅ DONE |
 | —       | ADR-020         | session backward-chaining |
 
 * Statuts
