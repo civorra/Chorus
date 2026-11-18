@@ -740,6 +740,57 @@ if (@non_confs) {
 > les règles numériques sans motif CONFORME. `chorus-feed` Phase 5 inclut ce point
 > dans sa checklist de génération.
 
+### Convention — `caveat_motif` pour réserve non bloquante sur CONFORME (ENG-071)
+
+> **Règle obligatoire** : toute règle qui qualifie un verdict **CONFORME** par une
+> **réserve non bloquante** (recommandation non suivie, condition optimale non remplie,
+> amélioration possible mais non exigée pour la conformité) **doit** écrire cette réserve
+> dans un slot dédié `caveat_motif` (ou `caveat_motif_<aspect>` si plusieurs réserves
+> distinctes coexistent sur le même Frame) — **jamais** la concaténer dans `motif`/`motif_<aspect>`.
+
+**Pourquoi :** `motif`/`motif_*` est lu par le webapp (`elementMotif()`) comme la
+**justification du verdict**. Une réserve textuelle appendue au même champ
+(`"... — RègleX non satisfaite sans Y déclaré"`) est indiscernable, à la lecture, d'une
+raison d'échec réelle — alors que l'élément reste CONFORME. Ce défaut de présentation a
+été identifié sur `08-ANSSI-PG-083-CENTRIC` (R06/R07 `crypto-mecanismes-asym` —
+`RèglePQSécuAsym non satisfaite sans hybridation post-quantique déclarée` appendue au
+motif d'éléments verdict=CONFORME) et corrigé côté webapp par une heuristique
+(`splitMotifCaveat`, ENG-071-webapp) — mais cette heuristique est un filet de sécurité
+pour le contenu legacy déjà écrit, pas une excuse pour continuer à écrire des réserves
+de cette façon dans les nouvelles règles.
+
+**Distinction avec ENG-063 :** ENG-063 impose qu'un `motif_*` existe sur CONFORME
+(traçabilité valeur/seuil). ENG-071 impose que, si ce motif CONFORME doit en plus porter
+une réserve non bloquante, cette réserve aille dans un slot séparé — les deux conventions
+sont cumulatives, pas substituables.
+
+**Pattern de référence :**
+
+```perl
+# ⛔ WRONG — réserve concaténée au motif principal
+if ($conforme && $entry->{necessite_hybridation_pq} && !$f->{hybridation_pq_associee}) {
+  $motif .= ' — RèglePQSécuAsym non satisfaite sans hybridation post-quantique déclarée';
+}
+$f->set('motif', $motif);
+
+# ✅ CORRECT — réserve isolée dans son propre slot
+$f->set('motif', $motif);   # justification pure du verdict CONFORME
+if ($conforme && $entry->{necessite_hybridation_pq} && !$f->{hybridation_pq_associee}) {
+  $f->set('caveat_motif',
+    'RèglePQSécuAsym non satisfaite sans hybridation post-quantique déclarée');
+}
+```
+
+**Côté webapp (contrat) :** `caveat_motif` (et toute variante `caveat_motif_<aspect>`)
+est affiché séparément du motif principal, visuellement atténué (badge `⚠️ réserve`),
+jamais fusionné dans la colonne MOTIF comme texte de justification.
+
+**Détection automatique :** `chorus-audit-rules` devrait signaler (checklist à
+compléter — non encore implémenté au moment de la rédaction de cette convention) tout
+`motif`/`motif_*` dont le texte, sur une branche verdict CONFORME, contient un pattern
+de réserve textuelle (`non satisf`, `non respect`, `requise? pour`, `non conforme`) sans
+`caveat_motif` renseigné en parallèle.
+
 ### TERMINAL — Automatic Termination
 
 ```yaml
