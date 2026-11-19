@@ -492,8 +492,9 @@ Niveau 3 — Entity (promotion explicite uniquement)
   Le Pending Niveau 3 reste intact comme filet de sécurité entity-wide.
 - ✅ confirmée par l'ingénieur en session → **Niveau 2** (projet JSON) — sauf si l'ingénieur dit
   explicitement "valide pour tous les projets <C>" → **Niveau 3** (entity org)
-- ⚠️ `_a_confirmer` newly seen → **Niveau 3 Pending** (entity org) — les Pending sont entity-scoped
-  pour être visibles à la webapp quel que soit le projet courant
+- ⚠️ `_a_confirmer` newly seen → **Niveau 2** (`<projId>.thesaurus.json § "pending"`) —
+  ⛔ jamais en Niveau 3 (ENG-071) : un mapping non tranché n'est pas une vérité entity-wide ;
+  il ne sera promu qu'après décision explicite ingénieur via la webapp
 - ⬜ out-of-scope → **Niveau 3 Out-of-scope** (entity org)
 
 **Quel fichier lire pour un import** (C = Scope de cet import, projId = nom du JSON produit) :
@@ -503,8 +504,8 @@ Puis :             $SANDBOX/workspace/<C>/thesaurus.org              (Niveau 3 �
 Ne jamais lire le thésaurus d'une autre entity.
 ```
 
-**`* Pending`, `* Out-of-scope`, `* Conflicts`** vivent dans le fichier entity
-(`workspace/<C>/thesaurus.org`). Jamais au Niveau 2 (projet JSON).
+**`* Pending`** vit dans le fichier projet (`workspace/<C>/<projId>.thesaurus.json § "pending"`) — ⛔ jamais dans `thesaurus.org` (ENG-071).
+**`* Out-of-scope`, `* Conflicts`** vivent dans le fichier entity (`workspace/<C>/thesaurus.org`).
 
 #### Format JSON — Niveau 2 (`<projId>.thesaurus.json`)
 
@@ -539,11 +540,21 @@ Ne jamais inventer d'autres noms de clés (`project_term`, `kb_type_element`, et
   ],
   "out_of_scope": [
     { "term": "<project term>", "reason": "<raison>" }
+  ],
+  "pending": [
+    {
+      "term":             "<project term>",
+      "proposed_mapping": "<type_element: X (proposé) ou Y ?>",
+      "flag":             "_a_confirmer:N",
+      "note":             "<raison de l'ambiguïté>",
+      "source_import":    "<import-report-NNN>"
+    }
   ]
 }
 ```
 
-> `pending` n'existe pas au Niveau 2 — les Pending sont toujours en Niveau 3 entity org.
+> `pending` vit en Niveau 2 (projet JSON) — ⛔ jamais en Niveau 3 `thesaurus.org` (ENG-071).
+> Résoudre via la webapp (thesaurus-assistant) → décision ingénieur → promotion Niveau 3 si pertinent.
 > `proj_id` dans `_meta` doit correspondre exactement au stem du fichier JSON produit
 > (ex : `project-import-1793433323491` pour `project-import-1793433323491.json`).
 
@@ -1196,7 +1207,7 @@ before Phase 6 completes.
 | ⚠️ confirmed → ✅ | Supprimer de `* Pending` dans `workspace/<C>/thesaurus.org` + écrire dans `workspace/<C>/<projId>.thesaurus.json` section correspondante **(Niveau 2 uniquement)**. ⛔ Jamais dans `thesaurus.org` Aliases — même conflict check. |
 | ⚠️ rejected → ⬜ | Déplacer de `* Pending` vers `* Out-of-scope` — dans `workspace/<C>/thesaurus.org` |
 | ❓ unresolvable → ⬜ | Ajouter à `* Out-of-scope` dans `workspace/<C>/thesaurus.org` |
-| New ⚠️ (first time seen) | Ajouter à `* Pending` dans `workspace/<C>/thesaurus.org` |
+| New ⚠️ (first time seen) | Écrire dans `workspace/<C>/<projId>.thesaurus.json § "pending"` — ⛔ jamais dans `thesaurus.org § * Pending` (ENG-071) |
 | Term already in `* Conflicts` at the current Scope (unresolved), re-encountered | Do not touch any `* Aliases` shard — re-raise for arbitration (see "Conflict resolution") |
 
 #### Write format per section
@@ -1887,10 +1898,12 @@ For each alignment produced in this import (C = Scope, projId = JSON output file
     → Même conflict check que ci-dessus
 
   ⚠️ newly seen (no prior record):
-    → Écrire en Niveau 3 Pending (workspace/<C>/thesaurus.org, section * Pending)
-    → Raison : les Pending sont entity-scoped pour être visibles dans la webapp
-      quel que soit le projet courant (une entrée Pending de l'import N est utile
-      lors de l'import N+1 du même produit par un autre ingénieur)
+    → Écrire en Niveau 2 (workspace/<C>/<projId>.thesaurus.json, section "pending")
+    → ⛔ JAMAIS dans thesaurus.org § * Pending (ENG-071) : un mapping non tranché
+      n'est pas une vérité entity-wide. Le promouvoir silencieusement au niveau entité
+      l'appliquerait automatiquement aux imports futurs sans décision explicite.
+    → Résolution via webapp (thesaurus-assistant) → décision ingénieur
+      → promotion Niveau 3 uniquement si décision délibérée (bouton 🏢)
 
   ⚠️ confirmed by engineer in this session:
     → Supprimer de Niveau 3 * Pending + écrire en Niveau 2 * aliases_type_element
