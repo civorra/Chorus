@@ -480,7 +480,7 @@ Niveau 2 — Projet (défaut pour les résolutions à l'import)
 Niveau 3 — Entity (promotion explicite uniquement)
   $SANDBOX/workspace/<C>/thesaurus.org
   Mappings valides pour TOUS les projets de l'entity <C>.
-  Jamais automatique à l'import — promotion via bouton 🏢 webapp ou décision explicite.
+  Jamais automatique à l'import — promotion EXCLUSIVEMENT via bouton 🏢 de l'onglet Thésaurus webapp. ⛔ L'assistant ECA terminal ne peut jamais écrire dans thesaurus.org § * Aliases.
 ```
 
 **Règles d'écriture à l'import :**
