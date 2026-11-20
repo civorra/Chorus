@@ -746,6 +746,38 @@ Pour chaque terme T, C = Scope de cet import :
 > mapping automatically. Present both candidate mappings to the engineer for
 > arbitration (see "Conflict resolution" below). An unresolved conflict for a term
 > takes priority over any other thesaurus section for that same term.
+>
+> **⛔ ENG-074 — Annulation webapp d'une confirmation déjà figée dans un JSON projet :**
+> La webapp (bouton ↩️ Annuler, `unconfirmThesaurusAlias`) peut remettre un terme en
+> Pending alors qu'un JSON projet **déjà généré** (import ou re-import antérieur) a
+> figé l'ancienne résolution en dur dans `elements[].type_element` ou
+> `elements[].<slot>` — cette annulation ne modifie **jamais** le JSON projet
+> existant (seul le thésaurus est touché). Ce JSON devient donc potentiellement
+> **périmé** vis-à-vis de la nouvelle vérité thésaurus, sans qu'aucune marque ne
+> l'indique dans le fichier lui-même. (Symétrique du bug ENG-073 : là où ENG-073
+> traite une résolution insuffisamment propagée *vers* le Niveau 2, ENG-074 traite
+> une annulation insuffisamment propagée *depuis* le Niveau 2 *vers* le JSON déjà
+> généré.)
+>
+> **Détection obligatoire au début de Phase 3, pour tout terme repassé en Pending**
+> (que ce soit via la webapp ou détecté à la lecture du thésaurus) : avant d'appliquer
+> le lookup standard (step 5), vérifier si ce terme apparaît déjà dans le `_alignment_source`
+> d'un élément du JSON existant lors d'un **re-import** (même `C`, même `projId`). Si oui :
+> - Ne **jamais** conserver silencieusement l'ancienne valeur confirmée sur cette Frame.
+> - Rouvrir la question `⚠️ _a_confirmer` pour cette Frame (re-exécuter le tier logic
+>   ci-dessous — Obvious/Ambiguous/Unresolvable — comme pour un terme nouvellement vu),
+>   même si un hit Pending step 4 existe déjà pour le même terme ailleurs dans l'inventaire.
+> - Documenter explicitement dans `_import.gaps` ou l'alignment table que la Frame
+>   a perdu sa résolution précédente suite à une annulation webapp (ne pas réutiliser
+>   `_alignment_source` de l'ancienne résolution sans le mettre à jour).
+>
+> La webapp signale ce cas via `driftedElements` dans la réponse de
+> `POST /thesaurus/unconfirm` (voir `chorus/thesaurus.js § _detectProjectJsonDrift`
+> et bandeau "🔄 Ré-importer après thésaurus" dans l'onglet projet) — mais ce signal
+> UI est best-effort (détection par correspondance texte sur `_alignment_source`,
+> non garantie à 100%). La garantie réelle de cohérence vient de cette règle Phase 3 :
+> tout re-import doit systématiquement re-vérifier la concordance JSON ↔ thésaurus,
+> jamais seulement traiter les termes absents du JSON existant.
 
 #### Thesaurus initialisation
 
