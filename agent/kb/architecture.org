@@ -1,93 +1,92 @@
-#+TITLE: Chorus — Architecture & Décisions
+#+TITLE: Chorus — Architecture & Decisions
 #+DATE: 2026-07-24
 
-* Vue d'ensemble — Deux phases distinctes
+* Overview — Two distinct phases
   :PROPERTIES:
   :CATEGORY: Architecture
   :END:
 
 #+begin_example
-Phase A — Construction   [agent IA, supervisé, une fois par corpus]
-  Corpus brut → chorus-feed → KB (org) + règles YAML + infrastructure Perl
-             → chorus-check → pipeline Perl déployable
+Phase A — Build        [AI agent, supervised, once per corpus]
+  Raw corpus → chorus-feed → KB (org) + YAML rules + Perl infrastructure
+             → chorus-check → deployable Perl pipeline
 
-Phase B — Exécution      [Chorus seul, sans LLM, pour chaque projet]
-  project.json → perl run.pl → rapport de conformité
-  100% déterministe · reproductible · certifiable
+Phase B — Execution    [Chorus alone, no LLM, for each project]
+  project.json → perl run.pl → compliance report
+  100% deterministic · reproducible · certifiable
 #+end_example
 
-Le LLM n'intervient qu'en Phase A. En Phase B : aucun LLM, aucun réseau,
-même résultat pour deux runs identiques.
+The LLM only intervenes in Phase A. In Phase B: no LLM, no network,
+identical result for two identical runs.
 
-* $ENGINE — Prototype Frame partagé
+* $ENGINE — Shared Frame prototype
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Chorus::Engine
   :END:
 
-Toutes les méthodes de =Chorus::Engine= (=loop=, =addrule=, =solved=, =cut=...)
-sont des **closures sur une Frame prototype** =$ENGINE= définie au niveau paquet.
+All =Chorus::Engine= methods (=loop=, =addrule=, =solved=, =cut=...)
+are **closures on a prototype Frame** =$ENGINE= defined at package level.
 
-=new()= crée une Frame ordinaire puis lui fait hériter de =$ENGINE= :
+=new()= creates a plain Frame then makes it inherit from =$ENGINE=:
 #+begin_src perl
 my $res = Chorus::Frame->new(_RULES => [], @_);
 $res->_inherits($ENGINE);
 #+end_src
 
-Conséquences :
-- Chaque instance moteur partage les méthodes via l'héritage Frame.
-- =$SELF= dans ces méthodes pointe toujours sur l'instance courante.
-- L'héritage multiple est possible (ex. hériter aussi d'une Frame de config).
+Consequences:
+- Every engine instance shares methods via Frame inheritance.
+- =$SELF= in these methods always points to the current instance.
+- Multiple inheritance is possible (e.g. also inheriting from a config Frame).
 
-* $SELF — Variable globale de contexte
+* $SELF — Global context variable
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Chorus::Frame
   :END:
 
-=$SELF= est une variable globale gérée par =Chorus::Frame= via une pile
-(=pushself= / =popself=). Elle pointe sur la Frame dont une méthode est
-en cours d'exécution.
+=$SELF= is a global variable managed by =Chorus::Frame= via a stack
+(=pushself= / =popself=). It points to the Frame whose method is currently executing.
 
-** Dans les règles YAML
-=$SELF= pointe sur le **moteur** (engine instance) pendant tout le bloc ACTION.
-C'est garanti depuis v2.01 (voir pitfalls.org §_APPLY coderef).
+** In YAML rules
+=$SELF= points to the **engine** (engine instance) throughout the entire ACTION block.
+Guaranteed since v2.01 (see pitfalls.org §_APPLY coderef).
 
-** Dans les slots procéduraux Frame
-=$SELF= pointe sur la Frame dont le slot est en cours d'évaluation :
+** In procedural Frame slots
+=$SELF= points to the Frame whose slot is being evaluated:
 #+begin_src perl
 my $f = Chorus::Frame->new(
     label => sub { "Frame " . $SELF->{_KEY} }
 );
 #+end_src
 
-** Dans les hooks (_AFTER, _BEFORE, _NEEDED)
-=$SELF= pointe sur la Frame qui possède le hook.
+** In hooks (_AFTER, _BEFORE, _NEEDED)
+=$SELF= points to the Frame that owns the hook.
 
-* _RULES / _QUEUE — Séparation liste maître / file de travail
+* _RULES / _QUEUE — Master list vs working queue separation
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Chorus::Engine
   :END:
 
-- =_RULES= : liste maître des règles, alimentée par =addrule()=. **Jamais modifiée** pendant =applyrules()=.
-- =_QUEUE= : copie de travail construite à chaque appel d'=applyrules()=. Consommée par =$apply_rec=.
+- =_RULES=: master rule list, populated by =addrule()=. **Never modified** during =applyrules()=.
+- =_QUEUE=: working copy built at each =applyrules()= call. Consumed by =$apply_rec=.
 
-Cette séparation permet à =cut()= / =last()= / =replay()= de vider la queue
-sans affecter la liste maître pour le cycle suivant.
+This separation allows =cut()= / =last()= / =replay()= to drain the queue
+without affecting the master list for the next cycle.
 
-* applyrules() — Boucle combinatoire par eval (v2.0.2+)
+* applyrules() — Combinatorial loop via eval (v2.0.2+)
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Chorus::Engine
-  :COMPLEXITY: O(n) où n = nombre de règles ; per-rule complexity = O(2^k) k=arité scope
+  :COMPLEXITY: O(n) where n = number of rules; per-rule complexity = O(2^k) k=scope arity
   :IMPLEMENTATION: String eval, recursive descent with tail call
   :END:
 
-Le produit cartésien des scopes est généré à l'exécution par un string =eval= :
+The Cartesian product of scopes is generated at runtime via string =eval=:
 
 #+begin_src perl
-# Construit dynamiquement une boucle imbriquée pour le produit cartésien :
+# Dynamically builds a nested loop for the Cartesian product:
 my $i = 0;
 my $head = 'JUMP: {' . join('',
     map { 
@@ -96,63 +95,63 @@ my $head = 'JUMP: {' . join('',
     keys(%scope)
 );
 
-# Corps : appel _APPLY (coderef pure depuis v2.01)
+# Body: _APPLY call (plain coderef since v2.01)
 my $body = '$res = do { my $_af = $rule->{_APPLY}; $_af ? $_af->(%opt) : 0 };' .
            'if ($res && $rule->{_TERMINAL}) { $SELF->solved() ... } ' .
            'last JUMP if $SELF->{_LAST} or $SELF->{_CUT} or ...';
 
-# Ferme les boucles
+# Close the loops
 my $tail = '}' x scalar(keys(%scope)) . '}';
 
 eval $head . $body . $tail;
 #+end_src
 
-** Détails d'implémentation (v2.0.2)
+** Implementation details (v2.0.2)
 
-| Élément | Rôle | Version |
+| Element | Role | Since |
 |---|---|---|
-| =JUMP:= label | Permet =cut()= via =last JUMP= (sort de toutes boucles imbriquées) | 2.0.0+ |
-| =$_af = $rule->{_APPLY}= | Appel coderef pure, pas dispatch Frame (=${SELF} reste moteur) | 2.01 |
-| =_log_fire()= wrapper | Injection closure autour de =_APPLY= à =addrule()= | 2.0.2 |
-| =$apply_rec= recursion | Récursion mutuellement finale : consomme _QUEUE linéairement | 2.0.0+ |
-| =_QUEUE= copie de travail | Distinct de =_RULES= (liste maître) — permet =cut/last/replay= | 2.0.0+ |
+| =JUMP:= label | Enables =cut()= via =last JUMP= (exits all nested loops at once) | 2.0.0+ |
+| =$_af = $rule->{_APPLY}= | Plain coderef call, not Frame dispatch (=$SELF= stays on engine) | 2.01 |
+| =_log_fire()= wrapper | Closure injected around =_APPLY= at =addrule()= time | 2.0.2 |
+| =$apply_rec= recursion | Mutually-final recursion: consumes =_QUEUE= linearly | 2.0.0+ |
+| =_QUEUE= working copy | Distinct from =_RULES= (master list) — enables =cut/last/replay= | 2.0.0+ |
 
-** Performance et coût
+** Performance and cost
 
-- **Coût eval string** : ~1 µs par règle (amortisé sur cycle complet)
-- **Coût produit cartésien** : exponentiel en arité scope → limiter à 3-4 variables max
-- **Mémoire** : une seule eval compile et exécute → pas de stockage de bytecode intermédiaire
+- **String eval cost**: ~1 µs per rule (amortised over a full cycle)
+- **Cartesian product cost**: exponential in scope arity → limit to 3–4 variables max
+- **Memory**: single eval compiles and executes → no intermediate bytecode storage
 
-** Flags de contrôle de flux
+** Flow-control flags
 
-| Flag | Posé par | Effet | Nettoyé par |
+| Flag | Set by | Effect | Cleared by |
 |---|---|---|---|
-| =_CUT= | =cut()= | Sort des boucles imbriquées (=last JUMP=) | après chaque règle |
-| =_LAST= | =last()= | Vide =_QUEUE=, passe à l'agent suivant | après reset queue |
-| =_REPLAY= | =replay()= | Vide =_QUEUE=, recommence l'agent courant | par =Expert::process()= |
-| =_REPLAY_ALL= | =replay_all()= | Vide =_QUEUE=, relance depuis le premier agent | par =Expert::process()= |
+| =_CUT= | =cut()= | Exits nested loops (=last JUMP=) | after each rule |
+| =_LAST= | =last()= | Drains =_QUEUE=, moves to next agent | after queue reset |
+| =_REPLAY= | =replay()= | Drains =_QUEUE=, restarts current agent | by =Expert::process()= |
+| =_REPLAY_ALL= | =replay_all()= | Drains =_QUEUE=, restarts from first agent | by =Expert::process()= |
 
-* BOARD — Mémoire partagée inter-agents
+* BOARD — Shared inter-agent memory
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Chorus::Expert
   :END:
 
-=BOARD= est une =Chorus::Frame= partagée injectée dans chaque agent par =register()=.
-Accessible depuis n'importe quelle règle via =$agent->BOARD= ou =$SELF->BOARD=.
+=BOARD= is a =Chorus::Frame= shared across all agents, injected by =register()=.
+Accessible from any rule via =$agent->BOARD= or =$SELF->BOARD=.
 
-** Slots réservés
-| Slot | Posé par | Signification |
+** Reserved slots
+| Slot | Set by | Meaning |
 |---|---|---|
-| =SOLVED= | =solved()= | Succès — arrête =process()=, retourne =1= |
-| =FAILED= | =failed()= | Échec — arrête =process()=, retourne =undef= |
-| =INPUT= | =process($input)= | Valeur d'entrée brute du pipeline |
+| =SOLVED= | =solved()= | Success — stops =process()=, returns =1= |
+| =FAILED= | =failed()= | Failure — stops =process()=, returns =undef= |
+| =INPUT= | =process($input)= | Raw pipeline input value |
 
 ** Convention
-La connaissance domaine (facts sur des objets spécifiques) va sur des Frames
-individuelles, pas sur BOARD. BOARD = flags et compteurs pipeline-level.
+Domain knowledge (facts about specific objects) goes on individual Frames,
+not on BOARD. BOARD = pipeline-level flags and counters.
 
-* Boucle process() — Expert orchestration
+* process() loop — Expert orchestration
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Chorus::Expert
@@ -160,88 +159,88 @@ individuelles, pas sur BOARD. BOARD = flags et compteurs pipeline-level.
 
 #+begin_src
 do {
-  pour chaque agent dans _agents :
-    si _LOCK_UNTIL_STABLE et un agent précédent a réussi → arrêter
+  for each agent in _agents:
+    if _LOCK_UNTIL_STABLE and any previous agent succeeded → skip
     do { agent->loop() } while agent->_REPLAY
-    push agent dans @processed
-    si agent->_REPLAY_ALL → supprimer flag, break (redémarre depuis agent 0)
-} until BOARD.SOLVED ou BOARD.FAILED
+    push agent onto @processed
+    if agent->_REPLAY_ALL → delete flag, break (restart from agent 0)
+} until BOARD.SOLVED or BOARD.FAILED
 #+end_src
 
 ** _LOCK_UNTIL_STABLE
-Flag sur un agent — il ne s'exécute que si aucun agent précédent n'a réussi
-dans cette itération. Utile pour les agents de "fallback" ou de validation finale.
+Flag on an agent — it only runs if no preceding agent succeeded in this iteration.
+Useful for fallback or final-validation agents.
 
-* Chaînage avant vs chaînage arrière
+* Forward chaining vs backward chaining
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Chorus::Engine
   :END:
 
-Chorus implémente uniquement le **chaînage avant** (forward-chaining, data-driven) :
-les règles s'appliquent quand leurs scopes trouvent des Frames correspondantes.
+Chorus implements only **forward chaining** (data-driven):
+rules fire when their scopes find matching Frames.
 
-** Ce qui existe comme briques proto-backward
-- =_NEEDED= sur Frame : lazy eval locale, pas de propagation moteur
-- =_PREMISSES= sur règle : métadonnée non exploitée par =applyrules()=
-- =_AFTER= sur Frame : propagation avant, direction opposée
-- CoW (Copy-on-Write) : disponible pour simulation
+** Existing proto-backward building blocks
+- =_NEEDED= on Frame: local lazy eval, no engine-level propagation
+- =_PREMISSES= on rule: metadata not consumed by =applyrules()=
+- =_AFTER= on Frame: forward propagation, opposite direction
+- CoW (Copy-on-Write): available for simulation
 
-** Décisions architecturales arrêtées (2026-07-03)
+** Architectural decisions settled (2026-07-03)
 
-| Décision | Choix retenu |
+| Decision | Choice |
 |---|---|
-| D1 — =PRODUCES:= | Déclaratif dans le YAML (pas d'inférence statique) |
-| D2 — Scope de =%RULE_PRODUCES= | Par agent (={_RULE_PRODUCES}= sur l'engine) + fusion optionnelle à =register()= |
-| D3 — =_MUTABLE= granularité | Liste =_mutable: [slot, ...]= dans le JSON projet ; API Perl : flag =_MUTABLE= par slot |
-| D4 — =_EXPLAIN= injection | Wrapper closure dans =addrule()= d'abord ; string eval dans =applyrules()= en phase 2 |
-| D5 — =Chorus::Planner= | Module séparé =lib/Chorus/Planner.pm= |
+| D1 — =PRODUCES:= | Declarative in YAML (no static inference) |
+| D2 — =%RULE_PRODUCES= scope | Per agent (={_RULE_PRODUCES}= on the engine) + optional merge at =register()= |
+| D3 — =_MUTABLE= granularity | List =_mutable: [slot, ...]= in project JSON; Perl API: =_MUTABLE= flag per slot |
+| D4 — =_EXPLAIN= injection | Closure wrapper in =addrule()= first; string eval in =applyrules()= in phase 2 |
+| D5 — =Chorus::Planner= | Separate module =lib/Chorus/Planner.pm= |
 
-Voir rapport =2026-07-03-backward-chaining-deep-chorus.md= pour l'analyse complète.
+See report =2026-07-03-backward-chaining-deep-chorus.md= for the full analysis.
 
-** Feuille de route backward-chaining (v2.x)
+** Backward-chaining roadmap (v2.x)
 
-Ordre d'implémentation retenu :
+Retained implementation order:
 
-1. =PRODUCES:= dans le DSL YAML + =_PRODUCES= sur la Frame-règle  ← =Engine.pm::codeRule()=
-2. =_MUTABLE= flag (JSON projet + loader)                          ← parallélisable avec 1
-3. =%RULE_PRODUCES= dans =loadRules()= après la boucle for         ← dépend de 1
-4. =_EXPLAIN= wrapper closure dans =addrule()=                     ← indépendant
-5. =_EXPLAIN= scopes vides (string eval dans =applyrules()=)       ← phase 2, risque moyen
-6. =Chorus::Planner= — =lib/Chorus/Planner.pm=                     ← dépend de 1+2+3
+1. =PRODUCES:= in YAML DSL + =_PRODUCES= on the rule Frame  ← =Engine.pm::codeRule()=
+2. =_MUTABLE= flag (project JSON + loader)                   ← parallelisable with 1
+3. =%RULE_PRODUCES= in =loadRules()= after the for loop       ← depends on 1
+4. =_EXPLAIN= closure wrapper in =addrule()=                  ← independent
+5. =_EXPLAIN= empty scopes (string eval in =applyrules()=)    ← phase 2, medium risk
+6. =Chorus::Planner= — =lib/Chorus/Planner.pm=                ← depends on 1+2+3
 
-Alternative légère (parallélisable après étape 2 seulement) :
-simulation CoW — clone Frame + re-run =process()=, sans =Chorus::Planner=.
+Lightweight alternative (parallelisable after step 2 only):
+CoW simulation — clone Frame + re-run =process()=, without =Chorus::Planner=.
 
-* Relations inter-frames — Patterns A et B
+* Inter-frame relations — Patterns A and B
   :PROPERTIES:
   :CATEGORY: Architecture
   :COMPONENT: Feed.pm / Chorus::Frame
   :ADDED: 2026-07-23 (feat/relations-inter-frames)
   :END:
 
-Un Frame peut porter une **référence vers un autre Frame** de type différent,
-permettant aux règles YAML de naviguer transversalement entre objets du domaine.
+A Frame can carry a **reference to another Frame** of a different type,
+allowing YAML rules to navigate laterally across domain objects.
 
-** Pattern A — slot → Frame (lien structurel)
+** Pattern A — slot → Frame (structural link)
 
 #+begin_src perl
-# Dans Feed.pm load_projet() — champ %REF_FIELDS + double passe
+# In Feed.pm load_projet() — %REF_FIELDS field + two-pass loading
 my %REF_FIELDS = (
     link_ref => { slot => 'link_slot', type => 'target_type' },
 );
-# Passe 1 : Frames sans *_ref
-# Passe 2 : résolution des *_ref + $source->set('link_slot', $TYPED_FRAMES{$id})
+# Pass 1: Frames without *_ref
+# Pass 2: *_ref resolution + $source->set('link_slot', $TYPED_FRAMES{$id})
 #+end_src
 
-Navigation YAML : =$f->get('link_slot')->get('remote_slot')=
-Fallback Option A : =$target ? $target->get('remote_slot') : $f->get('local_slot')=
+YAML navigation: =$f->get('link_slot')->get('remote_slot')=
+Option A fallback: =$target ? $target->get('remote_slot') : $f->get('local_slot')=
 
 ** Pattern B — _ISA prototype (Minsky)
 
 #+begin_src perl
-# Catalogue de prototypes statiques (portent les seuils normatifs)
-# $inject_isa appelé dans LES DEUX passes (pas seulement passe 2)
+# Static prototype catalogue (holds normative thresholds)
+# $inject_isa called in BOTH passes (not only pass 2)
 my $inject_isa = sub {
     my ($frame, $spec_key_1, $spec_key_2) = @_;
     my ($proto) = fselect(
@@ -252,17 +251,17 @@ my $inject_isa = sub {
 };
 #+end_src
 
-Navigation YAML : =$f->get("threshold_slot_$cond")= → hérite du prototype via =_ISA=.
+YAML navigation: =$f->get("threshold_slot_$cond")= → inherits from prototype via =_ISA=.
 
-** Contrainte de sûreté Pattern B
+** Pattern B safety constraint
 
-Les prototypes ne doivent **pas** porter le slot de ciblage (=besoin_X=) —
-sinon =fmatch(slot => 'besoin_X')= retournerait aussi les prototypes dans le scope.
+Prototypes must **not** carry the targeting slot (=besoin_X=) —
+otherwise =fmatch(slot => 'besoin_X')= would also return prototypes in the scope.
 
-** Rétrocompatibilité
+** Backward compatibility
 
-Les champs =*_ref= sont **toujours optionnels** — jamais dans =%SLOTS_REQUIS=.
-Voir pitfalls.org §=*_ref dans %SLOTS_REQUIS=.
+=*_ref= fields are **always optional** — never in =%SLOTS_REQUIS=.
+See pitfalls.org §=*_ref in %SLOTS_REQUIS=.
 
 * Code Density & Compactness Analysis (v2.0.2 — 2026-07-24)
   :PROPERTIES:
@@ -271,78 +270,79 @@ Voir pitfalls.org §=*_ref dans %SLOTS_REQUIS=.
   :SOURCE: Full source review (Engine.pm, Expert.pm, Frame.pm)
   :END:
 
-Chorus est une plateforme **hautement compressée** — trois classes (1900 lignes totales)
-implémentent une architecture complexe sans sacrifier la lisibilité.
+Chorus is a **highly compressed** platform — three classes (~1900 lines total)
+implement a complex architecture without sacrificing readability.
 
-** Métriques par classe
+** Metrics by class
 
-| Classe | LoC totales | Code % | Compacité | Maintenance |
+| Class | Total LoC | Code % | Compactness | Maintainability |
 |---|---|---|---|---|
 | Frame.pm | 1200 | 54% | 9/10 | 8/10 |
 | Engine.pm | 550 | 55% | 9/10 | 7/10 |
 | Expert.pm | 150 | 67% | 9/10 | 9/10 |
 | **Total** | 1900 | ~55% | **9/10** | **8/10** |
 
-** Points clés de compacité
+** Key compactness highlights
 
 *** Frame::_setN (Copy-on-Write inline)
-~40 lignes pour une logique complexe :
-- Distinction entre Frame propriétaire et hérité via =_PARENT_KEY=
-- Création de shadow Frame au vol pour mutations non-destructrices
-- Chemin multi-étapes avec traversée d'héritage
+~40 lines for complex logic:
+- Distinguishes owner Frame from inherited one via =_PARENT_KEY=
+- Creates shadow Frames on the fly for non-destructive mutations
+- Multi-step path with inheritance traversal
 
 *** Frame::_expandInherits (Valuation chain)
-~15 lignes pour parcourir _VALUE → _DEFAULT → _NEEDED across inheritance tree.
-Combinaison de _first() + recurse élégante.
+~15 lines to walk _VALUE → _DEFAULT → _NEEDED across the inheritance tree.
+Elegant combination of _first() + recursion.
 
 *** Engine::applyrules (Cartesian product via eval)
-~60 lignes totales incluant :
-- Génération string du produit cartésien
-- Injection logging wrapper closure
-- Récursion avec tail-call sur _QUEUE
+~60 total lines including:
+- String generation of the Cartesian product
+- Logging wrapper closure injection
+- Tail-call recursion on _QUEUE
 
 *** Expert::process (Multi-agent orchestration)
-~30 lignes pour :
-- Boucle do/until avec priorités implicites (_LOCK_UNTIL_STABLE)
-- Gestion _REPLAY et _REPLAY_ALL
-- Cleanup SOLVED/FAILED flags
+~30 lines for:
+- do/until loop with implicit priorities (_LOCK_UNTIL_STABLE)
+- _REPLAY and _REPLAY_ALL handling
+- SOLVED/FAILED flag cleanup
 
-** Observations d'architecture
+** Architecture observations
 
 | Observation | Implication |
 |---|---|
-| **Registres globaux** (%REPOSITORY, %FMAP, %INSTANCES) | O(1) lookups mais overhead mémoire (weak refs everywhere) |
-| **Modes N/Z dynamiques** | Flexibilité à coût minimal (un flag global) |
-| **_SELF context stack** | Permet la traversée d'héritage sans paramètres explicites |
-| **String eval en applyrules()** | Code généré une fois par cycle, coût amortisé ; pas d'optimisation statique |
-| **Closure wrapper pour logging** | Non-intrusif : injecté à addrule(), transparent pour _APPLY |
-| **Label JUMP: trick** | Perl-idiomatique : sort de N boucles imbriquées en une instruction |
+| **Global registries** (%REPOSITORY, %FMAP, %INSTANCES) | O(1) lookups but memory overhead (weak refs everywhere) |
+| **Dynamic N/Z modes** | Flexibility at minimal cost (one global flag) |
+| **_SELF context stack** | Enables inheritance traversal without explicit parameters |
+| **String eval in applyrules()** | Code generated once per cycle, cost amortised; no static bytecode optimisation |
+| **Closure wrapper for logging** | Non-intrusive: injected at addrule(), transparent to _APPLY |
+| **JUMP: label trick** | Perl-idiomatic: exits N nested loops in one instruction |
 
-** Comparaison avec autres moteurs d'inférence
+** Comparison with other inference engines
 
-| Moteur | LoC | Styles | Observations |
+| Engine | LoC | Style | Notes |
 |---|---|---|---|
-| Chorus (Frame+Engine+Expert) | 1900 | Perl 5 + DSL YAML | Très compacte; forward-chaining pur |
-| CLIPS (C) | ~50k | C + forward-chaining | Plus mûr; backward-chaining intégré |
-| Jess (Java) | ~30k | Java + DSL Jess | OO lourd; plus d'infrastructure |
-| SWI-Prolog | ~100k | Prolog | Récursion native; but différent (logic) |
+| Chorus (Frame+Engine+Expert) | 1900 | Perl 5 + YAML DSL | Very compact; pure forward-chaining |
+| CLIPS (C) | ~50k | C + forward-chaining | More mature; built-in backward-chaining |
+| Jess (Java) | ~30k | Java + Jess DSL | Heavier OO; more infrastructure |
+| SWI-Prolog | ~100k | Prolog | Native recursion; different purpose (logic) |
 
-Chorus vise un **sweet spot** : assez compacte pour être compréhensible,
-assez expressive pour des domaines réels (conformité, diagnostic).
+Chorus targets a **sweet spot**: compact enough to be fully understandable,
+expressive enough for real-world domains (compliance, diagnostics).
 
-* Distribution CPAN — Périmètre
+* CPAN Distribution — Scope
   :PROPERTIES:
   :CATEGORY: Architecture
   :END:
 
-La distribution =Chorus= (ex =Chorus-Engine= < v2.01) contient :
+The =Chorus= distribution (formerly =Chorus-Engine= < v2.01) contains:
 
-| Composant | Module | Rôle |
+| Component | Module | Role |
 |---|---|---|
-| Moteur d'inférence | =Chorus::Engine= | Cycle recognise-act, règles, YAML DSL |
-| Orchestrateur | =Chorus::Expert= | Multi-agents, BOARD partagé |
-| Frames | =Chorus::Frame= | Objets typés, héritage, CoW (distribution séparée =Chorus-Frame=) |
-| Collections | =Chorus::Collection::List/Filter= | Séquences ordonnées, pattern matching |
-| Companion IA | =agent/= | Skills + KB templates pour pipeline corpus→conformité |
+| Inference engine | =Chorus::Engine= | Recognise-act cycle, rules, YAML DSL |
+| Orchestrator | =Chorus::Expert= | Multi-agent, shared BOARD |
+| Frames | =Chorus::Frame= | Typed objects, inheritance, CoW (separate =Chorus-Frame= dist.) |
+| Collections | =Chorus::Collection::List/Filter= | Ordered sequences, pattern matching |
+| AI companion | =agent/= | Skills + KB templates for corpus→compliance pipeline |
 
-=Chorus::Frame= est dans une distribution CPAN séparée (=Chorus-Frame=) — dépendance déclarée dans =Makefile.PL=.
+=Chorus::Frame= is in a separate CPAN distribution (=Chorus-Frame=) — declared as a
+dependency in =Makefile.PL=.

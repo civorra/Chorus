@@ -2,51 +2,50 @@
 #+DATE: 2026-07-24
 #+PROPERTY: CATEGORY Pitfall
 
-* PITFALL _APPLY appelé comme coderef, pas via dispatch Frame
+* PITFALL _APPLY called as coderef, not via Frame dispatch
   :PROPERTIES:
   :COMPONENT: Chorus::Engine
-  :SEVERITY: Critique
+  :SEVERITY: Critical
   :FIXED_IN:  2.01
   :END:
 
-Avant v2.01, =applyrules()= appelait =_APPLY= via le dispatch Frame (=$rule->_APPLY=),
-ce qui déclenchait =pushself($rule)= et faisait pointer =$SELF= sur la Frame de règle
-pendant toute l'exécution de l'ACTION.
+Before v2.01, =applyrules()= called =_APPLY= via Frame dispatch (=$rule->_APPLY=),
+which triggered =pushself($rule)= and caused =$SELF= to point to the rule Frame
+throughout the entire ACTION execution.
 
-Conséquence : =$SELF->solved()=, =$SELF->cut()=, etc. dans un bloc =ACTION:= YAML
-étaient des no-ops silencieux — la règle frame n'hérite pas de ces méthodes.
+Consequence: =$SELF->solved()=, =$SELF->cut()=, etc. inside a YAML =ACTION:= block
+were silent no-ops — the rule Frame does not inherit these methods.
 
-** Fix appliqué
-=_APPLY= est désormais appelé comme coderef pur :
+** Fix applied
+=_APPLY= is now called as a plain coderef:
 #+begin_src perl
 my $_af = $rule->{_APPLY};
 $res = $_af ? $_af->(%opt) : 0;
 #+end_src
-=$SELF= reste le moteur (engine) tout au long de l'ACTION. Les deux syntaxes
-sont maintenant équivalentes :
+=$SELF= stays on the engine throughout the ACTION. Both syntaxes are now equivalent:
 #+begin_src yaml
-TERMINAL: solved          # engine-level, après le retour de _APPLY
+TERMINAL: solved          # engine-level, after _APPLY returns
 #+end_src
 #+begin_src yaml
 ACTION: |
-  $SELF->solved() if ...  # inline, peut être conditionnel
+  $SELF->solved() if ...  # inline, can be conditional
 #+end_src
 
-** Règle à retenir
-Ne jamais appeler =$SELF->solved()= en supposant que =$SELF= est la règle —
-=$SELF= est toujours le moteur dans un bloc ACTION.
+** Rule
+Never call =$SELF->solved()= assuming =$SELF= is the rule —
+=$SELF= is always the engine inside an ACTION block.
 
-* PITFALL _PREMISSES déclaré en YAML mais ignoré par applyrules()
+* PITFALL _PREMISSES declared in YAML but ignored by applyrules()
   :PROPERTIES:
   :COMPONENT: Chorus::Engine
-  :SEVERITY: Surprenant
+  :SEVERITY: Surprising
   :ADR:      ADR-001
   :END:
 
-=PREMISSES:= / =PREMISES:= dans un fichier YAML est compilé en =_PREMISSES => {...}=
-sur la Frame de règle. Le moteur =applyrules()= **n'en fait rien**.
+=PREMISSES:= / =PREMISES:= in a YAML file is compiled into =_PREMISSES => {...}=
+on the rule Frame. =applyrules()= **does nothing with it**.
 
-C'est uniquement disponible comme métadonnée pour =reorder()= :
+It is only available as metadata for =reorder()=:
 #+begin_src perl
 $agent->reorder(sub {
     my ($r1, $r2) = @_;
@@ -56,69 +55,69 @@ $agent->reorder(sub {
 });
 #+end_src
 
-** Règle
-=PREMISES= = système de tags booléens sur les règles (=slot => 'Y'=), lisibles
-uniquement par un comparateur passé à =reorder()=.
-Hors appel à =reorder()= : omettre =PREMISES= entièrement — totalement inerte.
-La logique de prérequis (conditions de déclenchement) va dans =CONDITION=.
-Voir =lib/Chorus/Engine.pm §codeRule()= · =chorus-engine-yaml.md §PREMISES= · ADR-001.
+** Rule
+=PREMISES= = a boolean tag system on rules (=slot => 'Y'=), readable only
+by a comparator passed to =reorder()=.
+Outside a =reorder()= call: omit =PREMISES= entirely — it is completely inert.
+Prerequisite logic (trigger conditions) belongs in =CONDITION=.
+See =lib/Chorus/Engine.pm §codeRule()= · =chorus-engine-yaml.md §PREMISES= · ADR-001.
 
-* PITFALL _MAX_ITER ignoré par Chorus::Expert->new()
+* PITFALL _MAX_ITER silently ignored by Chorus::Expert->new()
   :PROPERTIES:
   :COMPONENT: Chorus::Expert
-  :SEVERITY: Silencieux
+  :SEVERITY: Silent
   :END:
 
-=Chorus::Expert->new()= ignore tous ses arguments. Passer =_MAX_ITER= au constructeur
-ne fait rien — la valeur est silencieusement jetée.
+=Chorus::Expert->new()= ignores all its arguments. Passing =_MAX_ITER= to the
+constructor does nothing — the value is silently discarded.
 
-** Syntaxe correcte
+** Correct syntax
 #+begin_src perl
 my $xprt = Chorus::Expert->new();
-$xprt->{_MAX_ITER} = 50_000;   # toujours par assignation directe
+$xprt->{_MAX_ITER} = 50_000;   # always via direct assignment
 #+end_src
 
-La valeur par défaut est =10_000= itérations (boucle externe de =process()=),
-distincte de =_MAX_CYCLES= (boucle interne de =loop()=, défaut =10_000= cycles).
+The default is =10_000= iterations (outer loop of =process()=),
+distinct from =_MAX_CYCLES= (inner loop of =loop()=, default =10_000= cycles).
 
-** Règle heuristique
-Pour un pipeline de N frames × M règles au total :
-=_MAX_ITER= ≥ N × M × 10= (safety margin).
+** Heuristic rule
+For a pipeline of N frames × M total rules:
+=_MAX_ITER= ≥ N × M × 10 (safety margin).
 
-* PITFALL CONDITION multiple : OR implicite (pas AND)
+* PITFALL Multiple CONDITION: implicit OR (not AND)
   :PROPERTIES:
   :COMPONENT: Chorus::Engine / DSL YAML
-  :SEVERITY: Contre-intuitif
+  :SEVERITY: Counter-intuitive
   :ADR:      ADR-002
   :END:
 
-Quand =CONDITION:= contient une liste YAML :
+When =CONDITION:= contains a YAML list:
 #+begin_src yaml
 CONDITION:
   - "$f->{type} eq 'stud'"
   - "defined $f->{section}"
 #+end_src
 
-Les conditions sont jointes par =or= (OU implicite) — la règle tire si **l'une**
-des conditions est vraie. C'est =setCondition()= qui fait le join :
+The conditions are joined with =or= (implicit OR) — the rule fires if **any one**
+condition is true. =setCondition()= performs the join:
 #+begin_src perl
 return join("\n      or ", map { $SELF->codeCondition($_) } @$c);
 #+end_src
 
-Pour un ET, mettre tout dans une seule string :
+For AND, put everything in a single string:
 #+begin_src yaml
 CONDITION: "($f->{type}//'') eq 'stud' && defined $f->{section}"
 #+end_src
 
-* PITFALL filtre: multiple : AND implicite (inverse de CONDITION)
+* PITFALL Multiple filtre: implicit AND (opposite of CONDITION)
   :PROPERTIES:
   :COMPONENT: Chorus::Engine / DSL YAML
-  :SEVERITY: Asymétrique
+  :SEVERITY: Asymmetric
   :ADR:      ADR-002
   :END:
 
-=filtre:= dans un bloc =CHERCHER:= / =FIND:= utilise =setFilter()= qui joint les
-expressions par =and= (ET implicite) — contrairement à =CONDITION:= qui est OU.
+=filtre:= inside a =CHERCHER:= / =FIND:= block uses =setFilter()= which joins
+expressions with =and= (implicit AND) — unlike =CONDITION:= which is OR.
 
 #+begin_src yaml
 FIND:
@@ -129,21 +128,21 @@ FIND:
       - "defined $_{stud_spacing_mm}"
 #+end_src
 
-Ces deux filtres sont AND'd. C'est intentionnel (pré-filtrage restrictif du scope).
+Both filters are AND'd. This is intentional (restrictive pre-filtering of scope).
 
-* PITFALL FILTRE-SEQUENCE-LITERAL — filtre YAML séquence de valeurs littérales
+* PITFALL FILTRE-SEQUENCE-LITERAL — filtre YAML sequence of literal values
   :PROPERTIES:
   :COMPONENT: Chorus::Engine / DSL YAML
-  :SEVERITY: Critique — silencieux
+  :SEVERITY: Critical — silent
   :DISCOVERED: 2026-11-14 (chorus-audit-rules sandbox 03b-contruction-bois-HABITATION)
   :ENG: ENG-050
   :END:
 
-Déclarer =filtre:= comme une séquence YAML de valeurs littérales (pas d'expressions Perl)
-génère un filtre constant truthy — le filtre est totalement inopérant.
+Declaring =filtre:= as a YAML sequence of literal values (not Perl expressions)
+generates a constant truthy filter — the filter is completely inoperative.
 
 #+begin_src yaml
-# ⛔ WRONG — YAML séquence → arrayref de barewords → grep { cheminement_ext } = truthy
+# ⛔ WRONG — YAML sequence → arrayref of barewords → grep { cheminement_ext } = truthy
 CHERCHER:
   ce:
     attribut: type_element
@@ -152,198 +151,197 @@ CHERCHER:
       - cheminement_int
 #+end_src
 
-=setFilter()= attend des *expressions Perl* dans le tableau (combinées en ET), pas des
-valeurs à comparer. L'arrayref =["cheminement_ext", "cheminement_int"]= est compilé en :
+=setFilter()= expects *Perl expressions* in the array (combined with AND), not literal
+values to compare against. The arrayref =["cheminement_ext", "cheminement_int"]= compiles to:
 
 : grep { cheminement_ext and cheminement_int } fmatch(slot => 'type_element')
 
-Les deux barewords sont non-vides → toujours truthy → toutes les Frames portant le slot
-=type_element= entrent dans le scope, quel que soit leur valeur réelle.
+Both barewords are non-empty → always truthy → all Frames carrying the =type_element=
+slot enter the scope regardless of their actual value.
 
-Aucune erreur n'est levée. =loadRules()= émet un warn =FILTRE-SEQUENCE-LITERAL=
-(implémenté dans ENG-050 Axe A, =_check_filtre_not_string()=).
+No error is raised. =loadRules()= emits a =FILTRE-SEQUENCE-LITERAL= warning
+(implemented in ENG-050 Axe A, =_check_filtre_not_string()=).
 
-** Règle
-=filtre:= doit *toujours* être une string Perl quotée sur =$_=.
+** Rule
+=filtre:= must *always* be a quoted Perl string operating on =$_=.
 
 #+begin_src yaml
-# ✅ CORRECT — valeur unique
+# ✅ CORRECT — single value
 filtre: '$_->{type_element} eq "cheminement_ext"'
 
-# ✅ CORRECT — valeurs multiples
+# ✅ CORRECT — multiple values
 filtre: '$_->{type_element} =~ /^(cheminement_ext|cheminement_int)$/'
 
-# ✅ CORRECT — tableau de vraies expressions Perl (ET implicite)
+# ✅ CORRECT — array of real Perl expressions (implicit AND)
 filtre:
   - '$_->{type_element} =~ /^cheminement/'
   - 'defined $_->{largeur_m}'
 #+end_src
 
-Découvert sur 7 règles du sandbox =03b-contruction-bois-HABITATION= (agent-accessibilite-pmr
-R01–R07) — les filtres ciblaient des types PMR distincts mais laissaient passer toutes les
-Frames =type_element=, provoquant des verdicts incorrects sur des types non concernés.
+Discovered on 7 rules of sandbox =03b-contruction-bois-HABITATION= (agent-accessibilite-pmr
+R01–R07) — filters targeted distinct PMR types but let all =type_element= Frames through,
+producing incorrect verdicts on unrelated types.
 
-* PITFALL fmatch() ne voit pas les slots posés après new()
+* PITFALL fmatch() cannot see slots set after new()
   :PROPERTIES:
   :COMPONENT: Chorus::Frame / fmatch
-  :SEVERITY: Subtil
+  :SEVERITY: Subtle
   :END:
 
-=%REPOSITORY= est mis à jour par =set()= mais pas par une assignation directe
-sur le hash de la Frame :
+=%REPOSITORY= is updated by =set()= but not by direct hash assignment on a Frame:
 #+begin_src perl
-$f->{nouveau_slot} = 'valeur';   # NE met PAS à jour %REPOSITORY
-$f->set('nouveau_slot', 'val');  # ✅ met à jour %REPOSITORY
+$f->{nouveau_slot} = 'valeur';   # does NOT update %REPOSITORY
+$f->set('nouveau_slot', 'val');  # ✅ updates %REPOSITORY
 #+end_src
 
-=fmatch(slot => 'nouveau_slot')= ne retrouvera pas =$f= si le slot a été posé
-par assignation directe.
+=fmatch(slot => 'nouveau_slot')= will not find =$f= if the slot was set
+via direct assignment.
 
-** Règle
-Toujours utiliser =$f->set(...)= pour toute modification de Frame dans les règles.
+** Rule
+Always use =$f->set(...)= for any Frame modification inside rules.
 
-* PITFALL {} passé à Chorus::Frame->new() est promu en Frame
+* PITFALL {} passed to Chorus::Frame->new() is promoted to a Frame
   :PROPERTIES:
   :COMPONENT: Chorus::Frame
-  :SEVERITY: Silencieux / destructeur
-  :DISCOVERED: 2026-07-03 (Étape 3 backward-chaining)
+  :SEVERITY: Silent / destructive
+  :DISCOVERED: 2026-07-03 (Step 3 backward-chaining)
   :END:
 
-=Chorus::Frame->new(key => {})= — une valeur hashref ={}= est automatiquement
-promue en =Chorus::Frame=. Le slot stocke donc une Frame, pas un hashref pur.
+=Chorus::Frame->new(key => {})= — a hashref value ={}= is automatically
+promoted to a =Chorus::Frame=. The slot therefore stores a Frame, not a plain hashref.
 
-Conséquence : =keys %{ $frame->{key} }= inclut =_KEY= (le MD5 de la Frame),
-ce qui provoque des erreurs cryptiques comme :
+Consequence: =keys %{ $frame->{key} }= includes =_KEY= (the Frame's MD5),
+causing cryptic errors such as:
 #+begin_example
 Can't use string ("rJOaU/xPgvoj2LwKKck41g") as an ARRAY ref
 #+end_example
 
-** Règle
-Ne **jamais** passer ={...}= ou ={}= comme valeur dans =Chorus::Frame->new(...)=
-si on attend un hashref pur. Utiliser une assignation directe **après** =new()= :
+** Rule
+Never pass ={...}= or ={}= as a value to =Chorus::Frame->new(...)=
+when a plain hashref is expected. Use direct assignment **after** =new()=:
 
 #+begin_src perl
-my $res = Chorus::Frame->new(_RULES => [], @_);  # [] arrayref OK (pas promu)
-$res->{_RULE_PRODUCES} = {};                     # assignation directe — reste un hashref pur
+my $res = Chorus::Frame->new(_RULES => [], @_);  # [] arrayref OK (not promoted)
+$res->{_RULE_PRODUCES} = {};                     # direct assignment — stays a plain hashref
 #+end_src
 
-Les **arrayrefs** (=[]=) ne sont PAS promus — seulement les hashrefs.
+**Arrayrefs** (=[]=) are NOT promoted — only hashrefs are.
 
-* PITFALL Chorus::Engine est une Frame — héritage multiple possible
+* PITFALL Chorus::Engine is a Frame — multiple inheritance is possible
   :PROPERTIES:
   :COMPONENT: Chorus::Engine
-  :SEVERITY: Surprenant mais fonctionnel
+  :SEVERITY: Surprising but functional
   :END:
 
-=Chorus::Engine->new()= crée une Frame qui hérite du prototype =$ENGINE= :
+=Chorus::Engine->new()= creates a Frame that inherits from the =$ENGINE= prototype:
 #+begin_src perl
 sub new {
     shift;
     my $res = Chorus::Frame->new(_RULES => [], @_);
-    $res->_inherits($ENGINE);    # ajouté après la construction
+    $res->_inherits($ENGINE);    # added after construction
     return $res;
 }
 #+end_src
 
-Un moteur peut donc avoir plusieurs parents (héritage multiple), par exemple
-hériter à la fois de =$ENGINE= et d'une Frame de configuration applicative.
-Ce n'est pas un bug — c'est intentionnel dans l'architecture.
+An engine instance can therefore have multiple parents (multiple inheritance), e.g.
+inheriting from both =$ENGINE= and an application configuration Frame.
+This is not a bug — it is intentional by design.
 
-* PITFALL Chorus-Engine ≠ Chorus::Engine (confusion de nommage résolue en v2)
+* PITFALL Chorus-Engine ≠ Chorus::Engine (naming confusion resolved in v2)
   :PROPERTIES:
-  :COMPONENT: Distribution CPAN
-  :SEVERITY: Informatif
+  :COMPONENT: CPAN Distribution
+  :SEVERITY: Informational
   :FIXED_IN:  2.01
   :END:
 
-Jusqu'à v2.01, la distribution CPAN s'appelait =Chorus-Engine=, ce qui suggérait
-qu'elle ne contenait que la classe =Chorus::Engine=. En réalité elle contient
-l'ensemble de la plateforme : =Chorus::Engine=, =Chorus::Expert=, =Chorus::Frame=,
-=Chorus::Collection::*=, DSL YAML, skills agent.
+Until v2.01, the CPAN distribution was named =Chorus-Engine=, suggesting it only
+contained the =Chorus::Engine= class. In reality it contains the entire platform:
+=Chorus::Engine=, =Chorus::Expert=, =Chorus::Frame=, =Chorus::Collection::*=,
+the YAML DSL, and agent skills.
 
-Renommée =Chorus= en v2.01. Les URLs MetaCPAN, RT, GitHub ont été mises à jour.
+Renamed to =Chorus= in v2.01. MetaCPAN, RT, and GitHub URLs updated accordingly.
 
-* PITFALL _CYCLE et _SUCCES remis à 0 à chaque loop()
+* PITFALL _CYCLE and _SUCCES reset to 0 at each loop()
   :PROPERTIES:
   :COMPONENT: Chorus::Engine
-  :SEVERITY: Trompeur
+  :SEVERITY: Misleading
   :DISCOVERED: 2026-07-24 (deep-chorus full — source Engine.pm v2.0.2)
   :END:
 
-=loop()= commence systématiquement par :
+=loop()= always starts with:
 #+begin_src perl
 $SELF->{_SUCCES} = 0;
 $SELF->{_CYCLE}  = 0;
 #+end_src
 
-Ce ne sont **pas** des compteurs cumulatifs sur la durée de vie de l'agent.
-=_CYCLE= vaut le nombre de passes d'=applyrules()= dans le =loop()= courant.
-Entre deux appels à =loop()=, ces valeurs sont toujours remises à zéro.
+These are **not** cumulative counters over the agent's lifetime.
+=_CYCLE= holds the number of =applyrules()= passes in the **current** =loop()= call.
+Between two =loop()= calls, these values are always reset to zero.
 
-Un code qui lirait =_CYCLE= après =loop()= pour connaître le total des cycles
-de l'agent obtient seulement le compteur du dernier =loop()=.
+Code that reads =_CYCLE= after =loop()= to know the total cycle count
+only gets the counter of the last =loop()= invocation.
 
-** Règle
-Utiliser =_CYCLE= uniquement comme compteur de cycle intra-=loop()= (par exemple
-dans un =_APPLY= pour indiquer le cycle courant). Pour un décompte global, accumuler
-dans un slot BOARD personnalisé depuis les règles.
+** Rule
+Use =_CYCLE= only as an intra-=loop()= cycle counter (e.g. in =_APPLY= to
+indicate the current cycle). For a global count, accumulate in a custom BOARD slot
+from within the rules.
 
-* PITFALL BOARD->{SOLVED} et BOARD->{FAILED} effacés après process()
+* PITFALL BOARD->{SOLVED} and BOARD->{FAILED} cleared after process()
   :PROPERTIES:
   :COMPONENT: Chorus::Expert
-  :SEVERITY: Surprenant
+  :SEVERITY: Surprising
   :DISCOVERED: 2026-07-24 (deep-chorus full — source Expert.pm v2.0.2)
   :END:
 
-=process()= supprime ces flags avant de retourner :
+=process()= deletes these flags before returning:
 #+begin_src perl
 ($board->delete('SOLVED'), return 1) if $board->{SOLVED};
 ($board->delete('FAILED'), return  ) if $board->{FAILED};
 #+end_src
 
-Après le retour de =process()=, tester =$agent->BOARD->SOLVED= retourne toujours
-=undef= même si le pipeline a réussi.
+After =process()= returns, testing =$agent->BOARD->SOLVED= always yields
+=undef= even if the pipeline succeeded.
 
-** Syntaxe correcte
+** Correct syntax
 #+begin_src perl
 my $ok = $xprt->process();
 if ($ok) { # pipeline solved }
 else      { # failed or timeout }
 #+end_src
 
-Ne jamais se fier à =BOARD->{SOLVED}= après =process()=. Les résultats domaine
-doivent être posés sur des slots BOARD personnalisés (=$agent->BOARD->set('result', ...)=)
-dans la règle de terminaison — ces slots ne sont pas effacés par =process()=.
+Never rely on =BOARD->{SOLVED}= after =process()=. Domain results must be
+stored in custom BOARD slots (=$agent->BOARD->set('result', ...)=) inside
+the termination rule — these slots are not cleared by =process()=.
 
-* PITFALL BOARD-ACCESS-UNDEF — $SELF->BOARD retourne undef avant le premier slot BOARD publié
+* PITFALL BOARD-ACCESS-UNDEF — $SELF->BOARD returns undef before first BOARD slot is published
   :PROPERTIES:
   :COMPONENT: Chorus::Engine / DSL YAML
-  :SEVERITY: Significatif — crash potentiel
+  :SEVERITY: Significant — potential crash
   :DISCOVERED: 2026-11-14 (chorus-audit-rules sandbox 03b-contruction-bois-HABITATION)
   :ENG: ENG-050
   :END:
 
-=$SELF->BOARD= retourne =undef= tant qu'aucun agent n'a encore posé de slot BOARD.
-Accéder à =$SELF->BOARD->{key}= sans null-check crash avec :
+=$SELF->BOARD= returns =undef= until any agent has published a BOARD slot.
+Accessing =$SELF->BOARD->{key}= without a null-check crashes with:
 
 : Can't use an undefined value as a HASH reference
 
-Le cas le plus risqué : le premier agent du pipeline (pos. 1/N) accède à BOARD
-dans son =EFFET/ACTION= dès le premier cycle, avant d'avoir lui-même initialisé BOARD.
+Most at-risk case: the first agent in the pipeline (pos. 1/N) accesses BOARD
+in its =ACTION= on the very first cycle, before it has initialised BOARD itself.
 
 #+begin_src perl
-# ⛔ WRONG — crash si aucun slot BOARD n'existe encore
+# ⛔ WRONG — crash if no BOARD slot exists yet
 my $liste = $SELF->BOARD->{classements_resolus} // [];
 
-# ✅ CORRECT — guard explicite dans EFFET/ACTION
+# ✅ CORRECT — explicit guard in ACTION
 my $b     = $SELF->BOARD // {};
 my $liste = $b->{classements_resolus} // [];
 #+end_src
 
-Dans les =EXCEPTION= et =CONDITION= YAML, le guard est encore plus important :
+In YAML =EXCEPTION= and =CONDITION=, the guard is even more important:
 
 #+begin_src yaml
-# ⛔ WRONG — crash si BOARD undef
+# ⛔ WRONG — crash if BOARD undef
 EXCEPTION: defined $SELF->BOARD->{verdict_ok}
 
 # ✅ CORRECT — null-safe
@@ -351,130 +349,130 @@ EXCEPTION: '($SELF->BOARD && defined $SELF->BOARD->{verdict_ok})'
 #+end_src
 
 #+begin_src yaml
-# ⛔ WRONG — crash dans CONDITION si BOARD undef
+# ⛔ WRONG — crash in CONDITION if BOARD undef
 CONDITION: defined $SELF->BOARD->{phase_done}
 
 # ✅ CORRECT
 CONDITION: '($SELF->BOARD && defined $SELF->BOARD->{phase_done})'
 #+end_src
 
-** Règle
-- Dans les =EXCEPTION/CONDITION= YAML : *toujours* `($SELF->BOARD && ...)` avant tout accès.
-- Dans les =EFFET/ACTION= YAML : utiliser `my $b = $SELF->BOARD // {};` puis `$b->{key}`.
-- Règles d'agrégation/publication BOARD : combiner guard nul + guard clé :
+** Rule
+- In YAML =EXCEPTION/CONDITION=: *always* use `($SELF->BOARD && ...)` before any access.
+- In YAML =ACTION=: use `my $b = $SELF->BOARD // {};` then `$b->{key}`.
+- Aggregation / BOARD-publishing rules: combine null guard + key guard:
   `($SELF->BOARD && defined $SELF->BOARD->{key})`.
 
-** Fix moteur appliqué (ENG-050 Axe B)
-=BOARD= est initialisé à ={}= dans =loadRules()=. =$SELF->BOARD= ne retourne jamais
-=undef= dès lors que le moteur est chargé (sauf si appelé avant =loadRules()=).
+** Engine fix applied (ENG-050 Axe B)
+=BOARD= is initialised to ={}= in =loadRules()=. =$SELF->BOARD= never returns
+=undef= once the engine is loaded (unless called before =loadRules()=).
 
-* PITFALL Pattern B (_ISA prototypes) : $inject_isa dans une seule passe
+* PITFALL Pattern B (_ISA prototypes): $inject_isa called in only one pass
   :PROPERTIES:
   :COMPONENT: Feed.pm / Inter-Frame Relations
-  :SEVERITY: Silencieux — résultats incorrects
+  :SEVERITY: Silent — incorrect results
   :DISCOVERED: 2026-07-23 (sandbox test-11 — feat/relations-inter-frames)
   :END:
 
-Dans l'implémentation du Pattern B (prototypes Minsky via =_ISA=), =Feed.pm= charge
-les éléments en **deux passes** :
-- Passe 1 : éléments sans champ =*_ref= (éléments autonomes)
-- Passe 2 : éléments avec =*_ref= (résolution des liens inter-frames)
+In a Pattern B implementation (Minsky prototypes via =_ISA=), =Feed.pm= loads
+elements in **two passes**:
+- Pass 1: elements without a =*_ref= field (standalone elements)
+- Pass 2: elements with =*_ref= (inter-frame link resolution)
 
-Si la closure =$inject_isa= (qui appelle =fselect= et =$frame->_inherits($proto)=)
-n'est appelée qu'en passe 2, les éléments sans =*_ref= ne reçoivent jamais leur
-prototype. Conséquence : =fmatch(slot => 'threshold_slot_X')= retourne les seuils
-par défaut du moteur au lieu des seuils hérités du prototype → faux-positifs silencieux.
+If the =$inject_isa= closure (which calls =fselect= and =$frame->_inherits($proto)=)
+is only called in pass 2, elements without =*_ref= never receive their prototype.
+Consequence: =fmatch(slot => 'threshold_slot_X')= returns engine defaults instead
+of prototype-inherited thresholds → silent false positives.
 
-** Règle
-Appeler =$inject_isa= dans **les deux passes**, avant la résolution des liens.
+** Rule
+Call =$inject_isa= in **both passes**, before link resolution.
 
 #+begin_src perl
-# Passe 1 — éléments sans *_ref
+# Pass 1 — elements without *_ref
 for my $id (grep { !$e->{$_}{supports_ref} } keys %$projet) {
     my $frame = Chorus::Frame->new(...);
-    $inject_isa->($frame, $e->{$id});   # ← obligatoire ici aussi
+    $inject_isa->($frame, $e->{$id});   # ← required here too
     ...
 }
-# Passe 2 — résolution des *_ref + _ISA sur éléments restants
+# Pass 2 — *_ref resolution + _ISA on remaining elements
 for my $id (keys %$projet) {
-    $inject_isa->($TYPED_FRAMES{$id}, $e->{$id});  # idempotent si déjà appelé
+    $inject_isa->($TYPED_FRAMES{$id}, $e->{$id});  # idempotent if already called
     ...
 }
 #+end_src
 
-* PITFALL *_ref dans %SLOTS_REQUIS — rupture de rétrocompatibilité
+* PITFALL *_ref in %SLOTS_REQUIS — silent backward-compatibility break
   :PROPERTIES:
   :COMPONENT: Feed.pm / Inter-Frame Relations
-  :SEVERITY: Rupture silencieuse
+  :SEVERITY: Silent breakage
   :DISCOVERED: 2026-07-23 (sandbox test-11 — feat/relations-inter-frames)
   :END:
 
-Les champs =*_ref= (ex. =supports_ref=, =building_ref=) représentent des liens
-inter-frames **optionnels** issus de dessins / BIM / spécifications ingénieur.
-Un projet JSON sans ces champs doit rester valide.
+=*_ref= fields (e.g. =supports_ref=, =building_ref=) represent **optional** inter-frame
+links sourced from drawings / BIM / engineer specs.
+A project JSON without these fields must remain valid.
 
-Si =Feed.pm= les inclut dans =%SLOTS_REQUIS=, les projets JSON antérieurs seront
-rejetés par un =warn + next= silencieux à l'exécution.
+If =Feed.pm= includes them in =%SLOTS_REQUIS=, older project JSONs will be
+silently rejected with a =warn + next= at runtime.
 
-** Règle absolue
-Ne **jamais** ajouter un champ =*_ref= dans =%SLOTS_REQUIS=.
-Les règles YAML utilisant un lien inter-frames doivent systématiquement prévoir
-un fallback (Option A) ou une garde de skip (Option B) :
+** Absolute rule
+Never add a =*_ref= field to =%SLOTS_REQUIS=.
+YAML rules that use an inter-frame link must always provide a fallback (Option A)
+or a skip guard (Option B):
 
 #+begin_src yaml
-# Option A — fallback sur slot direct si lien absent
+# Option A — fallback to direct slot if link absent
 ACTION: |
   my $target = $w->get('link_slot');
   my $val = $target ? $target->get('remote_slot') : $w->get('local_fallback_slot');
   1
 
-# Option B — ignorer l'élément si lien absent
+# Option B — skip element if link absent
 EXCEPTION: 'not defined $w->get("link_slot")'
 #+end_src
 
-* PITFALL eca__ask_user silencieusement ignoré dans un sub-agent
+* PITFALL eca__ask_user silently ignored inside a sub-agent
   :PROPERTIES:
   :COMPONENT: chorus-web / ECA terminal
-  :SEVERITY: Moyen (dégradation silencieuse, pas d'erreur)
+  :SEVERITY: Medium (silent degradation, no error)
   :DISCOVERED: 2026-10-30
   :ADR:      ADR-017
   :END:
 
-** Symptôme
-Un skill exécuté via =eca__spawn_agent= appelle =eca__ask_user= — l'appel
-retourne immédiatement =""= sans afficher aucun widget à l'utilisateur.
-Le skill continue avec une réponse vide, produisant un résultat incorrect ou
-incomplet sans signal d'erreur.
+** Symptom
+A skill running inside =eca__spawn_agent= calls =eca__ask_user= — the call
+returns immediately with =""= without showing any widget to the user.
+The skill continues with an empty response, producing incorrect or incomplete
+results with no error signal.
 
 ** Cause
-Dans =subscribeEcaEvents= (=eca-client.js=), les événements des sous-chats
-(=isSubagentChat=) ne déclenchent pas le handler =chat:ask-question= :
+In =subscribeEcaEvents= (=eca-client.js=), events from sub-chats
+(=isSubagentChat=) do not trigger the =chat:ask-question= handler:
 
 #+begin_src javascript
 if (isParentChat && eventType === 'chat:ask-question') {
-  // ← ce guard exclut les sub-agents
+  // ← this guard excludes sub-agents
 }
 #+end_src
 
-Le sous-agent s'exécute dans un chatId séparé (=subagent-<id>=). Le handler
-=chat:ask-question= n'est actif que pour le chat parent. L'appel =eca__ask_user=
-côté ECA reçoit =""= et continue sans bloquer.
+The sub-agent runs in a separate chatId (=subagent-<id>=). The =chat:ask-question=
+handler is only active for the parent chat. The ECA =eca__ask_user= call receives =""=
+and continues without blocking.
 
-** Pattern affecté
-Tout skill qui appelle =eca__ask_user= ET peut être lancé via =eca__spawn_agent=.
-Skills Chorus concernés : =chorus-strengthen= (Phase 4-checkpoint),
+** Affected pattern
+Any skill that calls =eca__ask_user= AND may be launched via =eca__spawn_agent=.
+Chorus skills affected: =chorus-strengthen= (Phase 4-checkpoint),
 =chorus-feed= (Phase 6.5), =chorus-create-project= (Phase 3 --batch-seq).
 
-** Protection en place (insuffisante)
-Le guard =AUTONOMOUS_MODE= (=chorus-engine.md § Autonomous mode=) détecte
-=eca__ask_user= absent du catalogue d'outils — ce qui couvre le cas "outil
-non disponible" mais PAS le cas "outil disponible mais sub-agent" : l'outil
-est présent dans le catalogue du sous-agent, donc =AUTONOMOUS_MODE= ne se
-déclenche pas, et =eca__ask_user= est appelé → retourne =""=.
+** Protection in place (insufficient)
+The =AUTONOMOUS_MODE= guard (=chorus-engine.md § Autonomous mode=) detects
+=eca__ask_user= absent from the tool catalogue — which covers "tool unavailable"
+but NOT the "tool available but sub-agent" case: the tool is present in the
+sub-agent's catalogue, so =AUTONOMOUS_MODE= never triggers, =eca__ask_user=
+is called → returns =""=.
 
-** Fix recommandé
-Ajouter la détection explicite du contexte sub-agent comme condition
-=AUTONOMOUS_MODE= supplémentaire dans chaque skill concerné :
+** Recommended fix
+Add explicit sub-agent context detection as an additional =AUTONOMOUS_MODE=
+condition in each affected skill:
 
 #+begin_src markdown
 | Running inside a sub-agent | Spawned via `eca__spawn_agent` — OR —
@@ -482,34 +480,34 @@ Ajouter la détection explicite du contexte sub-agent comme condition
   if the return is `""` without user interaction delay |
 #+end_src
 
-Fix structurel à terme : propager =chat:ask-question= des sub-agents vers
-le terminal parent (=subscribeEcaEvents= § sub-agent handling), en routant
-la réponse vers le bon chatId. Non implémenté à ce jour (2026-10-30).
+Structural fix: propagate =chat:ask-question= from sub-agents to the parent terminal
+(=subscribeEcaEvents= § sub-agent handling), routing the reply to the correct chatId.
+Not implemented as of 2026-10-30.
 
-** Règle à retenir
-=eca__ask_user= n'est fiable que dans le chat **parent** d'un terminal ECA
-webapp. Tout skill potentiellement spawné via =eca__spawn_agent= doit
-implémenter =AUTONOMOUS_MODE= pour gérer le cas de retour =""=.
+** Rule
+=eca__ask_user= is reliable only in the **parent** chat of a webapp ECA terminal.
+Any skill potentially spawned via =eca__spawn_agent= must implement =AUTONOMOUS_MODE=
+to handle the =""= return case.
 
-* PITFALL _incomplet + slot requis absent → die() dans load_projet → boucle chorus-check
+* PITFALL _incomplet + required slot absent → die() in load_projet → chorus-check infinite loop
   :PROPERTIES:
   :COMPONENT: Feed.pm / chorus-templates T1
-  :SEVERITY: Critique — boucle infinie
+  :SEVERITY: Critical — infinite loop
   :DISCOVERED: 2026-11-12 (sandbox 02b-FI-copyright, element work-01)
   :ENG: ENG-039
   :END:
 
-=load_projet= valide les slots de =%SLOTS_REQUIS= via =die()= pour tout élément.
-Un élément marqué =_incomplet: 1= (par =chorus-audit-import=) peut légitimement
-avoir des slots manquants — le =die= est sémantiquement faux dans ce cas.
+=load_projet= validates =%SLOTS_REQUIS= slots via =die()= for every element.
+An element marked =_incomplet: 1= (by =chorus-audit-import=) may legitimately
+have missing slots — the =die= is semantically wrong in that case.
 
-Résultat : =chorus-check= entre en boucle infinie (génère =Feed.pm= → =die= →
-relance → =die= → ...).
+Result: =chorus-check= enters an infinite loop (generates =Feed.pm= → =die= →
+retry → =die= → ...).
 
-** Fix obligatoire dans le template T1 (=chorus-templates.md=)
+** Mandatory fix in template T1 (=chorus-templates.md=)
 
 #+begin_src perl
-# ✅ CORRECT — guard _incomplet avant la boucle SLOTS_REQUIS
+# ✅ CORRECT — guard _incomplet before SLOTS_REQUIS loop
 unless ($elem->{_incomplet}) {
     for my $slot (@$requis) {
         die "Slot '$slot' missing for '$id' (type_element=$type_element)\n"
@@ -518,34 +516,34 @@ unless ($elem->{_incomplet}) {
 }
 #+end_src
 
-Implémenté dans =chorus-templates.md= template T1 (ENG-039).
-Les =Feed.pm= existants sur sandboxes doivent être re-générés via =chorus-check=.
+Implemented in =chorus-templates.md= template T1 (ENG-039).
+Existing =Feed.pm= files on sandboxes must be regenerated via =chorus-check=.
 
-* PITFALL return 0 sans écriture du slot de sortie → re-fire infini (règles _incomplet)
+* PITFALL return 0 without writing output slot → infinite re-fire (_incomplet rules)
   :PROPERTIES:
   :COMPONENT: Chorus YAML DSL / Rules
-  :SEVERITY: Critique — boucle moteur silencieuse
+  :SEVERITY: Critical — silent engine loop
   :DISCOVERED: 2026-11-12 (sandbox 02b-FI-copyright, R03-copyright-term)
   :ENG: ENG-039
   :END:
 
-Une règle dont l'=EXCEPTION= est =defined $f->{output_slot}= doit écrire
-=output_slot= dans **toutes** les branches de son =ACTION=, y compris la branche
-"données insuffisantes". Un =return 0= sans écriture laisse l'=EXCEPTION= fausse
-→ la règle se re-fire chaque cycle jusqu'à =_MAX_ITER=.
+A rule whose =EXCEPTION= is =defined $f->{output_slot}= must write =output_slot=
+in **all** branches of its =ACTION=, including the "insufficient data" branch.
+A =return 0= without writing leaves the =EXCEPTION= false →
+the rule re-fires every cycle until =_MAX_ITER=.
 
 #+begin_src yaml
-# ⛔ WRONG — return 0 sans écrire output_slot
+# ⛔ WRONG — return 0 without writing output_slot
 EXCEPTION: defined $f->{protection_status}
 ACTION: |
   if (defined $author_death) {
     $f->set('protection_status', 'CONFORME');
     return 1;
   } else {
-    return 0;   # ← EXCEPTION reste fausse → re-fire infini
+    return 0;   # ← EXCEPTION stays false → infinite re-fire
   }
 
-# ✅ CORRECT — toutes les branches écrivent output_slot
+# ✅ CORRECT — all branches write output_slot
 ACTION: |
   if (defined $author_death) {
     $f->set('protection_status', 'CONFORME');
@@ -557,8 +555,8 @@ ACTION: |
   }
 #+end_src
 
-Corollaire : si la règle pousse dans =_rule_trace= avant le check des données,
-chaque re-fire ajoute une entrée dupliquée → trace polluée (effet Bug 3 ENG-039).
-Guard obligatoire : =unless (grep { ... } @$trace)= autour du push.
+Corollary: if the rule pushes to =_rule_trace= before checking data,
+each re-fire adds a duplicate entry → polluted trace (Bug 3 in ENG-039).
+Mandatory guard: =unless (grep { ... } @$trace)= around the push.
 
-Voir =chorus-engine-yaml.md § ENG-039= pour la convention complète.
+See =chorus-engine-yaml.md § ENG-039= for the full convention.
