@@ -724,6 +724,19 @@ Pour chaque terme T, C = Scope de cet import :
 > **Exception:** steps 1–2 are final only if the KB hash check passes (see above) —
 > a stale mapping following a KB change is never applied silently.
 >
+> **⛔ ENG-073 — Hit Niveau 3 → écriture obligatoire dans `.thesaurus.json` Niveau 2 :**
+> Quand un hit Niveau 3 (`workspace/<C>/thesaurus.org § Aliases`) résout un terme
+> (steps 1–2), appliquer le mapping à la Frame JSON **ET** écrire l'entrée résolue dans
+> `<projId>.thesaurus.json § aliases_type_element` (ou `aliases_slot_values`) avec
+> `confidence: "confirmée"` et le `source_import` correspondant.
+> ⛔ Ne **jamais** écrire de bloc custom dans le JSON projet pour tracer cette résolution
+> (`thesaurus_resolution_applied` ou tout équivalent inventé) — le `.thesaurus.json`
+> est l'unique emplacement canonique des décisions terminologiques.
+> Raison : sans cette écriture Niveau 2, un re-import ultérieur ne retrouve pas le
+> mapping dans le thésaurus projet et le re-classe `_a_confirmer`, perdant silencieusement
+> la décision de l'ingénieur. (Incident : sandbox `08-ANSSI-PG-083-CENTRIC`, re-import
+> 2026-11-13 — résolution appliquée en Niveau 3 mais absente du `.thesaurus.json`.)
+>
 > A thesaurus hit at step 4 (Pending) re-raises the question exactly once. If the
 > engineer confirms → move the entry to Aliases (in the shard matching the current
 > import's Scope `C`) and record ✅. If rejected → move to Out-of-scope (global.org)
