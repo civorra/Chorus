@@ -171,40 +171,17 @@ source_to_md = {
 > `files_mode_a_pending` will contain only `.md`/`.txt` paths after this redirect —
 > `chorus-feed.md § Mode A` never sees a raw document file or an unvalidated parent.
 
-### 📌 Adding a new document before launching `--unattended`
+### 📌 Adding a new document before `--unattended`
 
-When a new source document needs to be added to the corpus before (or between)
-`--unattended` sessions, the preparation sequence must happen **outside** of any
-`--unattended` invocation:
+Prepare **outside** any unattended session, then relaunch:
 
 ```bash
-# Step 1 — Convert (outside --unattended)
-chorus-pdf   <sandbox> corpus/sources/new-document.pdf     # or chorus-word / chorus-excel
-# → produces corpus/NNN-new-document-text.md
-
-# Step 2 — Validate (writes .corpus-ready.json — outside --unattended)
-chorus-markdown <sandbox> corpus/sources/new-document.pdf \
-                           corpus/NNN-new-document-text.md --report
-
-# Step 3 — Add to corpus dir and (re)launch --unattended
-# The new .md is now in corpus/ and has a .corpus-ready.json entry.
-# Step 0.0 will find it validated on the next --unattended invocation.
+chorus-pdf <sandbox> corpus/sources/new.pdf          # or chorus-word / chorus-excel
+chorus-markdown <sandbox> corpus/sources/new.pdf corpus/NNN-new-text.md --report
+# If a checkpoint exists (status: waiting/converged) → delete it first:
+# rm $SANDBOX/.chorus-unattended-state.json
 chorus-feed <sandbox> --unattended
 ```
-
-**Interaction with the checkpoint:**
-
-| Situation | Behaviour |
-|---|---|
-| **No checkpoint yet** (first run) | Step 1 builds `files_mode_a_pending` from scratch — the new `.md` is included automatically |
-| **Checkpoint exists** (`status: waiting`) | The new `.md` is **not** in the existing `files_mode_a_pending` — delete `.chorus-unattended-state.json` and restart, or manually add the file to the pending list before resuming |
-| **Checkpoint converged** | Delete the checkpoint to restart a fresh Mode A/B cycle including the new file |
-
-> **Why not auto-detect new files on resume?** The checkpoint is authoritative on
-> resume — adding files to `--corpus-dir` between sessions does not automatically
-> update `files_mode_a_pending`. This is deliberate: silent auto-injection of new
-> files into a running unattended session would break the deterministic
-> file-ordering guarantee of the pre-split mode.
 
 ### Step 0 — OOS reclassification (silent)
 
