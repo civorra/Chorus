@@ -189,6 +189,49 @@ Check `.corpus-ready.json` for an entry where `entry["md"] == <corpus>`:
 > (Step 0.0 there, before Step 0.5) — covering the entire `files_mode_a_pending` list at
 > once. This shared gate handles only the single-file `<corpus>` argument case.
 
+### 📌 Adding a new document to an existing corpus (`--enrich`)
+
+When enriching an existing sandbox with a new source document, the required sequence is:
+
+```bash
+# Step 1 — Convert
+chorus-pdf   <sandbox> corpus/sources/new-document.pdf     # or chorus-word / chorus-excel
+# → produces corpus/NNN-new-document-text.md (or -vision.md)
+
+# Step 2 — Validate (writes .corpus-ready.json)
+chorus-markdown <sandbox> corpus/sources/new-document.pdf \
+                           corpus/NNN-new-document-text.md --report
+
+# Step 3 — Enrich
+# Either form is valid — Step 0.0 redirects the PDF to its validated .md automatically:
+chorus-feed <sandbox> corpus/sources/new-document.pdf --enrich
+# or equivalently:
+chorus-feed <sandbox> corpus/NNN-new-document-text.md --enrich
+```
+
+**What happens at Step 3:**
+
+| `<corpus>` passed | Step 0.0 action |
+|---|---|
+| `corpus/sources/new-document.pdf` | Finds `entry["source"]` in `.corpus-ready.json` → redirects to `corpus/NNN-new-document-text.md`, proceeds |
+| `corpus/NNN-new-document-text.md` | Case B — finds `entry["md"]` in `.corpus-ready.json` → passes |
+| `corpus/NNN-new-document-text.md` (step 2 not done) | Case B — not in `.corpus-ready.json` → passes trivially (direct .md, no source doc registered) |
+
+> **Why pass the PDF directly to `chorus-feed`?** It is the more natural invocation
+> (matches how the user thinks — "I have a new PDF to add"), and Step 0.0's redirect
+> makes it unambiguous which `.md` is actually used. Both forms are equally safe once
+> step 2 is done.
+
+> **If `chorus-markdown` was not run (step 2 skipped):**
+> - Passing the PDF → HARD STOP (no `.corpus-ready.json` entry for `corpus/sources/new-document.pdf`)
+> - Passing the `.md` → gate passes trivially (Case B, no entry found, assumed direct corpus)
+>
+> This asymmetry is intentional: a **conversion output** (a `.md` produced by `chorus-pdf`
+> etc.) that bypasses `chorus-markdown` is indistinguishable by name from a directly-provided
+> corpus. The gate cannot block it without false-positives on legitimate direct `.md` files.
+> The safe path is always to run `chorus-markdown` after any conversion — it is the only
+> mechanism that registers the file as a validated conversion output.
+
 ### ⛔ Document Format Guard — Auto-conversion
 
 > ⚠️ **ENG-077 note:** Step 0.0 above redirects document formats (PDF/DOCX/XLSX/etc.)
