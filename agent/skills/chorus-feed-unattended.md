@@ -48,22 +48,43 @@ If any prerequisite is missing → stop immediately:
 > every file in `--corpus-dir`; a single unvalidated or truncated `.md` silently
 > contaminates every coverage count and rule generated during the entire unattended session.
 
-**Scan `--corpus-dir` for document source files:**
+**Two-pass scan of `--corpus-dir`:**
 
 ```python
-import os, json
+import os, json, re as _re
 
 SOURCE_EXTS = {'.pdf', '.docx', '.xlsx', '.csv', '.xml', '.html', '.htm'}
 corpus_dir  = args.corpus_dir or os.path.join(SANDBOX, 'corpus')
 
+def read_split_from(path):
+    """Return the SPLIT FROM parent path if present in the first 5 lines, else None."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            for _ in range(5):
+                line = f.readline()
+                m = _re.match(r'^#\s*SPLIT FROM:\s*(.+)$', line.strip())
+                if m:
+                    return m.group(1).strip()   # e.g. "corpus/001-source-text.md"
+    except Exception:
+        pass
+    return None
+
+# Pass 1 — document source files (PDF/DOCX/etc.)
 source_files = sorted(
     os.path.join(corpus_dir, f)
     for f in os.listdir(corpus_dir)
     if os.path.splitext(f)[1].lower() in SOURCE_EXTS
 )
-```
 
-If `source_files` is empty → gate passes trivially (all corpus files are already `.md`/`.txt`).
+# Pass 2 — pre-split .md files whose parent may be unvalidated
+split_md_files = {}   # {split_md_path: parent_md_rel}
+for f in sorted(os.listdir(corpus_dir)):
+    if f.lower().endswith('.md'):
+        full = os.path.join(corpus_dir, f)
+        parent = read_split_from(full)
+        if parent:
+            split_md_files[full] = parent   # parent relative to SANDBOX
+```
 
 **Check `.corpus-ready.json`:**
 
@@ -72,36 +93,58 @@ corpus_ready_path = os.path.join(SANDBOX, '.corpus-ready.json')
 if os.path.exists(corpus_ready_path):
     with open(corpus_ready_path) as f:
         corpus_ready = json.load(f)
-    validated_sources = {
+    # Index by both 'source' and 'md' paths for the two check types
+    validated_by_source = {
         e['source'] for e in corpus_ready.get('validated', [])
         if e.get('status') == 'ok'
     }
+    validated_by_md = {
+        e['md'] for e in corpus_ready.get('validated', [])
+        if e.get('status') == 'ok'
+    }
 else:
-    validated_sources = set()
+    validated_by_source = set()
+    validated_by_md     = set()
 
 missing = []
+
+# Check 1 — document source files
 for src in source_files:
     rel = os.path.relpath(src, SANDBOX)
-    if rel not in validated_sources:
-        missing.append(rel)
+    if rel not in validated_by_source:
+        missing.append(('source', rel))
+
+# Check 2 — pre-split .md parents
+for split_md, parent_rel in split_md_files.items():
+    if parent_rel not in validated_by_md:
+        missing.append(('split-parent', parent_rel,
+                        os.path.relpath(split_md, SANDBOX)))
 ```
 
-**HARD STOP if any source is unvalidated:**
+If both `source_files` and `split_md_files` are empty → gate passes trivially.
+
+**HARD STOP if any file is unvalidated:**
 
 ```
 If missing is non-empty:
 
 ⛔ Corpus conversion gate — chorus-feed --unattended cannot proceed.
-   N source file(s) in --corpus-dir have no validated Markdown equivalent:
+   N corpus file(s) have no validated entry in .corpus-ready.json:
 
-   For each missing file, run outside of this session:
-     1. chorus-pdf|word|excel <sandbox> <file>   ← choose the matching skill
-     2. chorus-markdown <sandbox> <file> <output.md> --report
+   For source document files — run outside of this session:
+     1. chorus-pdf|word|excel <sandbox> <source>
+     2. chorus-markdown <sandbox> <source> <output.md> --report
+
+   For pre-split parent .md files — run outside of this session:
+     1. Find the source document for <parent.md> (original PDF/DOCX in corpus/sources/)
+     2. chorus-pdf|word|excel <sandbox> <source>   ← if not yet done
+     3. chorus-markdown <sandbox> <source> <parent.md> --report
+     4. chorus-corpus-scoping <sandbox> --split    ← regenerate agent files from
+                                                      the now-validated parent
 
    Missing:
-     - <rel-path>
-       → <conversion command>
-       → chorus-markdown <sandbox> <source> <output.md> --report
+     - [source] <rel-path>
+     - [split-parent] <parent.md>  (referenced by <split_md>)
 
    Then re-run: chorus-feed <sandbox> --unattended
 ```
@@ -113,22 +156,20 @@ If missing is non-empty:
 
 **Redirect validated document files** (gate passed):
 
-For each document file that IS in `validated_sources`, replace the checkpoint
-entry with its validated `.md` path (from `entry["md"]`):
+For each document file that IS validated, replace it with its validated `.md` path:
 
 ```python
-# Build a mapping: source → validated md path
 source_to_md = {
     e['source']: e['md']
     for e in corpus_ready.get('validated', [])
     if e.get('status') == 'ok'
 }
-# Replace document files with their validated .md in the pending list
-# (applied when Step 1 builds files_mode_a_pending)
+# Applied when Step 1 builds files_mode_a_pending:
+# source files → their .md equivalent; split .md files → kept as-is (already .md)
 ```
 
-> This ensures `files_mode_a_pending` contains only `.md`/`.txt` paths —
-> `chorus-feed.md § Mode A` never sees a raw document file.
+> `files_mode_a_pending` will contain only `.md`/`.txt` paths after this redirect —
+> `chorus-feed.md § Mode A` never sees a raw document file or an unvalidated parent.
 
 ### Step 0 — OOS reclassification (silent)
 

@@ -128,10 +128,62 @@ Load: `chorus-engine-yaml.md` — YAML authoring reference (Frame essentials, En
    Then re-run: chorus-feed <sandbox> <output.md>
 ```
 
-**If `<corpus>` is `.md`, `.txt`, or inline content:**
-→ Gate passes trivially. These are already plain-text — no conversion gate needed.
-   (If this `.md` was produced by a prior conversion, its validation was recorded in
-   `.corpus-ready.json` by `chorus-markdown` — the content is trusted from that point on.)
+**If `<corpus>` is `.md` or `.txt`:**
+
+Read the first 5 lines of `<corpus>` to detect a `# SPLIT FROM: <parent.md>` header
+(written by `chorus-corpus-scoping` Phase 2 — indicates this file is a pre-split
+agent file derived from another `.md`):
+
+```python
+with open(corpus_path, encoding='utf-8') as f:
+    head = [f.readline() for _ in range(5)]
+split_from = None
+for line in head:
+    m = re.match(r'^#\s*SPLIT FROM:\s*(.+)$', line.strip())
+    if m:
+        split_from = m.group(1).strip()   # e.g. "corpus/001-source-text.md"
+        break
+```
+
+**Case A — split file** (`# SPLIT FROM:` header present):
+
+Look in `.corpus-ready.json` for an entry where `entry["md"] == split_from`
+(relative to `$SANDBOX`) and `entry["status"] == "ok"`:
+
+- **Found:** → gate passes. The parent `.md` was validated by `chorus-markdown`;
+  the pre-split agent file is derived from trusted content.
+- **Not found:**
+  → **HARD STOP**:
+
+```
+⛔ Corpus conversion gate — chorus-feed cannot proceed.
+   <corpus> is a pre-split file (SPLIT FROM: <split_from>).
+   The parent corpus file <split_from> has no validated entry in .corpus-ready.json
+   — chorus-markdown was never run on its source document.
+
+   Steps:
+     1. Identify the source document that produced <split_from>
+        (e.g. the original PDF/DOCX in corpus/sources/)
+     2. chorus-pdf|word|excel <sandbox> <source>   ← if not yet converted
+        OR verify <split_from> is a directly-provided corpus (no source doc)
+     3. chorus-markdown <sandbox> <source> <split_from> --report
+        (or: chorus-markdown <sandbox> <split_from> <split_from> --report
+         if <split_from> was directly provided with no upstream document)
+
+   Then re-run chorus-corpus-scoping <sandbox> --split (to regenerate agent files
+   from the now-validated parent), then: chorus-feed <sandbox> <corpus>
+```
+
+**Case B — no split header** (direct `.md`/`.txt` or plain-text corpus):
+
+Check `.corpus-ready.json` for an entry where `entry["md"] == <corpus>`:
+
+- **Found with `status: "ok"`:** → gate passes (this `.md` was itself validated
+  as the output of a `chorus-markdown` run).
+- **Not found:** → gate passes trivially (directly-provided plain-text or Markdown
+  corpus with no upstream source document — no fidelity validation applicable).
+
+**Inline content:** → gate passes trivially.
 
 > **Mode D (`--unattended`):** the per-file gate fires inside `chorus-feed-unattended.md`
 > (Step 0.0 there, before Step 0.5) — covering the entire `files_mode_a_pending` list at
