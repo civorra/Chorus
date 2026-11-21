@@ -22,13 +22,14 @@
 | ADR-015 | Pattern B =_ISA=: =$inject_isa= required in both Feed.pm passes   | accepted | pipeline      | moyenne  | —       |
 | ADR-016 | =*_ref= fields must never appear in =%SLOTS_REQUIS=               | accepted | pipeline      | moyenne  | —       |
 | ADR-017 | =eca__ask_user= unreliable in sub-agents → =AUTONOMOUS_MODE= workaround | accepted | skills   | haute    | —       |
+| ADR-018 | =Engine= IS-A =Frame=; =Expert= is a blessed hashref              | proposed | engine        | basse    | —       |
+| ADR-019 | CPAN distribution named =Chorus=, not =Chorus-Engine=             | proposed | cpan          | basse    | —       |
+| ADR-020 | Backward-chaining roadmap: formal D1–D6 decisions                  | proposed | engine        | moyenne  | —       |
 | ADR-021 | Forward chaining as the only inference strategy                    | accepted | engine        | haute    | —       |
 | ADR-022 | YAML DSL for rule definition (not native Perl)                     | accepted | dsl · engine  | haute    | —       |
 | ADR-023 | Mandatory =_rule_trace= and =non_conformity_motif= in every ACTION | accepted | dsl · pipeline | haute   | ENG-037 |
 | ADR-024 | =origin= / =direction= / =evidence= classification in compare-kb   | accepted | skills        | moyenne  | —       |
-| ADR-018 | =Engine= est une Frame ; =Expert= est un blessed hashref          | proposed | engine        | basse    | —       |
-| ADR-019 | Distribution CPAN nommée =Chorus= (pas =Chorus-Engine=) dès v2.01 | proposed | cpan          | basse    | —       |
-| ADR-020 | Backward-chaining roadmap: formal D1–D6 decisions                  | proposed | engine        | moyenne  | —       |
+| ADR-025 | =caveat_motif=: non-blocking reservation slot on a CONFORME verdict | proposed | dsl · pipeline · skills | moyenne | ENG-071 |
 
 * Périmètre par ticket
 

@@ -24,13 +24,14 @@ LLM-generated output review and version control.
 
 * Decision
 
-Rules are declared in B<YAML>, using a fixed DSL with four keys:
+Rules are declared in *YAML*, using a fixed DSL with five keys:
 
 | YAML key (English) | YAML key (French) | Role |
 |--------------------+-------------------+------|
 | =FIND= / =CHERCHER= | =CHERCHER= | Scope — defines =_SCOPE= (mandatory) |
 | =ACTION= / =EFFET= | =EFFET= | Effect body — body of =_APPLY= (mandatory) |
 | =CONDITION=       | =CONDITION=       | Guard — =return unless CONDITION= (optional) |
+| =EXCEPTION=       | =EXCEPTION=       | Early-exit guard — =return if EXCEPTION= (optional) |
 | =PREMISES=        | =PREMISSES=       | Metadata for =reorder()= only (optional) |
 
 =codeRule()= compiles each YAML rule into the Perl argument string passed to
@@ -78,7 +79,7 @@ the processed corpus is in French.
 * References
 
 - =lib/Chorus/Engine.pm §codeRule()= — YAML → Perl compiler
-- =lib/Chorus/Engine.pm §setEffect()= / =setScope()= / =setCondition()= — per-key compilation
+- =lib/Chorus/Engine.pm §setEffect()= / =setScope()= / =setCondition()= / =setException()= — per-key compilation
 - =lib/Chorus/Engine.pm §addrule()= — programmatic API (Perl)
 - =agent/kb/architecture.org §applyrules() — Boucle combinatoire=
 - ADR-003 — =string eval= for the cartesian product in =applyrules()=

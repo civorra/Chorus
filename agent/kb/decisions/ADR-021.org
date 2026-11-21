@@ -21,13 +21,13 @@ Chorus's first use case — normative compliance checking — requires evaluatin
 The corpus is fully known upfront; the question is "does this project comply?" not
 "how can I prove goal G?".
 
-Several proto-backward bricks exist in the engine (=_NEEDED=, =_PREMISSES=,
-=_AFTER=, CoW clone) but none of them are wired into a backward-chaining loop
+Several proto-backward bricks exist in the engine (=_NEEDED=, =_AFTER=,
+CoW clone) but none of them are wired into a backward-chaining loop
 (as of this writing — see ADR-020 for the incremental roadmap).
 
 * Decision
 
-Chorus implements B<forward chaining only>.
+Chorus implements *forward chaining only*.
 
 Rules fire when =FIND= locates matching Frames in the =REPOSITORY= and
 =CONDITION= evaluates to true.  The engine iterates passes of =applyrules()=

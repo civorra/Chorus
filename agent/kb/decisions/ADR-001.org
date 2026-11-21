@@ -10,10 +10,10 @@
 |------+-------+---------|
 | =PREMISES:= | YAML DSL key — English corpus | Rule authors — never read at runtime |
 | =PREMISSES:= | YAML DSL key — French corpus | Rule authors — bilingual alias, identical semantics |
-| =_PREMISSES= | Perl slot on the rule Frame | =reorder()= comparators only — the B<sole> runtime consumer |
+| =_PREMISSES= | Perl slot on the rule Frame | =reorder()= comparators only — the *sole* runtime consumer |
 
-=PREMISES:= and =PREMISSES:= are B<authoring-time> input aliases (same pattern
-as =FIND=/=CHERCHER=, =ACTION=/=EFFET=). =_PREMISSES= is the B<runtime>
+=PREMISES:= and =PREMISSES:= are *authoring-time* input aliases (same pattern
+as =FIND=/=CHERCHER=, =ACTION=/=EFFET=). =_PREMISSES= is the *runtime*
 representation produced by =codeRule()= — it is never written in YAML, only
 read by a comparator passed to =reorder()=:
 
@@ -47,7 +47,7 @@ is not an option.
 ** The solution: tag rules, sort on demand
 
 =PREMISES:= / =PREMISSES:= (English/French bilingual input aliases) lets the
-rule author attach B<declarative tags> to a rule at authoring time:
+rule author attach *declarative tags* to a rule at authoring time:
 
 #+begin_src yaml
 RULE: classify-noun
@@ -58,7 +58,7 @@ FIND:
 #+end_src
 
 =codeRule()= compiles each tag into a boolean entry in the =_PREMISSES= hashref
-on the rule Frame — B<no runtime cost, no effect on firing>:
+on the rule Frame — *no runtime cost, no effect on firing*:
 
 #+begin_src perl
 # YAML:  PREMISES: [CAT_NOUN]
@@ -80,26 +80,26 @@ $agent->reorder(\&by_interest);  # re-sorts _RULES, then calls replay()
 
 =reorder()= physically re-sorts the =_RULES= arrayref and calls =replay()= so
 the new order takes effect immediately.  =_PREMISSES= is never read by
-=applyrules()= itself — it is B<purely a sorting key>, nothing more.
+=applyrules()= itself — it is *purely a sorting key*, nothing more.
 
 ** reorder() is never called automatically — source-verified
 
 =reorder()= does not exist in =Chorus::Frame=, =Chorus::Expert=,
 =Chorus::Collection::List=, or =Chorus::Collection::Filter=.
-It is defined B<only> in =Chorus::Engine= and must be called B<explicitly>
+It is defined *only* in =Chorus::Engine= and must be called *explicitly*
 by application code.  The engine never triggers it on its own — not on slot
 change, not on Frame creation, not between cycles.
 
-=_PREMISSES= is therefore B<completely inert> until the application calls
+=_PREMISSES= is therefore *completely inert* until the application calls
 =$agent->reorder(\&cmp)=.  A rule with =PREMISES:= entries fires exactly as
 often as a rule without them — the tags have zero effect on =applyrules()=.
 
 ** What PREMISES: is NOT — source-verified
 
-=PREMISES:= / =PREMISSES:= / =_PREMISSES= B<never gate rule firing>.
+=PREMISES:= / =PREMISSES:= / =_PREMISSES= *never gate rule firing*.
 Verified by exhaustive grep of =lib/Chorus/Engine.pm=: =_PREMISSES= appears
 in exactly three places — the =addrule()= POD, the =reorder()= POD example,
-and =codeRule()= where it is written onto the rule Frame.  It is B<absent>
+and =codeRule()= where it is written onto the rule Frame.  It is *absent*
 from =applyrules()=, =loadRules()=, =setCondition()=, =setException()=, and
 =setScope()=.
 

@@ -1,0 +1,52 @@
+#+TITLE: ADR-018 — Engine IS-A Frame; Expert is a blessed hashref
+#+DATE: 2026-11-21
+#+STATUS: proposed
+#+DOMAIN: engine
+#+ENG:
+
+* Context
+
+=Chorus::Engine= inherits from =Chorus::Frame= — it is itself a Frame
+(the «engine Frame»), carrying =BOARD= and pipeline slots alongside the
+=_RULES= / =_QUEUE= inference machinery.  =Chorus::Expert= is a plain
+blessed hashref that holds the agent list and delegates inference to
+one or more =Chorus::Engine= instances.
+
+This asymmetry is not obvious: one might expect either both to be Frames,
+or neither.  It has caused confusion when extending the engine or writing
+new agents.
+
+* Decision
+
+=Chorus::Engine= IS-A =Chorus::Frame=.
+=Chorus::Expert= is a blessed hashref, not a Frame.
+This asymmetry is intentional and must not be «corrected».
+
+* Positive consequences
+
+- =Engine= can store pipeline state (=BOARD=, convergence counters) directly
+  as Frame slots — no separate state object required.
+- =Expert= stays lightweight: it orchestrates agents without participating
+  in the Frame graph or the inference loop.
+
+* Negative consequences / accepted trade-offs
+
+- Developers unfamiliar with the design may attempt to call Frame methods
+  on an =Expert= instance and get unexpected failures.
+- The IS-A relationship means =Engine= inherits all =Frame= AUTOLOAD
+  behaviour — slot access via method calls works on the engine Frame itself.
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Both Engine and Expert are Frames | Expert does not need slot storage or inference participation; would add dead weight |
+| Neither is a Frame (composition only) | Engine needs Frame slot semantics for BOARD; refactoring would break all existing sandboxes |
+
+* References
+
+- =lib/Chorus/Engine.pm= (=use parent 'Chorus::Frame'=)
+- =lib/Chorus/Expert.pm= (=bless {…}, $class= — no Frame parent)
+- =agent/kb/components.org §Chorus::Engine=
+- =agent/kb/components.org §Chorus::Expert=
+- =agent/kb/architecture.org=

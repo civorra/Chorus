@@ -40,7 +40,7 @@ classification fields>:
 | =structural= | Agent or Frame present in one sandbox but absent in the other |
 | =uncertain= | Requires human review before classification |
 
-Invariant: a one-sided row (normative atom on only one side) can B<never> be
+Invariant: a one-sided row (normative atom on only one side) can *never* be
 labelled =legal-divergence=.  It stays =kb-gap= until Phase 4.3 rules out the
 provision in the other corpus (=absence_proof= filled).  Upgrading a
 =kb-gap= to =legal-divergence= requires atoms on both sides.

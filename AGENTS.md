@@ -78,6 +78,30 @@
 - **Tracker:** `rt.cpan.org`, queues `Chorus-Expert` / `Chorus-Frame`
 - **Commits:** conventional format (`type: message`) — no `eca.dev` footer, no `Co-Authored-By`
 
+## Convention `claude-python`
+
+> Applies to all projects using Python scripts that call the Anthropic API directly
+> (vision, etc.), in particular Chorus scripts.
+
+ECA authenticates via **Pro subscription (OAuth)** — the `ANTHROPIC_API_KEY` environment
+variable is **not** set globally to prevent accidental switching to pay-per-token API mode.
+
+For Python scripts that require `ANTHROPIC_API_KEY` (hybrid vision mode),
+use the **`claude-python`** wrapper instead of `python3`:
+
+```bash
+claude-python /path/to/script.py [arguments...]
+```
+
+This wrapper:
+- Reads the key from `~/.config/anthropic/api_key` (secure file, mode 600)
+- Injects `ANTHROPIC_API_KEY` only for the Python subprocess
+- Does **not** affect ECA authentication
+- Automatically falls back to text mode if the key file is absent
+
+Chorus scripts concerned: `chorus-pdf`, `chorus-word`, `chorus-excel`, `chorus-xml`,
+`chorus-import-project` (auto-detection of hybrid mode via `probe_claude()`).
+
 ## Incremental generation — multi-artefact operations
 
 When generating multiple artefacts for a sandbox (KB org files, YAML rules,
@@ -276,8 +300,8 @@ ne peut pas rester `pending` ou être sautée.
 | `cpan-release` | command | `./agent/skills/cpan-release.md` *(local — not distributed in the CPAN package)* | `code` |
 | `git-ctx` | command | *(no skill — call `git__git_branch` + `git__git_status` + `git__git_log` on this repository)* | `fast` |
 | `chorus-adr [<NNN>] [--list]` | meta | *(no skill — `eca__read_file` on `$EAKB/decisions/ADR-NNN.org` or `ADR-index.org` when `--list`)* | `fast` |
-| `skills [--all]` | meta | `eca__directory_tree ./agent/skills/` → name + status `✅` loaded / `○` available. Without `--all`: sub-skills are hidden (see list below). | `fast` |
-| `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. | `fast` |
+| `skills [--all]` | meta | `eca__directory_tree ./agent/skills/` → name + status `✅` loaded / `○` available. Without `--all`: sub-skills are hidden (see list below). If the webapp context is active, also list `$WEBAPP/agent/skills/` in the same output. | `fast` |
+| `skills details [--all]` | meta | same + description and trigger per skill. Without `--all`: sub-skills are hidden. If the webapp context is active, also list `$WEBAPP/agent/skills/` in the same output. | `fast` |
 
 > **Sub-skills** — internal support files, no direct user trigger. Hidden from `skills` / `skills details` unless `--all` is passed:
 > `chorus-engine-infra.md` · `chorus-engine-yaml.md` · `chorus-frame-advanced.md` · `chorus-templates.md` · `chorus-xml.md` · `chorus-import-extract.md` · `chorus-feed-coverage.md` · `chorus-feed-unattended.md` · `chorus-check-report.md` · `chorus-pdf-_shared-text-hybrid.md` · `chorus-pdf-_shared-auto-images.md` · `chorus-pdf-text.md` · `chorus-pdf-hybrid.md` · `chorus-pdf-auto.md` · `chorus-pdf-images.md`

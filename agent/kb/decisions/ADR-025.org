@@ -1,0 +1,73 @@
+#+TITLE: ADR-025 — caveat_motif: non-blocking reservation slot on a CONFORME verdict
+#+DATE: 2026-11-21
+#+STATUS: proposed
+#+DOMAIN: dsl · pipeline · skills
+#+ENG: ENG-071
+
+* Context
+
+ADR-023 mandated two output slots for every rule ACTION: =_rule_trace=
+(corpus traceability) and =non_conformity_motif= (explanation of a
+NON_CONFORME verdict).
+
+A third situation arose in practice: a rule concludes =CONFORME= but
+simultaneously detects a sub-optimal condition — a recommendation not
+followed, a threshold met exactly at its limit, a configuration technically
+valid but known to degrade over time.  Embedding this nuance inside
+=non_conformity_motif= was impossible (the verdict is positive) and squashing
+it into the =_rule_trace= string caused display artefacts in the webapp.
+
+The convention =caveat_motif= was introduced in skills and webapp (ENG-071)
+to carry this nuance as a dedicated, non-blocking slot.
+
+* Decision
+
+A rule that concludes =CONFORME= *and* detects a non-blocking reservation
+*may* set a =caveat_motif= slot (or one or more =caveat_motif_<aspect>= slots
+for multi-dimensional caveats) on the target Frame.
+
+- =caveat_motif= is *optional* — its absence does not trigger =chorus-audit-rules=.
+- It never changes the =CONFORME= verdict.
+- When present, =chorus-check --explain= surfaces it in a dedicated =CAVEATS=
+  section of the explain report (separate from the =NON_CONFORME= table).
+- The webapp reads =caveat_motif= (and any =caveat_motif_<aspect>= variant)
+  and displays it as a non-blocking annotation alongside the CONFORME badge.
+- The =splitMotifCaveat= heuristic in the webapp (ENG-071-webapp) is a
+  safety net for legacy rules that mixed caveats into =non_conformity_motif=;
+  new rules must use the dedicated slot.
+
+* Positive consequences
+
+- Three-state verdict model is now explicit: =CONFORME= / =NON_CONFORME= /
+  =CONFORME-with-reservation= — no longer conflated in a single slot.
+- The webapp can render caveats without parsing =non_conformity_motif= strings.
+- Multi-aspect caveats (=caveat_motif_perf=, =caveat_motif_maintenance=, …)
+  can coexist on the same Frame without overwriting each other.
+- =chorus-check --explain= can produce a dedicated caveats table, keeping
+  the NON_CONFORME section uncluttered.
+
+* Negative consequences / accepted trade-offs
+
+- A fourth output slot family to document and maintain (alongside =_rule_trace=,
+  =non_conformity_motif=, and conformity slot).
+- =splitMotifCaveat= heuristic must be maintained in the webapp for backward
+  compatibility with pre-ENG-071 sandboxes.
+- =caveat_motif= being optional makes it invisible to mechanical audit —
+  caveats that should exist but are missing are not detectable automatically.
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Encode caveats inside =non_conformity_motif= | Slot name implies a non-conformity; a CONFORME element should not carry =non_conformity_motif= |
+| Encode caveats inside =_rule_trace= | =_rule_trace= is a list accumulator; parsing it for caveats in the webapp would be fragile |
+| Change the verdict to a new value (e.g. =CONFORME_RESERVE=) | Breaks all existing =chorus-check= pipeline logic and report parsers |
+| Mandatory on all CONFORME rules | Most CONFORME verdicts carry no caveat; mandatory overhead on all rules would be noise |
+
+* References
+
+- =agent/skills/chorus-engine-yaml.md §Convention — caveat_motif pour réserve non bloquante sur CONFORME=
+- =agent/skills/chorus-check-report.md §CAVEATS= (ENG-071)
+- =agent/skills/chorus-check-report.md §synthese CAVEATS table=
+- ADR-023 — Mandatory =_rule_trace= and =non_conformity_motif=
+- ENG-071 — =caveat_motif= convention + webapp =splitMotifCaveat=

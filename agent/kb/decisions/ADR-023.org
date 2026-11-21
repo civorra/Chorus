@@ -27,7 +27,7 @@ gaps discovered only in later =chorus-check --all= runs (ENG-037).
 
 * Decision
 
-Every YAML rule ACTION block B<must> publish both slots:
+Every YAML rule ACTION block *must* publish both slots:
 
 1. =_rule_trace= — the rule must append a traceability string to the
    =_rule_trace= list of the Frame it evaluates.  The push must be guarded

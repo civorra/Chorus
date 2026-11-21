@@ -1,0 +1,52 @@
+#+TITLE: ADR-019 — CPAN distribution named «Chorus», not «Chorus-Engine»
+#+DATE: 2026-11-21
+#+STATUS: proposed
+#+DOMAIN: cpan
+#+ENG:
+
+* Context
+
+The CPAN distribution originally shipped as =Chorus-Engine=, reflecting the
+central role of =Chorus::Engine= in the first public release.  As the package
+grew to include =Chorus::Expert= and =Chorus::Frame= as first-class modules,
+the single-module name became misleading: users searching for the expert-system
+toolkit would not naturally find =Chorus-Engine= on CPAN.
+
+At v2.01 the distribution was renamed to =Chorus= to match the umbrella brand
+and to signal that the three modules (=Expert=, =Engine=, =Frame=) form a
+cohesive system rather than a single-purpose library.
+
+* Decision
+
+The CPAN distribution name is =Chorus= (=Makefile.PL=: =NAME => 'Chorus'=).
+The three modules retain their individual namespaces (=Chorus::Expert=,
+=Chorus::Engine=, =Chorus::Frame=).
+Never revert to =Chorus-Engine= and do not introduce =Chorus-Frame= or
+=Chorus-Expert= as separate distributions.
+
+* Positive consequences
+
+- Consistent branding: the distribution name matches the module prefix.
+- Simpler =cpanm= invocation: =cpanm Chorus= installs all three modules.
+- Future modules (e.g. =Chorus::Planner= — ADR-020) can be added to the
+  same distribution without a renaming event.
+
+* Negative consequences / accepted trade-offs
+
+- =Chorus-Engine= links on rt.cpan.org and old documentation point to the
+  old name; both queues must be monitored during the transition period.
+- The name =Chorus= is generic; namespace collision risk on CPAN is low
+  but non-zero.
+
+* Rejected alternatives
+
+| Alternative | Reason for rejection |
+|-------------|----------------------|
+| Keep =Chorus-Engine= | Misleading once Expert and Frame became first-class; confuses users looking for the toolkit |
+| Separate dists per module (=Chorus-Expert=, =Chorus-Engine=, =Chorus-Frame=) | Unnecessary split; the three modules are always used together; version synchronisation burden |
+
+* References
+
+- =Makefile.PL= (=NAME=, =VERSION=)
+- rt.cpan.org queues =Chorus-Expert= / =Chorus-Frame= (legacy — kept open for bug reports)
+- =agent/kb/components.org §Distribution layout=

@@ -61,7 +61,7 @@ only meaningful scope for cycle-based logic inside a rule's =_APPLY=.
 
 * Related: _MAX_ITER in Expert.pm
 
-C<_MAX_ITER> (default: C<DEFAULT_MAX_ITER = 10_000>) is a B<separate> ceiling
+C<_MAX_ITER> (default: C<DEFAULT_MAX_ITER = 10_000>) is a *separate* ceiling
 defined in C<Chorus::Expert::process()>.  It limits the number of full pipeline
 iterations (all agents visited once = one iteration), not intra-agent
 C<applyrules()> passes.

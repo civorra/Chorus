@@ -10,11 +10,11 @@ Chorus implements forward-chaining only: rules fire when their =FIND= scope
 matches existing Frames.  Several proto-backward bricks already exist in the
 engine (=_NEEDED=, =_AFTER=, CoW clone), but none of them are
 wired into a backward-chaining inference loop.
-(=_PREMISSES= is B<not> in this list — it is a =reorder()= tagging system only,
+(=_PREMISSES= is *not* in this list — it is a =reorder()= tagging system only,
 with semantics incompatible with slot-production declarations; see ADR-001.)
 
 A deep-analysis session on 2026-07-03 (=deep-chorus backward-chaining=)
-produced five architectural sub-decisions (D1–D5) and a six-step implementation
+produced five architectural sub-decisions (AD-1–AD-5) and a six-step implementation
 roadmap.  This ADR formalises those decisions before any code is written, so
 that the work can proceed incrementally without ambiguity.
 
@@ -38,13 +38,13 @@ be independently reviewable and committable.
 
 The five architectural sub-decisions locked on 2026-07-03 are:
 
-| ID | Decision |
-|----|----------|
-| D1 | =PRODUCES:= is *declarative* in the YAML (no static inference from rule graph) |
-| D2 | =%RULE_PRODUCES= scope is *per-agent* (={_RULE_PRODUCES}= on the engine) with optional merge at =register()= |
-| D3 | =_MUTABLE= granularity is *per-slot* (list =_mutable: [slot, …]= in project JSON; Perl: flag =_MUTABLE= per slot) |
-| D4 | =_EXPLAIN= is injected as a *wrapper closure* in =addrule()= first; =string eval= in =applyrules()= comes in phase 2 |
-| D5 | =Chorus::Planner= is a *separate module* (=lib/Chorus/Planner.pm=), not woven into =Engine.pm= |
+| ID   | Decision |
+|------|----------|
+| AD-1 | =PRODUCES:= is *declarative* in the YAML (no static inference from rule graph) |
+| AD-2 | =%RULE_PRODUCES= scope is *per-agent* (={_RULE_PRODUCES}= on the engine) with optional merge at =register()= |
+| AD-3 | =_MUTABLE= granularity is *per-slot* (list =_mutable: [slot, …]= in project JSON; Perl: flag =_MUTABLE= per slot) |
+| AD-4 | =_EXPLAIN= is injected as a *wrapper closure* in =addrule()= first; =string eval= in =applyrules()= comes in phase 2 |
+| AD-5 | =Chorus::Planner= is a *separate module* (=lib/Chorus/Planner.pm=), not woven into =Engine.pm= |
 
 A lightweight alternative — CoW simulation (clone Frame + re-run =process()=,
 no =Chorus::Planner=) — remains valid after D2 and may be shipped independently.
