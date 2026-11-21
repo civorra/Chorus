@@ -98,7 +98,52 @@ self-contained unit. Cross-sandbox reads are forbidden in all modes (A and B).
 
 Load: `chorus-engine-yaml.md` — YAML authoring reference (Frame essentials, Engine rule triggering, YAML guide, checklists)
 
+### ⛔ Step 0.0 — Corpus conversion gate (ENG-077, before anything else)
+
+> **Applies to both Mode A and Mode B.** `chorus-feed` enriches the KB from corpus
+> content — an unvalidated or truncated `.md` silently produces wrong rules, missed
+> sections, and coverage gaps that only surface at Phase 6.5, too late to fix without
+> a full re-run.
+
+**If `<corpus>` is a document file (`.pdf`, `.docx`, `.xlsx`, `.csv`, `.xml`, `.html`, `.htm`):**
+
+1. Read `$SANDBOXES/<sandbox-name>/.corpus-ready.json`.
+2. Look for an entry where `entry["source"]` matches `<corpus>` (relative path resolution)
+   and `entry["status"] == "ok"`.
+3. **If found:**
+   → Replace `<corpus>` with `entry["md"]` (the validated Markdown file).
+   → Print: `[corpus-gate] ✅ Using validated MD: <entry["md"]> (source: <corpus>)`
+   → Proceed — the Document Format Guard below will see `.md` and pass through without conversion.
+4. **If not found or status ≠ "ok":**
+   → **HARD STOP**:
+
+```
+⛔ Corpus conversion gate — chorus-feed cannot proceed.
+   <corpus> has no validated Markdown equivalent in .corpus-ready.json.
+
+   Run the following before chorus-feed:
+     1. chorus-pdf|word|excel <sandbox> <corpus>   ← choose the matching skill
+     2. chorus-markdown <sandbox> <corpus> <output.md> --report
+
+   Then re-run: chorus-feed <sandbox> <output.md>
+```
+
+**If `<corpus>` is `.md`, `.txt`, or inline content:**
+→ Gate passes trivially. These are already plain-text — no conversion gate needed.
+   (If this `.md` was produced by a prior conversion, its validation was recorded in
+   `.corpus-ready.json` by `chorus-markdown` — the content is trusted from that point on.)
+
+> **Mode D (`--unattended`):** the per-file gate fires inside `chorus-feed-unattended.md`
+> (Step 0.0 there, before Step 0.5) — covering the entire `files_mode_a_pending` list at
+> once. This shared gate handles only the single-file `<corpus>` argument case.
+
 ### ⛔ Document Format Guard — Auto-conversion
+
+> ⚠️ **ENG-077 note:** Step 0.0 above redirects document formats (PDF/DOCX/XLSX/etc.)
+> to their pre-validated `.md`, or hard-stops. This guard's auto-conversion logic
+> is therefore only reached for `.md`/`.txt`/inline inputs in normal operation.
+> If you need to convert a new document, use `chorus-pdf`/`chorus-word`/`chorus-excel`
+> directly, followed by `chorus-markdown --report`, before calling `chorus-feed`.
 
 **Before doing anything else**, check the `<corpus>` argument's file extension
 (case-insensitive). `chorus-feed` accepts **only** plain-text (`.txt`), Markdown

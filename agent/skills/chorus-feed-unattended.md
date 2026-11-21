@@ -31,15 +31,104 @@ Before any processing, verify:
 2. `CORPUS-DIRECTIVES.md` exists in `$SANDBOX/`.
 3. No `.chorus-wip.md` in `$SANDBOX/` (previous operation incomplete — stop and warn).
 4. At least one supported corpus file in `--corpus-dir` (default: `$SANDBOX/corpus/`):
-   `.md`, `.txt` (used as-is) or `.pdf`/`.docx`/`.xlsx`/`.csv`/`.xml`/`.html`/`.htm`
-   (auto-converted by the corresponding skill before the first Mode A pass).
-   Pure `.pdf`-only or `.txt`-only corpora are valid — do not require a pre-existing `.md`.
+   `.md`, `.txt` (used as-is). Document files (`.pdf`, `.docx`, `.xlsx`, `.csv`,
+   `.xml`, `.html`, `.htm`) must already have validated `.md` equivalents recorded
+   in `$SANDBOX/.corpus-ready.json` — Step 0.0 below enforces this gate.
+   A `--corpus-dir` containing only unvalidated document files cannot start.
 
 If any prerequisite is missing → stop immediately:
 ```
 ⛔ chorus-feed --unattended: prerequisite missing — <reason>
    Never create SCOPING.md or CORPUS-DIRECTIVES.md automatically.
 ```
+
+### Step 0.0 — Corpus conversion gate (ENG-077, blocking)
+
+> **Applies before any file is processed.** `chorus-feed-unattended` runs Mode A/B on
+> every file in `--corpus-dir`; a single unvalidated or truncated `.md` silently
+> contaminates every coverage count and rule generated during the entire unattended session.
+
+**Scan `--corpus-dir` for document source files:**
+
+```python
+import os, json
+
+SOURCE_EXTS = {'.pdf', '.docx', '.xlsx', '.csv', '.xml', '.html', '.htm'}
+corpus_dir  = args.corpus_dir or os.path.join(SANDBOX, 'corpus')
+
+source_files = sorted(
+    os.path.join(corpus_dir, f)
+    for f in os.listdir(corpus_dir)
+    if os.path.splitext(f)[1].lower() in SOURCE_EXTS
+)
+```
+
+If `source_files` is empty → gate passes trivially (all corpus files are already `.md`/`.txt`).
+
+**Check `.corpus-ready.json`:**
+
+```python
+corpus_ready_path = os.path.join(SANDBOX, '.corpus-ready.json')
+if os.path.exists(corpus_ready_path):
+    with open(corpus_ready_path) as f:
+        corpus_ready = json.load(f)
+    validated_sources = {
+        e['source'] for e in corpus_ready.get('validated', [])
+        if e.get('status') == 'ok'
+    }
+else:
+    validated_sources = set()
+
+missing = []
+for src in source_files:
+    rel = os.path.relpath(src, SANDBOX)
+    if rel not in validated_sources:
+        missing.append(rel)
+```
+
+**HARD STOP if any source is unvalidated:**
+
+```
+If missing is non-empty:
+
+⛔ Corpus conversion gate — chorus-feed --unattended cannot proceed.
+   N source file(s) in --corpus-dir have no validated Markdown equivalent:
+
+   For each missing file, run outside of this session:
+     1. chorus-pdf|word|excel <sandbox> <file>   ← choose the matching skill
+     2. chorus-markdown <sandbox> <file> <output.md> --report
+
+   Missing:
+     - <rel-path>
+       → <conversion command>
+       → chorus-markdown <sandbox> <source> <output.md> --report
+
+   Then re-run: chorus-feed <sandbox> --unattended
+```
+
+> This gate does **not** create or update the checkpoint. Never write
+> `.chorus-unattended-state.json` before the gate passes — a checkpoint written
+> before validation would list unvalidated files in `files_mode_a_pending`,
+> making every subsequent resume attempt also fail the gate.
+
+**Redirect validated document files** (gate passed):
+
+For each document file that IS in `validated_sources`, replace the checkpoint
+entry with its validated `.md` path (from `entry["md"]`):
+
+```python
+# Build a mapping: source → validated md path
+source_to_md = {
+    e['source']: e['md']
+    for e in corpus_ready.get('validated', [])
+    if e.get('status') == 'ok'
+}
+# Replace document files with their validated .md in the pending list
+# (applied when Step 1 builds files_mode_a_pending)
+```
+
+> This ensures `files_mode_a_pending` contains only `.md`/`.txt` paths —
+> `chorus-feed.md § Mode A` never sees a raw document file.
 
 ### Step 0 — OOS reclassification (silent)
 

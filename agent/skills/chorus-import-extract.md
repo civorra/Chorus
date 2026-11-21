@@ -7,6 +7,30 @@
 > Trigger: loaded via `eca__read_file` on `$ENGINE/agent/skills/chorus-import-extract.md` from Phase 0 of
 > `chorus-import-project` when `source_format` ∉ {JSON, CycloneDX, XML structuré}.
 
+## ⛔ Scope boundary — project sources ONLY (ENG-077)
+
+> **This sub-skill is strictly limited to `chorus-import-project` use cases.**
+> It converts a **project document** (an engineer's dossier, a CBOM, a compliance
+> form) into a Markdown intermediate for slot-level alignment against an existing KB.
+>
+> **Never invoke this sub-skill to convert corpus files for the modeling pipeline.**
+>
+> | Use case | Correct tool |
+> |---|---|
+> | Aligning a **project document** (dossier, CBOM, form) → JSON | `chorus-import-project` → loads this sub-skill |
+> | Converting a **corpus source** (normative PDF, standard, regulation) → `.md` for `chorus-feed` | `chorus-pdf` / `chorus-word` / `chorus-excel` **then** `chorus-markdown --report` |
+>
+> The difference is not cosmetic: corpus conversion produces a `.md` that must be
+> validated by `chorus-markdown` and recorded in `.corpus-ready.json` before any
+> modeling pipeline skill can use it. This sub-skill bypasses `chorus-markdown`
+> entirely — the extracted text goes directly into the alignment pipeline with no
+> fidelity gate. Using it for corpus files would silently bypass ENG-077's conversion
+> gate and allow unvalidated content to pollute the KB.
+>
+> If called in a context where `chorus-feed`, `chorus-corpus-directives`, or
+> `chorus-corpus-scoping` is the target consumer of the extracted content → **stop**
+> and use `chorus-pdf`/`chorus-word`/`chorus-excel` + `chorus-markdown` instead.
+
 
 ### Case B — Filesystem source (files on disk)
 

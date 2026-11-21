@@ -42,6 +42,43 @@ them, **then** run `chorus-feed` for actual generation.
 - **Never triggers on `--enrich` runs** — scoping is a Mode A (initialization)
   concern only. Enrichment works within an already-scoped structure.
 
+### Step 0.0 — Corpus conversion gate (ENG-077, always, before any other step)
+
+> **Applies always** — before operator-instructions read and before any corpus file
+> is opened. `chorus-corpus-scoping` reads corpus files directly to build the
+> structural proposal; an unvalidated or missing `.md` silently corrupts the
+> PRIMARY/SHARED/CONTEXT section assignment.
+
+Same logic as `chorus-corpus-directives` Step 0.0 — apply it verbatim here:
+
+1. Compute `SANDBOX = $SANDBOXES/<sandbox-name>`
+2. Scan `$SANDBOX/corpus/sources/` then `$SANDBOX/corpus/` for document files
+   (`.pdf`, `.docx`, `.xlsx`, `.csv`, `.xml`, `.html`, `.htm`)
+3. If no source files found → gate passes trivially (plain-text corpus, no document)
+4. Read `$SANDBOX/.corpus-ready.json`; build `validated_sources` set
+5. Compute `missing` = source files absent from `validated_sources`
+6. If `missing` is non-empty → **HARD STOP**:
+
+```
+⛔ Corpus conversion gate — chorus-corpus-scoping cannot proceed.
+   N source file(s) have no validated Markdown equivalent in .corpus-ready.json:
+
+   For each missing file, run:
+     1. <skill> <sandbox> <file>              ← chorus-pdf / chorus-word / chorus-excel
+     2. chorus-markdown <sandbox> <file> <output.md> --report
+
+   Missing:
+     - <rel-path-to-source>
+       → <conversion command>
+       → chorus-markdown <sandbox> <source> <output.md> --report
+     ...
+
+   Then re-run: chorus-corpus-scoping <sandbox>
+```
+
+> **Never bypass this gate** to reach the operator-instructions check below —
+> scoping on an unvalidated corpus produces a structurally incorrect `SCOPING.md`.
+
 ### Pre-load operator instructions (always, before any other step)
 
 Before applying the decision table below — and before any corpus file is read —

@@ -31,6 +31,87 @@ referencing ETSI TS 119 312 for cryptographic thresholds.
 - On demand, via `chorus-corpus-directives <sandbox-name> --init`, to
   bootstrap or edit the file directly with the operator.
 
+## Step 0.0 — Corpus conversion gate (ENG-077)
+
+> **Applies always** — before any detection logic or operator-instructions read.
+> `chorus-corpus-directives` governs the normative structure of the corpus; it is
+> meaningless if the corpus itself is not yet in a validated Markdown form.
+
+```
+SANDBOX = $SANDBOXES/<sandbox-name>
+```
+
+### Source file scan
+
+Scan for document source files (not yet converted or converted but not validated):
+
+```python
+import os, glob, json
+
+SOURCE_EXTS = {'.pdf', '.docx', '.xlsx', '.csv', '.xml', '.html', '.htm'}
+
+# Check corpus/sources/ first, then corpus/ root (non-recursive)
+source_files = []
+for base in [os.path.join(SANDBOX, 'corpus', 'sources'),
+             os.path.join(SANDBOX, 'corpus')]:
+    if os.path.isdir(base):
+        for f in sorted(os.listdir(base)):
+            if os.path.splitext(f)[1].lower() in SOURCE_EXTS:
+                source_files.append(os.path.join(base, f))
+        if base.endswith('sources'):
+            break   # prefer corpus/sources/ if it exists
+```
+
+**If no source files found → gate passes trivially.** The sandbox either has no
+document corpus yet (called with `--init` before depositing files) or uses only
+plain-text/Markdown corpus directly — no validation required.
+
+### Validate against `.corpus-ready.json`
+
+```python
+corpus_ready_path = os.path.join(SANDBOX, '.corpus-ready.json')
+if os.path.exists(corpus_ready_path):
+    with open(corpus_ready_path) as f:
+        corpus_ready = json.load(f)
+    validated_sources = {
+        e['source'] for e in corpus_ready.get('validated', [])
+        if e.get('status') == 'ok'
+    }
+else:
+    validated_sources = set()
+
+missing = []
+for src in source_files:
+    rel = os.path.relpath(src, SANDBOX)   # e.g. "corpus/sources/NIST.FIPS.186-5.pdf"
+    if rel not in validated_sources:
+        missing.append(rel)
+```
+
+### HARD STOP if any source is unvalidated
+
+```
+If missing is non-empty:
+
+⛔ Corpus conversion gate — chorus-corpus-directives cannot proceed.
+   N source file(s) have no validated Markdown equivalent in .corpus-ready.json:
+
+   For each missing file, run:
+     1. <skill> <sandbox> <file>              ← chorus-pdf / chorus-word / chorus-excel
+     2. chorus-markdown <sandbox> <file> <output.md> --report
+
+   Missing:
+     - corpus/sources/document.pdf
+       → chorus-pdf <sandbox> corpus/sources/document.pdf
+       → chorus-markdown <sandbox> corpus/sources/document.pdf corpus/NNN-document-text.md --report
+     ...
+
+   Then re-run: chorus-corpus-directives <sandbox>
+```
+
+> **Never bypass this gate** by proceeding to Step 0 (operator instructions) while
+> source files are unvalidated — the directives (version pinning, `no_auto_rules`
+> scope) depend on reading the actual corpus content, which is not yet in a trusted form.
+
 ## Detection logic (followed by the agent)
 
 0. **Pre-load operator instructions** — check for
