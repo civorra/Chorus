@@ -235,9 +235,9 @@ dérivé de la lecture complète du skill (Règle 1 en prérequis).
 |---|---|---|
 | `chorus-pdf.md` | 3233 | Phase 3.5 `chorus-markdown` ⛔ · Phase 4 README |
 | `chorus-check.md` | 2978 | Steps 5a-5o · Phase 4 rapport |
-| `chorus-feed.md` | 2616 | Phase 6.5 coverage · SP check |
-| `chorus-import-project.md` | 2083 | Thésaurus NON OPTIONAL · audit-import NON OPTIONAL |
-| `chorus-engine-yaml.md` | 1988 | *(référence — pas de phases séquentielles)* |
+| `chorus-feed.md` | 2790 | Phase 6.5 coverage · SP check |
+| `chorus-import-project.md` | 1691 | Thésaurus → `chorus-import-thesaurus.md` · audit-import NON OPTIONAL |
+| `chorus-engine-yaml.md` | 1559 | Checklist → `chorus-engine-yaml-pitfalls.md` · référence |
 | `chorus-create-project.md` | 1925 | Phase 5 JSON validation · README |
 | `chorus-excel.md` | 1570 | Phase 3.5 `chorus-markdown` ⛔ · Phase 4 README |
 | `chorus-word.md` | 1460 | Phase 3.5 `chorus-markdown` ⛔ · Phase 4 README |

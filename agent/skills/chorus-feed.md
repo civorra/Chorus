@@ -950,18 +950,7 @@ serial format", "valid product/article number"), before finalizing that rule:
 > test data) exercises the un-encoded alternate form — often much later, and far more
 > expensive to diagnose than to prevent.
 
-<details>
-<summary>Illustrative incident (domain-specific example, not part of the rule itself)</summary>
 
-A Common Criteria sandbox once shipped a `component_identifier` grammar rule covering
-only the standard catalogue form. A different corpus section documented a legitimate
-alternate form for author-defined extended components, not cross-checked at rule
-authoring time. Result: 15 false NON_CONFORME verdicts, invisible until a real project
-(as opposed to synthetic test data) exercised that alternate form. This is one example
-of the general failure pattern above — any domain with a base grammar + an
-unencoded legitimate alternate form documented elsewhere in the corpus is exposed to it.
-
-</details>
 
 
 
@@ -2796,20 +2785,6 @@ The KB is considered **converged** when ALL of the following are true simultaneo
 | `chorus-stress` | LLM | ❌ No |
 | Reviewing `known-limitation` candidates | Operator | ⚠️ Minimal — one decision per flagged section |
 | `chorus-review-kb --decisions` (expert mode) | Domain expert | ✅ Yes — optional, for certification |
-
-| Artifact          | Convention                              | Example                           |
-|-------------------|-----------------------------------------|-----------------------------------|
-| Sandbox           | `test-<NNN>` or `test-<slug>`           | `test-01`, `test-norme-ec5`       |
-| Agent slug        | kebab-case                              | `conformite-fiscale`              |
-| KB file           | `<slug>.org`                            | `conformite-fiscale.org`          |
-| YAML directory    | `rules/<slug>/`                         | `rules/conformite-fiscale/`       |
-| YAML files        | `R<NN>-<slug-rule>.yml`                 | `R01-verif-montant.yml`           |
-| **Element type slot** | **always `type_element`** ⛔ never `element_type` / `type` / `kind` | `type_element: montant_porteur` |
-| Agent helpers     | `lib/<Namespace>/Agent/<Slug>/Helpers.pm` | `lib/CB/Agent/Ossature/Helpers.pm` |
-| Shared helpers    | `lib/<Namespace>/Helpers/Shared.pm`     | `lib/CB/Helpers/Shared.pm`        |
-| Initial corpus    | `corpus/001-<slug-source>.txt`          | `corpus/001-dtu-31-2.txt`         |
-| Enrichment corpus | `corpus/<NNN>-<slug>.txt`               | `corpus/002-ec5-sect3.txt`        |
-| Project namespace | CamelCase, defined at startup           | `MonProjet`                       |
 
 > ⚠ `chorus-feed` never generates: `Feed.pm`, shell Agent module (`build()`),
 > `Expert.pm`, `run.pl`. These artifacts are the exclusive responsibility of `chorus-check`.
