@@ -331,6 +331,46 @@ dedicated "Phase 5.8 — Structural consistency" section.
 > Helpers.pm edit, both of which require domain reasoning.
 
 
+### 5.9 Semantic rule audit (`chorus-audit-rules`)
+
+Phase 3 covers **syntactic/structural** pitfalls (P1–P16). `chorus-audit-rules`
+covers the **semantic** layer that Phase 3 never touches: header slots
+(ENTRÉES/SORTIES/HELPERS) vs. what `EFFET` actually reads/writes, `.org` Catalogue
+prose vs. `CONDITION`/`EFFET` implementation, ENG-047 PREMISSES-with-Perl-expr,
+CHERCHER/CONDITION/EFFET scope coherence.
+
+These two tools are complementary and non-redundant. Run `chorus-audit-rules` on
+all agents in the sandbox:
+
+```bash
+chorus-audit-rules <sandbox-name>
+```
+
+If `--agent` was passed to `chorus-kb-maintenance`, scope the call accordingly:
+
+```bash
+chorus-audit-rules <sandbox-name> --agent <slug>
+```
+
+> **Do not pass `--fix` automatically** — `--fix` is restricted to syntactic
+> pitfalls already handled by Phase 3 `--patch`. Triggering it again here risks
+> double-patching and masks which tool performed each fix. If Phase 3 `--patch`
+> was used, `chorus-audit-rules` runs read-only here regardless.
+
+Collect the resulting `.audit-rules-status` block written to
+`$SANDBOX/agent/.audit-rules-status` and extract:
+- `red`: 🔴 critical findings count
+- `orange`: 🟠 major findings count
+- `yellow`: 🟡 minor findings count
+
+Feed all findings into the Phase 6 console summary and `--report` file under a
+dedicated "Phase 5.9 — Semantic rule audit" section.
+
+> If `chorus-audit-rules` itself is unavailable (skill file absent from `$ENGINE`),
+> report `⚠️ chorus-audit-rules not found — Phase 5.9 skipped` and continue.
+> Never block `chorus-kb-maintenance` for a missing sub-skill.
+
+
 ## Phase 6 — Report
 
 ### 6.1 Console summary (always printed)
@@ -347,6 +387,7 @@ dedicated "Phase 5.8 — Structural consistency" section.
   Phase 4 — README.org:          ✅<a> ⚠️<s> 🔴<c>
   Phase 5 — Supplementary:       <N> findings (.kb-hash / catalog bijection / BOARD / WIP / thesaurus)
   Phase 5.8 — Structural:        ✅ clean / ⚠️ <N> warnings / 🔴 <N> critical (SLOT-MISMATCH)
+  Phase 5.9 — Semantic audit:    🔴<red> 🟠<orange> 🟡<yellow> (chorus-audit-rules)
 
   <if --patch not given and any ✅-fixable P-check found>
   ℹ️  <N> mechanical fixes available — re-run with --patch to apply
@@ -383,4 +424,5 @@ commits in other projects' `AGENTS.md` — no equivalent rule exists for Chorus)
 - [ ] Phase 4 README findings are never auto-patched, regardless of `--patch`
 - [ ] `.kb-hash` regenerated after any Phase 3 `--patch` YAML edit
 - [ ] `.chorus-wip.md` presence surfaced, never deleted
+- [ ] `chorus-audit-rules` invoked in Phase 5.9 (read-only — never `--fix`) — findings included in report
 - [ ] No automatic git commit in either repo
