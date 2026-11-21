@@ -130,7 +130,8 @@ If present: display the checkpoint content and ask the operator:
     Restart — delete checkpoint and run from Phase 0
 ```
 
-Call `eca__ask_user` with options `["Reprendre", "Recommencer depuis Phase 0"]`.
+→ Présenter les deux options dans la réponse et attendre le choix de l'opérateur
+avant de continuer :
 
 - **Reprendre** → skip completed phases, resume from the interrupted step.
 - **Recommencer** → delete `.compare-wip.md`, proceed normally.
@@ -227,6 +228,81 @@ they still go through the Phase 4.3a targeted corpus search. If the search confi
 the provision is genuinely absent from corpus A's raw text → upgradeable to
 `legal-absence` (with `absence_proof` filled, as usual). The asymmetry is a
 **warning and a default**, not a forced classification.
+
+---
+
+## Phase 0.5 — Corpus relationship type
+
+> **Goal:** determine the type of relationship between the two corpora.
+> This drives the labels, section titles, and risk semantics of `--report` output.
+>
+> **Method:** automatic inference from available artefacts — no user interaction
+> unless inference is inconclusive.
+
+### 0.5.1 — Auto-inference (in priority order)
+
+Read the following artefacts and apply the **first matching heuristic**:
+
+**1. Sandbox names**
+- One name contains "EU", "UE", "ISO", "EN-", "directive", "regulation" and the
+  other contains a country name or national identifier
+  → `hierarchical`, `reference_sandbox` = the EU/ISO/EN side
+
+**2. README.org § Domain (each sandbox)**
+- Contains "transposition of", "implémentation de", "based on Directive/Regulation",
+  "national implementation of"
+  → `hierarchical`, `reference_sandbox` = the instrument mentioned as source
+- Contains "v1", "v2", "edition YYYY", "version N", "amendment N"
+  → `sequential`, A is the earlier version (verify from dates in corpus names)
+- Neither heuristic matches → candidate for `parallel`
+
+**3. Corpus filenames (each sandbox)**
+- One side has files named with "directive", "regulation", "ISO-", "EN-",
+  or an international standard prefix
+  → `hierarchical`, `reference_sandbox` = that side
+
+**4. index.org pipeline description**
+- Explicit mention of normative hierarchy → extract and use
+
+### 0.5.2 — Display inferred relationship
+
+If inference is **confident** (at least two heuristics agree):
+
+```
+ℹ Relation détectée : <relationship_type>
+  [cadre A] : <label — from R.1 substitution table>
+              rôle : <référence | implémentation | version antérieure | parallèle>
+  [cadre B] : <label — from R.1 substitution table>
+              rôle : <référence | implémentation | version postérieure | parallèle>
+  instrument_type : <free label — e.g. "minimum harmonisé", "standard obligatoire">
+  → Corriger au prochain message si incorrect.
+```
+
+If inference is **inconclusive** (heuristics disagree or insufficient data):
+
+```
+⚠ Type de relation entre les deux corpus non déterminable automatiquement.
+
+  Options :
+    hierarchical — [cadre A] est l'instrument de référence (minimum), [cadre B] est l'implémentation
+    parallel     — les deux référentiels ont le même statut normatif
+    sequential   — [cadre A] est une version antérieure de [cadre B]
+
+  Quelle relation s'applique ici ?
+```
+
+→ Attendre la réponse de l'opérateur avant de continuer.
+
+### 0.5.3 — Store for downstream phases
+
+Store the following values for use by all `--report` sections
+(R.0-bis, R.1-bis, R.1-ter, R.3-bis):
+
+| Variable            | Values                                | Applies to         |
+|---------------------|---------------------------------------|--------------------|
+| `relationship_type` | `hierarchical` / `parallel` / `sequential` | all report sections |
+| `reference_sandbox` | `A` / `B`                             | hierarchical only  |
+| `instrument_type`   | free label (e.g. "minimum harmonisé") | hierarchical only  |
 
 ---
 
@@ -588,8 +664,9 @@ Phase 5 — Alignment findings requiring your input (N items):
     → Confirm / Override / Mark uncertain
 ```
 
-Call `eca__ask_user` for the full list. Update `method: human-validated` for
-confirmed or overridden items.
+→ Présenter la liste complète dans la réponse et attendre les confirmations/corrections
+de l'opérateur avant de continuer. Mettre à jour `method: human-validated` pour
+chaque item confirmé ou corrigé.
 
 ---
 
@@ -856,6 +933,129 @@ For each sandbox, map agent slugs to legal domain labels:
 > For other sandbox pairs: derive theme labels from the agent KB org `* Domain` section —
 > use the first sentence, stripped of Chorus vocabulary. Never use the agent slug as-is.
 
+### R.0-bis — Correspondence table
+
+> **Position in report:** before §1 (Résumé exécutif).
+> **Always generated.**
+> **Method:** deterministic — derived from `matrix-compare.org` rows. No LLM.
+
+For each row of `matrix-compare.org`, build one table row:
+- **Concept** — canonical label from the thesaurus (or concept name from the matrix)
+- **Section [cadre A]** — value of `corpus_ref_A` (or `—` if absent)
+- **Section [cadre B]** — value of `corpus_ref_B` (or `—` if absent)
+- **Statut** — icon derived from the table below
+
+**Status icon derivation (generic — no domain knowledge required):**
+
+| Matrix `origin` + `status` / `direction`                                     | Icon |
+|-------------------------------------------------------------------------------|------|
+| `status: equivalent`                                                          | `≡`  |
+| `legal-divergence` + `direction: *_stricter` or `direction: different_structure` | `⚡`  |
+| `legal-divergence` + `direction: *_weaker`                                   | `⚠`  |
+| `kb-gap` (one side only — `—` in one column)                                 | `○`  |
+| `legal-absence` (absence_proof confirmed)                                     | `✗`  |
+| `uncertain`                                                                   | `?`  |
+
+Column headers use R.1 substitution labels (legal names) — never raw sandbox names.
+Group rows by legal theme (from R.2 agent-to-theme mapping) — one sub-table per theme.
+
+Output in report:
+```markdown
+## Tableau de correspondance
+
+### [Thème 1]
+| Concept | [Cadre A] | [Cadre B] | Statut |
+|---------|-----------|-----------|--------|
+| ...     | Art. X    | §Y        | ≡      |
+
+### [Thème 2]
+...
+```
+
+### R.1-bis — Alignment / transposition status
+
+> **Position in report:** after §1 (Résumé exécutif).
+> **Always generated** — section title and label mapping adapt to `relationship_type`.
+> **Method:** deterministic — derived from `direction` + `origin` in `matrix-compare.org`.
+
+**`relationship_type: hierarchical`** → section title: *Statut de transposition*
+
+| Matrix condition | Label |
+|---|---|
+| `direction: *_weaker` | `⚠ Non conforme — protection moindre que le minimum [instrument_type]` |
+| `direction: *_stricter` | `✅ Conforme — exigence plus stricte (licite)` |
+| `status: equivalent` | `✅ Transposé` |
+| `legal-absence` absent in `reference_sandbox` opposite | `❌ Absent du texte d'implémentation` |
+| `kb-gap` | `○ Non modélisé dans le périmètre analysé` |
+
+**`relationship_type: parallel`** → section title: *Statut d'alignement entre référentiels*
+
+| Matrix condition | Label |
+|---|---|
+| `status: equivalent` | `≡ Aligné` |
+| `direction: *_stricter` or `*_weaker` | `⚡ Divergent ([A] plus strict / [B] plus strict)` |
+| `direction: different_structure` | `≠ Mécanismes différents` |
+| `legal-absence` | `✗ Présent dans un seul référentiel` |
+
+**`relationship_type: sequential`** → section title: *Évolution entre versions*
+
+| Matrix condition | Label |
+|---|---|
+| `status: equivalent` | `→ Maintenu` |
+| `direction: *_stricter` | `↑ Renforcé` |
+| `direction: *_weaker` | `↓ Assoupli` |
+| `legal-absence` absent in B | `✗ Supprimé` |
+| `legal-absence` absent in A | `✚ Ajouté` |
+
+Output in report (same structure for all types — only title and labels vary):
+```markdown
+## [Section title]
+
+| Concept | Texte [cadre A] | Texte [cadre B] | Statut |
+|---------|-----------------|-----------------|--------|
+| ...     | Art. X Dir. Y   | §Z Loi W        | ✅ Transposé |
+```
+
+### R.1-ter — Risk map
+
+> **Position in report:** after R.1-bis.
+> **Always generated.**
+> **Method:** 100% deterministic — derived from `direction` + `evidence` in `matrix-compare.org`.
+> No LLM involved.
+
+Three levels. Labels adapt according to `relationship_type`:
+
+**Level 🔴 (critical — requires action):**
+- `hierarchical` : `direction: *_weaker`  → *Conformité à vérifier*
+- `parallel`     : `direction: *_weaker`  → *Divergence substantielle défavorable à [B]*
+- `sequential`   : `direction: *_weaker`  → *Régression par rapport à la version précédente*
+
+**Level 🟡 (attention — clarification needed):**
+- All types: `direction: different_structure` | `direction: undetermined` | `status: uncertain`
+
+**Level 🟢 (informative):**
+- `hierarchical` : `direction: *_stricter` → *Plus strict que le minimum [instrument_type] (licite)*
+- `parallel`     : `direction: *_stricter` → *Plus protecteur en [cadre A/B]*
+- `sequential`   : `direction: *_stricter` → *Renforcement*
+
+For each item: one line `• <concept> — <one-line impact> (<article refs>)`.
+Omit a level entirely if it has 0 items.
+
+Output in report:
+```markdown
+## Priorités d'analyse
+
+🔴 [label critique] (N)
+   • <concept> — <une ligne impact> (<ref articles>)
+   • …
+
+🟡 Mécanismes à clarifier (N)
+   • …
+
+🟢 [label positif] (N)
+   • …
+```
+
 ### R.3 — Report structure
 
 Write the report section by section in this order:
@@ -869,10 +1069,30 @@ Write the report section by section in this order:
 
 ---
 
+## Tableau de correspondance
+
+<See R.0-bis — deterministic, generated from matrix-compare.org. Group by legal theme.>
+
+---
+
 ## 1. Résumé exécutif
 
 <3–5 bullet points: overall picture, number of equivalences, major divergences,
  notable gaps. No technical terms. Written for a decision-maker.>
+
+---
+
+## [Statut de transposition | d'alignement | Évolution entre versions]
+
+<See R.1-bis — section title and label mapping adapt to relationship_type.
+ Generated from direction + origin values in matrix-compare.org.>
+
+---
+
+## Priorités d'analyse
+
+<See R.1-ter — 🔴/🟡/🟢 derived deterministically from direction + evidence.
+ Labels adapt to relationship_type. Omit a level if it has 0 items.>
 
 ---
 
@@ -940,6 +1160,14 @@ Write the report section by section in this order:
 
 ---
 
+## Recommandations
+
+<See R.3-bis — LLM-assisted, restricted to 🔴 items from R.1-ter.
+ Section subtitle adapts to relationship_type.
+ Always end with the non-legal-advice disclaimer.>
+
+---
+
 ## Annexe — Périmètre de l'analyse et limites
 
 **Textes analysés :**
@@ -964,6 +1192,47 @@ included).
 
 **Méthode :** <two sentences: deterministic threshold comparison + LLM-assisted
  concept alignment, without mentioning Chorus, KB, or rules.>
+```
+
+### R.3-bis — Recommendations
+
+> **Position in report:** before the Annexe.
+> **Always generated** — section subtitle and framing adapt to `relationship_type`.
+> **Method:** LLM-assisted, strictly limited to what is derivable from the matrix.
+
+**Input:** all rows with `direction: *_weaker` + `legal-absence` on the
+`reference_sandbox` side (level 🔴 items from R.1-ter).
+
+**Section subtitle adapts to `relationship_type`:**
+- `hierarchical` : *Pour aligner [cadre B] sur [cadre A / instrument_type]*
+- `parallel`     : *Pistes d'harmonisation entre les deux référentiels*
+- `sequential`   : *Points à traiter dans la prochaine version*
+
+**LLM instructions (generic — domain-independent):**
+
+For each 🔴 item, formulate in one sentence what should change in [cadre B] to
+reach [cadre A]'s level on this point.
+- Do NOT cite jurisprudence, case law, or preparatory works.
+- Restrict to what is directly derivable from the compared thresholds / obligations.
+- If `evidence: llm-only` → prefix with `⚠ à confirmer`.
+- Label each item with its confidence level: `établi` (evidence: text-anchored or
+  witness-confirmed) | `à confirmer` (evidence: llm-only).
+- If 🔴 list is empty → emit: *"Aucune divergence de conformité identifiée dans
+  le périmètre analysé."*
+
+Output in report:
+```markdown
+## Recommandations
+
+### [Section subtitle]
+
+1. **[Concept]** — [action concrète en une phrase]
+   Base : [ref cadre A] vs [ref cadre B] · Niveau de certitude : [établi / à confirmer]
+
+2. …
+
+> Note : ces recommandations sont dérivées mécaniquement des divergences identifiées.
+> Elles ne constituent pas un avis juridique.
 ```
 
 ### R.4 — Output
