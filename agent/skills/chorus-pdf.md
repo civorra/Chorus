@@ -207,10 +207,31 @@ Verify that `$SANDBOX/corpus/` exists. If not, abort with:
 
 If `<file.pdf>` is a bare filename → prepend `$SANDBOX/corpus/`.
 If it is an absolute path → use as-is.
+If it is a relative path → resolve against `$SANDBOX/`.
 Verify the file exists and ends in `.pdf` (case-insensitive).
 
 In `--batch` mode: glob `$SANDBOX/corpus/*.pdf` (and `*.PDF`). Process each in turn.
 If no PDF found → warn and exit cleanly (not an error).
+
+#### ⛔ Guard — PDF outside `corpus/` → automatic import-context mode
+
+After resolving the PDF path, check whether it falls under `$SANDBOX/corpus/`:
+
+```
+if resolved_pdf_path does NOT start with $SANDBOX/corpus/:
+    → automatically activate --output-dir mode (Phase 0.3b)
+       output_dir = dirname(resolved_pdf_path)
+    → Phase 4.1 README.org update is SKIPPED ([skip-readme-update] implicit)
+    → print: "[chorus-pdf] PDF outside corpus/ — import-context mode activated automatically.
+              Output dir: <output_dir>. README.org will NOT be updated."
+```
+
+**Rationale:** a PDF located in `workspace/`, an absolute path outside the sandbox,
+or any path not under `corpus/` is by definition a project document, not normative
+corpus. Sending its output to `corpus/` and updating README.org would corrupt the
+corpus numbering sequence and misclassify the document as normative source material.
+This guard makes the distinction deterministic and unambiguous — the operator never
+needs to remember to pass `--output-dir` for a project document.
 
 ### 0.3 Resolve the output filename
 
